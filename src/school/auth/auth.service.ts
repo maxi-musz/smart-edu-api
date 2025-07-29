@@ -15,6 +15,8 @@ import { Prisma } from '@prisma/client';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto } from 'src/shared/dto/auth.dto';
 import { generateOTP } from 'src/shared/helper-functions/otp-generator';
+import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
+import { ExcelProcessorService } from 'src/shared/services/excel-processor.service';
 
 interface CloudinaryUploadResult {
     secure_url: string;
@@ -29,7 +31,8 @@ export class AuthService {
         private prisma: PrismaService,
         private jwt: JwtService,
         private config: ConfigService,
-        private readonly cloudinaryService: CloudinaryService
+        private readonly cloudinaryService: CloudinaryService,
+        private readonly excelProcessorService: ExcelProcessorService
     ) {}
     
     // Onboard new school
@@ -1507,5 +1510,389 @@ export class AuthService {
         }
     }
 
+    /**
+     * Bulk onboard users from Excel file
+     * @param file - The uploaded Excel file
+     * @param user - The authenticated user
+     * @returns Bulk onboarding response
+     */
+    async bulkOnboardFromExcel(file: Express.Multer.File, user: any): Promise<BulkOnboardResponseDto> {
+        try {
+            console.log(colors.cyan("Starting bulk onboarding from Excel file..."));
+            
+            // Get the school from the authenticated user
+            const existingSchool = await this.prisma.school.findFirst({
+                where: {
+                    school_email: user.email
+                }
+            });
+
+            if (!existingSchool) {
+                throw new BadRequestException({
+                    success: false,
+                    message: "School not found",
+                    statusCode: 400
+                });
+            }
+
+            // Process the Excel file
+            const processedData = await this.excelProcessorService.processExcelFile(file);
+            
+            console.log(colors.green(`✅ Processed ${processedData.length} rows from Excel file`));
+
+            // Step 1: Database Transaction (Fast & Reliable)
+            const { response, createdUsers, errors } = await this.prisma.$transaction(async (prisma) => {
+                const response: any = {};
+                const createdUsers: any = { teachers: [], students: [], directors: [] };
+                const errors: Array<{ row: number; email: string; error: string }> = [];
+
+                // Group data by role
+                const teachers = processedData.filter(row => row['Role'] === 'teacher');
+                const students = processedData.filter(row => row['Role'] === 'student');
+                const directors = processedData.filter(row => row['Role'] === 'school_director');
+
+                // Process teachers
+                if (teachers.length > 0) {
+                    console.log(colors.cyan(`Processing ${teachers.length} teachers...`));
+                    
+                    for (let i = 0; i < teachers.length; i++) {
+                        const teacher = teachers[i];
+                        const rowNumber = processedData.findIndex(row => 
+                            row['Email'] === teacher['Email']
+                        ) + 2; // +2 because Excel rows start from 1 and we have header
+
+                        try {
+                            // Check if email already exists
+                            const existingUser = await prisma.user.findFirst({
+                                where: { email: teacher['Email'] }
+                            });
+
+                            if (existingUser) {
+                                errors.push({
+                                    row: rowNumber,
+                                    email: teacher['Email'],
+                                    error: 'Email already exists in the system'
+                                });
+                                continue;
+                            }
+
+                            // Generate password and create teacher
+                            const defaultPassword = `${teacher['First Name'].slice(0, 3).toLowerCase()}${teacher['Phone'].slice(-4)}`;
+                            const hashedPassword = await argon.hash(defaultPassword);
+
+                            const createdTeacher = await prisma.user.create({
+                                data: {
+                                    email: teacher['Email'],
+                                    password: hashedPassword,
+                                    role: "teacher",
+                                    school_id: existingSchool.id,
+                                    first_name: teacher['First Name'].toLowerCase(),
+                                    last_name: teacher['Last Name'].toLowerCase(),
+                                    phone_number: teacher['Phone']
+                                }
+                            });
+
+                            createdUsers.teachers.push(createdTeacher);
+                        } catch (error) {
+                            errors.push({
+                                row: rowNumber,
+                                email: teacher['Email'],
+                                error: error.message
+                            });
+                        }
+                    }
+                }
+
+                // Process students
+                if (students.length > 0) {
+                    console.log(colors.cyan(`Processing ${students.length} students...`));
+                    
+                    // Get all classes for validation
+                    const schoolClasses = await prisma.class.findMany({
+                        where: { schoolId: existingSchool.id }
+                    });
+
+                    for (let i = 0; i < students.length; i++) {
+                        const student = students[i];
+                        const rowNumber = processedData.findIndex(row => 
+                            row['Email'] === student['Email']
+                        ) + 2;
+
+                        try {
+                            // Check if email already exists
+                            const existingUser = await prisma.user.findFirst({
+                                where: { email: student['Email'] }
+                            });
+
+                            if (existingUser) {
+                                errors.push({
+                                    row: rowNumber,
+                                    email: student['Email'],
+                                    error: 'Email already exists in the system'
+                                });
+                                continue;
+                            }
+
+                            // Validate class exists
+                            const classExists = schoolClasses.some(c => c.name === student['Class']);
+                            if (!classExists) {
+                                errors.push({
+                                    row: rowNumber,
+                                    email: student['Email'],
+                                    error: `Class '${student['Class']}' does not exist in the school`
+                                });
+                                continue;
+                            }
+
+                            // Generate password and create student
+                            const defaultPassword = `${student['First Name'].slice(0, 3).toLowerCase()}${student['Phone'].slice(-4)}`;
+                            const hashedPassword = await argon.hash(defaultPassword);
+
+                            const createdStudent = await prisma.user.create({
+                                data: {
+                                    email: student['Email'],
+                                    password: hashedPassword,
+                                    role: "student",
+                                    school_id: existingSchool.id,
+                                    first_name: student['First Name'].toLowerCase(),
+                                    last_name: student['Last Name'].toLowerCase(),
+                                    phone_number: student['Phone']
+                                }
+                            });
+
+                            // Enroll student in class
+                            const classId = schoolClasses.find(c => c.name === student['Class'])?.id;
+                            if (classId) {
+                                await prisma.user.update({
+                                    where: { id: createdStudent.id },
+                                    data: {
+                                        classesEnrolled: {
+                                            connect: { id: classId }
+                                        }
+                                    }
+                                });
+                            }
+
+                            createdUsers.students.push(createdStudent);
+                        } catch (error) {
+                            errors.push({
+                                row: rowNumber,
+                                email: student['Email'],
+                                error: error.message
+                            });
+                        }
+                    }
+                }
+
+                // Process directors
+                if (directors.length > 0) {
+                    console.log(colors.cyan(`Processing ${directors.length} directors...`));
+                    
+                    for (let i = 0; i < directors.length; i++) {
+                        const director = directors[i];
+                        const rowNumber = processedData.findIndex(row => 
+                            row['Email'] === director['Email']
+                        ) + 2;
+
+                        try {
+                            // Check if email already exists
+                            const existingUser = await prisma.user.findFirst({
+                                where: { email: director['Email'] }
+                            });
+
+                            if (existingUser) {
+                                errors.push({
+                                    row: rowNumber,
+                                    email: director['Email'],
+                                    error: 'Email already exists in the system'
+                                });
+                                continue;
+                            }
+
+                            // Generate password and create director
+                            const defaultPassword = `${director['First Name'].slice(0, 3).toLowerCase()}${director['Phone'].slice(-4)}`;
+                            const hashedPassword = await argon.hash(defaultPassword);
+
+                            const createdDirector = await prisma.user.create({
+                                data: {
+                                    email: director['Email'],
+                                    password: hashedPassword,
+                                    role: "school_director",
+                                    school_id: existingSchool.id,
+                                    first_name: director['First Name'].toLowerCase(),
+                                    last_name: director['Last Name'].toLowerCase(),
+                                    phone_number: director['Phone']
+                                }
+                            });
+
+                            createdUsers.directors.push(createdDirector);
+                        } catch (error) {
+                            errors.push({
+                                row: rowNumber,
+                                email: director['Email'],
+                                error: error.message
+                            });
+                        }
+                    }
+                }
+
+                console.log(colors.green("Database operations completed successfully!"));
+
+                return { response, createdUsers, errors };
+            }, {
+                maxWait: 5000,
+                timeout: 15000
+            });
+
+            // Step 2: Email Sending (Separate from database transaction)
+            console.log(colors.cyan("Sending congratulatory emails..."));
+            
+            const emailPromises: Promise<void>[] = [];
+
+            // Send teacher emails
+            if (createdUsers.teachers.length > 0) {
+                const teacherEmailPromises = createdUsers.teachers.map(async (teacher) => {
+                    try {
+                        await sendTeacherOnboardEmail({
+                            firstName: teacher.first_name,
+                            lastName: teacher.last_name,
+                            email: teacher.email,
+                            phone: teacher.phone_number,
+                            schoolName: existingSchool?.school_name || 'Unknown School'
+                        });
+                        console.log(colors.green(`✅ Teacher email sent to: ${teacher.email}`));
+                    } catch (emailError) {
+                        console.log(colors.yellow(`⚠️ Failed to send teacher email to ${teacher.email}: ${emailError.message}`));
+                    }
+                });
+                emailPromises.push(...teacherEmailPromises);
+            }
+
+            // Send student emails
+            if (createdUsers.students.length > 0) {
+                const studentEmailPromises = createdUsers.students.map(async (student) => {
+                    try {
+                        const studentData = processedData.find(s => 
+                            s['Email'] === student.email
+                        );
+                        const className = studentData?.['Class'] || 'Unassigned';
+                        
+                        await sendStudentOnboardEmail({
+                            firstName: student.first_name,
+                            lastName: student.last_name,
+                            email: student.email,
+                            phone: student.phone_number,
+                            schoolName: existingSchool?.school_name || 'Unknown School',
+                            className: className
+                        });
+                        console.log(colors.green(`✅ Student email sent to: ${student.email}`));
+                    } catch (emailError) {
+                        console.log(colors.yellow(`⚠️ Failed to send student email to ${student.email}: ${emailError.message}`));
+                    }
+                });
+                emailPromises.push(...studentEmailPromises);
+            }
+
+            // Send director emails
+            if (createdUsers.directors.length > 0) {
+                const directorEmailPromises = createdUsers.directors.map(async (director) => {
+                    try {
+                        await sendDirectorOnboardEmail({
+                            firstName: director.first_name,
+                            lastName: director.last_name,
+                            email: director.email,
+                            phone: director.phone_number,
+                            schoolName: existingSchool?.school_name || 'Unknown School'
+                        });
+                        console.log(colors.green(`✅ Director email sent to: ${director.email}`));
+                    } catch (emailError) {
+                        console.log(colors.yellow(`⚠️ Failed to send director email to ${director.email}: ${emailError.message}`));
+                    }
+                });
+                emailPromises.push(...directorEmailPromises);
+            }
+
+            // Send all emails in parallel (non-blocking)
+            if (emailPromises.length > 0) {
+                await Promise.allSettled(emailPromises);
+                console.log(colors.magenta(`📧 Sent ${emailPromises.length} congratulatory emails`));
+            }
+
+            // Calculate summary
+            const total = processedData.length;
+            const successful = createdUsers.teachers.length + createdUsers.students.length + createdUsers.directors.length;
+            const failed = errors.length;
+
+            console.log(colors.green("Bulk onboarding completed successfully!"));
+
+            return {
+                success: true,
+                message: "Bulk onboarding completed successfully",
+                data: {
+                    total,
+                    successful,
+                    failed,
+                    errors,
+                    createdUsers: {
+                        teachers: createdUsers.teachers.map(teacher => ({
+                            id: teacher.id,
+                            first_name: teacher.first_name,
+                            last_name: teacher.last_name,
+                            email: teacher.email,
+                            phone_number: teacher.phone_number,
+                            role: teacher.role,
+                            school_id: teacher.school_id,
+                            created_at: formatDate(teacher.createdAt),
+                            updated_at: formatDate(teacher.updatedAt)
+                        })),
+                        students: createdUsers.students.map(student => ({
+                            id: student.id,
+                            first_name: student.first_name,
+                            last_name: student.last_name,
+                            email: student.email,
+                            phone_number: student.phone_number,
+                            role: student.role,
+                            school_id: student.school_id,
+                            created_at: formatDate(student.createdAt),
+                            updated_at: formatDate(student.updatedAt)
+                        })),
+                        directors: createdUsers.directors.map(director => ({
+                            id: director.id,
+                            first_name: director.first_name,
+                            last_name: director.last_name,
+                            email: director.email,
+                            phone_number: director.phone_number,
+                            role: director.role,
+                            school_id: director.school_id,
+                            created_at: formatDate(director.createdAt),
+                            updated_at: formatDate(director.updatedAt)
+                        }))
+                    }
+                }
+            };
+
+        } catch (error) {
+            console.log(colors.red("Error in bulk onboarding: "), error);
+            
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            
+            throw new InternalServerErrorException({
+                success: false,
+                message: "Error in bulk onboarding",
+                error: error.message,
+                statusCode: 500
+            });
+        }
+    }
+
+    /**
+     * Download Excel template for bulk onboarding
+     * @returns Buffer containing the Excel template
+     */
+    async downloadExcelTemplate(): Promise<Buffer> {
+        return this.excelProcessorService.generateExcelTemplate();
+    }
 }
  

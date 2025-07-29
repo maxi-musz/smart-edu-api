@@ -6,4 +6,5 @@ export * from './teachers.docs';
 export * from './classes.docs';
 export * from './subjects.docs';
 export * from './finance.docs';
-export * from './schedules.docs'; 
+export * from './schedules.docs';
+export * from './bulk-onboard.docs'; 
