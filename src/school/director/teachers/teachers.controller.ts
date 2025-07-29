@@ -16,7 +16,7 @@ import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
-import { AddNewTeacherDto } from './teacher.dto';
+import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
 import { 
   GetTeachersDashboardDocs, 
   GetClassesAndSubjectsDocs,
@@ -127,9 +127,10 @@ export class TeachersController {
     @UpdateTeacherDocs.response500
     updateTeacher(
         @Param('id') id: string,
-        @Body() dto: AddNewTeacherDto
+        @Body() dto: UpdateTeacherDto,
+        @GetUser() user: User
     ) {
-        return this.teachersService.updateTeacher(id, dto);
+        return this.teachersService.updateTeacher(id, dto, user);
     }
 
     /**

@@ -31,10 +31,16 @@
 - **Profile Management**: Comprehensive user profiles with display pictures
 
 ### 📚 Academic Management
-- **Class Management**: Create and manage classes
-- **Subject Management**: Organize subjects with color coding
-- **Student Performance**: Track and analyze student performance
-- **Teacher Assignments**: Assign teachers to classes and subjects
+- **Class Management**: Create and manage classes with class teachers
+- **Subject Management**: Organize subjects with color coding and descriptions
+- **Student Performance**: Track and analyze student performance metrics
+- **Teacher Management**: Comprehensive teacher role and class management system
+  - **Teaching Role Assignment**: Assign teachers to specific subjects
+  - **Class Management Assignment**: Assign teachers as class teachers
+  - **Role Updates**: Update teacher teaching roles and class management
+  - **Partial Updates**: Update specific teacher roles without affecting others
+  - **Professional Email Notifications**: Automated notifications for role changes
+  - **Director Notifications**: School directors receive detailed reports of all changes
 
 ### 📅 Scheduling System
 - **Timetable Management**: Create and manage class schedules
@@ -49,13 +55,17 @@
 ### 📊 Dashboard & Analytics
 - **Director Dashboard**: Overview of school operations
 - **Student Analytics**: Performance tracking and statistics
-- **Teacher Analytics**: Teaching performance metrics
+- **Teacher Analytics**: Teaching performance metrics and role management
 - **Financial Reports**: Revenue and expense analysis
+- **Teacher Dashboard**: Complete teacher overview with role information
 
 ### 🔔 Notification System
 - **Real-time Notifications**: Instant updates for important events
-- **Email Notifications**: Automated email alerts
+- **Email Notifications**: Automated email alerts with professional templates
 - **Push Notifications**: Mobile-friendly notifications
+- **Teacher Role Notifications**: Professional email notifications for teaching role changes
+- **Director Notifications**: Comprehensive reports sent to school directors
+- **Welcome Emails**: Automated onboarding emails for new teachers
 
 ---
 
@@ -150,6 +160,12 @@ SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_app_password
 
+# Email Templates (automatically configured)
+# - Teacher role notifications
+# - Director reports
+# - Welcome emails
+# - Password reset emails
+
 # Cloudinary Configuration (for file uploads)
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
@@ -182,6 +198,17 @@ Once the server is running, access the interactive API documentation:
 - `GET /api/v1/director/students/dashboard` - Students dashboard
 - `GET /api/v1/director/teachers/dashboard` - Teachers dashboard
 
+#### Teacher Management
+- `GET /api/v1/director/teachers/dashboard` - Teachers dashboard with analytics
+- `GET /api/v1/director/teachers/fetch-classes-subjects` - Get available classes and subjects for teacher creation
+- `POST /api/v1/director/teachers/add-new-teacher` - Create new teacher with roles
+- `GET /api/v1/director/teachers/get-teacher/:id` - Get specific teacher details
+- `PUT /api/v1/director/teachers/update-teacher/:id` - Update teacher information and roles
+- `DELETE /api/v1/director/teachers/delete-teacher/:id` - Soft delete teacher
+- `GET /api/v1/director/teachers/get-all-teachers` - Get all teachers with pagination
+- `POST /api/v1/director/teachers/assign-subjects/:teacherId` - Assign subjects to teacher
+- `POST /api/v1/director/teachers/assign-class/:teacherId` - Assign class management to teacher
+
 #### Academic Management
 - `GET /api/v1/director/classes/fetch-all-classes` - Get all classes
 - `GET /api/v1/director/subjects/fetch-all-subjects` - Get all subjects
@@ -196,6 +223,155 @@ Once the server is running, access the interactive API documentation:
 - `POST /api/v1/director/schedules/create-time-slot` - Create time slot
 - `GET /api/v1/director/schedules/timetable-entries` - Get timetable entries
 - `POST /api/v1/director/schedules/create-timetable-entry` - Create timetable entry
+
+---
+
+## 👨‍🏫 Teacher Management System
+
+### 🎯 Overview
+
+The Smart Edu Hub includes a comprehensive teacher management system that handles teacher creation, role assignments, and automated notifications. The system uses professional terminology to avoid confusion with student homework assignments.
+
+### 📋 Key Features
+
+#### **1. Teacher Creation & Onboarding**
+- **Complete Teacher Profile**: Name, email, phone, display picture, status
+- **Initial Role Assignment**: Assign teaching subjects and class management during creation
+- **Automated Welcome Email**: Professional onboarding email with generated password
+- **Role Notifications**: Immediate notification of assigned teaching roles
+- **Director Notifications**: School directors receive detailed reports of new teacher additions
+
+#### **2. Teaching Role Management**
+- **Teaching Role Assignment**: Assign teachers to specific subjects they will teach
+- **Class Management Assignment**: Assign teachers as class teachers for specific classes
+- **Partial Updates**: Update specific roles without affecting other teacher information
+- **Role Validation**: Ensure teachers are only assigned to valid subjects and classes
+- **Conflict Prevention**: Prevent duplicate assignments and conflicts
+
+#### **3. Professional Email Notifications**
+
+##### **For Teachers:**
+- **New Teaching Role**: Notification when assigned to teach new subjects
+- **New Class Management Role**: Notification when assigned as class teacher
+- **Role Update Notifications**: Detailed updates when roles change
+- **Professional Templates**: Beautiful HTML email templates with clear information
+
+##### **For School Directors:**
+- **Comprehensive Reports**: Detailed notifications about all teacher role changes
+- **Complete Information**: Who made changes, what changed, when it changed
+- **Previous vs New Roles**: Clear comparison of old and new assignments
+- **Action Items**: Clear guidance on what actions are required
+
+#### **4. Email Templates**
+
+##### **Teacher Notifications:**
+- **Teaching Role Template**: Professional notification for subject assignments
+- **Class Management Template**: Professional notification for class assignments
+- **Role Update Template**: Comprehensive update notifications with changes
+
+##### **Director Notifications:**
+- **Teacher Role Change Report**: Detailed reports for role updates
+- **New Teacher Role Report**: Comprehensive reports for new teacher additions
+
+### 🔧 Technical Implementation
+
+#### **API Endpoints**
+
+```typescript
+// Teacher Management
+POST /api/v1/director/teachers/add-new-teacher
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john.doe@school.com",
+  "phone_number": "08012345678",
+  "subjectsTeaching": ["subject-id-1", "subject-id-2"],
+  "classesManaging": ["class-id-1"],
+  "status": "active"
+}
+
+// Update Teacher (Partial Updates Supported)
+PUT /api/v1/director/teachers/update-teacher/:id
+{
+  "subjectsTeaching": ["new-subject-id"],
+  "classesManaging": ["new-class-id"]
+}
+
+// Assign Specific Roles
+POST /api/v1/director/teachers/assign-subjects/:teacherId
+POST /api/v1/director/teachers/assign-class/:teacherId
+```
+
+#### **Email Notification System**
+
+```typescript
+// Teacher receives these notifications:
+- "📚 New Teaching Role - School Name"
+- "🏫 New Class Management Role - School Name"
+- "🔄 Teaching Role Update - School Name"
+
+// Directors receive these notifications:
+- "📋 Teacher Role Update - School Name"
+- "🎉 New Teacher Role - School Name"
+```
+
+#### **Professional Terminology**
+
+The system uses clear, professional terminology to avoid confusion:
+
+- **"Teaching Role"** = What subjects a teacher teaches
+- **"Class Management"** = What classes a teacher manages as class teacher
+- **"Role Assignment"** = Giving teachers their teaching responsibilities
+- **"Role Update"** = Changing a teacher's teaching responsibilities
+
+### 📊 Dashboard Features
+
+#### **Teachers Dashboard**
+- **Total Teachers**: Count of all teachers in the school
+- **Active Teachers**: Count of currently active teachers
+- **Gender Distribution**: Male and female teacher counts
+- **Teacher List**: Complete list with contact information
+- **Role Information**: Teaching subjects and class management
+- **Next Classes**: Upcoming classes for each teacher
+- **Status Tracking**: Active/inactive status monitoring
+
+#### **Teacher Analytics**
+- **Subject Distribution**: How many teachers per subject
+- **Class Management**: Which teachers manage which classes
+- **Performance Metrics**: Teaching load and responsibilities
+- **Role Changes**: History of role assignments and updates
+
+### 🔔 Notification Features
+
+#### **Automatic Triggers**
+- **New Teacher Creation**: Welcome email + role notifications
+- **Role Assignment**: Immediate notification to teacher
+- **Role Updates**: Detailed change notifications
+- **Director Reports**: Comprehensive reports to all school directors
+
+#### **Email Content Includes**
+- **Teacher Information**: Name, email, phone, status
+- **Role Details**: Teaching subjects and class management
+- **Change Information**: What was added, removed, or modified
+- **Timestamps**: When changes were made
+- **Action Items**: Clear guidance on next steps
+
+### 🛡️ Error Handling
+
+- **Validation**: Comprehensive input validation for all teacher data
+- **Conflict Prevention**: Prevents duplicate assignments and invalid roles
+- **Graceful Degradation**: Email failures don't affect main operations
+- **Detailed Logging**: Comprehensive logging for debugging and monitoring
+- **Partial Update Support**: Update specific fields without affecting others
+
+### 📈 Benefits
+
+1. **Professional Communication**: Clear, professional email notifications
+2. **Complete Transparency**: Directors stay informed of all changes
+3. **Efficient Management**: Easy role assignment and updates
+4. **Automated Workflows**: Reduced manual work through automation
+5. **Clear Terminology**: No confusion with student homework assignments
+6. **Comprehensive Tracking**: Complete audit trail of all changes
 
 ---
 
@@ -222,6 +398,16 @@ smart-edu-backend/
 │   │   │   └── settings/       # Settings management
 │   │   ├── students/           # Student features
 │   │   └── teachers/           # Teacher features
+│   ├── common/                 # Common utilities and services
+│   │   ├── email-templates/    # Email HTML templates
+│   │   │   ├── congratulatory-onboard.ts      # Welcome emails
+│   │   │   ├── assignment-notifications.ts     # Teacher role notifications
+│   │   │   └── director-notifications.ts       # Director reports
+│   │   └── mailer/            # Email sending services
+│   │       ├── send-mail.ts                   # Core email service
+│   │       ├── send-congratulatory-emails.ts  # Welcome emails
+│   │       ├── send-assignment-notifications.ts # Teacher notifications
+│   │       └── send-director-notifications.ts  # Director notifications
 │   ├── shared/                 # Shared utilities
 │   │   ├── dto/               # Data Transfer Objects
 │   │   ├── guards/            # Authentication guards

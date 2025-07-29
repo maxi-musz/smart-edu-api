@@ -1,5 +1,5 @@
 import { ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
-import { AddNewTeacherDto } from 'src/school/director/teachers/teacher.dto';
+import { AddNewTeacherDto, UpdateTeacherDto } from 'src/school/director/teachers/teacher.dto';
 
 // Get Teachers Dashboard Documentation
 export const GetTeachersDashboardDocs = {
@@ -270,7 +270,7 @@ export const GetTeacherByIdDocs = {
 export const UpdateTeacherDocs = {
   operation: ApiOperation({
     summary: 'Update teacher information',
-    description: 'Update teacher details including personal info, subjects, and class assignments'
+    description: 'Update teacher details with school validation and selective field updates. Only provided fields will be updated. Teacher must belong to the same school as the authenticated user.'
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   param: ApiParam({
@@ -279,8 +279,8 @@ export const UpdateTeacherDocs = {
     example: 'teacher-uuid-123'
   }),
   body: ApiBody({
-    description: 'Updated teacher data',
-    type: AddNewTeacherDto
+    description: 'Updated teacher data (all fields are optional for partial updates)',
+    type: UpdateTeacherDto
   }),
   response200: ApiResponse({
     status: 200,
@@ -302,8 +302,47 @@ export const UpdateTeacherDocs = {
                 email: { type: 'string', example: 'john.doe@school.com' },
                 phone_number: { type: 'string', example: '08012345678' },
                 status: { type: 'string', example: 'active' },
-                updatedAt: { type: 'string', example: '2024-01-15T10:30:00Z' }
+                updatedAt: { type: 'string', example: '2024-01-15T10:30:00Z' },
+                subjectsTeaching: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      subject: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', example: 'subject-uuid-123' },
+                          name: { type: 'string', example: 'Mathematics' }
+                        }
+                      }
+                    }
+                  }
+                },
+                classesManaging: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', example: 'class-uuid-123' },
+                      name: { type: 'string', example: 'Primary 5A' }
+                    }
+                  }
+                }
               }
+            },
+            updatedFields: {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['first_name', 'email'],
+              description: 'List of fields that were updated'
+            },
+            updatedAssignments: {
+              type: 'object',
+              properties: {
+                subjects: { type: 'string', example: 'updated', enum: ['updated', 'unchanged'] },
+                classes: { type: 'string', example: 'unchanged', enum: ['updated', 'unchanged'] }
+              },
+              description: 'Status of subject and class assignments'
             }
           }
         }
