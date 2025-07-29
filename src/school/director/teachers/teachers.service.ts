@@ -4,9 +4,11 @@ import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { DayOfWeek, UserStatus } from '@prisma/client';
 import * as argon from 'argon2';
-import { AddNewTeacherDto } from './teacher.dto';
+import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
 import { generateStrongPassword } from 'src/shared/helper-functions/password-generator';
 import { sendTeacherOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
+import { sendAssignmentNotifications, sendSubjectRoleEmail, sendClassManagementEmail } from 'src/common/mailer/send-assignment-notifications';
+import { sendDirectorNotifications } from 'src/common/mailer/send-director-notifications';
 
 @Injectable()
 export class TeachersService {
@@ -263,7 +265,7 @@ export class TeachersService {
         // Fetch full user data from database
         const fullUser = await this.prisma.user.findFirst({
             where: { id: user.sub },
-            select: { id: true, school_id: true, email: true }
+            select: { id: true, school_id: true, email: true, first_name: true, last_name: true }
         });
 
         if (!fullUser || !fullUser.school_id) {
@@ -344,6 +346,75 @@ export class TeachersService {
             // Don't fail the entire operation if email fails
         }
 
+        // 9. Send assignment notifications if subjects or classes are assigned
+        try {
+            const teacherName = `${first_name} ${last_name}`;
+            const assignedBy = `${fullUser.first_name} ${fullUser.last_name}` || 'School Administrator';
+            
+            // Get subject names for notification
+            const subjectNames: string[] = [];
+            if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
+                const subjects = await this.prisma.subject.findMany({
+                    where: { id: { in: subjectsTeaching } },
+                    select: { name: true }
+                });
+                subjectNames.push(...subjects.map(s => s.name));
+            }
+
+            // Get class names for notification
+            const classNames: string[] = [];
+            if (classesManaging && Array.isArray(classesManaging)) {
+                const classes = await this.prisma.class.findMany({
+                    where: { id: { in: classesManaging } },
+                    select: { name: true }
+                });
+                classNames.push(...classes.map(c => c.name));
+            }
+
+            if (subjectNames.length > 0 || classNames.length > 0) {
+                await sendAssignmentNotifications(
+                    teacher.id,
+                    email,
+                    teacherName,
+                    school?.school_name || 'Your School',
+                    assignedBy,
+                    subjectNames.length > 0 ? subjectNames : undefined,
+                    undefined, // No removed subjects for new teacher
+                    classNames.length > 0 ? classNames : undefined,
+                    undefined  // No removed classes for new teacher
+                );
+                this.logger.log(colors.green(`✅ Assignment notifications sent to teacher: ${email}`));
+            }
+
+            // Send director notifications for new teacher
+            try {
+                await sendDirectorNotifications(
+                    this.prisma,
+                    fullUser.school_id,
+                    school?.school_name || 'Your School',
+                    teacher.id,
+                    teacherName,
+                    email,
+                    phone_number,
+                    assignedBy,
+                    subjectNames.length > 0 ? subjectNames : undefined,
+                    undefined, // No removed subjects for new teacher
+                    classNames.length > 0 ? classNames : undefined,
+                    undefined, // No removed classes for new teacher
+                    undefined, // No previous subjects for new teacher
+                    undefined, // No previous classes for new teacher
+                    true // isNewTeacher flag
+                );
+                this.logger.log(colors.green(`✅ Director notifications sent for new teacher: ${email}`));
+            } catch (directorEmailError) {
+                this.logger.error(colors.red(`❌ Failed to send director notifications for new teacher: ${email}`), directorEmailError);
+                // Don't fail the entire operation if director email fails
+            }
+        } catch (assignmentEmailError) {
+            this.logger.error(colors.red(`❌ Failed to send assignment notifications to teacher: ${email}`), assignmentEmailError);
+            // Don't fail the entire operation if assignment email fails
+        }
+
         return ResponseHelper.success('Teacher added successfully', { 
             teacher,
             generatedPassword: !password ? generatedPassword : undefined // Only return if auto-generated
@@ -380,70 +451,311 @@ export class TeachersService {
     }
 
     // Update teacher
-    async updateTeacher(id: string, dto: AddNewTeacherDto) {
+    async updateTeacher(id: string, dto: UpdateTeacherDto, user: any) {
         try {
-            const { first_name, last_name, email, phone_number, display_picture, status, subjectsTeaching, classesManaging } = dto;
+            this.logger.log(colors.cyan(`Updating teacher with ID: ${id}`));
 
-            // Check if teacher exists
-            const existingTeacher = await this.prisma.user.findFirst({
-                where: { id, role: 'teacher' }
-            });
-
-            if (!existingTeacher) {
-                return ResponseHelper.error('Teacher not found', 404);
+            // 1. Validate user and get full user data
+            if (!user || !user.sub) {
+                this.logger.error(colors.red("Invalid user data or missing user ID"));
+                return ResponseHelper.error('Invalid user authentication data', 400);
             }
 
-            // Update teacher
-            const updatedTeacher = await this.prisma.user.update({
-                where: { id },
-                data: {
-                    first_name,
-                    last_name,
-                    email,
-                    phone_number,
-                    display_picture,
-                    status: (status as UserStatus) || UserStatus.active
+            const fullUser = await this.prisma.user.findFirst({
+                where: { id: user.sub },
+                select: { id: true, school_id: true, email: true, first_name: true, last_name: true }
+            });
+
+            if (!fullUser || !fullUser.school_id) {
+                this.logger.error(colors.red("User not found or missing school_id"));
+                return ResponseHelper.error('User not found or invalid school data', 400);
+            }
+
+            // 2. Check if teacher exists and belongs to the same school
+            const existingTeacher = await this.prisma.user.findFirst({
+                where: { 
+                    id, 
+                    role: 'teacher',
+                    school_id: fullUser.school_id
+                },
+                include: {
+                    subjectsTeaching: {
+                        include: {
+                            subject: true
+                        }
+                    },
+                    classesManaging: true
                 }
             });
 
-            // Update subject assignments if provided
-            if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
-                // Remove existing assignments
-                await this.prisma.teacherSubject.deleteMany({
-                    where: { teacherId: id }
-                });
+            if (!existingTeacher) {
+                this.logger.error(colors.red(`Teacher not found or doesn't belong to school: ${fullUser.school_id}`));
+                return ResponseHelper.error('Teacher not found or access denied', 404);
+            }
 
-                // Add new assignments
-                for (const subjectId of subjectsTeaching) {
-                    await this.prisma.teacherSubject.create({
-                        data: {
+            // 3. Build update data object with only provided fields
+            const updateData: any = {};
+            
+            if (dto.first_name !== undefined) updateData.first_name = dto.first_name;
+            if (dto.last_name !== undefined) updateData.last_name = dto.last_name;
+            if (dto.email !== undefined) updateData.email = dto.email;
+            if (dto.phone_number !== undefined) updateData.phone_number = dto.phone_number;
+            if (dto.display_picture !== undefined) updateData.display_picture = dto.display_picture;
+            if (dto.status !== undefined) updateData.status = dto.status as UserStatus;
+
+            // 4. Check if email is being updated and if it's already taken
+            if (dto.email && dto.email !== existingTeacher.email) {
+                const emailExists = await this.prisma.user.findFirst({
+                    where: { 
+                        email: dto.email,
+                        id: { not: id } // Exclude current teacher
+                    }
+                });
+                
+                if (emailExists) {
+                    this.logger.error(colors.red(`Email already exists: ${dto.email}`));
+                    return ResponseHelper.error('Email already exists', 409);
+                }
+            }
+
+            // 5. Update teacher with only provided fields
+            const updatedTeacher = await this.prisma.user.update({
+                where: { id },
+                data: updateData,
+                include: {
+                    subjectsTeaching: {
+                        include: {
+                            subject: true
+                        }
+                    },
+                    classesManaging: true
+                }
+            });
+
+            // 6. Update subject assignments if provided
+            let subjectsToAdd: string[] = [];
+            let subjectsToRemove: string[] = [];
+            
+            if (dto.subjectsTeaching && Array.isArray(dto.subjectsTeaching)) {
+                this.logger.log(colors.cyan(`Updating subject assignments for teacher: ${id}`));
+                
+                // Get existing subject assignments
+                const existingSubjects = await this.prisma.teacherSubject.findMany({
+                    where: { teacherId: id },
+                    select: { subjectId: true }
+                });
+                
+                const existingSubjectIds = existingSubjects.map(ts => ts.subjectId);
+                const newSubjectIds = dto.subjectsTeaching;
+                
+                // Find subjects to add (new ones not in existing)
+                subjectsToAdd = newSubjectIds.filter(subjectId => !existingSubjectIds.includes(subjectId));
+                
+                // Find subjects to remove (existing ones not in new list)
+                subjectsToRemove = existingSubjectIds.filter(subjectId => !newSubjectIds.includes(subjectId));
+                
+                // Add new subject assignments
+                if (subjectsToAdd.length > 0) {
+                    this.logger.log(colors.cyan(`Adding ${subjectsToAdd.length} new subject assignments`));
+                    for (const subjectId of subjectsToAdd) {
+                        await this.prisma.teacherSubject.create({
+                            data: {
+                                teacherId: id,
+                                subjectId: subjectId
+                            }
+                        });
+                    }
+                }
+                
+                // Remove subject assignments that are no longer needed
+                if (subjectsToRemove.length > 0) {
+                    this.logger.log(colors.cyan(`Removing ${subjectsToRemove.length} subject assignments`));
+                    await this.prisma.teacherSubject.deleteMany({
+                        where: {
                             teacherId: id,
-                            subjectId: subjectId
+                            subjectId: { in: subjectsToRemove }
                         }
                     });
                 }
             }
 
-            // Update class assignments if provided
-            if (classesManaging && Array.isArray(classesManaging)) {
-                // Remove existing class assignments
-                await this.prisma.class.updateMany({
+            // 7. Update class assignments if provided
+            let classesToAdd: string[] = [];
+            let classesToRemove: string[] = [];
+            
+            if (dto.classesManaging && Array.isArray(dto.classesManaging)) {
+                this.logger.log(colors.cyan(`Updating class assignments for teacher: ${id}`));
+                
+                // Get existing class assignments
+                const existingClasses = await this.prisma.class.findMany({
                     where: { classTeacherId: id },
-                    data: { classTeacherId: null }
+                    select: { id: true }
                 });
-
+                
+                const existingClassIds = existingClasses.map(c => c.id);
+                const newClassIds = dto.classesManaging;
+                
+                // Find classes to add (new ones not in existing)
+                classesToAdd = newClassIds.filter(classId => !existingClassIds.includes(classId));
+                
+                // Find classes to remove (existing ones not in new list)
+                classesToRemove = existingClassIds.filter(classId => !newClassIds.includes(classId));
+                
                 // Add new class assignments
-                for (const classId of classesManaging) {
-                    await this.prisma.class.update({
-                        where: { id: classId },
-                        data: { classTeacherId: id }
+                if (classesToAdd.length > 0) {
+                    this.logger.log(colors.cyan(`Adding ${classesToAdd.length} new class assignments`));
+                    for (const classId of classesToAdd) {
+                        await this.prisma.class.update({
+                            where: { id: classId },
+                            data: { classTeacherId: id }
+                        });
+                    }
+                }
+                
+                // Remove class assignments that are no longer needed
+                if (classesToRemove.length > 0) {
+                    this.logger.log(colors.cyan(`Removing ${classesToRemove.length} class assignments`));
+                    await this.prisma.class.updateMany({
+                        where: {
+                            id: { in: classesToRemove },
+                            classTeacherId: id
+                        },
+                        data: { classTeacherId: null }
                     });
                 }
             }
 
-            return ResponseHelper.success('Teacher updated successfully', { teacher: updatedTeacher });
+            // Send assignment notifications if there are changes
+            try {
+                const teacherName = `${updatedTeacher.first_name} ${updatedTeacher.last_name}`;
+                const assignedBy = `${fullUser.first_name} ${fullUser.last_name}` || 'School Administrator';
+                
+                // Get subject names for new assignments
+                const newSubjectNames: string[] = [];
+                if (subjectsToAdd && subjectsToAdd.length > 0) {
+                    const subjects = await this.prisma.subject.findMany({
+                        where: { id: { in: subjectsToAdd } },
+                        select: { name: true }
+                    });
+                    newSubjectNames.push(...subjects.map(s => s.name));
+                }
+
+                // Get subject names for removed assignments
+                const removedSubjectNames: string[] = [];
+                if (subjectsToRemove && subjectsToRemove.length > 0) {
+                    const subjects = await this.prisma.subject.findMany({
+                        where: { id: { in: subjectsToRemove } },
+                        select: { name: true }
+                    });
+                    removedSubjectNames.push(...subjects.map(s => s.name));
+                }
+
+                // Get class names for new assignments
+                const newClassNames: string[] = [];
+                if (classesToAdd && classesToAdd.length > 0) {
+                    const classes = await this.prisma.class.findMany({
+                        where: { id: { in: classesToAdd } },
+                        select: { name: true }
+                    });
+                    newClassNames.push(...classes.map(c => c.name));
+                }
+
+                // Get class names for removed assignments
+                const removedClassNames: string[] = [];
+                if (classesToRemove && classesToRemove.length > 0) {
+                    const classes = await this.prisma.class.findMany({
+                        where: { id: { in: classesToRemove } },
+                        select: { name: true }
+                    });
+                    removedClassNames.push(...classes.map(c => c.name));
+                }
+
+                // Get school name
+                const school = await this.prisma.school.findFirst({
+                    where: { id: fullUser.school_id },
+                    select: { school_name: true }
+                });
+
+                // Get previous assignments for director notification
+                const previousSubjectNames: string[] = [];
+                const previousClassNames: string[] = [];
+                
+                if (existingTeacher.subjectsTeaching.length > 0) {
+                    previousSubjectNames.push(...existingTeacher.subjectsTeaching.map(ts => ts.subject.name));
+                }
+                
+                if (existingTeacher.classesManaging.length > 0) {
+                    previousClassNames.push(...existingTeacher.classesManaging.map(c => c.name));
+                }
+
+                if (newSubjectNames.length > 0 || removedSubjectNames.length > 0 || 
+                    newClassNames.length > 0 || removedClassNames.length > 0) {
+                    await sendAssignmentNotifications(
+                        id,
+                        updatedTeacher.email,
+                        teacherName,
+                        school?.school_name || 'Your School',
+                        assignedBy,
+                        newSubjectNames.length > 0 ? newSubjectNames : undefined,
+                        removedSubjectNames.length > 0 ? removedSubjectNames : undefined,
+                        newClassNames.length > 0 ? newClassNames : undefined,
+                        removedClassNames.length > 0 ? removedClassNames : undefined
+                    );
+                    this.logger.log(colors.green(`✅ Assignment update notifications sent to teacher: ${updatedTeacher.email}`));
+                }
+
+                // Send director notifications for assignment changes
+                try {
+                    await sendDirectorNotifications(
+                        this.prisma,
+                        fullUser.school_id,
+                        school?.school_name || 'Your School',
+                        id,
+                        teacherName,
+                        updatedTeacher.email,
+                        updatedTeacher.phone_number,
+                        assignedBy,
+                        newSubjectNames.length > 0 ? newSubjectNames : undefined,
+                        removedSubjectNames.length > 0 ? removedSubjectNames : undefined,
+                        newClassNames.length > 0 ? newClassNames : undefined,
+                        removedClassNames.length > 0 ? removedClassNames : undefined,
+                        previousSubjectNames.length > 0 ? previousSubjectNames : undefined,
+                        previousClassNames.length > 0 ? previousClassNames : undefined,
+                        false // isNewTeacher flag
+                    );
+                    this.logger.log(colors.green(`✅ Director notifications sent for teacher assignment changes: ${updatedTeacher.email}`));
+                } catch (directorEmailError) {
+                    this.logger.error(colors.red(`❌ Failed to send director notifications for teacher assignment changes: ${updatedTeacher.email}`), directorEmailError);
+                    // Don't fail the entire operation if director email fails
+                }
+            } catch (assignmentEmailError) {
+                this.logger.error(colors.red(`❌ Failed to send assignment update notifications to teacher: ${updatedTeacher.email}`), assignmentEmailError);
+                // Don't fail the entire operation if assignment email fails
+            }
+
+            this.logger.log(colors.green(`✅ Teacher updated successfully: ${id}`));
+            return ResponseHelper.success('Teacher updated successfully', { 
+                assignmentChanges: {
+                    subjects: {
+                        added: subjectsToAdd?.length || 0,
+                        removed: subjectsToRemove?.length || 0
+                    },
+                    classes: {
+                        added: classesToAdd?.length || 0,
+                        removed: classesToRemove?.length || 0
+                    }
+                },
+                teacher: updatedTeacher,
+                updatedFields: Object.keys(updateData),
+                updatedAssignments: {
+                    subjects: dto.subjectsTeaching ? 'updated' : 'unchanged',
+                    classes: dto.classesManaging ? 'updated' : 'unchanged'
+                },
+                
+            });
+
         } catch (error) {
-            console.log(colors.red('Error updating teacher: '), error);
+            this.logger.error(colors.red('Error updating teacher: '), error);
             throw error;
         }
     }
@@ -549,7 +861,12 @@ export class TeachersService {
         try {
             // Check if teacher exists
             const teacher = await this.prisma.user.findFirst({
-                where: { id: teacherId, role: 'teacher' }
+                where: { id: teacherId, role: 'teacher' },
+                include: {
+                    school: {
+                        select: { school_name: true }
+                    }
+                }
             });
 
             if (!teacher) {
@@ -576,6 +893,25 @@ export class TeachersService {
                 assignments.push(assignment);
             }
 
+            // Send teaching role notification
+            try {
+                const teacherName = `${teacher.first_name} ${teacher.last_name}`;
+                const subjectNames = assignments.map(a => a.subject.name);
+                
+                await sendSubjectRoleEmail({
+                    teacherName,
+                    teacherEmail: teacher.email,
+                    schoolName: teacher.school.school_name,
+                    subjects: subjectNames,
+                    assignedBy: 'School Administrator'
+                });
+                
+                this.logger.log(colors.green(`✅ Teaching role notification sent to teacher: ${teacher.email}`));
+            } catch (emailError) {
+                this.logger.error(colors.red(`❌ Failed to send teaching role notification to teacher: ${teacher.email}`), emailError);
+                // Don't fail the operation if email fails
+            }
+
             return ResponseHelper.success('Subjects assigned successfully', {
                 teacherId,
                 assignedSubjects: assignments.map((a: any) => ({
@@ -594,7 +930,12 @@ export class TeachersService {
         try {
             // Check if teacher exists
             const teacher = await this.prisma.user.findFirst({
-                where: { id: teacherId, role: 'teacher' }
+                where: { id: teacherId, role: 'teacher' },
+                include: {
+                    school: {
+                        select: { school_name: true }
+                    }
+                }
             });
 
             if (!teacher) {
@@ -615,6 +956,24 @@ export class TeachersService {
                 where: { id: classId },
                 data: { classTeacherId: teacherId }
             });
+
+            // Send class management notification
+            try {
+                const teacherName = `${teacher.first_name} ${teacher.last_name}`;
+                
+                await sendClassManagementEmail({
+                    teacherName,
+                    teacherEmail: teacher.email,
+                    schoolName: teacher.school.school_name,
+                    classes: [updatedClass.name],
+                    assignedBy: 'School Administrator'
+                });
+                
+                this.logger.log(colors.green(`✅ Class management notification sent to teacher: ${teacher.email}`));
+            } catch (emailError) {
+                this.logger.error(colors.red(`❌ Failed to send class management notification to teacher: ${teacher.email}`), emailError);
+                // Don't fail the operation if email fails
+            }
 
             return ResponseHelper.success('Class assigned successfully', {
                 teacherId,
