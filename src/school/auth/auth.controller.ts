@@ -3,8 +3,22 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
 import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto } from 'src/shared/dto/auth.dto';
 import { FileValidationInterceptor } from 'src/shared/interceptors/file-validation.interceptor';
-
+import { ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from './guard';
+import { 
+  OnboardSchoolDocs, 
+  DirectorLoginOtpDocs, 
+  VerifyLoginOtpDocs, 
+  SignInDocs, 
+  RequestPasswordResetDocs, 
+  VerifyPasswordResetDocs, 
+  ResetPasswordDocs,
+  OnboardClassesDocs,
+  OnboardTeachersDocs,
+  OnboardStudentsDocs,
+  OnboardDirectorsDocs,
+  OnboardDataDocs
+} from 'src/docs/auth.docs';
 
 interface ErrorResponse {
     success: false;
@@ -24,11 +38,20 @@ interface SuccessResponse {
 
 type ApiResponse = ErrorResponse | SuccessResponse;
 
+@ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
     constructor(private authService: AuthService) {}
 
+    // Onboard new school 
+    // POST /api/v1/auth/onboard-school
+    // Protected endpoint
     @Post('onboard-school')
+    @OnboardSchoolDocs.operation
+    @OnboardSchoolDocs.consumes
+    @OnboardSchoolDocs.body
+    @OnboardSchoolDocs.response201
+    @OnboardSchoolDocs.response400
     @UseInterceptors(
         FileFieldsInterceptor([
             { name: 'cac_or_approval_letter', maxCount: 1 },
@@ -54,71 +77,131 @@ export class AuthController {
         return this.authService.onboardSchool(dto, fileArray) as Promise<ApiResponse>;
     }
 
+    // Request login OTP for director
+    // POST /api/v1/auth/director-login-otp
+    // Public endpoint
     @Post('director-login-otp')
+    @DirectorLoginOtpDocs.operation
+    @DirectorLoginOtpDocs.response200
     signUp(@Body() dto: RequestLoginOtpDTO) {
         return this.authService.directorRequestLoginOtp(dto)
     }
 
+    // Verify login OTP for director
+    // POST /api/v1/auth/director-verify-login-otp
+    // Public endpoint
     @Post("director-verify-login-otp")
+    @VerifyLoginOtpDocs.operation
+    @VerifyLoginOtpDocs.response200
     verifyEmailOTPAndSignIn(@Body() dto: VerifyEmailOTPDto) {
         return this.authService.verifyEmailOTPAndSignIn(dto)
     }
 
+    // Sign in with email and password
+    // POST /api/v1/auth/sign-in
+    // Public endpoint
     @Post("sign-in")
     @HttpCode(200)
+    @SignInDocs.operation
+    @SignInDocs.response200
     signIn(@Body() dto: SignInDto) {
         return this.authService.signIn(dto);
     }
 
+    // Request password reset OTP
+    // POST /api/v1/auth/request-password-reset-otp
+    // Public endpoint
     @Post("request-password-reset-otp")
     @HttpCode(200)
+    @RequestPasswordResetDocs.operation
+    @RequestPasswordResetDocs.response200
     requestPasswordResetOTP(@Body() dto: RequestPasswordResetDTO) {
         return this.authService.requestPasswordResetOTP(dto)
     }
 
+    // Verify password reset OTP
+    // POST /api/v1/auth/verify-password-reset-otp
+    // Public endpoint
     @Post("verify-password-reset-otp")
     @HttpCode(200)
+    @VerifyPasswordResetDocs.operation
+    @VerifyPasswordResetDocs.response200
     verifyResetPasswordOTP(@Body() dto: VerifyresetOtp) {
         return this.authService.verifyResetPasswordOTP(dto)
     }
 
+    // Reset password
+    // POST /api/v1/auth/reset-password
+    // Public endpoint
     @Post("reset-password")
     @HttpCode(200)
+    @ResetPasswordDocs.operation
+    @ResetPasswordDocs.response200
     resetPassword(@Body() dto: ResetPasswordDTO) {
         return this.authService.resetPassword(dto)
     }
 
+    // Onboard classes
+    // POST /api/v1/auth/onboard-classes
+    // Protected endpoint
     @UseGuards(JwtGuard)
     @Post("onboard-classes")
     @HttpCode(201)
+    @OnboardClassesDocs.bearerAuth
+    @OnboardClassesDocs.operation
+    @OnboardClassesDocs.response201
     onboardClasses(@Body() dto: OnboardClassesDto, @Request() req: any) {
         return this.authService.onboardClasses(dto, req.user);
     }
 
+    // Onboard teachers
+    // POST /api/v1/auth/onboard-teachers
+    // Protected endpoint
     @UseGuards(JwtGuard)
     @Post("onboard-teachers")
     @HttpCode(201)
+    @OnboardTeachersDocs.bearerAuth
+    @OnboardTeachersDocs.operation
+    @OnboardTeachersDocs.response201
     onboardTeachers(@Body() dto: OnboardTeachersDto, @Request() req: any) {
         return this.authService.onboardTeachers(dto, req.user);
     }
 
+    // Onboard students
+    // POST /api/v1/auth/onboard-students
+    // Protected endpoint
     @UseGuards(JwtGuard)
     @Post("onboard-students")
     @HttpCode(201)
+    @OnboardStudentsDocs.bearerAuth
+    @OnboardStudentsDocs.operation
+    @OnboardStudentsDocs.response201
     onboardStudents(@Body() dto: OnboardStudentsDto, @Request() req: any) {
         return this.authService.onboardStudents(dto, req.user);
     }
 
+    // Onboard directors
+    // POST /api/v1/auth/onboard-directors
+    // Protected endpoint
     @UseGuards(JwtGuard)
     @Post("onboard-directors")
     @HttpCode(201)
+    @OnboardDirectorsDocs.bearerAuth
+    @OnboardDirectorsDocs.operation
+    @OnboardDirectorsDocs.response201
     onboardDirectors(@Body() dto: OnboardDirectorsDto, @Request() req: any) {
         return this.authService.onboardDirectors(dto, req.user);
     }
 
+    // Onboard all data
+    // POST /api/v1/auth/onboard-data
+    // Protected endpoint
     @UseGuards(JwtGuard)
     @Post("onboard-data")
     @HttpCode(201)
+    @OnboardDataDocs.bearerAuth
+    @OnboardDataDocs.operation
+    @OnboardDataDocs.response201
     onboardData(@Body() dto: OnboardDataDto, @Request() req: any) {
         return this.authService.onboardData(dto, req.user);
     }
