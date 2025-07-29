@@ -4,7 +4,7 @@ import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
-import { GetStudentsDashboardDocs } from 'src/docs/students.docs';
+import { GetStudentsDashboardDocs } from 'src/docs/director/students';
 
 @ApiTags('Students')
 @Controller('director/students')

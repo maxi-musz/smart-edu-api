@@ -18,34 +18,34 @@ export const teacherOnboardEmailTemplate = (payload: {
         <div style="padding: 20px;">
           <p>Dear <strong>${payload.firstName} ${payload.lastName}</strong>,</p>
           
-          <p>🎊 <strong>Congratulations!</strong> You have been successfully onboarded as a <strong>Teacher</strong> at <strong>${payload.schoolName}</strong> on Smart Edu Hub - our advanced AI-powered school and learning management system.</p>
+          <p>🎊 <strong>Congratulations!</strong> You have been successfully onboarded as a <strong>Teacher</strong> at <strong>${payload.schoolName}</strong> on Smart Edu Hub - our advanced AI-powered School and Learning Management System.</p>
           
           <div style="background-color: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #1e40af;">🚀 Your Login Credentials</h3>
             <p style="margin: 5px 0;"><strong>Email:</strong> ${payload.email}</p>
             <p style="margin: 5px 0;"><strong>Password:</strong> <code style="background-color: #e5e7eb; padding: 2px 6px; border-radius: 3px; font-family: monospace;">${payload.password}</code></p>
-            <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your password after your first login for security.</p>
+            <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your Password after your first Login for Security.</p>
           </div>
           
           <h3 style="color: #1f2937;">🎯 What You Can Do:</h3>
           <ul style="color: #4b5563;">
-            <li>📚 Manage your assigned classes and subjects</li>
-            <li>📊 Track student performance and progress</li>
-            <li>📅 Create and manage class schedules</li>
-            <li>📝 Generate and submit reports</li>
-            <li>💬 Communicate with students and parents</li>
-            <li>📱 Access the platform from any device</li>
+            <li>📚 Manage your assigned Classes and Subjects</li>
+            <li>📊 Track Student Performance and Progress</li>
+            <li>📅 Create and manage Class Schedules</li>
+            <li>📝 Generate and submit Reports</li>
+            <li>💬 Communicate with Students and Parents</li>
+            <li>📱 Access the Platform from any Device</li>
           </ul>
           
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400e;"><strong>🔐 Security Note:</strong> Keep your login credentials safe and don't share them with anyone. For any technical support, contact your school administrator.</p>
+            <p style="margin: 0; color: #92400e;"><strong>🔐 Security Note:</strong> Keep your Login Credentials safe and don't share them with anyone. For any Technical Support, contact your School Administrator.</p>
           </div>
           
-          <p>We're excited to have you join our innovative educational platform! 🚀</p>
+          <p>We're excited to have you join our innovative Educational Platform! 🚀</p>
           <p>Best regards,<br><strong>Smart Edu Hub Team</strong></p>
         </div>
         <div style="padding: 20px; background-color: #f3f4f6; text-align: center; font-size: 12px; color: #666;">
-          &copy; ${new Date().getFullYear()} Smart Edu Hub. All rights reserved.
+          &copy; ${new Date().getFullYear()} Smart Edu Hub. All Rights Reserved.
         </div>
       </div>
     </div>
@@ -71,13 +71,13 @@ export const studentOnboardEmailTemplate = (payload: {
         <div style="padding: 20px;">
           <p>Dear <strong>${payload.firstName} ${payload.lastName}</strong>,</p>
           
-          <p>🎊 <strong>Congratulations!</strong> You have been successfully enrolled as a <strong>Student</strong> at <strong>${payload.schoolName}</strong> on Smart Edu Hub - our advanced AI-powered school and learning management system.</p>
+          <p>🎊 <strong>Congratulations!</strong> You have been successfully enrolled as a <strong>Student</strong> at <strong>${payload.schoolName}</strong> on Smart Edu Hub - our advanced AI-powered School and Learning Management System.</p>
           
           <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #15803d;">🚀 Your Login Credentials</h3>
             <p style="margin: 5px 0;"><strong>Email:</strong> ${payload.email}</p>
             <p style="margin: 5px 0;"><strong>Password:</strong> <code style="background-color: #e5e7eb; padding: 2px 6px; border-radius: 3px; font-family: monospace;">${payload.password}</code></p>
-            <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your password after your first login for security.</p>
+            <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your Password after your first Login for Security.</p>
           </div>
           
           ${payload.className ? `
@@ -88,23 +88,23 @@ export const studentOnboardEmailTemplate = (payload: {
           
           <h3 style="color: #1f2937;">🎯 What You Can Do:</h3>
           <ul style="color: #4b5563;">
-            <li>📖 Access your course materials and assignments</li>
-            <li>📊 View your academic performance and progress</li>
-            <li>📅 Check your class schedules and timetables</li>
-            <li>📝 Submit assignments and take online quizzes</li>
-            <li>💬 Communicate with teachers and classmates</li>
-            <li>📱 Access learning resources from any device</li>
+            <li>📖 Access your Course Materials and Assignments</li>
+            <li>📊 View your Academic Performance and Progress</li>
+            <li>📅 Check your Class Schedules and Timetables</li>
+            <li>📝 Submit Assignments and take online Quizzes</li>
+            <li>💬 Communicate with Teachers and Classmates</li>
+            <li>📱 Access Learning Resources from any Device</li>
           </ul>
           
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400e;"><strong>🔐 Security Note:</strong> Keep your login credentials safe and don't share them with anyone. For any technical support, contact your school administrator.</p>
+            <p style="margin: 0; color: #92400e;"><strong>🔐 Security Note:</strong> Keep your Login Credentials safe and don't share them with anyone. For any Technical Support, contact your School Administrator.</p>
           </div>
           
-          <p>Welcome to the future of learning! We're excited to have you on board! 🚀</p>
+          <p>Welcome to the Future of Learning! We're excited to have you on board! 🚀</p>
           <p>Best regards,<br><strong>Smart Edu Hub Team</strong></p>
         </div>
         <div style="padding: 20px; background-color: #f3f4f6; text-align: center; font-size: 12px; color: #666;">
-          &copy; ${new Date().getFullYear()} Smart Edu Hub. All rights reserved.
+          &copy; ${new Date().getFullYear()} Smart Edu Hub. All Rights Reserved.
         </div>
       </div>
     </div>
@@ -129,35 +129,35 @@ export const directorOnboardEmailTemplate = (payload: {
         <div style="padding: 20px;">
           <p>Dear <strong>${payload.firstName} ${payload.lastName}</strong>,</p>
           
-          <p>🎊 <strong>Congratulations!</strong> You have been successfully onboarded as a <strong>School Director</strong> at <strong>${payload.schoolName}</strong> on Smart Edu Hub - our advanced AI-powered school and learning management system.</p>
+          <p>🎊 <strong>Congratulations!</strong> You have been successfully onboarded as a <strong>School Director</strong> at <strong>${payload.schoolName}</strong> on Smart Edu Hub - our advanced AI-powered School and Learning Management System.</p>
           
           <div style="background-color: #faf5ff; border-left: 4px solid #a855f7; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #7c3aed;">🚀 Your Login Credentials</h3>
             <p style="margin: 5px 0;"><strong>Email:</strong> ${payload.email}</p>
             <p style="margin: 5px 0;"><strong>Password:</strong> <code style="background-color: #e5e7eb; padding: 2px 6px; border-radius: 3px; font-family: monospace;">${payload.password}</code></p>
-            <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your password after your first login for security.</p>
+            <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your Password after your first Login for Security.</p>
           </div>
           
           <h3 style="color: #1f2937;">🎯 What You Can Do:</h3>
           <ul style="color: #4b5563;">
-            <li>🏫 Manage your entire school operations</li>
-            <li>👥 Oversee teachers, students, and staff</li>
-            <li>📊 Access comprehensive analytics and reports</li>
-            <li>💰 Monitor financial operations and payments</li>
-            <li>📅 Manage academic schedules and timetables</li>
-            <li>⚙️ Configure school settings and policies</li>
-            <li>📱 Access the platform from any device</li>
+            <li>🏫 Manage your entire School Operations</li>
+            <li>👥 Oversee Teachers, Students, and Staff</li>
+            <li>📊 Access comprehensive Analytics and Reports</li>
+            <li>💰 Monitor Financial Operations and Payments</li>
+            <li>📅 Manage Academic Schedules and Timetables</li>
+            <li>⚙️ Configure School Settings and Policies</li>
+            <li>📱 Access the Platform from any Device</li>
           </ul>
           
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; color: #92400e;"><strong>🔐 Security Note:</strong> Keep your login credentials safe and don't share them with anyone. For any technical support, contact our support team.</p>
+            <p style="margin: 0; color: #92400e;"><strong>🔐 Security Note:</strong> Keep your Login Credentials safe and don't share them with anyone. For any Technical Support, contact our Support Team.</p>
           </div>
           
-          <p>Welcome to the future of school management! We're excited to have you lead your school into the digital age! 🚀</p>
+          <p>Welcome to the Future of School Management! We're excited to have you lead your School into the Digital Age! 🚀</p>
           <p>Best regards,<br><strong>Smart Edu Hub Team</strong></p>
         </div>
         <div style="padding: 20px; background-color: #f3f4f6; text-align: center; font-size: 12px; color: #666;">
-          &copy; ${new Date().getFullYear()} Smart Edu Hub. All rights reserved.
+          &copy; ${new Date().getFullYear()} Smart Edu Hub. All Rights Reserved.
         </div>
       </div>
     </div>
