@@ -10,10 +10,11 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { CloudinaryService } from 'src/shared/services/cloudinary.service';
 import { sendOnboardingMailToSchoolOwner, sendOnboardingMailToBTechAdmin, sendPasswordResetOtp, sendLoginOtpByMail } from 'src/common/mailer/send-mail';
-import * as crypto from "crypto"
+import { sendTeacherOnboardEmail, sendStudentOnboardEmail, sendDirectorOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
 import { Prisma } from '@prisma/client';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto } from 'src/shared/dto/auth.dto';
+import { generateOTP } from 'src/shared/helper-functions/otp-generator';
 
 interface CloudinaryUploadResult {
     secure_url: string;
@@ -195,7 +196,7 @@ export class AuthService {
                 throw new NotFoundException("Admin User not found");
             }
     
-            const otp = crypto.randomInt(1000, 9999).toString();
+            const otp = generateOTP();
             const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins expiry
     
             // Update OTP for the user
@@ -338,6 +339,15 @@ export class AuthService {
                 });
             }
 
+            // if user email is not verified, send otp to verify email address
+            if(!existing_user.is_email_verified) {
+                console.log(colors.yellow("Email not verified, sending otp to verify email address"));
+                return ResponseHelper.success(
+                    "Email not verified, please verify your email address",
+                    await this.directorRequestLoginOtp({ email: existing_user.email })
+                );
+            }
+
             // if password matches, return success response
             console.log(colors.green("User signed in successfully!"));
             return ResponseHelper.success(
@@ -380,8 +390,8 @@ export class AuthService {
                 throw new NotFoundException("User not found");
             }
 
-            // generate 6 random digits 
-            const otp = crypto.randomInt(100000, 999999).toString();
+            // generate 6-character alphanumeric OTP
+            const otp = generateOTP();
             const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
             // Update OTP for the user
@@ -650,7 +660,7 @@ export class AuthService {
                 });
             }
 
-            // Generate default password for each teacher (first 3 letters of first name + last 4 digits of phone)
+            // Generate strong passwords for each teacher
             const teachersWithPasswords = await Promise.all(
                 dto.teachers.map(async (teacher) => {
                     const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
@@ -687,6 +697,24 @@ export class AuthService {
             });
 
             console.log(colors.green("Teachers created successfully!"));
+
+            // Send congratulatory emails to all teachers
+            const emailPromises = teachers.map(async (teacher) => {
+                try {
+                    await sendTeacherOnboardEmail({
+                        firstName: teacher.first_name,
+                        lastName: teacher.last_name,
+                        email: teacher.email,
+                        phone: teacher.phone_number,
+                        schoolName: existingSchool.school_name
+                    });
+                } catch (emailError) {
+                    console.log(colors.yellow(`⚠️ Failed to send email to ${teacher.email}: ${emailError.message}`));
+                }
+            });
+
+            // Wait for all emails to be sent (but don't fail if some emails fail)
+            await Promise.allSettled(emailPromises);
 
             const formatted_response = teachers.map(teacher => ({
                 id: teacher.id,
@@ -845,6 +873,30 @@ export class AuthService {
 
             console.log(colors.green("Students created and enrolled successfully!"));
 
+            // Send congratulatory emails to all students
+            const emailPromises = students.map(async (student) => {
+                try {
+                    const studentData = dto.students.find(s => 
+                        s.email.toLowerCase() === student.email.toLowerCase()
+                    );
+                    const className = studentData?.default_class || 'Unassigned';
+                    
+                    await sendStudentOnboardEmail({
+                        firstName: student.first_name,
+                        lastName: student.last_name,
+                        email: student.email,
+                        phone: student.phone_number,
+                        schoolName: existingSchool.school_name,
+                        className: className
+                    });
+                } catch (emailError) {
+                    console.log(colors.yellow(`⚠️ Failed to send email to ${student.email}: ${emailError.message}`));
+                }
+            });
+
+            // Wait for all emails to be sent (but don't fail if some emails fail)
+            await Promise.allSettled(emailPromises);
+
             const formatted_response = students.map(student => ({
                 id: student.id,
                 first_name: student.first_name,
@@ -954,6 +1006,24 @@ export class AuthService {
 
             console.log(colors.green("Directors created successfully!"));
 
+            // Send congratulatory emails to all directors
+            const emailPromises = directors.map(async (director) => {
+                try {
+                    await sendDirectorOnboardEmail({
+                        firstName: director.first_name,
+                        lastName: director.last_name,
+                        email: director.email,
+                        phone: director.phone_number,
+                        schoolName: existingSchool.school_name
+                    });
+                } catch (emailError) {
+                    console.log(colors.yellow(`⚠️ Failed to send email to ${director.email}: ${emailError.message}`));
+                }
+            });
+
+            // Wait for all emails to be sent (but don't fail if some emails fail)
+            await Promise.allSettled(emailPromises);
+
             const formatted_response = directors.map(director => ({
                 id: director.id,
                 first_name: director.first_name,
@@ -1008,9 +1078,10 @@ export class AuthService {
                 });
             }
 
-            // Start a transaction
-            return await this.prisma.$transaction(async (prisma) => {
+            // Step 1: Database Transaction (Fast & Reliable)
+            const { response, createdUsers } = await this.prisma.$transaction(async (prisma) => {
                 const response: any = {};
+                const createdUsers: any = { teachers: [], students: [], directors: [] };
 
                 // 1. Handle Classes
                 if (dto.class_names && dto.class_names.length > 0) {
@@ -1120,6 +1191,9 @@ export class AuthService {
                             }
                         }
                     });
+
+                    // Store teachers for email sending later
+                    createdUsers.teachers = teachers;
 
                     response.teachers = teachers.map(teacher => ({
                         id: teacher.id,
@@ -1239,6 +1313,9 @@ export class AuthService {
                         })
                     );
 
+                    // Store students for email sending later
+                    createdUsers.students = students;
+
                     response.students = students.map(student => ({
                         id: student.id,
                         first_name: student.first_name,
@@ -1309,6 +1386,9 @@ export class AuthService {
                         }
                     });
 
+                    // Store directors for email sending later
+                    createdUsers.directors = directors;
+
                     response.directors = directors.map(director => ({
                         id: director.id,
                         first_name: director.first_name,
@@ -1322,16 +1402,94 @@ export class AuthService {
                     }));
                 }
 
-                console.log(colors.green("Comprehensive onboarding completed successfully!"));
+                console.log(colors.green("Database operations completed successfully!"));
 
-                return ResponseHelper.success(
-                    "Data onboarded successfully",
-                    response
-                );
+                return { response, createdUsers };
             }, {
-                maxWait: 10000, // Maximum time to wait for transaction to start
-                timeout: 30000  // Maximum time for entire transaction to complete
+                maxWait: 5000,  // Reduced timeout for database operations
+                timeout: 15000   // Reduced timeout for database operations
             });
+
+            // Step 2: Email Sending (Separate from database transaction)
+            console.log(colors.cyan("Sending congratulatory emails..."));
+            
+            const emailPromises: Promise<void>[] = [];
+
+            // Send teacher emails
+            if (createdUsers.teachers.length > 0) {
+                const teacherEmailPromises = createdUsers.teachers.map(async (teacher) => {
+                    try {
+                        await sendTeacherOnboardEmail({
+                            firstName: teacher.first_name,
+                            lastName: teacher.last_name,
+                            email: teacher.email,
+                            phone: teacher.phone_number,
+                            schoolName: existingSchool?.school_name || 'Unknown School'
+                        });
+                        console.log(colors.green(`✅ Teacher email sent to: ${teacher.email}`));
+                    } catch (emailError) {
+                        console.log(colors.yellow(`⚠️ Failed to send teacher email to ${teacher.email}: ${emailError.message}`));
+                    }
+                });
+                emailPromises.push(...teacherEmailPromises);
+            }
+
+            // Send student emails
+            if (createdUsers.students.length > 0) {
+                const studentEmailPromises = createdUsers.students.map(async (student) => {
+                    try {
+                        const studentData = dto.students?.find(s => 
+                            s.email.toLowerCase() === student.email.toLowerCase()
+                        );
+                        const className = studentData?.default_class || 'Unassigned';
+                        
+                        await sendStudentOnboardEmail({
+                            firstName: student.first_name,
+                            lastName: student.last_name,
+                            email: student.email,
+                            phone: student.phone_number,
+                            schoolName: existingSchool?.school_name || 'Unknown School',
+                            className: className
+                        });
+                        console.log(colors.green(`✅ Student email sent to: ${student.email}`));
+                    } catch (emailError) {
+                        console.log(colors.yellow(`⚠️ Failed to send student email to ${student.email}: ${emailError.message}`));
+                    }
+                });
+                emailPromises.push(...studentEmailPromises);
+            }
+
+            // Send director emails
+            if (createdUsers.directors.length > 0) {
+                const directorEmailPromises = createdUsers.directors.map(async (director) => {
+                    try {
+                        await sendDirectorOnboardEmail({
+                            firstName: director.first_name,
+                            lastName: director.last_name,
+                            email: director.email,
+                            phone: director.phone_number,
+                            schoolName: existingSchool?.school_name || 'Unknown School'
+                        });
+                        console.log(colors.green(`✅ Director email sent to: ${director.email}`));
+                    } catch (emailError) {
+                        console.log(colors.yellow(`⚠️ Failed to send director email to ${director.email}: ${emailError.message}`));
+                    }
+                });
+                emailPromises.push(...directorEmailPromises);
+            }
+
+            // Send all emails in parallel (non-blocking)
+            if (emailPromises.length > 0) {
+                await Promise.allSettled(emailPromises);
+                console.log(colors.magenta(`📧 Sent ${emailPromises.length} congratulatory emails`));
+            }
+
+            console.log(colors.green("Comprehensive onboarding completed successfully!"));
+
+            return ResponseHelper.success(
+                "Data onboarded successfully",
+                response
+            );
 
         } catch (error) {
             console.log(colors.red("Error in comprehensive onboarding: "), error);
