@@ -91,6 +91,7 @@ model School {
   schedules     TimetableEntry[]
   timeSlots     TimeSlot[]
   notifications Notification[]
+  wallet        Wallet?
 }
 
 model Document {
@@ -195,6 +196,7 @@ model Finance {
   // relations
   school   School    @relation(fields: [school_id], references: [id])
   payments Payment[]
+  Wallet   Wallet[]
 }
 
 model Payment {
@@ -261,6 +263,50 @@ model TimeSlot {
   @@index([schoolId, startTime, endTime])
 }
 
+model Wallet {
+  id           String     @id @default(cuid())
+  school_id    String     @unique
+  balance      Float      @default(0)
+  currency     String     @default("NGN")
+  wallet_type  WalletType @default(SCHOOL_WALLET)
+  is_active    Boolean    @default(true)
+  last_updated DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // relations
+  school       School              @relation(fields: [school_id], references: [id])
+  transactions WalletTransaction[]
+  finance      Finance?            @relation(fields: [financeId], references: [id])
+  financeId    String?
+
+  @@index([school_id])
+  @@index([wallet_type])
+}
+
+model WalletTransaction {
+  id               String                  @id @default(cuid())
+  wallet_id        String
+  transaction_type WalletTransactionType
+  amount           Float
+  description      String
+  reference        String?                 @unique
+  status           WalletTransactionStatus @default(PENDING)
+  metadata         Json? // Additional transaction data
+  processed_at     DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  // relations
+  wallet Wallet @relation(fields: [wallet_id], references: [id])
+
+  @@index([wallet_id])
+  @@index([transaction_type])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reference])
+}
+
 model TeacherSubject {
   id        String @id @default(cuid())
   teacherId String
@@ -278,6 +324,7 @@ model Notification {
   title       String
   description String
   type        NotificationType
+  comingUpOn  DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -310,4 +357,30 @@ enum DayOfWeek {
   FRIDAY
   SATURDAY
   SUNDAY
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+  TRANSFER
+  WITHDRAWAL
+  REFUND
+  FEE_PAYMENT
+  SCHOLARSHIP
+  GRANT
+  DONATION
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REVERSED
+}
+
+enum WalletType {
+  SCHOOL_WALLET
+  STUDENT_WALLET
+  TEACHER_WALLET
 }

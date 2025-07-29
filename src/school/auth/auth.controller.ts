@@ -20,8 +20,8 @@ import {
   OnboardStudentsDocs,
   OnboardDirectorsDocs,
   OnboardDataDocs
-} from 'src/docs/auth.docs';
-import { BulkOnboardDocs, DownloadTemplateDocs } from 'src/docs/bulk-onboard.docs';
+} from 'src/docs/auth';
+import { BulkOnboardDocs, DownloadTemplateDocs } from 'src/docs/bulk-onboard';
 
 interface ErrorResponse {
     success: false;

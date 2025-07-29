@@ -5,7 +5,7 @@ import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { CreateSubjectDto, EditSubjectDto } from 'src/shared/dto/subject.dto';
 import { ApiTags } from '@nestjs/swagger';
-import { GetAllSubjectsDocs, CreateSubjectDocs, EditSubjectDocs } from 'src/docs/subjects.docs';
+import { GetAllSubjectsDocs, CreateSubjectDocs, EditSubjectDocs } from 'src/docs/director/subjects';
 
 @ApiTags('Subjects')
 @Controller('director/subjects')

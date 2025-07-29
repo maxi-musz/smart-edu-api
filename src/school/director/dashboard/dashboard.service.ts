@@ -4,6 +4,7 @@ import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { DayOfWeek, User } from '@prisma/client';
 import { TeachersService } from '../teachers/teachers.service';
+import { formatDate } from 'src/shared/helper-functions/formatter';
 
 @Injectable()
 export class DashboardService {
@@ -161,7 +162,8 @@ export class DashboardService {
               title: notification.title,
               description: notification.description,
               type: notification.type,
-              createdAt: notification.createdAt
+              comingUpOn: notification.comingUpOn ? formatDate(notification.comingUpOn) : null,
+              createdAt: formatDate(notification.createdAt)
             }))
           };
       

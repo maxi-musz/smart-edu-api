@@ -5,7 +5,7 @@ import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { FetchFinanceDashboardDto } from './finance.service';
 import { ApiTags } from '@nestjs/swagger';
-import { GetFinanceDashboardDocs } from 'src/docs/finance.docs';
+import { GetFinanceDashboardDocs } from 'src/docs/director/finance';
 
 @ApiTags('Finance')
 @Controller('director/finance')
