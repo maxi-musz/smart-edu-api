@@ -1,7 +1,9 @@
-import { Body, Controller, Post, UseInterceptors, UploadedFiles, Get, HttpCode, UseGuards, Request } from '@nestjs/common';
+import { Body, Controller, Post, UseInterceptors, UploadedFiles, Get, HttpCode, UseGuards, Request, BadRequestException, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
 import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto } from 'src/shared/dto/auth.dto';
+import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
 import { FileValidationInterceptor } from 'src/shared/interceptors/file-validation.interceptor';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from './guard';
@@ -19,6 +21,7 @@ import {
   OnboardDirectorsDocs,
   OnboardDataDocs
 } from 'src/docs/auth.docs';
+import { BulkOnboardDocs, DownloadTemplateDocs } from 'src/docs/bulk-onboard.docs';
 
 interface ErrorResponse {
     success: false;
@@ -204,6 +207,58 @@ export class AuthController {
     @OnboardDataDocs.response201
     onboardData(@Body() dto: OnboardDataDto, @Request() req: any) {
         return this.authService.onboardData(dto, req.user);
+    }
+
+    // Bulk onboard from Excel file
+    // POST /api/v1/auth/bulk-onboard
+    // Protected endpoint
+    @UseGuards(JwtGuard)
+    @Post("bulk-onboard")
+    @HttpCode(201)
+    @BulkOnboardDocs.operation
+    @BulkOnboardDocs.consumes
+    @BulkOnboardDocs.body
+    @BulkOnboardDocs.bearerAuth
+    @BulkOnboardDocs.response201
+    @BulkOnboardDocs.response400
+    @BulkOnboardDocs.response401
+    @BulkOnboardDocs.response500
+    @UseInterceptors(
+        FileFieldsInterceptor([
+            { name: 'excel_file', maxCount: 1 }
+        ]),
+        FileValidationInterceptor
+    )
+    async bulkOnboardFromExcel(
+        @UploadedFiles() files: { excel_file?: Express.Multer.File[] },
+        @Request() req: any
+    ): Promise<BulkOnboardResponseDto> {
+        const file = files.excel_file?.[0];
+        if (!file) {
+            throw new BadRequestException('Excel file is required');
+        }
+        return this.authService.bulkOnboardFromExcel(file, req.user);
+    }
+
+    // Download Excel template
+    // GET /api/v1/auth/download-template
+    // Protected endpoint
+    @UseGuards(JwtGuard)
+    @Get("download-template")
+    @DownloadTemplateDocs.operation
+    @DownloadTemplateDocs.bearerAuth
+    @DownloadTemplateDocs.response200
+    @DownloadTemplateDocs.response401
+    async downloadExcelTemplate(@Res() res: Response) {
+        const templateBuffer = await this.authService.downloadExcelTemplate();
+        
+        res.set({
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': 'attachment; filename="bulk-onboard-template.xlsx"',
+            'Content-Length': templateBuffer.length,
+        });
+        
+        res.send(templateBuffer);
     }
 }
  
