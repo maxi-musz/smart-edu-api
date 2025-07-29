@@ -41,6 +41,53 @@ interface SendResetOtpProps {
     otp: string;
 }
 
+interface SendMailProps {
+    to: string;
+    subject: string;
+    html: string;
+}
+
+
+////////////////////////////////////////////////////////////            Generic send mail function
+export const sendMail = async (payload: SendMailProps): Promise<void> => {
+    console.log(colors.yellow("Sending mail..."))
+
+    try {
+        // Check if env vars exist
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+            throw new Error("SMTP credentials missing in environment variables");
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            host: process.env.GOOGLE_SMTP_HOST,
+            port: process.env.GOOGLE_SMTP_PORT ? parseInt(process.env.GOOGLE_SMTP_PORT) : 587,
+            secure: false,
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASSWORD,
+            },
+        });
+
+        const mailOptions = {
+            from: {
+              name: "Smart Edu Hub",
+              address: process.env.EMAIL_USER as string,
+            },
+            to: payload.to,
+            subject: payload.subject,
+            html: payload.html,
+          };
+
+        await transporter.sendMail(mailOptions);
+
+        console.log(colors.green(`Email sent to ${payload.to}`));
+        
+    } catch (error) {
+        console.log(colors.red("Error sending email: "), error);
+        throw new Error(`Error sending email: ${error.message}`);
+    }
+}
 
 ////////////////////////////////////////////////////////////            Send mail to school owner
 export const sendOnboardingMailToSchoolOwner = async (
@@ -220,7 +267,7 @@ export const sendLoginOtpByMail = async ({ email, otp}: SendResetOtpProps): Prom
 
   const mailOptions = {
       from: {
-          name: "PayFlex LTD",
+          name: "Smart Edu Hub",
           address: process.env.EMAIL_USER as string,
       },
       to: email,
