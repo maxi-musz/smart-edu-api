@@ -97,6 +97,15 @@ export class AuthService {
             });
 
             // create new user also with email and hashed password
+            // Check if user already exists
+            const existingUser = await this.prisma.user.findUnique({
+                where: { email: dto.school_email.toLowerCase() }
+            });
+
+            if (existingUser) {
+                throw new Error('A user with this email already exists. Please use a different email address.');
+            }
+
             await this.prisma.user.create({
                 data: {
                     email: dto.school_email.toLowerCase(),
@@ -256,10 +265,25 @@ export class AuthService {
     
             console.log(colors.magenta("Email address successfully verified"));
 
+            await this.signToken(user.id, user.email)
+
+            const formatted_response = {
+                id: user.id,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                phone_number: user.phone_number,
+                is_email_verified: user.is_email_verified,
+                role: user.role,
+                school_id: user.school_id,
+                created_at: formatDate(user.createdAt),
+                updated_at: formatDate(user.updatedAt)
+            }
+
             // Sign in the user and return token
             return ResponseHelper.success(
                 "Login successful",
-                await this.signToken(user.id, user.email)
+                formatted_response
             );
         } catch (error) {
             
@@ -307,7 +331,7 @@ export class AuthService {
     }
 
     async signIn(payload: SignInDto) {
-        console.log(colors.blue("Signing in..."));
+        console.log(colors.blue("Signing in user..."));
 
         try {
             // find the user by email
@@ -341,17 +365,48 @@ export class AuthService {
                     statusCode: 400
                 });
             }
+            const formatted_user = {
+                id: existing_user.id,
+                email: existing_user.email,
+                first_name: existing_user.first_name,
+                last_name: existing_user.last_name,
+                phone_number: existing_user.phone_number,
+                is_email_verified: existing_user.is_email_verified,
+                role: existing_user.role,
+                school_id: existing_user.school_id,
+                created_at: formatDate(existing_user.createdAt),
+                updated_at: formatDate(existing_user.updatedAt)
+            }
 
-            // if user email is not verified, send otp to verify email address
+            // Define roles that don't require OTP verification
+            const rolesWithoutOtp = ['student', 'teacher', 'parent'];
+            
+            // Check if user role requires OTP verification
+            if (!rolesWithoutOtp.includes(existing_user.role.toLowerCase())) {
+                console.log(colors.yellow(`Role ${existing_user.role} requires OTP verification`));
+                
+                // Send OTP for roles that require verification
+                await this.directorRequestLoginOtp({ email: existing_user.email });
+                
+                return ResponseHelper.success(
+                    "OTP verification required for this role. Please check your email for the OTP.",
+                    formatted_user
+                );
+            }
+            
+            // For roles that don't require OTP, check if email is verified
             if(!existing_user.is_email_verified) {
                 console.log(colors.yellow("Email not verified, sending otp to verify email address"));
+                
+                await this.directorRequestLoginOtp({ email: existing_user.email });
+                
                 return ResponseHelper.success(
-                    "Email not verified, please verify your email address",
-                    await this.directorRequestLoginOtp({ email: existing_user.email })
+                    "Email not verified, please verify your email address with the otp sent to your email address",
+                    formatted_user
                 );
             }
 
-            // if password matches, return success response
+            // if password matches and all checks pass, return success response
             console.log(colors.green("User signed in successfully!"));
             return ResponseHelper.success(
                 "User signed in successfully",

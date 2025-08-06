@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -59,6 +59,58 @@ enum AcademicTerm {
   third
 }
 
+enum Roles {
+  student
+  teacher
+  school_director
+  school_admin
+  parent
+  super_admin
+  ict_staff
+}
+
+enum UserStatus {
+  active
+  suspended
+  inactive
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+  TRANSFER
+  WITHDRAWAL
+  REFUND
+  FEE_PAYMENT
+  SCHOLARSHIP
+  GRANT
+  DONATION
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REVERSED
+}
+
+enum WalletType {
+  SCHOOL_WALLET
+  STUDENT_WALLET
+  TEACHER_WALLET
+}
+
 model School {
   id               String          @id @default(cuid())
   school_name      String
@@ -81,17 +133,26 @@ model School {
   utility_bill  Document? @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
   tax_clearance Document? @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
 
+  platformId String?
+  platform   Organisation? @relation(fields: [platformId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  classes       Class[]
-  subjects      Subject[]
-  finance       Finance?
-  schedules     TimetableEntry[]
-  timeSlots     TimeSlot[]
-  notifications Notification[]
-  wallet        Wallet?
+  users           User[]
+  classes         Class[]
+  subjects        Subject[]
+  finance         Finance?
+  schedules       TimetableEntry[]
+  timeSlots       TimeSlot[]
+  notifications   Notification[]
+  wallet          Wallet?
+  videoContent    VideoContent[]
+  pdfMaterial     PDFMaterial[]
+  assignment      Assignment[]
+  cbtQuiz         CBTQuiz[]
+  liveClass       LiveClass[]
+  libraryResource LibraryResource[]
 }
 
 model Document {
@@ -124,6 +185,7 @@ model User {
   updatedAt         DateTime   @updatedAt
 
   // relations
+  parents           Parent[]             @relation("ParentChildren")
   school            School               @relation(fields: [school_id], references: [id])
   subjectsTeaching  TeacherSubject[]
   classesEnrolled   Class[]              @relation("StudentClass")
@@ -131,20 +193,12 @@ model User {
   payments          Payment[]            @relation("StudentPayment")
   schedulesTeaching TimetableEntry[]     @relation("TeacherSchedule")
   performances      StudentPerformance[] @relation("StudentPerformance")
-}
-
-enum Roles {
-  student
-  teacher
-  school_director
-  admin
-  super_admin
-}
-
-enum UserStatus {
-  active
-  suspended
-  inactive
+  videoContent      VideoContent[]
+  pdfMaterial       PDFMaterial[]
+  assignment        Assignment[]
+  cbtQuiz           CBTQuiz[]
+  liveClass         LiveClass[]
+  libraryResource   LibraryResource[]
 }
 
 model Class {
@@ -349,38 +403,166 @@ model StudentPerformance {
   class   Class @relation(fields: [class_id], references: [id])
 }
 
-enum DayOfWeek {
-  MONDAY
-  TUESDAY
-  WEDNESDAY
-  THURSDAY
-  FRIDAY
-  SATURDAY
-  SUNDAY
+model Organisation {
+  id              String            @id @default(cuid())
+  name            String            @unique
+  email           String
+  schools         School[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  videoContent    VideoContent[]
+  pdfMaterial     PDFMaterial[]
+  assignment      Assignment[]
+  cbtQuiz         CBTQuiz[]
+  liveClass       LiveClass[]
+  libraryResource LibraryResource[]
 }
 
-enum WalletTransactionType {
-  CREDIT
-  DEBIT
-  TRANSFER
-  WITHDRAWAL
-  REFUND
-  FEE_PAYMENT
-  SCHOLARSHIP
-  GRANT
-  DONATION
+model Parent {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  first_name   String
+  last_name    String
+  phone_number String
+  password     String
+  children     User[]   @relation("ParentChildren")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
-enum WalletTransactionStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  CANCELLED
-  REVERSED
+// Content Models
+model VideoContent {
+  id           String  @id @default(cuid())
+  title        String
+  description  String?
+  subjectId    String?
+  url          String
+  schoolId     String? // Optional: assigned to a specific school
+  platformId   String
+  uploadedById String
+
+  platform   Organisation @relation(fields: [platformId], references: [id])
+  school     School?      @relation(fields: [schoolId], references: [id])
+  uploadedBy User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([subjectId])
 }
 
-enum WalletType {
-  SCHOOL_WALLET
-  STUDENT_WALLET
-  TEACHER_WALLET
+model PDFMaterial {
+  id           String  @id @default(cuid())
+  title        String
+  description  String?
+  subjectId    String?
+  url          String
+  schoolId     String? // Optional: assigned to a specific school
+  platformId   String
+  uploadedById String
+
+  platform   Organisation @relation(fields: [platformId], references: [id])
+  school     School?      @relation(fields: [schoolId], references: [id])
+  uploadedBy User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([subjectId])
+}
+
+model Assignment {
+  id           String    @id @default(cuid())
+  title        String
+  description  String?
+  subjectId    String?
+  dueDate      DateTime?
+  schoolId     String? // Optional: assigned to a specific school
+  platformId   String
+  uploadedById String
+
+  platform   Organisation @relation(fields: [platformId], references: [id])
+  school     School?      @relation(fields: [schoolId], references: [id])
+  uploadedBy User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([dueDate])
+}
+
+model CBTQuiz {
+  id           String  @id @default(cuid())
+  title        String
+  description  String?
+  subjectId    String?
+  duration     Int? // Duration in minutes
+  schoolId     String? // Optional: assigned to a specific school
+  platformId   String
+  uploadedById String
+
+  platform   Organisation @relation(fields: [platformId], references: [id])
+  school     School?      @relation(fields: [schoolId], references: [id])
+  uploadedBy User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([subjectId])
+}
+
+model LiveClass {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  subjectId   String?
+  meetingUrl  String
+  startTime   DateTime
+  endTime     DateTime
+  schoolId    String? // Optional: assigned to a specific school
+  platformId  String
+  createdById String
+
+  platform  Organisation @relation(fields: [platformId], references: [id])
+  school    School?      @relation(fields: [schoolId], references: [id])
+  createdBy User         @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([startTime])
+}
+
+model LibraryResource {
+  id           String  @id @default(cuid())
+  title        String
+  description  String?
+  resourceType String // e.g., "book", "article", "research_paper"
+  url          String?
+  schoolId     String? // Optional: assigned to a specific school
+  platformId   String
+  uploadedById String
+
+  platform   Organisation @relation(fields: [platformId], references: [id])
+  school     School?      @relation(fields: [schoolId], references: [id])
+  uploadedBy User         @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([resourceType])
 }
