@@ -86,8 +86,8 @@ export const OnboardSchoolDocs = {
 // Director Login OTP Documentation
 export const DirectorLoginOtpDocs = {
   operation: ApiOperation({
-    summary: 'Request login OTP for director',
-    description: 'Send a one-time password to the director\'s email for login'
+    summary: 'Request login OTP for user',
+    description: 'Send a one-time password to the user\'s email for login. This endpoint is used for both directors and other roles that require OTP verification before login.'
   }),
   response200: ApiResponse({
     status: 200,
@@ -96,7 +96,7 @@ export const DirectorLoginOtpDocs = {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'OTP sent to email' },
+        message: { type: 'string', example: 'Otp successfully sent' },
         statusCode: { type: 'number', example: 200 }
       }
     }
@@ -106,12 +106,12 @@ export const DirectorLoginOtpDocs = {
 // Verify Login OTP Documentation
 export const VerifyLoginOtpDocs = {
   operation: ApiOperation({
-    summary: 'Verify login OTP and sign in director',
-    description: 'Verify the OTP sent to director\'s email and complete login'
+    summary: 'Verify login OTP and sign in user',
+    description: 'Verify the OTP sent to user\'s email and complete login. This endpoint is used for both email verification and role-based OTP verification.'
   }),
   response200: ApiResponse({
     status: 200,
-    description: 'Login successful',
+    description: 'Login successful - returns user data',
     schema: {
       type: 'object',
       properties: {
@@ -120,8 +120,16 @@ export const VerifyLoginOtpDocs = {
         data: {
           type: 'object',
           properties: {
-            access_token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
-            user: { type: 'object' }
+            id: { type: 'string', example: 'user-id' },
+            email: { type: 'string', example: 'user@example.com' },
+            first_name: { type: 'string', example: 'John' },
+            last_name: { type: 'string', example: 'Doe' },
+            phone_number: { type: 'string', example: '+2348012345678' },
+            is_email_verified: { type: 'boolean', example: true },
+            role: { type: 'string', example: 'director' },
+            school_id: { type: 'string', example: 'school-id' },
+            created_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' },
+            updated_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' }
           }
         },
         statusCode: { type: 'number', example: 200 }
@@ -134,21 +142,74 @@ export const VerifyLoginOtpDocs = {
 export const SignInDocs = {
   operation: ApiOperation({
     summary: 'Sign in with email and password',
-    description: 'Authenticate user with email and password credentials'
+    description: 'Authenticate user with email and password credentials. Role-based OTP verification applies: students, teachers, and parents can sign in directly if email is verified. Directors, admins, and other roles require OTP verification before login.'
   }),
   response200: ApiResponse({
     status: 200,
-    description: 'Sign in successful',
+    description: 'Sign in successful - returns JWT token',
     schema: {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Sign in successful' },
+        message: { type: 'string', example: 'User signed in successfully' },
         data: {
           type: 'object',
           properties: {
-            access_token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
-            user: { type: 'object' }
+            access_token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' }
+          }
+        },
+        statusCode: { type: 'number', example: 200 }
+      }
+    }
+  }),
+  response200OtpRequired: ApiResponse({
+    status: 200,
+    description: 'OTP verification required for role',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'OTP verification required for this role. Please check your email for the OTP.' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'user-id' },
+            email: { type: 'string', example: 'user@example.com' },
+            first_name: { type: 'string', example: 'John' },
+            last_name: { type: 'string', example: 'Doe' },
+            phone_number: { type: 'string', example: '+2348012345678' },
+            is_email_verified: { type: 'boolean', example: true },
+            role: { type: 'string', example: 'director' },
+            school_id: { type: 'string', example: 'school-id' },
+            created_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' },
+            updated_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' }
+          }
+        },
+        statusCode: { type: 'number', example: 200 }
+      }
+    }
+  }),
+  response200EmailNotVerified: ApiResponse({
+    status: 200,
+    description: 'Email not verified - OTP sent for verification',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Email not verified, please verify your email address with the otp sent to your email address' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'user-id' },
+            email: { type: 'string', example: 'user@example.com' },
+            first_name: { type: 'string', example: 'John' },
+            last_name: { type: 'string', example: 'Doe' },
+            phone_number: { type: 'string', example: '+2348012345678' },
+            is_email_verified: { type: 'boolean', example: false },
+            role: { type: 'string', example: 'student' },
+            school_id: { type: 'string', example: 'school-id' },
+            created_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' },
+            updated_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' }
           }
         },
         statusCode: { type: 'number', example: 200 }
@@ -317,6 +378,73 @@ export const OnboardDataDocs = {
         data: { type: 'object' },
         statusCode: { type: 'number', example: 201 }
       }
+    }
+  })
+};
+
+// Bulk Onboard from Excel Documentation
+export const BulkOnboardFromExcelDocs = {
+  operation: ApiOperation({
+    summary: 'Bulk onboard from Excel file',
+    description: 'Upload an Excel file to bulk onboard classes, teachers, students, and directors (requires authentication)'
+  }),
+  consumes: ApiConsumes('multipart/form-data'),
+  bearerAuth: ApiBearerAuth('JWT-auth'),
+  body: ApiBody({
+    description: 'Excel file for bulk onboarding',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls) containing onboarding data'
+        }
+      },
+      required: ['file']
+    }
+  }),
+  response201: ApiResponse({
+    status: 201,
+    description: 'Bulk onboarding successful',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Bulk onboarding completed successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            totalRecords: { type: 'number', example: 100 },
+            successfulRecords: { type: 'number', example: 95 },
+            failedRecords: { type: 'number', example: 5 },
+            errors: { type: 'array', items: { type: 'string' } }
+          }
+        },
+        statusCode: { type: 'number', example: 201 }
+      }
+    }
+  }),
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid file format or data'
+  })
+};
+
+// Download Excel Template Documentation
+export const DownloadExcelTemplateDocs = {
+  operation: ApiOperation({
+    summary: 'Download Excel template for bulk onboarding',
+    description: 'Download a pre-formatted Excel template for bulk onboarding data (requires authentication)'
+  }),
+  bearerAuth: ApiBearerAuth('JWT-auth'),
+  response200: ApiResponse({
+    status: 200,
+    description: 'Excel template downloaded successfully',
+    schema: {
+      type: 'string',
+      format: 'binary',
+      description: 'Excel file (.xlsx) containing the template'
     }
   })
 }; 

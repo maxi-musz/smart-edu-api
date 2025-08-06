@@ -113,7 +113,8 @@ export class TeachersService {
                     where: { 
                         school_id,
                         role: "teacher"
-                    }
+                    },
+                   
                 }),
                 this.prisma.user.count({
                     where: { 
@@ -141,6 +142,8 @@ export class TeachersService {
                         school_id,
                         role: "teacher"
                     },
+                    take: 50, // Limit the number of teachers to 50
+                    orderBy: { createdAt: 'desc' },
                     select: {
                         id: true,
                         first_name: true,
