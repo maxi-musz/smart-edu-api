@@ -3,9 +3,34 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as colors from 'colors';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  const configService = app.get(ConfigService);
+
+  const corsOriginsEnv =
+    configService.get<string>('CORS_ORIGINS') ||
+    configService.get<string>('FRONTEND_URL');
+
+  const allowedOrigins = corsOriginsEnv
+    ? corsOriginsEnv.split(',').map((o) => o.trim())
+    : ['*'];
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes('*')) return callback(null, true);
+      if (allowedOrigins.some((o) => o === origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders:
+      'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+    exposedHeaders: 'Content-Disposition',
+    credentials: true,
+  });
 
   app.setGlobalPrefix('api/v1');
   
