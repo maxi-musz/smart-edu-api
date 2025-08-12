@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
 import * as colors from 'colors';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
@@ -26,6 +26,7 @@ interface CloudinaryUploadResult {
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
 
     constructor(
         private prisma: PrismaService,
@@ -265,7 +266,7 @@ export class AuthService {
     
             console.log(colors.magenta("Email address successfully verified"));
 
-            const { access_token } = await this.signToken(user.id, user.email)
+            const { access_token, refresh_token } = await this.signToken(user.id, user.email)
 
             const formatted_response = {
                 id: user.id,
@@ -281,11 +282,12 @@ export class AuthService {
                 
             }
 
-            // Sign in the user and return token
+            // Sign in the user and return tokens
             return ResponseHelper.success(
                 "Login successful",
                 {
-                    access_token: access_token,
+                    access_token,
+                    refresh_token,
                     ...formatted_response
                 }
             );
@@ -304,7 +306,7 @@ export class AuthService {
     async signToken(
         userId: string,
         email: string
-    ): Promise<{access_token: string}> {
+    ): Promise<{access_token: string, refresh_token: string}> {
         // console.log(colors.cyan('Signing token for:'), { userId, email });
         
         const payload = {
@@ -313,23 +315,32 @@ export class AuthService {
         };
 
         const secret = this.config.get('JWT_SECRET');
-        const expiresIn = this.config.get('JWT_EXPIRES_IN') || '7d'; 
+        const accessTokenExpiresIn = this.config.get('JWT_EXPIRES_IN') || '15m'; // Shorter expiry for access token
+        const refreshTokenExpiresIn = this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d'; // Longer expiry for refresh token
         
-        // console.log(colors.yellow('Token config:'), { secret, expiresIn });
+        // console.log(colors.yellow('Token config:'), { secret, accessTokenExpiresIn, refreshTokenExpiresIn });
 
         try {
-            const token = await this.jwt.signAsync(payload, {
-                expiresIn: expiresIn,
+            // Generate access token
+            const accessToken = await this.jwt.signAsync(payload, {
+                expiresIn: accessTokenExpiresIn,
                 secret: secret
             });
 
-            // console.log(colors.green('Token generated successfully'));
+            // Generate refresh token
+            const refreshToken = await this.jwt.signAsync(payload, {
+                expiresIn: refreshTokenExpiresIn,
+                secret: secret
+            });
+
+            // console.log(colors.green('Tokens generated successfully'));
             
             return {
-                access_token: token
+                access_token: accessToken,
+                refresh_token: refreshToken
             }
         } catch (error) {
-            console.log(colors.red('Error generating token:'), error);
+            console.log(colors.red('Error generating tokens:'), error);
             throw error;
         }
     }
@@ -369,6 +380,7 @@ export class AuthService {
                     statusCode: 400
                 });
             }
+
             const formatted_user = {
                 id: existing_user.id,
                 email: existing_user.email,
@@ -382,11 +394,11 @@ export class AuthService {
                 updated_at: formatDate(existing_user.updatedAt)
             }
 
-            // Define roles that don't require OTP verification
-            const rolesWithoutOtp = ['student', 'teacher', 'parent'];
+            // Define roles that require OTP verification
+            const rolesRequiringOtp = ['admin', 'school_director', 'teacher'];
             
             // Check if user role requires OTP verification
-            if (!rolesWithoutOtp.includes(existing_user.role.toLowerCase())) {
+            if (rolesRequiringOtp.includes(existing_user.role.toLowerCase())) {
                 console.log(colors.yellow(`Role ${existing_user.role} requires OTP verification`));
                 
                 // Send OTP for roles that require verification
@@ -410,11 +422,17 @@ export class AuthService {
                 );
             }
 
-            // if password matches and all checks pass, return success response
+            // if password matches and all checks pass, return success response with tokens
             console.log(colors.green("User signed in successfully!"));
+            const { access_token, refresh_token } = await this.signToken(existing_user.id, existing_user.email);
+            
             return ResponseHelper.success(
                 "User signed in successfully",
-                await this.signToken(existing_user.id, existing_user.email)
+                {
+                    access_token,
+                    refresh_token,
+                    user: formatted_user
+                }
             );
             
         } catch (error) {
@@ -434,6 +452,8 @@ export class AuthService {
             });
         }
     }
+
+
 
     //
     async requestPasswordResetOTP(payload: RequestPasswordResetDTO) {
@@ -1952,6 +1972,58 @@ export class AuthService {
      */
     async downloadExcelTemplate(): Promise<Buffer> {
         return this.excelProcessorService.generateExcelTemplate();
+    }
+
+    /**
+     * Refresh access token using refresh token
+     * @param refreshToken - The refresh token
+     * @returns New access token and refresh token
+     */
+    async refreshToken(refreshToken: string) {
+        this.logger.log(colors.cyan('Refreshing access token...'));
+
+        try {
+            // Verify the refresh token
+            const secret = this.config.get('JWT_SECRET');
+            const payload = await this.jwt.verifyAsync(refreshToken, {
+                secret: secret
+            });
+
+            // Check if user still exists
+            const user = await this.prisma.user.findUnique({
+                where: { id: payload.sub }
+            });
+
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Generate new tokens
+            const { access_token, refresh_token } = await this.signToken(user.id, user.email);
+
+            this.logger.log(colors.green('Access token refreshed successfully'));
+
+            return ResponseHelper.success(
+                'Access token refreshed successfully',
+                {
+                    access_token,
+                    refresh_token
+                }
+            );
+
+        } catch (error) {
+            this.logger.error(colors.red(`Error refreshing token: ${error.message}`));
+            
+            if (error.name === 'TokenExpiredError') {
+                throw new UnauthorizedException('Refresh token has expired');
+            }
+            
+            if (error.name === 'JsonWebTokenError') {
+                throw new UnauthorizedException('Invalid refresh token');
+            }
+            
+            throw error;
+        }
     }
 }
  

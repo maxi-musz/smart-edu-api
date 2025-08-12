@@ -352,3 +352,13 @@ export class OnboardDataDto {
     @IsArray({ message: 'Directors must be an array' })
     directors?: DirectorDto[];
 }
+
+export class RefreshTokenDto {
+    @ApiProperty({
+        description: 'Refresh token to get new access token',
+        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+    })
+    @IsNotEmpty({ message: 'Refresh token is required' })
+    @IsString({ message: 'Refresh token must be a string' })
+    refresh_token: string;
+}
