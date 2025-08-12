@@ -12,6 +12,7 @@ import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -33,7 +34,8 @@ import { memoryStorage } from 'multer';
     AdminModule, 
     SchoolModule, 
     SchedulesModule,
-    PrismaModule
+    PrismaModule,
+    UserModule
   ],
   controllers: [AppController],
   providers: [AppService],

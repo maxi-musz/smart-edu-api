@@ -2,7 +2,7 @@ import { Body, Controller, Post, UseInterceptors, UploadedFiles, Get, HttpCode, 
 import { Response } from 'express';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
-import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto } from 'src/shared/dto/auth.dto';
+import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto, RefreshTokenDto } from 'src/shared/dto/auth.dto';
 import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
 import { FileValidationInterceptor } from 'src/shared/interceptors/file-validation.interceptor';
 import { ApiTags } from '@nestjs/swagger';
@@ -247,6 +247,15 @@ export class AuthController {
         });
         
         res.send(templateBuffer);
+    }
+
+    // Refresh access token
+    // POST /api/v1/auth/refresh-token
+    // Public endpoint
+    @Post("refresh-token")
+    @HttpCode(200)
+    refreshToken(@Body() dto: RefreshTokenDto) {
+        return this.authService.refreshToken(dto.refresh_token);
     }
 }
  
