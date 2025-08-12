@@ -249,13 +249,13 @@ export class StudentsService {
                     activeStudents,
                     totalClasses: await this.prisma.class.count({ where: { schoolId } })
                 },
-                students: studentsWithDetails,
                 pagination: {
                     total_pages: Math.ceil(totalStudents / limit),
                     current_page: page,
                     total_results: totalStudents,
                     results_per_page: limit
-                }
+                },
+                students: studentsWithDetails,
             }
         );
     }

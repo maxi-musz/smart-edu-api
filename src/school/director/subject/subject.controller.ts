@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Query } from '@nestjs/common';
 import { SubjectService } from './subject.service';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
@@ -18,8 +18,21 @@ export class SubjectController {
     @GetAllSubjectsDocs.operation
     @GetAllSubjectsDocs.response200
     @GetAllSubjectsDocs.response401
-    fetchAllSubjects(@GetUser() user: User) {
-        return this.subjectService.fetchAllSubjects(user);
+    fetchAllSubjects(
+        @GetUser() user: User,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+        @Query('search') search?: string,
+        @Query('classId') classId?: string,
+        @Query('groupByClass') groupByClass: boolean = false
+    ) {
+        return this.subjectService.fetchAllSubjects(user, {
+            page,
+            limit,
+            search,
+            classId,
+            groupByClass
+        });
     }
 
     @Post('create-subject')

@@ -12,48 +12,179 @@ export class SubjectService {
   constructor(private prisma: PrismaService) {}
 
    ////////////////////////////////////////////////////////////////////////// FETCH ALL SUBJECT
-  // PUT -  /API/v1/
-  async fetchAllSubjects(user: User) {
-    this.logger.log(colors.cyan(`Fetching all subjects for school: ${user.school_id}`));
+  // GET -  /API/v1/director/subjects/fetch-all-subjects
+  async fetchAllSubjects(
+    user: User, 
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      classId?: string;
+      groupByClass?: boolean;
+    } = {}
+  ) {
+    const { page = 1, limit = 10, search, classId, groupByClass = false } = options;
+    const skip = (page - 1) * limit;
 
-    const subjects = await this.prisma.subject.findMany({
-      where: {
-        schoolId: user.school_id,
-      },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        color: true,
-        description: true,
-        classId: true,
-        Class: {
-          select: {
-            name: true
+    this.logger.log(colors.cyan(`Fetching subjects for school: ${user.school_id}`));
+
+    // Build where clause
+    const where: any = {
+      schoolId: user.school_id,
+    };
+
+    // Add search filter
+    if (search) {
+      where.OR = [
+        { name: { contains: search.toLowerCase() } },
+        { code: { contains: search.toUpperCase() } },
+        { description: { contains: search.toLowerCase() } },
+      ];
+    }
+
+    // Add class filter
+    if (classId) {
+      where.classId = classId;
+    }
+
+    // If grouping by class, get all classes first
+    if (groupByClass) {
+      const classes = await this.prisma.class.findMany({
+        where: { schoolId: user.school_id },
+        select: {
+          id: true,
+          name: true,
+          subjects: {
+            where,
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              color: true,
+              description: true,
+              teacherSubjects: {
+                select: {
+                  teacher: {
+                    select: {
+                      id: true,
+                      first_name: true,
+                      last_name: true,
+                      email: true
+                    }
+                  }
+                }
+              }
+            },
+            orderBy: { name: 'asc' }
           }
         },
-        teacherSubjects: {
-          select: {
-            teacher: {
-              select: {
-                id: true,
-                first_name: true,
-                last_name: true,
-                email: true
+        orderBy: { name: 'asc' }
+      });
+
+      // Format response grouped by class
+      const groupedSubjects = classes.map(cls => ({
+        classId: cls.id,
+        className: cls.name,
+        subjectsCount: cls.subjects.length,
+        subjects: cls.subjects.map(subject => ({
+          id: subject.id,
+          name: subject.name,
+          code: subject.code,
+          color: subject.color,
+          description: subject.description,
+          teachers: subject.teacherSubjects.map(ts => ({
+            id: ts.teacher.id,
+            name: `${ts.teacher.first_name} ${ts.teacher.last_name}`,
+            email: ts.teacher.email
+          }))
+        }))
+      }));
+
+      return new ApiResponse(
+        true,
+        `Found subjects grouped by class`,
+        {
+          groupedByClass: true,
+          classes: groupedSubjects,
+          totalClasses: classes.length,
+          totalSubjects: classes.reduce((sum, cls) => sum + cls.subjects.length, 0)
+        }
+      );
+    }
+
+    // Regular paginated response
+    const [subjects, total] = await Promise.all([
+      this.prisma.subject.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          color: true,
+          description: true,
+          classId: true,
+          Class: {
+            select: {
+              name: true
+            }
+          },
+          teacherSubjects: {
+            select: {
+              teacher: {
+                select: {
+                  id: true,
+                  first_name: true,
+                  last_name: true,
+                  email: true
+                }
               }
             }
           }
-        }
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    });
+        },
+        skip,
+        take: limit,
+        orderBy: {
+          name: 'asc',
+        },
+      }),
+      this.prisma.subject.count({ where })
+    ]);
+
+    const formattedSubjects = subjects.map(subject => ({
+      id: subject.id,
+      name: subject.name,
+      code: subject.code,
+      color: subject.color,
+      description: subject.description,
+      class: subject.Class ? {
+        id: subject.classId,
+        name: subject.Class.name
+      } : null,
+      teachers: subject.teacherSubjects.map(ts => ({
+        id: ts.teacher.id,
+        name: `${ts.teacher.first_name} ${ts.teacher.last_name}`,
+        email: ts.teacher.email
+      }))
+    }));
 
     return new ApiResponse(
       true,
       `Found ${subjects.length} subjects`,
-      subjects
+      {
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
+        },
+        filters: {
+          search: search || null,
+          classId: classId || null
+        },
+        subjects: formattedSubjects,
+      }
     );
   }
 

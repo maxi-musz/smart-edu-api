@@ -265,7 +265,7 @@ export class AuthService {
     
             console.log(colors.magenta("Email address successfully verified"));
 
-            await this.signToken(user.id, user.email)
+            const { access_token } = await this.signToken(user.id, user.email)
 
             const formatted_response = {
                 id: user.id,
@@ -277,13 +277,17 @@ export class AuthService {
                 role: user.role,
                 school_id: user.school_id,
                 created_at: formatDate(user.createdAt),
-                updated_at: formatDate(user.updatedAt)
+                updated_at: formatDate(user.updatedAt),
+                
             }
 
             // Sign in the user and return token
             return ResponseHelper.success(
                 "Login successful",
-                formatted_response
+                {
+                    access_token: access_token,
+                    ...formatted_response
+                }
             );
         } catch (error) {
             
