@@ -14,19 +14,25 @@ export class SchedulesService {
   async getTimetable(dto: getTimeTableDTO): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`Fetching timetable for class: ${dto.class}`));
     
-    const classData = await this.prisma.class.findFirst({
+    // Get all available classes for the school first
+    const availableClasses = await this.prisma.class.findMany({
       where: {
         name: {
           equals: String(dto.class),
           mode: 'insensitive'
         }
       },
-      select: { id: true }
+      select: { 
+        id: true,
+        name: true
+      }
     });
 
-    if (!classData) {
+    if (availableClasses.length === 0) {
       return new ApiResponse(false, `Class ${dto.class} not found`, null);
     }
+
+    const classData = availableClasses[0]; // Get the first matching class
 
     // Get all time slots for the school first
     const timeSlots = await this.prisma.timeSlot.findMany({
@@ -71,7 +77,10 @@ export class SchedulesService {
 
     // Create a structured timetable
     const formattedTimetable = {
-      class: dto.class,
+      class: availableClasses.map(cls => ({
+        classId: cls.id,
+        name: cls.name
+      })),
       timeSlots: timeSlots.map(slot => ({
         id: slot.id,
         startTime: slot.startTime,

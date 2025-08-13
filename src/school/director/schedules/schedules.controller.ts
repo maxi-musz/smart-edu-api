@@ -192,7 +192,7 @@ export class SchedulesController {
   }
 
   // Existing endpoints
-  @Get('timetable')
+  @Post('timetable')
   @ApiOperation({
       summary: 'Get timetable schedules',
       description: 'Fetch timetable schedules for a specific class'
