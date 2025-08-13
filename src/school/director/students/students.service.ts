@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import { AcademicTerm, UserStatus, User, DayOfWeek } from '@prisma/client';
+import * as colors from 'colors';
 
 export interface FetchStudentsDashboardDto {
     page?: number;
@@ -32,6 +33,7 @@ interface StudentWithDetails extends User {
 
 @Injectable()
 export class StudentsService {
+    private readonly logger = new Logger(StudentsService.name);
     constructor(private prisma: PrismaService) {}
 
     // Helper to get current DayOfWeek enum string
@@ -123,6 +125,7 @@ export class StudentsService {
     }
 
     async fetchStudentsDashboard(schoolId: string, dto: FetchStudentsDashboardDto = {}) {
+        this.logger.log(colors.yellow("Fetching students dashboard data"));
         const {
             page = 1,
             limit = 10,
@@ -241,6 +244,31 @@ export class StudentsService {
             };
         }));
 
+        // Fetch available classes for the school
+        const availableClasses = await this.prisma.class.findMany({
+            where: { schoolId },
+            select: {
+                id: true,
+                name: true,
+                classTeacherId: true,
+                classTeacher: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        email: true
+                    }
+                },
+                _count: {
+                    select: {
+                        students: true
+                    }
+                }
+            },
+            orderBy: { name: 'asc' }
+        });
+
+        this.logger.log(colors.green("Students dashboard data fetched successfully"));
         return ResponseHelper.success(
             "Students dashboard data fetched successfully",
             {
@@ -255,6 +283,17 @@ export class StudentsService {
                     total_results: totalStudents,
                     results_per_page: limit
                 },
+                
+                available_classes: availableClasses.map(cls => ({
+                    id: cls.id,
+                    name: cls.name,
+                    class_teacher: cls.classTeacher ? {
+                        id: cls.classTeacher.id,
+                        name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
+                        email: cls.classTeacher.email
+                    } : null,
+                    student_count: cls._count.students
+                })),
                 students: studentsWithDetails,
             }
         );

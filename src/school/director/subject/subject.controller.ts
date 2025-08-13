@@ -20,18 +20,18 @@ export class SubjectController {
     @GetAllSubjectsDocs.response401
     fetchAllSubjects(
         @GetUser() user: User,
-        @Query('page') page: number = 1,
-        @Query('limit') limit: number = 10,
+        @Query('page') page: string = '1',
+        @Query('limit') limit: string = '10',
         @Query('search') search?: string,
         @Query('classId') classId?: string,
-        @Query('groupByClass') groupByClass: boolean = false
+        @Query('groupByClass') groupByClass: string = 'false'
     ) {
         return this.subjectService.fetchAllSubjects(user, {
-            page,
-            limit,
+            page: parseInt(page) || 1,
+            limit: parseInt(limit) || 10,
             search,
             classId,
-            groupByClass
+            groupByClass: groupByClass === 'true'
         });
     }
 
