@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsArray } from "class-validator";
+import { IsNotEmpty, IsString, IsArray, IsEmail } from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
 
 export class OnboardSchoolDto {
@@ -361,4 +361,14 @@ export class RefreshTokenDto {
     @IsNotEmpty({ message: 'Refresh token is required' })
     @IsString({ message: 'Refresh token must be a string' })
     refresh_token: string;
+}
+
+export class RequestEmailVerificationDto {
+    @ApiProperty({
+        description: 'Email address to send verification code to',
+        example: 'user@example.com'
+    })
+    @IsNotEmpty({ message: 'Email is required' })
+    @IsEmail({}, { message: 'Please provide a valid email address' })
+    email: string;
 }

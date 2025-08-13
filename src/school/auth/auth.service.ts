@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { CloudinaryService } from 'src/shared/services/cloudinary.service';
 import { sendOnboardingMailToSchoolOwner, sendOnboardingMailToBTechAdmin, sendPasswordResetOtp, sendLoginOtpByMail } from 'src/common/mailer/send-mail';
+import { sendEmailVerificationOTP } from 'src/common/mailer/send-email-verification-otp';
 import { sendTeacherOnboardEmail, sendStudentOnboardEmail, sendDirectorOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
 import { Prisma } from '@prisma/client';
 import { ApiResponse } from 'src/shared/helper-functions/response';
@@ -269,16 +270,18 @@ export class AuthService {
             const { access_token, refresh_token } = await this.signToken(user.id, user.email)
 
             const formatted_response = {
-                id: user.id,
-                email: user.email,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                phone_number: user.phone_number,
-                is_email_verified: user.is_email_verified,
-                role: user.role,
-                school_id: user.school_id,
-                created_at: formatDate(user.createdAt),
-                updated_at: formatDate(user.updatedAt),
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
+                    phone_number: user.phone_number,
+                    is_email_verified: user.is_email_verified,
+                    role: user.role,
+                    school_id: user.school_id,
+                    created_at: formatDate(user.createdAt),
+                    updated_at: formatDate(user.updatedAt),
+                }
                 
             }
 
@@ -2023,6 +2026,133 @@ export class AuthService {
             }
             
             throw error;
+        }
+    }
+
+    /**
+     * Send email verification OTP
+     * @param email - User's email address
+     * @param firstName - User's first name
+     * @param otp - The OTP code
+     */
+    private async sendEmailVerificationOTP(email: string, firstName: string, otp: string) {
+        try {
+            await sendEmailVerificationOTP({ email, firstName, otp });
+            this.logger.log(colors.green(`Email verification OTP sent to: ${email}`));
+        } catch (error) {
+            this.logger.error(colors.red(`Error sending email verification OTP: ${error.message}`));
+            throw new InternalServerErrorException('Failed to send email verification OTP');
+        }
+    }
+
+    /**
+     * Request email verification code
+     * @param email - User's email address
+     * @returns Success response
+     */
+    async requestEmailVerification(email: string) {
+        this.logger.log(colors.cyan('Requesting email verification...'));
+
+        try {
+            // Find the user by email
+            const user = await this.prisma.user.findUnique({
+                where: { email }
+            });
+
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Check if email is already verified
+            if (user.is_email_verified) {
+                return ResponseHelper.success(
+                    'Email is already verified',
+                    { email: user.email }
+                );
+            }
+
+            // Generate OTP for email verification
+            const otp = generateOTP();
+            const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+            // Update OTP for the user
+            await this.prisma.user.update({
+                where: { email: email },
+                data: {
+                    otp,
+                    otp_expires_at: otpExpiresAt,
+                },
+            });
+
+            // Send email verification OTP
+            await this.sendEmailVerificationOTP(user.email, user.first_name, otp);
+
+            this.logger.log(colors.green('Email verification OTP sent successfully'));
+
+            return ResponseHelper.success(
+                'Email verification code sent successfully. Please check your email.',
+                { email: user.email }
+            );
+
+        } catch (error) {
+            this.logger.error(colors.red(`Error requesting email verification: ${error.message}`));
+            
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            
+            throw new InternalServerErrorException('Error requesting email verification');
+        }
+    }
+
+    /**
+     * Logout user
+     * @param userId - User ID to logout
+     * @param reason - Optional reason for logout
+     * @returns Success response
+     */
+    async logout(userId: string) {
+        this.logger.log(colors.cyan(`Logging out user: ${userId}`));
+
+        try {
+            // Find the user
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    email: true,
+                    first_name: true,
+                    last_name: true,
+                    role: true
+                }
+            });
+
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            return ResponseHelper.success(
+                'Logged out successfully',
+                {
+                    message: 'You have been successfully logged out',
+                    user: {
+                        id: user.id,
+                        email: user.email,
+                        name: `${user.first_name} ${user.last_name}`,
+                        role: user.role
+                    },
+                    logout_time: new Date().toISOString(),
+                }
+            );
+
+        } catch (error) {
+            this.logger.error(colors.red(`Error during logout: ${error.message}`));
+            
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            
+            throw new InternalServerErrorException('Error during logout process');
         }
     }
 }

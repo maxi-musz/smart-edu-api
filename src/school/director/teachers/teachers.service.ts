@@ -237,6 +237,7 @@ export class TeachersService {
                 }))
             };
 
+            this.logger.log(colors.green("Teachers dashboard data fetched successfully"));
             return ResponseHelper.success(
                 "Teachers dashboard data fetched successfully",
                 formattedResponse

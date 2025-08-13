@@ -2,11 +2,12 @@ import { Body, Controller, Post, UseInterceptors, UploadedFiles, Get, HttpCode, 
 import { Response } from 'express';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
-import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto, RefreshTokenDto } from 'src/shared/dto/auth.dto';
+import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto, RefreshTokenDto, RequestEmailVerificationDto } from 'src/shared/dto/auth.dto';
 import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
 import { FileValidationInterceptor } from 'src/shared/interceptors/file-validation.interceptor';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from './guard';
+import { GetUser } from './decorator';
 import { AuthControllerDocs } from './auth.controller.docs';
 
 interface ErrorResponse {
@@ -130,6 +131,25 @@ export class AuthController {
     @AuthControllerDocs.resetPassword.response200
     resetPassword(@Body() dto: ResetPasswordDTO) {
         return this.authService.resetPassword(dto)
+    }
+
+    // Request email verification code
+    // POST /api/v1/auth/request-email-verification
+    // Public endpoint
+    @Post("request-email-verification")
+    @HttpCode(200)
+    requestEmailVerification(@Body() dto: RequestEmailVerificationDto) {
+        return this.authService.requestEmailVerification(dto.email);
+    }
+
+    // Logout user
+    // POST /api/v1/auth/logout
+    // Protected endpoint
+    @Post("logout")
+    @HttpCode(200)
+    @UseGuards(JwtGuard)
+    logout(@GetUser() user: any) {
+        return this.authService.logout(user.sub);
     }
 
     // Onboard classes
