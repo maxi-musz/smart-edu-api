@@ -99,6 +99,82 @@ export class SchedulesController {
     return this.schedulesService.getTimeSlots(user);
   }
 
+  @Get('timetable-options')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+      summary: 'Get timetable options',
+      description: 'Fetch all available classes, teachers, subjects, and time slots for creating timetables'
+  })
+  @ApiResponse({
+      status: 200,
+      description: 'Timetable options retrieved successfully',
+      schema: {
+          type: 'object',
+          properties: {
+              success: { type: 'boolean', example: true },
+              message: { type: 'string', example: 'Timetable options retrieved successfully' },
+              data: {
+                  type: 'object',
+                  properties: {
+                      classes: {
+                          type: 'array',
+                          items: {
+                              type: 'object',
+                              properties: {
+                                  id: { type: 'string', example: 'class-uuid' },
+                                  name: { type: 'string', example: 'jss1' }
+                              }
+                          }
+                      },
+                      teachers: {
+                          type: 'array',
+                          items: {
+                              type: 'object',
+                              properties: {
+                                  id: { type: 'string', example: 'teacher-uuid' },
+                                  name: { type: 'string', example: 'John Smith' }
+                              }
+                          }
+                      },
+                      subjects: {
+                          type: 'array',
+                          items: {
+                              type: 'object',
+                              properties: {
+                                  id: { type: 'string', example: 'subject-uuid' },
+                                  name: { type: 'string', example: 'Mathematics' },
+                                  code: { type: 'string', example: 'MATH101' },
+                                  color: { type: 'string', example: '#3B82F6' }
+                              }
+                          }
+                      },
+                      timeSlots: {
+                          type: 'array',
+                          items: {
+                              type: 'object',
+                              properties: {
+                                  id: { type: 'string', example: 'timeslot-uuid' },
+                                  name: { type: 'string', example: '08:00 - 08:45' },
+                                  label: { type: 'string', example: 'Period 1' },
+                                  startTime: { type: 'string', example: '08:00' },
+                                  endTime: { type: 'string', example: '08:45' }
+                              }
+                          }
+                      }
+                  }
+              },
+              statusCode: { type: 'number', example: 200 }
+          }
+      }
+  })
+  @ApiResponse({
+      status: 401,
+      description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  async getTimetableOptions(@GetUser() user: User) {
+    return this.schedulesService.getTimetableOptions(user.school_id);
+  }
+
   @Put('time-slots/:id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({

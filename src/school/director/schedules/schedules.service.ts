@@ -105,6 +105,96 @@ export class SchedulesService {
     );
   }
 
+  // Get the data needed to create a new schedule entry
+  // GET /api/v1/schedules/timetable-options
+  async getTimetableOptions(schoolId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`Fetching timetable options for school: ${schoolId}`));
+    
+    try {
+      // Fetch all options in parallel for better performance
+      const [classes, teachers, subjects, timeSlots] = await Promise.all([
+        // Get classes
+        this.prisma.class.findMany({
+          where: { schoolId },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' }
+        }),
+        
+        // Get teachers
+        this.prisma.user.findMany({
+          where: { 
+            school_id: schoolId,
+            role: 'teacher',
+            status: 'active'
+          },
+          select: { 
+            id: true, 
+            first_name: true, 
+            last_name: true 
+          },
+          orderBy: { first_name: 'asc' }
+        }),
+        
+        // Get subjects
+        this.prisma.subject.findMany({
+          where: { schoolId },
+          select: { 
+            id: true, 
+            name: true, 
+            code: true,
+            color: true
+          },
+          orderBy: { name: 'asc' }
+        }),
+        
+        // Get time slots
+        this.prisma.timeSlot.findMany({
+          where: { isActive: true },
+          select: { 
+            id: true, 
+            startTime: true, 
+            endTime: true, 
+            label: true 
+          },
+          orderBy: { order: 'asc' }
+        })
+      ]);
+
+      this.logger.log(colors.green(`Found ${classes.length} classes, ${teachers.length} teachers, ${subjects.length} subjects, ${timeSlots.length} time slots`));
+      
+      return new ApiResponse(
+        true,
+        'Timetable options retrieved successfully',
+        {
+          classes: classes.map(cls => ({
+            id: cls.id,
+            name: cls.name
+          })),
+          teachers: teachers.map(teacher => ({
+            id: teacher.id,
+            name: `${teacher.first_name} ${teacher.last_name}`
+          })),
+          subjects: subjects.map(subject => ({
+            id: subject.id,
+            name: subject.name,
+            code: subject.code,
+            color: subject.color
+          })),
+          timeSlots: timeSlots.map(slot => ({
+            id: slot.id,
+            name: `${slot.startTime} - ${slot.endTime}`,
+            label: slot.label,
+            startTime: slot.startTime,
+            endTime: slot.endTime
+          }))
+        }
+      );
+    } catch (error) {
+      this.logger.error(colors.red(`Error fetching timetable options: ${error.message}`));
+      return new ApiResponse(false, 'Error fetching timetable options', null);
+    }
+  }
+
   private formatDaySchedule(timetable: any[], day: string, timeSlots: any[]) {
     // Initialize the day's schedule with empty slots
     const daySchedule = timeSlots.map(slot => ({
@@ -196,6 +286,7 @@ export class SchedulesService {
     });
 
     if (teacherSchedule) {
+      this.logger.log(colors.red(`Teacher is already scheduled for this time slot and day`));
       return new ApiResponse(
         false,
         'Teacher is already scheduled for this time slot and day',
@@ -212,6 +303,7 @@ export class SchedulesService {
     });
 
     if (!classExists) {
+      this.logger.log(colors.red(`Specified class not found`));
       return new ApiResponse(
         false,
         'Specified class not found',
@@ -228,6 +320,7 @@ export class SchedulesService {
     });
 
     if (!subjectExists) {
+      this.logger.log(colors.red(`Specified subject not found`));
       return new ApiResponse(
         false,
         'Specified subject not found',
@@ -245,6 +338,7 @@ export class SchedulesService {
     });
 
     if (!teacherExists) {
+      this.logger.log(colors.red(`Specified teacher not found or is not a teacher`));
       return new ApiResponse(
         false,
         'Specified teacher not found or is not a teacher',
@@ -294,6 +388,7 @@ export class SchedulesService {
       },
     });
 
+    this.logger.log(colors.green(`Schedule created successfully`));
     return new ApiResponse(
       true,
       'Schedule created successfully',
