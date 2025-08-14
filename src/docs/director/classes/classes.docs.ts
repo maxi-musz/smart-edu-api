@@ -21,13 +21,67 @@ export const GetAllClassesDocs = {
             properties: {
               id: { type: 'string', example: 'class-uuid' },
               name: { type: 'string', example: 'JSS 1A' },
-              school_id: { type: 'string', example: 'school-uuid' },
-              created_at: { type: 'string', example: '2024-01-01T00:00:00Z' },
-              updated_at: { type: 'string', example: '2024-01-01T00:00:00Z' }
+              classTeacher: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  id: { type: 'string', example: 'teacher-uuid' },
+                  first_name: { type: 'string', example: 'John' },
+                  last_name: { type: 'string', example: 'Doe' },
+                  display_picture: { type: 'string', example: 'https://example.com/profile.jpg', nullable: true }
+                }
+              }
             }
           }
         },
         statusCode: { type: 'number', example: 200 }
+      }
+    }
+  }),
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token'
+  })
+};
+
+export const CreateClassDocs = {
+  operation: ApiOperation({
+    summary: 'Create a new class',
+    description: 'Create a new class for the authenticated director\'s school'
+  }),
+  bearerAuth: ApiBearerAuth('JWT-auth'),
+  response200: ApiResponse({
+    status: 200,
+    description: 'Class created successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Class "JSS 1A" created successfully' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'class-uuid' },
+            name: { type: 'string', example: 'JSS 1A' },
+            classTeacherId: { type: 'string', example: 'teacher-uuid', nullable: true },
+            createdAt: { type: 'string', example: '2024-01-01T00:00:00Z' },
+            updatedAt: { type: 'string', example: '2024-01-01T00:00:00Z' }
+          }
+        },
+        statusCode: { type: 'number', example: 200 }
+      }
+    }
+  }),
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad Request - Class name already exists or invalid teacher ID',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: false },
+        message: { type: 'string', example: 'A class with the name "JSS 1A" already exists in this school' },
+        data: { type: 'null', example: null },
+        statusCode: { type: 'number', example: 400 }
       }
     }
   }),
