@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Logger, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Logger, ValidationPipe, Patch } from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
 import { CreateTimetableDTO, getTimeTableDTO, TimeSlotDTO, UpdateTimeSlotDTO } from 'src/shared/dto/schedules.dto';
 import { User } from '@prisma/client';
@@ -175,7 +175,7 @@ export class SchedulesController {
     return this.schedulesService.getTimetableOptions(user.school_id);
   }
 
-  @Put('time-slots/:id')
+  @Patch('time-slots/:id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
       summary: 'Update a time slot',

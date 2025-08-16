@@ -11,11 +11,26 @@ export class ClassesService {
   constructor(private prisma: PrismaService) {}
 
   async getAllClasses(user: any) {
-    this.logger.log(colors.cyan(`Fetching all classes for school: ${user.school_id}`));
+    // Fetch complete user data including school_id
+    const userData = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { school_id: true }
+    });
 
+    if (!userData) {
+      return new ApiResponse(
+        false,
+        'User not found',
+        null
+      );
+    }
+
+    this.logger.log(colors.cyan(`Fetching all classes for school: ${userData.school_id}`));
+
+    // Fetch classes with their teachers
     const classes = await this.prisma.class.findMany({
       where: {
-        schoolId: user.school_id,
+        schoolId: userData.school_id,
       },
       select: {
         id: true,
@@ -33,22 +48,59 @@ export class ClassesService {
         name: 'asc',
       },
     });
-    this.logger.log(`Found ${classes.length} classes`);
+
+    // Fetch all teachers in the school
+    const teachers = await this.prisma.user.findMany({
+      where: {
+        school_id: userData.school_id,
+        role: 'teacher',
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        display_picture: true,
+        email: true,
+        phone_number: true,
+      },
+      orderBy: {
+        first_name: 'asc',
+      },
+    });
+
+    this.logger.log(`Found ${classes.length} classes and ${teachers.length} teachers`);
 
     return new ApiResponse(
         true,
         `Total of ${classes.length} classes retrieved`,
-        classes
+        {
+          classes,
+          teachers
+        }
     );
   }
 
   async createClass(user: any, createClassDto: CreateClassDto) {
-    this.logger.log(colors.cyan(`Creating new class: ${createClassDto.name} for school: ${user.school_id}`));
+    // Fetch complete user data including school_id
+    const userData = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { school_id: true }
+    });
+
+    if (!userData) {
+      return new ApiResponse(
+        false,
+        'User not found',
+        null
+      );
+    }
+
+    this.logger.log(colors.cyan(`Creating new class: ${createClassDto.name} for school: ${userData.school_id}`));
 
     // Check if class name already exists for this school
     const existingClass = await this.prisma.class.findFirst({
       where: {
-        schoolId: user.school_id,
+        schoolId: userData.school_id,
         name: createClassDto.name,
       },
     });
@@ -66,7 +118,7 @@ export class ClassesService {
       const teacher = await this.prisma.user.findFirst({
         where: {
           id: createClassDto.classTeacherId,
-          school_id: user.school_id,
+          school_id: userData.school_id,
           role: 'teacher',
         },
       });
@@ -83,13 +135,22 @@ export class ClassesService {
     const newClass = await this.prisma.class.create({
       data: {
         name: createClassDto.name,
-        schoolId: user.school_id,
+        schoolId: userData.school_id,
         classTeacherId: createClassDto.classTeacherId || null,
       },
       select: {
         id: true,
         name: true,
-        classTeacherId: true,
+        classTeacher: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            display_picture: true,
+            email: true,
+            phone_number: true,
+          },
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -103,4 +164,121 @@ export class ClassesService {
       newClass
     );
   }
+
+  async editClass(user: any, classId: string, editClassDto: EditClassDto) {
+    // Fetch complete user data including school_id
+    const userData = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { school_id: true }
+    });
+
+    if (!userData) {
+      return new ApiResponse(
+        false,
+        'User not found',
+        null
+      );
+    }
+
+    this.logger.log(colors.cyan(`Editing class: ${classId} for school: ${userData.school_id}`));
+
+    // Check if class exists and belongs to the school
+    const existingClass = await this.prisma.class.findFirst({
+      where: {
+        id: classId,
+        schoolId: userData.school_id,
+      },
+    });
+
+    if (!existingClass) {
+      return new ApiResponse(
+        false,
+        'Class not found or does not belong to this school',
+        null
+      );
+    }
+
+    // Check if the new name already exists for this school (excluding current class)
+    if (editClassDto.name) {
+      const duplicateClass = await this.prisma.class.findFirst({
+        where: {
+          schoolId: userData.school_id,
+          name: editClassDto.name,
+          id: {
+            not: classId,
+          },
+        },
+      });
+
+      if (duplicateClass) {
+        return new ApiResponse(
+          false,
+          `A class with the name "${editClassDto.name}" already exists in this school`,
+          null
+        );
+      }
+    }
+
+    // If classTeacherId is provided, verify the teacher exists and belongs to the school
+    if (editClassDto.classTeacherId) {
+      const teacher = await this.prisma.user.findFirst({
+        where: {
+          id: editClassDto.classTeacherId,
+          school_id: userData.school_id,
+          role: 'teacher',
+        },
+      });
+
+      if (!teacher) {
+        return new ApiResponse(
+          false,
+          'The specified teacher does not exist or does not belong to this school',
+          null
+        );
+      }
+    }
+
+    // Build update data object with only provided fields
+    const updateData: any = {};
+    
+    if (editClassDto.name !== undefined) {
+      updateData.name = editClassDto.name;
+    }
+    if (editClassDto.classTeacherId !== undefined) {
+      updateData.classTeacherId = editClassDto.classTeacherId;
+    }
+
+    const updatedClass = await this.prisma.class.update({
+      where: {
+        id: classId,
+      },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        classTeacher: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            display_picture: true,
+            email: true,
+            phone_number: true,
+          },
+        },
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    this.logger.log(`Successfully updated class: ${updatedClass.name} with ID: ${updatedClass.id}`);
+
+    return new ApiResponse(
+      true,
+      `Class updated successfully to "${updatedClass.name}"`,
+      updatedClass
+    );
+  }
+
+  // details to create a new class
 }

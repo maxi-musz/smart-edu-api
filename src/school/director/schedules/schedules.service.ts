@@ -643,9 +643,28 @@ export class SchedulesService {
       }
     }
 
+    // Build update data object with only provided fields
+    const updateData: any = {};
+    
+    if (dto.startTime !== undefined) {
+      updateData.startTime = dto.startTime;
+    }
+    if (dto.endTime !== undefined) {
+      updateData.endTime = dto.endTime;
+    }
+    if (dto.label !== undefined) {
+      updateData.label = dto.label;
+    }
+    if (dto.order !== undefined) {
+      updateData.order = dto.order;
+    }
+    if (dto.isActive !== undefined) {
+      updateData.isActive = dto.isActive;
+    }
+
     const updatedTimeSlot = await this.prisma.timeSlot.update({
       where: { id },
-      data: dto,
+      data: updateData,
     });
 
     return new ApiResponse(true, "Time slot updated successfully", updatedTimeSlot);
