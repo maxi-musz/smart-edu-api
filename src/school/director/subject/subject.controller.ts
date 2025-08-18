@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Body, Param, UseGuards, Query } from '@nestjs/common';
 import { SubjectService } from './subject.service';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
@@ -48,7 +48,7 @@ export class SubjectController {
         return this.subjectService.createSubject(user, dto);
     }
 
-    @Put('edit-subject/:id')
+    @Patch(':id')
     @EditSubjectDocs.bearerAuth
     @EditSubjectDocs.operation
     @EditSubjectDocs.param
@@ -62,5 +62,10 @@ export class SubjectController {
         @Body() data: EditSubjectDto
     ) {
         return this.subjectService.editSubject(user, subjectId, data);
+    }
+
+    @Get('available-teachers-classes')
+    fetchAvailableTeachersAndClasses(@GetUser() user: User) {
+        return this.subjectService.fetchAvailableTeachersAndClasses(user);
     }
 }

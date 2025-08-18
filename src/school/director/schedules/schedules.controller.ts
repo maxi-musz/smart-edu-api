@@ -352,4 +352,75 @@ export class SchedulesController {
   ) {
     return this.schedulesService.addScheduleToTimetable(dto, user);
   }
+
+  @Get('subjects-with-teachers')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+      summary: 'Get subjects with teachers',
+      description: 'Fetch all subjects with their assigned teachers for the school'
+  })
+  @ApiResponse({
+      status: 200,
+      description: 'Subjects with teachers retrieved successfully',
+      schema: {
+          type: 'object',
+          properties: {
+              success: { type: 'boolean', example: true },
+              message: { type: 'string', example: 'Subjects with teachers fetched successfully' },
+              data: {
+                  type: 'object',
+                  properties: {
+                      subjects: {
+                          type: 'array',
+                          items: {
+                              type: 'object',
+                              properties: {
+                                  id: { type: 'string', example: 'subject-uuid' },
+                                  name: { type: 'string', example: 'Mathematics' },
+                                  code: { type: 'string', example: 'MATH101' },
+                                  color: { type: 'string', example: '#FF5733' },
+                                  description: { type: 'string', example: 'Advanced mathematics course' },
+                                  assigned_class: {
+                                      type: 'object',
+                                      properties: {
+                                          id: { type: 'string', example: 'class-uuid' },
+                                          name: { type: 'string', example: 'Class 10A' }
+                                      }
+                                  },
+                                  teachers: {
+                                      type: 'array',
+                                      items: {
+                                          type: 'object',
+                                          properties: {
+                                              id: { type: 'string', example: 'teacher-uuid' },
+                                              name: { type: 'string', example: 'John Doe' },
+                                              email: { type: 'string', example: 'john@school.com' },
+                                              display_picture: { type: 'string', example: 'https://example.com/profile.jpg' }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      },
+                      summary: {
+                          type: 'object',
+                          properties: {
+                              total_subjects: { type: 'number', example: 10 },
+                              subjects_with_teachers: { type: 'number', example: 8 },
+                              subjects_without_teachers: { type: 'number', example: 2 }
+                          }
+                      }
+                  }
+              },
+              statusCode: { type: 'number', example: 200 }
+          }
+      }
+  })
+  @ApiResponse({
+      status: 401,
+      description: 'Unauthorized - Invalid or missing JWT token'
+  })
+  async getSubjectsWithTeachers(@GetUser() user: User) {
+    return this.schedulesService.getSubjectsWithTeachers(user);
+  }
 }
