@@ -5,6 +5,12 @@ import { ApiResponse } from 'src/shared/helper-functions/response';
 import { User } from '@prisma/client';
 import { CreateSubjectDto, EditSubjectDto } from 'src/shared/dto/subject.dto';
 
+export interface AssignSubjectToClassDto {
+  classId: string;
+  subjectId: string;
+  teacherId?: string; // Optional: assign a specific teacher to this subject-class combination
+}
+
 @Injectable()
 export class SubjectService {
   private readonly logger = new Logger(SubjectService.name);
@@ -46,6 +52,31 @@ export class SubjectService {
     if (classId) {
       where.classId = classId;
     }
+
+    // Get available classes for the school
+    const availableClasses = await this.prisma.class.findMany({
+      where: { schoolId: user.school_id },
+      select: {
+        id: true,
+        name: true,
+        classTeacherId: true,
+        classTeacher: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        },
+        _count: {
+          select: {
+            students: true,
+            subjects: true
+          }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
 
     // If grouping by class, get all classes first
     if (groupByClass) {
@@ -107,7 +138,18 @@ export class SubjectService {
           groupedByClass: true,
           classes: groupedSubjects,
           totalClasses: classes.length,
-          totalSubjects: classes.reduce((sum, cls) => sum + cls.subjects.length, 0)
+          totalSubjects: classes.reduce((sum, cls) => sum + cls.subjects.length, 0),
+          availableClasses: availableClasses.map(cls => ({
+            id: cls.id,
+            name: cls.name,
+            class_teacher: cls.classTeacher ? {
+              id: cls.classTeacher.id,
+              name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
+              email: cls.classTeacher.email
+            } : null,
+            student_count: cls._count.students,
+            subject_count: cls._count.subjects
+          }))
         }
       );
     }
@@ -184,6 +226,17 @@ export class SubjectService {
           classId: classId || null
         },
         subjects: formattedSubjects,
+        availableClasses: availableClasses.map(cls => ({
+          id: cls.id,
+          name: cls.name,
+          class_teacher: cls.classTeacher ? {
+            id: cls.classTeacher.id,
+            name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
+            email: cls.classTeacher.email
+          } : null,
+          student_count: cls._count.students,
+          subject_count: cls._count.subjects
+        }))
       }
     );
   }
@@ -298,15 +351,11 @@ export class SubjectService {
   }
 
   ////////////////////////////////////////////////////////////////////////// EDIT SUBJECT
-  // PUT -  /API/v1/
+  // PATCH - /api/v1/director/subjects/:id
   async editSubject(user: User, subjectId: string, dto: EditSubjectDto) {
     this.logger.log(colors.cyan(`Editing subject: ${subjectId}`));
 
-    // Convert to lowercase
-    const subjectName = dto.subject_name.toLowerCase();
-    const description = dto.description?.toLowerCase();
-
-    // get the school id 
+    // Get the school id 
     const existingSchool = await this.prisma.school.findFirst({
       where: {
         school_email: user.email
@@ -331,6 +380,7 @@ export class SubjectService {
     });
 
     if (!existingSubject) {
+      this.logger.error(colors.red('Subject not found'));
       return new ApiResponse(
         false,
         'Subject not found',
@@ -338,27 +388,50 @@ export class SubjectService {
       );
     }
 
-    // If updating code, check for duplicates
-    if (dto.code && dto.code !== existingSubject.code) {
-      const duplicateSubject = await this.prisma.subject.findFirst({
-        where: {
-          schoolId: existingSchool.id,
-          code: dto.code,
-          id: { not: subjectId },
-        },
-      });
+    // Build update data object - only include fields that are provided
+    const updateData: any = {};
 
-      if (duplicateSubject) {
-        return new ApiResponse(
-          false,
-          `Subject with code ${dto.code} already exists in this school`,
-          null
-        );
-      }
+    // Update subject name if provided
+    if (dto.subject_name !== undefined) {
+      updateData.name = dto.subject_name.toLowerCase();
     }
 
-    // If class is specified, verify it exists
-    if (dto.class_taking_it) {
+    // Update description if provided
+    if (dto.description !== undefined) {
+      updateData.description = dto.description.toLowerCase();
+    }
+
+    // Update code if provided
+    if (dto.code !== undefined) {
+      // Check for duplicates if code is being changed
+      if (dto.code !== existingSubject.code) {
+        const duplicateSubject = await this.prisma.subject.findFirst({
+          where: {
+            schoolId: existingSchool.id,
+            code: dto.code,
+            id: { not: subjectId },
+          },
+        });
+
+        if (duplicateSubject) {
+          return new ApiResponse(
+            false,
+            `Subject with code ${dto.code} already exists in this school`,
+            null
+          );
+        }
+      }
+      updateData.code = dto.code;
+    }
+
+    // Update color if provided
+    if (dto.color !== undefined) {
+      updateData.color = dto.color;
+    }
+
+    // Update class assignment if provided
+    if (dto.class_taking_it !== undefined) {
+      // Verify class exists
       const classExists = await this.prisma.class.findFirst({
         where: {
           id: dto.class_taking_it,
@@ -373,60 +446,198 @@ export class SubjectService {
           null
         );
       }
+      updateData.classId = dto.class_taking_it;
     }
 
-    // If teacher is specified, verify they exist and are a teacher
-    if (dto.teacher_taking_it) {
-      const teacherExists = await this.prisma.user.findFirst({
-        where: {
-          id: dto.teacher_taking_it,
-          school_id: existingSchool.id,
-          role: 'teacher',
-        },
-      });
-
-      if (!teacherExists) {
-        return new ApiResponse(
-          false,
-          'Specified teacher not found or is not a teacher',
-          null
-        );
-      }
-    }
-
+    // Update the subject
     const updatedSubject = await this.prisma.subject.update({
       where: { id: subjectId },
-      data: {
-        name: subjectName,
-        code: dto.code,
-        color: dto.color,
-        description: description,
-        classId: dto.class_taking_it,
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        color: true,
+        description: true,
+        classId: true,
+        Class: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
-    // If teacher is specified, update the teacher-subject relationship
-    if (dto.teacher_taking_it) {
-      // First delete existing relationship
-      await this.prisma.teacherSubject.deleteMany({
-        where: { subjectId },
-      });
+    // Handle teacher assignments if provided
+    if (dto.teachers_taking_it !== undefined) {
+      // Verify all teachers exist and are teachers
+      if (dto.teachers_taking_it.length > 0) {
+        const teachers = await this.prisma.user.findMany({
+          where: {
+            id: { in: dto.teachers_taking_it },
+            school_id: existingSchool.id,
+            role: 'teacher',
+          },
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+          },
+        });
 
-      // Then create new relationship
-      await this.prisma.teacherSubject.create({
-        data: {
-          teacherId: dto.teacher_taking_it,
-          subjectId: subjectId,
-        },
-      });
+        if (teachers.length !== dto.teachers_taking_it.length) {
+          return new ApiResponse(
+            false,
+            'One or more specified teachers not found or are not teachers in this school',
+            null
+          );
+        }
+
+        // Remove existing teacher-subject relationships
+        await this.prisma.teacherSubject.deleteMany({
+          where: { subjectId },
+        });
+
+        // Create new teacher-subject relationships
+        const teacherSubjectData = dto.teachers_taking_it.map(teacherId => ({
+          teacherId,
+          subjectId,
+        }));
+
+        await this.prisma.teacherSubject.createMany({
+          data: teacherSubjectData,
+        });
+      } else {
+        // If empty array, remove all teacher assignments
+        await this.prisma.teacherSubject.deleteMany({
+          where: { subjectId },
+        });
+      }
     }
+
+    // Get updated subject with teacher information
+    const finalSubject = await this.prisma.subject.findFirst({
+      where: { id: subjectId },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        color: true,
+        description: true,
+        classId: true,
+        Class: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        teacherSubjects: {
+          select: {
+            teacher: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    this.logger.log(colors.green(`Subject ${existingSubject.name} updated successfully`));
 
     return new ApiResponse(
       true,
       `Subject updated successfully`,
-      updatedSubject
+      {
+        subject: finalSubject,
+        updatedFields: Object.keys(updateData),
+        teachersAssigned: finalSubject?.teacherSubjects?.length || 0,
+      }
     );
   }
-}
 
-// Add the create subject service
+  ////////////////////////////////////////////////////////////////////////// FETCH AVAILABLE TEACHERS AND CLASSES
+  // GET - /api/v1/director/subjects/available-teachers-classes
+  async fetchAvailableTeachersAndClasses(user: User) {
+    this.logger.log(colors.cyan(`Fetching available teachers and classes for school: ${user.school_id}`));
+
+    try {
+      // Get available teachers
+      const availableTeachers = await this.prisma.user.findMany({
+        where: {
+          school_id: user.school_id,
+          role: 'teacher',
+          status: 'active'
+        },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          display_picture: true,
+          email: true
+        },
+        orderBy: [
+          { first_name: 'asc' },
+          { last_name: 'asc' }
+        ]
+      });
+
+      // Get available classes
+      const availableClasses = await this.prisma.class.findMany({
+        where: {
+          schoolId: user.school_id
+        },
+        select: {
+          id: true,
+          name: true,
+          classTeacherId: true,
+          classTeacher: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          },
+          _count: {
+            select: {
+              students: true,
+              subjects: true
+            }
+          }
+        },
+        orderBy: { name: 'asc' }
+      });
+
+      this.logger.log(colors.green(`Successfully fetched ${availableTeachers.length} teachers and ${availableClasses.length} classes`));
+
+      return new ApiResponse(
+        true,
+        'Available teachers and classes fetched successfully',
+        {
+          teachers: availableTeachers.map(teacher => ({
+            id: teacher.id,
+            name: `${teacher.first_name} ${teacher.last_name}`,
+            display_picture: teacher.display_picture
+          })),
+          classes: availableClasses.map(cls => ({
+            id: cls.id,
+            name: cls.name
+          }))
+        }
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error fetching available teachers and classes: ${error.message}`));
+      return new ApiResponse(
+        false,
+        'Failed to fetch available teachers and classes',
+        null
+      );
+    }
+  }
+}

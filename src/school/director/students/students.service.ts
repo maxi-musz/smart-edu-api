@@ -125,7 +125,7 @@ export class StudentsService {
     }
 
     async fetchStudentsDashboard(schoolId: string, dto: FetchStudentsDashboardDto = {}) {
-        this.logger.log(colors.yellow("Fetching students dashboard data"));
+        // this.logger.log(colors.yellow("Fetching students dashboard data"));
         const {
             page = 1,
             limit = 10,
@@ -135,6 +135,20 @@ export class StudentsService {
             sort_by = 'createdAt',
             sort_order = 'desc'
         } = dto;
+
+        // Log only what frontend is sending
+        if (search) {
+            this.logger.log(colors.green(`Frontend search: "${search}"`));
+        }
+        if (status) {
+            this.logger.log(colors.green(`Frontend status filter: "${status}"`));
+        }
+        if (class_id) {
+            this.logger.log(colors.green(`Frontend class filter: "${class_id}"`));
+        }
+        if (!search && !status && !class_id) {
+            this.logger.log(colors.red("Frontend fetching all data - no filters"));
+        }
 
         const skip = (page - 1) * limit;
 

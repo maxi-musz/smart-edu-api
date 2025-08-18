@@ -714,6 +714,74 @@ export class SchedulesService {
     return new ApiResponse(true, "Time slot deleted successfully", deletedTimeSlot);
   }
 
-  // You might need methods for creating, updating, and deleting timetable entries
-  // based on the suggested API endpoints in schedule-schema-suggestion.md
+  ////////////////////////////////////////////////////////////////////////// FETCH SUBJECTS WITH TEACHERS
+  // GET - /api/v1/director/schedules/subjects-with-teachers
+  async getSubjectsWithTeachers(user: User): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`Fetching subjects with teachers for school`));
+
+    try {
+      // Get the school id
+      const school = await this.prisma.school.findFirst({
+        where: { school_email: user.email }
+      });
+
+      if (!school) {
+        return new ApiResponse(false, "School not found", null);
+      }
+
+      // Fetch all subjects with their assigned teachers
+      const subjectsWithTeachers = await this.prisma.subject.findMany({
+        where: {
+          schoolId: school.id
+        },
+        include: {
+          teacherSubjects: {
+            include: {
+              teacher: {
+                select: {
+                  id: true,
+                  first_name: true,
+                  last_name: true,
+                  display_picture: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { name: 'asc' }
+      });
+
+      // Format the response
+      const formattedSubjects = subjectsWithTeachers.map(subject => ({
+        id: subject.id,
+        name: subject.name,
+        code: subject.code,
+        color: subject.color,
+        teachers: subject.teacherSubjects.map(ts => ({
+          id: ts.teacher.id,
+          name: `${ts.teacher.first_name} ${ts.teacher.last_name}`,
+          display_picture: ts.teacher.display_picture
+        }))
+      }));
+
+      this.logger.log(colors.green(`Found ${formattedSubjects.length} subjects with teachers`));
+
+      return new ApiResponse(
+        true,
+        'Subjects with teachers fetched successfully',
+        {
+          subjects: formattedSubjects,
+          summary: {
+            total_subjects: formattedSubjects.length,
+            subjects_with_teachers: formattedSubjects.filter(s => s.teachers.length > 0).length,
+            subjects_without_teachers: formattedSubjects.filter(s => s.teachers.length === 0).length
+          }
+        }
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error fetching subjects with teachers: ${error.message}`));
+      return new ApiResponse(false, 'Error fetching subjects with teachers', null);
+    }
+  }
 } 

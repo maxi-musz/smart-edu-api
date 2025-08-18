@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsHexColor } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsHexColor, IsArray } from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateSubjectDto {
@@ -59,12 +59,13 @@ export class CreateSubjectDto {
 
 export class EditSubjectDto {
     @ApiProperty({
-        description: 'Name of the subject',
-        example: 'Mathematics'
+        description: 'Name of the subject (optional for PATCH)',
+        example: 'Mathematics',
+        required: false
     })
     @IsString()
-    @IsNotEmpty()
-    subject_name: string;
+    @IsOptional()
+    subject_name?: string;
 
     @ApiProperty({
         description: 'Subject code (optional)',
@@ -77,7 +78,7 @@ export class EditSubjectDto {
 
     @ApiProperty({
         description: 'Class that takes this subject (optional)',
-        example: 'JSS 1A',
+        example: 'class-uuid',
         required: false
     })
     @IsString()
@@ -85,13 +86,15 @@ export class EditSubjectDto {
     class_taking_it?: string;
 
     @ApiProperty({
-        description: 'Teacher assigned to this subject (optional)',
-        example: 'teacher-uuid',
-        required: false
+        description: 'Teachers assigned to this subject (array of teacher IDs)',
+        example: ['teacher-uuid-1', 'teacher-uuid-2'],
+        required: false,
+        type: [String]
     })
-    @IsString()
+    @IsArray()
+    @IsString({ each: true })
     @IsOptional()
-    teacher_taking_it?: string;
+    teachers_taking_it?: string[];
 
     @ApiProperty({
         description: 'Color code for the subject (hex format)',

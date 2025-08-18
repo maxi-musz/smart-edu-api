@@ -2,13 +2,25 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { DayOfWeek, UserStatus } from '@prisma/client';
+import { DayOfWeek, UserStatus, User } from '@prisma/client';
 import * as argon from 'argon2';
 import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
 import { generateStrongPassword } from 'src/shared/helper-functions/password-generator';
 import { sendTeacherOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
 import { sendAssignmentNotifications, sendSubjectRoleEmail, sendClassManagementEmail } from 'src/common/mailer/send-assignment-notifications';
 import { sendDirectorNotifications } from 'src/common/mailer/send-director-notifications';
+
+export interface FetchTeachersDashboardDto {
+    user: User;
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: UserStatus;
+    gender?: 'male' | 'female';
+    class_id?: string;
+    sort_by?: 'name' | 'createdAt' | 'status';
+    sort_order?: 'asc' | 'desc';
+}
 
 @Injectable()
 export class TeachersService {
@@ -101,49 +113,105 @@ export class TeachersService {
     }
 
     ////////////////////////////////////////////////////// Teachers dashboard
-    async fetchTeachersDashboard(dto: { school_id: string }) {
+        async fetchTeachersDashboard(dto: FetchTeachersDashboardDto) {
         this.logger.log(colors.cyan("Fetching teacher tab..."));
 
         try {
-            const { school_id } = dto;
+            const { user, page = 1, limit = 10, search, status, gender, class_id, sort_by, sort_order } = dto;
+            const skip = (page - 1) * limit;
 
-            // Get basic stats
-            const [totalTeachers, activeTeachers, maleTeachers, femaleTeachers, teachers] = await Promise.all([
+            // Get school_id from the user
+            const school_id = user.school_id;
+
+            // Log only what frontend is sending
+            if (search) {
+                this.logger.log(colors.green(`Frontend search: "${search}"`));
+            }
+            if (status) {
+                this.logger.log(colors.green(`Frontend status filter: "${status}"`));
+            }
+            if (gender) {
+                this.logger.log(colors.green(`Frontend gender filter: "${gender}"`));
+            }
+            if (class_id) {
+                this.logger.log(colors.green(`Frontend class filter: "${class_id}"`));
+            }
+            if (!search && !status && !gender && !class_id) {
+                this.logger.log(colors.red("Frontend fetching all data - no filters"));
+            }
+
+            const where: any = {
+                school_id: school_id,
+                role: "teacher"
+            };
+
+            if (search) {
+                where.OR = [
+                    { first_name: { contains: search, mode: 'insensitive' } },
+                    { last_name: { contains: search, mode: 'insensitive' } },
+                    { email: { contains: search, mode: 'insensitive' } },
+                    { phone_number: { contains: search, mode: 'insensitive' } }
+                ];
+            }
+
+            if (status) {
+                where.status = status;
+            }
+
+            if (gender) {
+                where.gender = gender;
+            }
+
+            if (class_id) {
+                where.classesManaging = {
+                    some: { id: class_id }
+                };
+            }
+
+            const orderBy: any = {};
+            if (sort_by) {
+                orderBy[sort_by] = sort_order === 'desc' ? 'desc' : 'asc';
+            } else {
+                orderBy.createdAt = 'desc';
+            }
+
+            const [totalTeachers, activeTeachers, maleTeachers, femaleTeachers, filteredTeachersCount, teachers] = await Promise.all([
                 this.prisma.user.count({
                     where: { 
-                        school_id,
+                        school_id: school_id,
                         role: "teacher"
                     },
                    
                 }),
                 this.prisma.user.count({
                     where: { 
-                        school_id,
+                        school_id: school_id,
                         role: "teacher",
                         status: "active"
                     }
                 }),
                 this.prisma.user.count({
                     where: { 
-                        school_id,
+                        school_id: school_id,
                         role: "teacher",
                         gender: "male"
                     }
                 }),
                 this.prisma.user.count({
                     where: { 
-                        school_id,
+                        school_id: school_id,
                         role: "teacher",
                         gender: "female"
                     }
                 }),
+                this.prisma.user.count({
+                    where
+                }),
                 this.prisma.user.findMany({
-                    where: {
-                        school_id,
-                        role: "teacher"
-                    },
-                    take: 50, // Limit the number of teachers to 50
-                    orderBy: { createdAt: 'desc' },
+                    where,
+                    take: limit,
+                    skip,
+                    orderBy,
                     select: {
                         id: true,
                         first_name: true,
@@ -221,6 +289,12 @@ export class TeachersService {
                     activeTeachers,
                     maleTeachers,
                     femaleTeachers
+                },
+                pagination: {
+                    total_pages: Math.ceil(filteredTeachersCount / limit),
+                    current_page: page,
+                    total_results: filteredTeachersCount,
+                    results_per_page: limit
                 },
                 teachers: teachersWithNextClass.map(teacher => ({
                     id: teacher.id,
@@ -987,6 +1061,196 @@ export class TeachersService {
         } catch (error) {
             console.log(colors.red('Error assigning class: '), error);
             throw error;
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////// FETCH TEACHER CLASSES AND SUBJECTS
+    // GET - /api/v1/director/teachers/:id/classes-subjects
+    async fetchTeacherClassesAndSubjects(teacherId: string, user: User) {
+        this.logger.log(colors.cyan(`Fetching classes and subjects for teacher: ${teacherId}`));
+
+        try {
+            // Verify the teacher exists and belongs to the same school
+            const teacher = await this.prisma.user.findFirst({
+                where: {
+                    id: teacherId,
+                    role: 'teacher',
+                    school_id: user.school_id
+                },
+                select: {
+                    id: true,
+                    first_name: true,
+                    last_name: true,
+                    email: true,
+                    display_picture: true
+                }
+            });
+
+            if (!teacher) {
+                this.logger.error(colors.red(`Teacher not found or doesn't belong to school: ${user.school_id}`));
+                return ResponseHelper.error('Teacher not found or access denied', 404);
+            }
+
+            // Fetch teacher's assigned subjects
+            const assignedSubjects = await this.prisma.teacherSubject.findMany({
+                where: { teacherId },
+                include: {
+                    subject: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true,
+                            color: true,
+                            description: true,
+                            classId: true,
+                            Class: {
+                                select: {
+                                    id: true,
+                                    name: true
+                                }
+                            }
+                        }
+                    }
+                },
+                orderBy: {
+                    subject: {
+                        name: 'asc'
+                    }
+                }
+            });
+
+            // Fetch teacher's managed classes
+            const managedClasses = await this.prisma.class.findMany({
+                where: { classTeacherId: teacherId },
+                select: {
+                    id: true,
+                    name: true,
+                    _count: {
+                        select: {
+                            students: true,
+                            subjects: true
+                        }
+                    }
+                },
+                orderBy: { name: 'asc' }
+            });
+
+            // Get all available subjects (excluding the ones teacher is already assigned to)
+            const allSubjects = await this.prisma.subject.findMany({
+                where: {
+                    schoolId: user.school_id,
+                    id: {
+                        notIn: assignedSubjects.map(ts => ts.subject.id)
+                    }
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                    color: true,
+                    description: true,
+                    classId: true,
+                    Class: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                },
+                orderBy: { name: 'asc' }
+            });
+
+            // Get all available classes (excluding the ones teacher is already managing)
+            const allClasses = await this.prisma.class.findMany({
+                where: {
+                    schoolId: user.school_id,
+                    id: {
+                        notIn: managedClasses.map(cls => cls.id)
+                    }
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    classTeacherId: true,
+                    classTeacher: {
+                        select: {
+                            id: true,
+                            first_name: true,
+                            last_name: true
+                        }
+                    },
+                    _count: {
+                        select: {
+                            students: true,
+                            subjects: true
+                        }
+                    }
+                },
+                orderBy: { name: 'asc' }
+            });
+
+            this.logger.log(colors.green(`Successfully fetched data for teacher: ${teacher.first_name} ${teacher.last_name}`));
+
+            return ResponseHelper.success(
+                'Teacher classes and subjects fetched successfully',
+                {
+                    teacher: {
+                        id: teacher.id,
+                        name: `${teacher.first_name} ${teacher.last_name}`,
+                        email: teacher.email,
+                        display_picture: teacher.display_picture
+                    },
+                    assigned_subjects: assignedSubjects.map(ts => ({
+                        id: ts.subject.id,
+                        name: ts.subject.name,
+                        code: ts.subject.code,
+                        color: ts.subject.color,
+                        description: ts.subject.description,
+                        assigned_class: ts.subject.Class ? {
+                            id: ts.subject.Class.id,
+                            name: ts.subject.Class.name
+                        } : null
+                    })),
+                    managed_classes: managedClasses.map(cls => ({
+                        id: cls.id,
+                        name: cls.name,
+                        student_count: cls._count.students,
+                        subject_count: cls._count.subjects
+                    })),
+                    available_subjects: allSubjects.map(subject => ({
+                        id: subject.id,
+                        name: subject.name,
+                        code: subject.code,
+                        color: subject.color,
+                        description: subject.description,
+                        assigned_class: subject.Class ? {
+                            id: subject.Class.id,
+                            name: subject.Class.name
+                        } : null
+                    })),
+                    available_classes: allClasses.map(cls => ({
+                        id: cls.id,
+                        name: cls.name,
+                        has_class_teacher: !!cls.classTeacherId,
+                        class_teacher: cls.classTeacher ? `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}` : null,
+                        student_count: cls._count.students,
+                        subject_count: cls._count.subjects
+                    })),
+                    summary: {
+                        total_assigned_subjects: assignedSubjects.length,
+                        total_managed_classes: managedClasses.length,
+                        total_available_subjects: allSubjects.length,
+                        total_available_classes: allClasses.length
+                    }
+                }
+            );
+
+        } catch (error) {
+            this.logger.error(colors.red(`Error fetching teacher classes and subjects: ${error.message}`));
+            return ResponseHelper.error(
+                'Failed to fetch teacher classes and subjects',
+                null
+            );
         }
     }
 }

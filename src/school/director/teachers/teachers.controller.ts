@@ -9,7 +9,8 @@ import {
   Query, 
   UseGuards,
   HttpCode,
-  HttpStatus
+  HttpStatus,
+  Patch
 } from '@nestjs/common';
 import { TeachersService } from './teachers.service';
 import { JwtGuard } from 'src/school/auth/guard';
@@ -46,9 +47,27 @@ export class TeachersController {
     @GetTeachersDashboardDocs.response200
     @GetTeachersDashboardDocs.response401
     @GetTeachersDashboardDocs.response500
-    fetchTeachersDashboard(@GetUser() user: User) {
+    fetchTeachersDashboard(
+        @GetUser() user: User,
+        @Query('page') page: string = '1',
+        @Query('limit') limit: string = '10',
+        @Query('search') search?: string,
+        @Query('status') status?: string,
+        @Query('gender') gender?: string,
+        @Query('class_id') class_id?: string,
+        @Query('sort_by') sort_by: string = 'createdAt',
+        @Query('sort_order') sort_order: string = 'desc'
+    ) {
         return this.teachersService.fetchTeachersDashboard({
-            school_id: user.school_id
+            user,
+            page: parseInt(page) || 1,
+            limit: parseInt(limit) || 10,
+            search,
+            status: status as any,
+            gender: gender as any,
+            class_id,
+            sort_by: sort_by as any,
+            sort_order: sort_order as any
         });
     }
 
@@ -114,7 +133,7 @@ export class TeachersController {
      * Update teacher
      * PUT /api/v1/director/teachers/:id
      */
-    @Put(':id')
+    @Patch(':id')
     @HttpCode(HttpStatus.OK)
     @UpdateTeacherDocs.operation
     @UpdateTeacherDocs.bearerAuth
@@ -220,5 +239,18 @@ export class TeachersController {
         @Body() body: { classId: string }
     ) {
         return this.teachersService.assignClass(id, body.classId);
+    }
+
+    /**
+     * Get teacher classes and subjects
+     * GET /api/v1/director/teachers/:id/classes-subjects
+     */
+    @Get(':id/classes-subjects')
+    @HttpCode(HttpStatus.OK)
+    fetchTeacherClassesAndSubjects(
+        @Param('id') teacherId: string,
+        @GetUser() user: User
+    ) {
+        return this.teachersService.fetchTeacherClassesAndSubjects(teacherId, user);
     }
 }
