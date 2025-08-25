@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Teacher" ALTER COLUMN "email" DROP DEFAULT,
+ALTER COLUMN "first_name" DROP DEFAULT,
+ALTER COLUMN "last_name" DROP DEFAULT,
+ALTER COLUMN "phone_number" DROP DEFAULT;

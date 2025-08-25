@@ -122,15 +122,6 @@ export class TimeSlotDTO {
   @IsString()
   @IsNotEmpty()
   label: string;
-
-  @ApiProperty({
-      description: 'Order of the time slot (minimum 1)',
-      example: 1
-  })
-  @IsNumber()
-  @IsNotEmpty()
-  @Min(1)
-  order: number;
 }
 
 export class UpdateTimeSlotDTO {

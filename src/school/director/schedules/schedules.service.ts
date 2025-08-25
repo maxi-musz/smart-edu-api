@@ -4,6 +4,7 @@ import * as colors from "colors"
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { getTimeTableDTO, CreateTimetableDTO, TimeSlotDTO, UpdateTimeSlotDTO } from 'src/shared/dto/schedules.dto';
 import { User } from '@prisma/client';
+import { sendTimetableScheduleEmail } from 'src/common/mailer/send-assignment-notifications';
 
 @Injectable()
 export class SchedulesService {
@@ -329,11 +330,10 @@ export class SchedulesService {
     }
 
     // Verify teacher exists and belongs to school
-    const teacherExists = await this.prisma.user.findFirst({
+    const teacherExists = await this.prisma.teacher.findFirst({
       where: {
         id: dto.teacher_id,
         school_id: existingSchool.id,
-        role: 'teacher',
       },
     });
 
@@ -382,11 +382,36 @@ export class SchedulesService {
             id: true,
             first_name: true,
             last_name: true,
+            email: true,
           },
         },
         timeSlot: true,
       },
     });
+
+    // Send email notification to the teacher
+    try {
+      if (schedule.teacher) {
+        await sendTimetableScheduleEmail({
+          teacherName: `${schedule.teacher.first_name} ${schedule.teacher.last_name}`,
+          teacherEmail: schedule.teacher.email,
+          schoolName: existingSchool.school_name,
+          subjectName: schedule.subject.name,
+          className: schedule.class.name,
+          dayOfWeek: schedule.day_of_week,
+          startTime: schedule.timeSlot.startTime,
+          endTime: schedule.timeSlot.endTime,
+          room: schedule.room || undefined,
+          notes: schedule.notes || undefined,
+          assignedBy: 'School Administrator'
+        });
+
+        this.logger.log(colors.green(`✅ Timetable schedule email sent to teacher: ${schedule.teacher.email}`));
+      }
+    } catch (emailError) {
+      this.logger.error(colors.red(`❌ Failed to send timetable schedule email: ${emailError.message}`));
+      // Don't fail the entire operation if email fails
+    }
 
     this.logger.log(colors.green(`Schedule created successfully`));
     return new ApiResponse(
@@ -533,9 +558,26 @@ export class SchedulesService {
       }
     }
 
+    // Get the next available order number for this school
+    const lastTimeSlot = await this.prisma.timeSlot.findFirst({
+      where: {
+        schoolId: school.id,
+        isActive: true,
+      },
+      orderBy: {
+        order: 'desc',
+      },
+      select: {
+        order: true,
+      },
+    });
+
+    const nextOrder = (lastTimeSlot?.order || 0) + 1;
+
     const timeSlot = await this.prisma.timeSlot.create({
       data: {
         ...dto,
+        order: nextOrder,
         schoolId: school.id,
         isActive: true,
       },
@@ -655,9 +697,7 @@ export class SchedulesService {
     if (dto.label !== undefined) {
       updateData.label = dto.label;
     }
-    if (dto.order !== undefined) {
-      updateData.order = dto.order;
-    }
+
     if (dto.isActive !== undefined) {
       updateData.isActive = dto.isActive;
     }

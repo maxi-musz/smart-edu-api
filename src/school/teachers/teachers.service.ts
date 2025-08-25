@@ -19,10 +19,9 @@ export class TeachersService {
 
     try {
       // Get teacher with all related data
-      const teacher = await this.prisma.user.findFirst({
+      const teacher = await this.prisma.teacher.findFirst({
         where: {
-          id: user.id,
-          role: 'teacher',
+          user_id: user.id,
           school_id: user.school_id
         },
         include: {
@@ -73,7 +72,7 @@ export class TeachersService {
         phone_number: teacher.phone_number,
         display_picture: teacher.display_picture,
         status: teacher.status,
-        gender: teacher.gender,
+
         assigned_subjects: teacher.subjectsTeaching.map(ts => ({
           id: ts.subject.id,
           name: ts.subject.name,

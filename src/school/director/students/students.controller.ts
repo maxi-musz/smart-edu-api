@@ -5,7 +5,7 @@ import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { StudentsDocs } from './api-docs/students.docs';
-import { AddStudentToClassDto } from './dto/auth.dto';
+import { AddStudentToClassDto, EnrollNewStudentDto } from './dto/auth.dto';
 
 @ApiTags('Students')
 @Controller('director/students')
@@ -51,6 +51,13 @@ export class StudentsController {
     @StudentsDocs.enrollStudentResponse404
     addStudentToClass(@GetUser() user: User, @Body() dto: AddStudentToClassDto) {
         return this.studentsService.addStudentToClass(user, dto);
+    }
+
+    @Post('enroll-new-student')
+    @HttpCode(HttpStatus.CREATED)
+    @StudentsDocs.bearerAuth
+    enrollNewStudent(@GetUser() user: User, @Body() dto: EnrollNewStudentDto) {
+        return this.studentsService.enrollNewStudent(user, dto);
     }
 
     @Get('available-classes')
