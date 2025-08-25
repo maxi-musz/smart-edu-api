@@ -140,6 +140,7 @@ model School {
   updatedAt DateTime @updatedAt
 
   users           User[]
+  students        Student[]
   classes         Class[]
   subjects        Subject[]
   finance         Finance?
@@ -164,6 +165,10 @@ model Document {
   schoolUtilityBill  School? @relation("UtilityBillDoc")
   schoolTaxClearance School? @relation("TaxClearanceDoc")
 }
+
+// create teacher model, student model and parent model, they will reference a school
+
+
 
 model User {
   id                String     @id @default(cuid())
@@ -199,6 +204,38 @@ model User {
   cbtQuiz           CBTQuiz[]
   liveClass         LiveClass[]
   libraryResource   LibraryResource[]
+  student           Student? // One-to-one relation with Student
+}
+
+model Student {
+  id                 String     @id @default(cuid())
+  school_id          String
+  user_id            String     @unique // Reference to User for authentication
+  student_id         String     @unique // Custom student ID like "SMH/2024/001"
+  admission_number   String?    @unique // School admission number
+  date_of_birth      DateTime?
+  admission_date     DateTime   @default(now())
+  current_class_id   String?
+  guardian_name      String?
+  guardian_phone     String?
+  guardian_email     String?
+  address            String?
+  emergency_contact  String?
+  blood_group        String?
+  medical_conditions String?
+  allergies          String?
+  status             UserStatus @default(active)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  // relations
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school School @relation(fields: [school_id], references: [id])
+
+  @@index([school_id])
+  @@index([current_class_id])
+  @@index([student_id])
+  @@index([admission_number])
 }
 
 model Class {

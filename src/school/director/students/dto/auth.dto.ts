@@ -372,3 +372,21 @@ export class RequestEmailVerificationDto {
     @IsEmail({}, { message: 'Please provide a valid email address' })
     email: string;
 }
+
+export class AddStudentToClassDto {
+    @ApiProperty({
+        description: 'Student ID to add to the class',
+        example: 'student-uuid-here'
+    })
+    @IsNotEmpty()
+    @IsString()
+    student_id: string;
+
+    @ApiProperty({
+        description: 'Class ID to add the student to',
+        example: 'class-uuid-here'
+    })
+    @IsNotEmpty()
+    @IsString()
+    class_id: string;
+}

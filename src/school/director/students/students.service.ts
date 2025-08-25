@@ -3,6 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import { AcademicTerm, UserStatus, User, DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
+import { AddStudentToClassDto } from './dto/auth.dto';
+import { ApiResponse } from '../../../shared/helper-functions/response';
 
 export interface FetchStudentsDashboardDto {
     page?: number;
@@ -314,4 +316,168 @@ export class StudentsService {
     }
 
     // Other methods for student management
+
+    async addStudentToClass(user: User, dto: AddStudentToClassDto) {
+        this.logger.log(colors.cyan(`Adding student to class - Student: ${dto.student_id}, Class: ${dto.class_id}`));
+    
+        try {
+          // Verify that the teacher is managing the class
+          const managedClass = await this.prisma.class.findFirst({
+            where: {
+              id: dto.class_id,
+              classTeacherId: user.id,
+              schoolId: user.school_id
+            }
+          });
+    
+          if (!managedClass) {
+            this.logger.log(colors.red(`Teacher is not managing class: ${dto.class_id}`));
+            return new ApiResponse(false, 'You can only add students to classes you manage', null);
+          }
+    
+          // Verify that the student exists and belongs to the same school
+          const student = await this.prisma.user.findFirst({
+            where: {
+              id: dto.student_id,
+              role: 'student',
+              school_id: user.school_id
+            }
+          });
+    
+          if (!student) {
+            this.logger.log(colors.red(`Student not found: ${dto.student_id}`));
+            return new ApiResponse(false, 'Student not found or does not belong to your school', null);
+          }
+    
+          // Check if student is already enrolled in this class
+          const existingEnrollment = await this.prisma.user.findFirst({
+            where: {
+              id: dto.student_id,
+              classesEnrolled: {
+                some: {
+                  id: dto.class_id
+                }
+              }
+            }
+          });
+    
+          if (existingEnrollment) {
+            this.logger.log(colors.yellow(`Student already enrolled in class: ${dto.class_id}`));
+            return new ApiResponse(false, 'Student is already enrolled in this class', null);
+          }
+    
+          // Add student to the class
+          const updatedStudent = await this.prisma.user.update({
+            where: {
+              id: dto.student_id
+            },
+            data: {
+              classesEnrolled: {
+                connect: {
+                  id: dto.class_id
+                }
+              }
+            },
+            include: {
+              classesEnrolled: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          });
+    
+          this.logger.log(colors.green(`Student ${student.first_name} ${student.last_name} added to class ${managedClass.name} successfully`));
+    
+          return new ApiResponse(
+            true,
+            `Student ${student.first_name} ${student.last_name} added to class ${managedClass.name} successfully`,
+            {
+              student: {
+                id: updatedStudent.id,
+                name: `${updatedStudent.first_name} ${updatedStudent.last_name}`,
+                email: updatedStudent.email
+              },
+              class: {
+                id: managedClass.id,
+                name: managedClass.name
+              },
+              enrolled_classes: updatedStudent.classesEnrolled
+            }
+          );
+    
+        } catch (error) {
+          this.logger.error(colors.red(`Error adding student to class: ${error.message}`));
+          return new ApiResponse(false, 'Failed to add student to class', null);
+        }
+      }
+    
+      ////////////////////////////////////////////////////////////////////////// FETCH ALL AVAILABLE CLASSES
+      // GET - /api/v1/teachers/available-classes
+      async getAvailableClasses(user: User) {
+        this.logger.log(colors.cyan(`Fetching available classes for teacher: ${user.email}`));
+    
+        try {
+          // Fetch all classes in the school with their class teachers
+          const availableClasses = await this.prisma.class.findMany({
+            where: {
+              schoolId: user.school_id
+            },
+            include: {
+              classTeacher: {
+                select: {
+                  id: true,
+                  first_name: true,
+                  last_name: true,
+                  email: true,
+                  display_picture: true
+                }
+              },
+              _count: {
+                select: {
+                  students: true,
+                  subjects: true
+                }
+              }
+            },
+            orderBy: {
+              name: 'asc'
+            }
+          });
+    
+          // Format the response
+          const formattedClasses = availableClasses.map(cls => ({
+            id: cls.id,
+            name: cls.name,
+            class_teacher: cls.classTeacher ? {
+              id: cls.classTeacher.id,
+              name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
+              email: cls.classTeacher.email,
+              display_picture: cls.classTeacher.display_picture
+            } : null,
+            student_count: cls._count.students,
+            subject_count: cls._count.subjects
+          }));
+    
+          this.logger.log(colors.green(`Found ${formattedClasses.length} available classes`));
+    
+          return new ApiResponse(
+            true,
+            'Available classes fetched successfully',
+            {
+              classes: formattedClasses,
+              summary: {
+                total_classes: formattedClasses.length,
+                classes_with_teachers: formattedClasses.filter(cls => cls.class_teacher !== null).length,
+                classes_without_teachers: formattedClasses.filter(cls => cls.class_teacher === null).length
+              }
+            }
+          );
+    
+        } catch (error) {
+          this.logger.error(colors.red(`Error fetching available classes: ${error.message}`));
+          return new ApiResponse(false, 'Failed to fetch available classes', null);
+        }
+      }
 } 
