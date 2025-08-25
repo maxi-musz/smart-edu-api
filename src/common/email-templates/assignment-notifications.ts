@@ -208,3 +208,77 @@ export const teacherRoleUpdateTemplate = (payload: {
     </div>
   `;
 }; 
+
+export const timetableScheduleTemplate = (payload: {
+  teacherName: string;
+  teacherEmail: string;
+  schoolName: string;
+  subjectName: string;
+  className: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  room?: string;
+  notes?: string;
+  assignedBy: string;
+  scheduleDate: string;
+}): string => {
+  return `
+    <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; color: #333;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
+        <div style="padding: 20px; border-bottom: 1px solid #eee; background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: white;">
+          <h2>📅 New Class Schedule</h2>
+          <p style="margin: 0; opacity: 0.9;">Smart Edu Hub - Timetable Notification</p>
+        </div>
+        <div style="padding: 20px;">
+          <p>Dear <strong>${payload.teacherName}</strong>,</p>
+          
+          <p>📅 A new class has been scheduled for you at <strong>${payload.schoolName}</strong>:</p>
+          
+          <div style="background-color: #f0f9ff; border-left: 4px solid #06b6d4; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <h3 style="margin: 0 0 10px 0; color: #0891b2;">📚 Class Schedule Details</h3>
+            <div style="color: #0891b2;">
+              <p style="margin: 5px 0;"><strong>Subject:</strong> ${payload.subjectName}</p>
+              <p style="margin: 5px 0;"><strong>Class:</strong> ${payload.className}</p>
+              <p style="margin: 5px 0;"><strong>Day:</strong> ${payload.dayOfWeek}</p>
+              <p style="margin: 5px 0;"><strong>Time:</strong> ${payload.startTime} - ${payload.endTime}</p>
+              ${payload.room ? `<p style="margin: 5px 0;"><strong>Room:</strong> ${payload.room}</p>` : ''}
+              ${payload.notes ? `<p style="margin: 5px 0;"><strong>Notes:</strong> ${payload.notes}</p>` : ''}
+            </div>
+          </div>
+          
+          <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #92400e;">
+              <strong>📅 Schedule Date:</strong> ${payload.scheduleDate}<br>
+              <strong>👤 Scheduled By:</strong> ${payload.assignedBy}
+            </p>
+          </div>
+          
+          <h3 style="color: #1f2937;">🎯 What This Means:</h3>
+          <ul style="color: #4b5563;">
+            <li>📚 You are now responsible for teaching this class at the scheduled time</li>
+            <li>📊 You can access teaching materials and track student progress</li>
+            <li>📝 You can create assignments and grade student work</li>
+            <li>📅 This class will appear in your weekly schedule</li>
+            <li>💬 You can communicate with students in this class</li>
+            <li>⏰ Please ensure you arrive on time for your scheduled classes</li>
+          </ul>
+          
+          <div style="background-color: #f0fdf4; border: 1px solid #22c55e; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #15803d;"><strong>✅ Action Required:</strong> Please log in to your Smart Edu Hub account to review your updated schedule and prepare for your upcoming classes.</p>
+          </div>
+          
+          <div style="background-color: #fef2f2; border: 1px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #dc2626;"><strong>⚠️ Important:</strong> If you have any conflicts with this schedule or need to request changes, please contact your school administrator as soon as possible.</p>
+          </div>
+          
+          <p>If you have any questions about this schedule, please contact your school administrator.</p>
+          <p>Best regards,<br><strong>Smart Edu Hub Team</strong></p>
+        </div>
+        <div style="padding: 20px; background-color: #f3f4f6; text-align: center; font-size: 12px; color: #666;">
+          &copy; ${new Date().getFullYear()} Smart Edu Hub. All Rights Reserved.
+        </div>
+      </div>
+    </div>
+  `;
+}; 

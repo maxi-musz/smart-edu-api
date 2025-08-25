@@ -2,13 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { DayOfWeek, UserStatus, User } from '@prisma/client';
+import { DayOfWeek, UserStatus, User, Gender } from '@prisma/client';
 import * as argon from 'argon2';
 import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
 import { generateStrongPassword } from 'src/shared/helper-functions/password-generator';
 import { sendTeacherOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
 import { sendAssignmentNotifications, sendSubjectRoleEmail, sendClassManagementEmail } from 'src/common/mailer/send-assignment-notifications';
 import { sendDirectorNotifications } from 'src/common/mailer/send-director-notifications';
+import { generateUniqueTeacherId } from './helper-functions';
 
 export interface FetchTeachersDashboardDto {
     user: User;
@@ -44,6 +45,8 @@ export class TeachersService {
       const minutes = now.getMinutes().toString().padStart(2, '0');
       return `${hours}:${minutes}`;
     }
+
+
 
     ////////////////////////////////////////////////////// Fetch classes and subjects for teacher creation
     async fetchClassesAndSubjects(dto: { school_id: string }) {
@@ -114,7 +117,7 @@ export class TeachersService {
 
     ////////////////////////////////////////////////////// Teachers dashboard
         async fetchTeachersDashboard(dto: FetchTeachersDashboardDto) {
-        this.logger.log(colors.cyan("Fetching teacher tab..."));
+        this.logger.log(colors.cyan("Fetching teacher dashboard for school director..."));
 
         try {
             const { user, page = 1, limit = 10, search, status, gender, class_id, sort_by, sort_order } = dto;
@@ -141,8 +144,7 @@ export class TeachersService {
             }
 
             const where: any = {
-                school_id: school_id,
-                role: "teacher"
+                school_id: school_id
             };
 
             if (search) {
@@ -158,9 +160,7 @@ export class TeachersService {
                 where.status = status;
             }
 
-            if (gender) {
-                where.gender = gender;
-            }
+
 
             if (class_id) {
                 where.classesManaging = {
@@ -176,38 +176,37 @@ export class TeachersService {
             }
 
             const [totalTeachers, activeTeachers, maleTeachers, femaleTeachers, filteredTeachersCount, teachers] = await Promise.all([
-                this.prisma.user.count({
+                this.prisma.teacher.count({
                     where: { 
-                        school_id: school_id,
-                        role: "teacher"
-                    },
-                   
+                        school_id: school_id
+                    }
                 }),
-                this.prisma.user.count({
+                this.prisma.teacher.count({
                     where: { 
                         school_id: school_id,
-                        role: "teacher",
                         status: "active"
                     }
                 }),
-                this.prisma.user.count({
+                this.prisma.teacher.count({
                     where: { 
                         school_id: school_id,
-                        role: "teacher",
-                        gender: "male"
+                        user: {
+                            gender: "male"
+                        }
                     }
                 }),
-                this.prisma.user.count({
+                this.prisma.teacher.count({
                     where: { 
                         school_id: school_id,
-                        role: "teacher",
-                        gender: "female"
+                        user: {
+                            gender: "female"
+                        }
                     }
                 }),
-                this.prisma.user.count({
+                this.prisma.teacher.count({
                     where
                 }),
-                this.prisma.user.findMany({
+                this.prisma.teacher.findMany({
                     where,
                     take: limit,
                     skip,
@@ -311,7 +310,7 @@ export class TeachersService {
                 }))
             };
 
-            this.logger.log(colors.green("Teachers dashboard data fetched successfully"));
+            this.logger.log(colors.green(`Teachers dashboard data fetched successfully, total of ${totalTeachers} teachers`));
             return ResponseHelper.success(
                 "Teachers dashboard data fetched successfully",
                 formattedResponse
@@ -324,8 +323,9 @@ export class TeachersService {
     }
 
     // Add new teacher
-    async addNewTeacher(dto: AddNewTeacherDto & { user: any }) {
-        const { first_name, last_name, email, phone_number, display_picture, status, subjectsTeaching, classesManaging, password, user } = dto;
+    async enrollNewTeacher(dto: AddNewTeacherDto & { user: any }) {
+        this.logger.log(colors.cyan("Enrolling new teacher..."));
+        const { first_name, last_name, email, phone_number, display_picture, status, subjectsTeaching, classesManaging, password, user, gender } = dto;
 
         // 1. Validate required fields
         if (!first_name || !last_name || !email || !phone_number) {
@@ -333,14 +333,14 @@ export class TeachersService {
         }
 
         // Validate user and get full user data
-        this.logger.log(colors.yellow(`User object: ${JSON.stringify(user, null, 2)}`));
+        // this.logger.log(colors.yellow(`User object: ${JSON.stringify(user, null, 2)}`));
         
         if (!user || !user.sub) {
             this.logger.error(colors.red("Invalid user data or missing user ID"));
             return ResponseHelper.error('Invalid user authentication data', 400);
         }
 
-        // Fetch full user data from database
+        //Fetch full user data from database
         const fullUser = await this.prisma.user.findFirst({
             where: { id: user.sub },
             select: { id: true, school_id: true, email: true, first_name: true, last_name: true }
@@ -352,12 +352,12 @@ export class TeachersService {
         }
 
         // 2. Check if teacher already exists
-        const existing = await this.prisma.user.findFirst({
+        const existing = await this.prisma.teacher.findFirst({
             where: { email }
         });
         if (existing) {
-            this.logger.error(colors.red("A user with this email already exists"));
-            return ResponseHelper.error('A user with this email already exists', 409);
+            this.logger.error(colors.red("A teacher with this email already exists"));
+            return ResponseHelper.error('A teacher with this email already exists', 409);
         }
 
         // 3. Generate strong password if not provided
@@ -365,15 +365,15 @@ export class TeachersService {
         const hashedPassword = await argon.hash(generatedPassword);
 
         // 4. Get school name for email
-        this.logger.log(colors.cyan(`Creating teacher for school_id: ${fullUser.school_id}`));
+        this.logger.log(colors.cyan(`Enrolling new teacher for school_id: ${fullUser.school_id}`));
         
         const school = await this.prisma.school.findFirst({
             where: { id: fullUser.school_id },
-            select: { school_name: true }
+            select: { school_name: true, id: true }
         });
 
-        // 5. Create teacher
-        const teacher = await this.prisma.user.create({
+        //create a new user 
+        const newUser = await this.prisma.user.create({
             data: {
                 first_name,
                 last_name,
@@ -386,6 +386,34 @@ export class TeachersService {
                 school_id: fullUser.school_id
             }
         });
+
+        // 5. Create teacher
+        const teacher = await this.prisma.teacher.create({
+            data: {
+                first_name,
+                last_name,
+                email,
+                phone_number,
+                display_picture,
+                teacher_id: await generateUniqueTeacherId(this.prisma),
+                school_id: fullUser.school_id,
+                user_id: newUser.id,
+                role: 'teacher',
+                password: hashedPassword,
+                employee_number: null,
+                qualification: null,
+                specialization: null,
+                years_of_experience: null,
+                hire_date: new Date(),
+                salary: null,
+                department: null,
+                is_class_teacher: false,
+                status: (status as UserStatus) || UserStatus.active,
+                gender: gender as Gender
+            }
+        });
+
+        
 
         // 6. Assign subjects
         if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
@@ -423,6 +451,8 @@ export class TeachersService {
             this.logger.error(colors.red(`❌ Failed to send welcome email to teacher: ${email}`), emailError);
             // Don't fail the entire operation if email fails
         }
+
+        
 
         // 9. Send assignment notifications if subjects or classes are assigned
         try {
@@ -502,10 +532,9 @@ export class TeachersService {
     // Get teacher by ID
     async getTeacherById(id: string) {
         try {
-            const teacher = await this.prisma.user.findFirst({
+            const teacher = await this.prisma.teacher.findFirst({
                 where: { 
-                    id,
-                    role: 'teacher'
+                    id
                 },
                 include: {
                     subjectsTeaching: {
@@ -550,10 +579,9 @@ export class TeachersService {
             }
 
             // 2. Check if teacher exists and belongs to the same school
-            const existingTeacher = await this.prisma.user.findFirst({
+            const existingTeacher = await this.prisma.teacher.findFirst({
                 where: { 
-                    id, 
-                    role: 'teacher',
+                    id,
                     school_id: fullUser.school_id
                 },
                 include: {
@@ -597,7 +625,7 @@ export class TeachersService {
             }
 
             // 5. Update teacher with only provided fields
-            const updatedTeacher = await this.prisma.user.update({
+            const updatedTeacher = await this.prisma.teacher.update({
                 where: { id },
                 data: updateData,
                 include: {
@@ -869,8 +897,7 @@ export class TeachersService {
             const skip = (page - 1) * limit;
 
             const where: any = {
-                school_id,
-                role: 'teacher'
+                school_id
             };
 
             if (status) {
@@ -878,7 +905,7 @@ export class TeachersService {
             }
 
             const [teachers, total] = await Promise.all([
-                this.prisma.user.findMany({
+                this.prisma.teacher.findMany({
                     where,
                     select: {
                         id: true,
@@ -906,7 +933,7 @@ export class TeachersService {
                     take: limit,
                     orderBy: { createdAt: 'desc' }
                 }),
-                this.prisma.user.count({ where })
+                this.prisma.teacher.count({ where })
             ]);
 
             const formattedTeachers = teachers.map(teacher => ({

@@ -256,7 +256,7 @@ export class AuthService {
             }
     
             // Update `is_email_verified` and clear OTP
-            await this.prisma.user.update({
+            const updatedUser = await this.prisma.user.update({
                 where: { email: dto.email },
                 data: {
                     is_email_verified: true,
@@ -267,20 +267,20 @@ export class AuthService {
     
             console.log(colors.magenta("Email address successfully verified"));
 
-            const { access_token, refresh_token } = await this.signToken(user.id, user.email)
+            const { access_token, refresh_token } = await this.signToken(updatedUser.id, updatedUser.email)
 
             const formatted_response = {
                 user: {
-                    id: user.id,
-                    email: user.email,
-                    first_name: user.first_name,
-                    last_name: user.last_name,
-                    phone_number: user.phone_number,
-                    is_email_verified: user.is_email_verified,
-                    role: user.role,
-                    school_id: user.school_id,
-                    created_at: formatDate(user.createdAt),
-                    updated_at: formatDate(user.updatedAt),
+                    id: updatedUser.id,
+                    email: updatedUser.email,
+                    first_name: updatedUser.first_name,
+                    last_name: updatedUser.last_name,
+                    phone_number: updatedUser.phone_number,
+                    is_email_verified: updatedUser.is_email_verified,
+                    role: updatedUser.role,
+                    school_id: updatedUser.school_id,
+                    created_at: formatDate(updatedUser.createdAt),
+                    updated_at: formatDate(updatedUser.updatedAt),
                 }
                 
             }
@@ -2060,11 +2060,13 @@ export class AuthService {
             });
 
             if (!user) {
+                this.logger.error(colors.red(`User ${email} not found`));
                 throw new NotFoundException('User not found');
             }
 
             // Check if email is already verified
             if (user.is_email_verified) {
+                this.logger.log(colors.green(`Email ${email} is already verified`));
                 return ResponseHelper.success(
                     'Email is already verified',
                     { email: user.email }
@@ -2085,10 +2087,15 @@ export class AuthService {
             });
 
             // Send email verification OTP
+           try {
+            this.logger.log(colors.cyan(`Sending email verification OTP to: ${user.email}`));
             await this.sendEmailVerificationOTP(user.email, user.first_name, otp);
-
-            this.logger.log(colors.green('Email verification OTP sent successfully'));
-
+            this.logger.log(colors.green(`Email verification OTP ${otp} sent to: ${user.email}`));
+           } catch (error) {
+            this.logger.error(colors.red(`Error sending email verification OTP: ${error.message}`));
+            throw new InternalServerErrorException('Failed to send email verification OTP');
+           }
+                    
             return ResponseHelper.success(
                 'Email verification code sent successfully. Please check your email.',
                 { email: user.email }
@@ -2131,6 +2138,7 @@ export class AuthService {
                 throw new NotFoundException('User not found');
             }
 
+            this.logger.log(colors.green(`User ${user.email} logged out successfully`));
             return ResponseHelper.success(
                 'Logged out successfully',
                 {

@@ -3,8 +3,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import { AcademicTerm, UserStatus, User, DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
-import { AddStudentToClassDto } from './dto/auth.dto';
+import { AddStudentToClassDto, EnrollNewStudentDto } from './dto/auth.dto';
 import { ApiResponse } from '../../../shared/helper-functions/response';
+import { generateUniqueStudentId } from './helper-functions';
+import * as argon from 'argon2';
+import { generateStrongPassword } from '../../../shared/helper-functions/password-generator';
 
 export interface FetchStudentsDashboardDto {
     page?: number;
@@ -480,4 +483,191 @@ export class StudentsService {
           return new ApiResponse(false, 'Failed to fetch available classes', null);
         }
       }
-} 
+
+      // Enroll existing student to a class
+      async enrollStudentToClass(user: User, dto: AddStudentToClassDto) {
+        this.logger.log(colors.cyan(`Enrolling student to class - Student: ${dto.student_id}, Class: ${dto.class_id}`));
+
+        try {
+          // Verify that the teacher is managing the class
+          const managedClass = await this.prisma.class.findFirst({
+            where: {
+              id: dto.class_id,
+              classTeacherId: user.id,
+              schoolId: user.school_id
+            }
+          });
+
+          if (!managedClass) {
+            this.logger.log(colors.red(`Teacher is not managing class: ${dto.class_id}`));
+            return new ApiResponse(false, 'You can only enroll students to classes you manage', null);
+          }
+
+          // Verify that the student exists and belongs to the same school
+          const student = await this.prisma.user.findFirst({
+            where: {
+              id: dto.student_id,
+              role: 'student',
+              school_id: user.school_id
+            }
+          });
+
+          if (!student) {
+            this.logger.log(colors.red(`Student not found: ${dto.student_id}`));
+            return new ApiResponse(false, 'Student not found or does not belong to your school', null);
+          }
+
+          // Check if student is already enrolled in this class
+          const existingEnrollment = await this.prisma.user.findFirst({
+            where: {
+              id: dto.student_id,
+              classesEnrolled: {
+                some: {
+                  id: dto.class_id
+                }
+              }
+            }
+          });
+
+          if (existingEnrollment) {
+            this.logger.log(colors.yellow(`Student already enrolled in class: ${dto.class_id}`));
+            return new ApiResponse(false, 'Student is already enrolled in this class', null);
+          }
+
+          // Enroll student to the class
+          const updatedStudent = await this.prisma.user.update({
+            where: {
+              id: dto.student_id
+            },
+            data: {
+              classesEnrolled: {
+                connect: {
+                  id: dto.class_id
+                }
+              }
+            }
+          });
+
+          this.logger.log(colors.green(`Student ${student.first_name} ${student.last_name} enrolled in class ${managedClass.name} successfully`));
+
+          return new ApiResponse(true, 'Student enrolled in class successfully', {
+            student: {
+              id: updatedStudent.id,
+              name: `${updatedStudent.first_name} ${updatedStudent.last_name}`,
+            }
+          });
+        } catch (error) {
+          this.logger.error(colors.red(`Error enrolling student to class: ${error.message}`));
+          return new ApiResponse(false, 'Failed to enroll student to class', null);
+        }
+      }
+
+      // Enroll a completely new student
+      async enrollNewStudent(user: User, dto: EnrollNewStudentDto) {
+        this.logger.log(colors.cyan(`Enrolling new student: ${dto.first_name} ${dto.last_name}`));
+
+        try {
+          // 1. Validate required fields
+          if (!dto.first_name || !dto.last_name || !dto.email || !dto.phone_number) {
+            return new ApiResponse(false, 'Missing required fields', null);
+          }
+
+          // 2. Check if student already exists
+          const existingStudent = await this.prisma.user.findFirst({
+            where: { email: dto.email }
+          });
+          if (existingStudent) {
+            this.logger.error(colors.red("A student with this email already exists"));
+            return new ApiResponse(false, 'A student with this email already exists', 409);
+          }
+
+          // 3. Verify class exists and belongs to the school
+          const classExists = await this.prisma.class.findFirst({
+            where: {
+              id: dto.class_id,
+              schoolId: user.school_id,
+            },
+          });
+
+          if (!classExists) {
+            this.logger.log(colors.red(`Specified class not found`));
+            return new ApiResponse(false, 'Specified class not found', null);
+          }
+
+          // 4. Generate strong password if not provided
+          const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
+          const hashedPassword = await argon.hash(generatedPassword);
+
+          // 5. Create new user
+          const newUser = await this.prisma.user.create({
+            data: {
+              first_name: dto.first_name,
+              last_name: dto.last_name,
+              email: dto.email,
+              phone_number: dto.phone_number,
+              display_picture: dto.display_picture,
+              gender: dto.gender,
+              status: UserStatus.active,
+              role: 'student',
+              password: hashedPassword,
+              school_id: user.school_id
+            }
+          });
+
+          // 6. Create student record
+          const student = await this.prisma.student.create({
+            data: {
+              school_id: user.school_id,
+              user_id: newUser.id,
+              student_id: await generateUniqueStudentId(this.prisma),
+              admission_number: dto.admission_number,
+              date_of_birth: dto.date_of_birth ? new Date(dto.date_of_birth) : null,
+              admission_date: new Date(),
+              current_class_id: dto.class_id,
+              guardian_name: dto.guardian_name,
+              guardian_phone: dto.guardian_phone,
+              guardian_email: dto.guardian_email,
+              address: dto.address,
+              emergency_contact: dto.emergency_contact,
+              blood_group: dto.blood_group,
+              medical_conditions: dto.medical_conditions,
+              allergies: dto.allergies,
+              previous_school: dto.previous_school,
+              academic_level: dto.academic_level,
+              parent_id: dto.parent_id,
+              status: UserStatus.active
+            }
+          });
+
+          // 7. Enroll student to the specified class
+          await this.prisma.user.update({
+            where: { id: newUser.id },
+            data: {
+              classesEnrolled: {
+                connect: {
+                  id: dto.class_id
+                }
+              }
+            }
+          });
+
+          this.logger.log(colors.green(`✅ New student enrolled successfully: ${dto.first_name} ${dto.last_name}`));
+
+          return new ApiResponse(true, 'Student enrolled successfully', { 
+            student: {
+              id: student.id,
+              user_id: newUser.id,
+              student_id: student.student_id,
+              name: `${dto.first_name} ${dto.last_name}`,
+              email: dto.email,
+              class: classExists.name,
+              generatedPassword: !dto.password ? generatedPassword : undefined // Only return if auto-generated
+            }
+          });
+
+        } catch (error) {
+          this.logger.error(colors.red('Error enrolling new student: '), error);
+          return new ApiResponse(false, 'Failed to enroll new student', null);
+        }
+      }
+    } 

@@ -390,3 +390,159 @@ export class AddStudentToClassDto {
     @IsString()
     class_id: string;
 }
+
+export class EnrollNewStudentDto {
+    @ApiProperty({
+        description: 'First name of the student',
+        example: 'Jane'
+    })
+    @IsNotEmpty({ message: 'First name is required' })
+    @IsString({ message: 'First name must be a string' })
+    first_name: string;
+
+    @ApiProperty({
+        description: 'Last name of the student',
+        example: 'Smith'
+    })
+    @IsNotEmpty({ message: 'Last name is required' })
+    @IsString({ message: 'Last name must be a string' })
+    last_name: string;
+
+    @ApiProperty({
+        description: 'Email address of the student',
+        example: 'jane.smith@school.edu.ng'
+    })
+    @IsNotEmpty({ message: 'Email is required' })
+    @IsEmail({}, { message: 'Please provide a valid email address' })
+    email: string;
+
+    @ApiProperty({
+        description: 'Phone number of the student',
+        example: '+2348012345678'
+    })
+    @IsNotEmpty({ message: 'Phone number is required' })
+    @IsString({ message: 'Phone number must be a string' })
+    phone_number: string;
+
+    @ApiProperty({
+        description: 'Display picture URL (optional)',
+        example: 'https://example.com/photo.jpg',
+        required: false
+    })
+    display_picture?: any;
+
+    @ApiProperty({
+        description: 'Gender of the student',
+        enum: ['male', 'female', 'other'],
+        example: 'female'
+    })
+    @IsNotEmpty({ message: 'Gender is required' })
+    @IsString({ message: 'Gender must be a string' })
+    gender: 'male' | 'female' | 'other';
+
+    @ApiProperty({
+        description: 'Date of birth of the student',
+        example: '2008-05-15',
+        required: false
+    })
+    date_of_birth?: string;
+
+    @ApiProperty({
+        description: 'Admission number (optional)',
+        example: 'STD/2024/001',
+        required: false
+    })
+    admission_number?: string;
+
+    @ApiProperty({
+        description: 'Guardian name (optional)',
+        example: 'John Smith',
+        required: false
+    })
+    guardian_name?: string;
+
+    @ApiProperty({
+        description: 'Guardian phone number (optional)',
+        example: '+2348012345678',
+        required: false
+    })
+    guardian_phone?: string;
+
+    @ApiProperty({
+        description: 'Guardian email (optional)',
+        example: 'guardian@example.com',
+        required: false
+    })
+    guardian_email?: string;
+
+    @ApiProperty({
+        description: 'Address of the student (optional)',
+        example: '123 Student Street, Lagos',
+        required: false
+    })
+    address?: string;
+
+    @ApiProperty({
+        description: 'Emergency contact (optional)',
+        example: '+2348012345678',
+        required: false
+    })
+    emergency_contact?: string;
+
+    @ApiProperty({
+        description: 'Blood group (optional)',
+        example: 'O+',
+        required: false
+    })
+    blood_group?: string;
+
+    @ApiProperty({
+        description: 'Medical conditions (optional)',
+        example: 'None',
+        required: false
+    })
+    medical_conditions?: string;
+
+    @ApiProperty({
+        description: 'Allergies (optional)',
+        example: 'None',
+        required: false
+    })
+    allergies?: string;
+
+    @ApiProperty({
+        description: 'Previous school attended (optional)',
+        example: 'Previous School Name',
+        required: false
+    })
+    previous_school?: string;
+
+    @ApiProperty({
+        description: 'Academic level (optional)',
+        example: 'JSS 2',
+        required: false
+    })
+    academic_level?: string;
+
+    @ApiProperty({
+        description: 'Parent ID (optional)',
+        example: 'parent-uuid-here',
+        required: false
+    })
+    parent_id?: string;
+
+    @ApiProperty({
+        description: 'Class ID to enroll the student in',
+        example: 'class-uuid-here'
+    })
+    @IsNotEmpty({ message: 'Class ID is required' })
+    @IsString({ message: 'Class ID must be a string' })
+    class_id: string;
+
+    @ApiProperty({
+        description: 'Password for the student account (optional - will be auto-generated if not provided)',
+        example: 'password123',
+        required: false
+    })
+    password?: string;
+}

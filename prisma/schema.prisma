@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -141,6 +141,8 @@ model School {
 
   users           User[]
   students        Student[]
+  teachers        Teacher[]
+  parents         Parent[]
   classes         Class[]
   subjects        Subject[]
   finance         Finance?
@@ -166,9 +168,7 @@ model Document {
   schoolTaxClearance School? @relation("TaxClearanceDoc")
 }
 
-// create teacher model, student model and parent model, they will reference a school
-
-
+// Enhanced Teacher, Student, and Parent models with proper school references
 
 model User {
   id                String     @id @default(cuid())
@@ -178,7 +178,7 @@ model User {
   first_name        String
   last_name         String
   phone_number      String
-  display_picture   String? // URL to the profile picture
+  display_picture   Json? // { secure_url: string, public_id: string }
   gender            Gender     @default(other)
   otp               String?    @default("")
   otp_expires_at    DateTime?
@@ -190,28 +190,67 @@ model User {
   updatedAt         DateTime   @updatedAt
 
   // relations
-  parents           Parent[]             @relation("ParentChildren")
-  school            School               @relation(fields: [school_id], references: [id])
+  school          School               @relation(fields: [school_id], references: [id])
+  classesEnrolled Class[]              @relation("StudentClass")
+  payments        Payment[]            @relation("StudentPayment")
+  performances    StudentPerformance[] @relation("StudentPerformance")
+  videoContent    VideoContent[]
+  pdfMaterial     PDFMaterial[]
+  assignment      Assignment[]
+  cbtQuiz         CBTQuiz[]
+  liveClass       LiveClass[]
+  libraryResource LibraryResource[]
+
+  // New relationships with specific models
+  teacher Teacher?
+  student Student?
+  parent  Parent?
+}
+
+model Teacher {
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  first_name          String
+  last_name           String
+  phone_number        String
+  display_picture     Json? // { secure_url: string, public_id: string }
+  school_id           String
+  user_id             String     @unique
+  gender              Gender     @default(other)
+  role                Roles      @default(teacher)
+  password            String     @default("")
+  teacher_id          String     @unique // Custom teacher ID like "SMHT-25-001"
+  employee_number     String?    @unique // School employee number
+  qualification       String? // e.g., "B.Sc Education", "M.Ed", "Ph.D"
+  specialization      String? // e.g., "Mathematics", "English Literature"
+  years_of_experience Int? // Number of years teaching
+  hire_date           DateTime   @default(now())
+  salary              Float? // Monthly salary
+  department          String?
+  is_class_teacher    Boolean    @default(false)
+  status              UserStatus @default(active)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  // relations
+  user              User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school            School           @relation(fields: [school_id], references: [id])
+  classesManaging   Class[]          @relation("ClassTeacher")
   subjectsTeaching  TeacherSubject[]
-  classesEnrolled   Class[]              @relation("StudentClass")
-  classesManaging   Class[]              @relation("ClassTeacher") // class teacher relationship
-  payments          Payment[]            @relation("StudentPayment")
-  schedulesTeaching TimetableEntry[]     @relation("TeacherSchedule")
-  performances      StudentPerformance[] @relation("StudentPerformance")
-  videoContent      VideoContent[]
-  pdfMaterial       PDFMaterial[]
-  assignment        Assignment[]
-  cbtQuiz           CBTQuiz[]
-  liveClass         LiveClass[]
-  libraryResource   LibraryResource[]
-  student           Student? // One-to-one relation with Student
+  schedulesTeaching TimetableEntry[] @relation("TeacherSchedule")
+
+  @@index([school_id])
+  @@index([teacher_id])
+  @@index([employee_number])
+  @@index([department])
+  @@index([is_class_teacher])
 }
 
 model Student {
   id                 String     @id @default(cuid())
   school_id          String
   user_id            String     @unique // Reference to User for authentication
-  student_id         String     @unique // Custom student ID like "SMH/2024/001"
+  student_id         String     @unique // Custom student ID like "STD/2024/001"
   admission_number   String?    @unique // School admission number
   date_of_birth      DateTime?
   admission_date     DateTime   @default(now())
@@ -224,18 +263,50 @@ model Student {
   blood_group        String?
   medical_conditions String?
   allergies          String?
+  previous_school    String? // Previous school attended
+  academic_level     String? // e.g., "Primary 5", "JSS 2", "SSS 1"
+  parent_id          String? // Reference to parent
   status             UserStatus @default(active)
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
   // relations
-  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school School @relation(fields: [school_id], references: [id])
+  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school School  @relation(fields: [school_id], references: [id])
+  parent Parent? @relation("ParentChildren", fields: [parent_id], references: [id])
 
   @@index([school_id])
   @@index([current_class_id])
   @@index([student_id])
   @@index([admission_number])
+  @@index([parent_id])
+  @@index([academic_level])
+}
+
+model Parent {
+  id                 String     @id @default(cuid())
+  school_id          String
+  user_id            String     @unique // Reference to User for authentication
+  parent_id          String     @unique // Custom parent ID like "PAR/2024/001"
+  occupation         String? // e.g., "Engineer", "Teacher", "Business Owner"
+  employer           String? // Company or organization
+  address            String?
+  emergency_contact  String?
+  relationship       String? // e.g., "Father", "Mother", "Guardian"
+  is_primary_contact Boolean    @default(true)
+  status             UserStatus @default(active)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  // relations
+  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school   School    @relation(fields: [school_id], references: [id])
+  children Student[] @relation("ParentChildren")
+
+  @@index([school_id])
+  @@index([parent_id])
+  @@index([relationship])
+  @@index([is_primary_contact])
 }
 
 model Class {
@@ -245,7 +316,7 @@ model Class {
   classTeacherId String?
 
   school       School    @relation(fields: [schoolId], references: [id])
-  classTeacher User?     @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  classTeacher Teacher?  @relation("ClassTeacher", fields: [classTeacherId], references: [id])
   students     User[]    @relation("StudentClass")
   subjects     Subject[]
 
@@ -326,7 +397,7 @@ model TimetableEntry {
   // relations
   class    Class    @relation(fields: [class_id], references: [id])
   subject  Subject  @relation(fields: [subject_id], references: [id])
-  teacher  User     @relation("TeacherSchedule", fields: [teacher_id], references: [id])
+  teacher  Teacher  @relation("TeacherSchedule", fields: [teacher_id], references: [id])
   timeSlot TimeSlot @relation(fields: [timeSlotId], references: [id])
   school   School   @relation(fields: [school_id], references: [id])
 
@@ -340,7 +411,7 @@ model TimeSlot {
   startTime String // Format: "HH:mm" (e.g., "08:30", "11:45")
   endTime   String // Format: "HH:mm" (e.g., "10:30", "13:45")
   label     String // e.g., "Period 1", "Morning Break", etc.
-  order     Int // For sorting periods in order
+  order     Int // For sorting periods in order (school-specific)
   schoolId  String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -403,7 +474,7 @@ model TeacherSubject {
   teacherId String
   subjectId String
 
-  teacher User    @relation(fields: [teacherId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id])
   subject Subject @relation(fields: [subjectId], references: [id])
 
   @@unique([teacherId, subjectId])
@@ -453,18 +524,6 @@ model Organisation {
   cbtQuiz         CBTQuiz[]
   liveClass       LiveClass[]
   libraryResource LibraryResource[]
-}
-
-model Parent {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  first_name   String
-  last_name    String
-  phone_number String
-  password     String
-  children     User[]   @relation("ParentChildren")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 }
 
 // Content Models

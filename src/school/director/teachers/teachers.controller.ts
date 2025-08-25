@@ -106,7 +106,7 @@ export class TeachersController {
         @Body() dto: AddNewTeacherDto,
         @GetUser() user: User
     ) {
-        return this.teachersService.addNewTeacher({
+        return this.teachersService.enrollNewTeacher({
             ...dto,
             user
         });

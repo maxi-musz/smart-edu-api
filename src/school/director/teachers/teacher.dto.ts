@@ -28,6 +28,11 @@ export class AddNewTeacherDto {
   @IsString()
   status?: string;
 
+  // gender
+  @ApiProperty({ example: 'male', description: 'Gender', required: true })
+  @IsString()
+  gender: Gender;
+
   @ApiProperty({ example: ['subject-id-1', 'subject-id-2'], description: 'Array of subject IDs', required: false, type: [String] })
   @IsOptional()
   @IsArray()
@@ -94,3 +99,9 @@ export class UpdateTeacherDto {
   @IsString()
   password?: string;
 } 
+
+export enum Gender {
+  male = 'male',
+  female = 'female',
+  other = 'other'
+}

@@ -2,7 +2,8 @@ import { sendMail } from './send-mail';
 import { 
   teacherSubjectRoleTemplate, 
   teacherClassManagementTemplate, 
-  teacherRoleUpdateTemplate 
+  teacherRoleUpdateTemplate,
+  timetableScheduleTemplate
 } from '../email-templates/assignment-notifications';
 
 interface TeacherAssignmentData {
@@ -162,5 +163,44 @@ export async function sendAssignmentNotifications(
   } catch (error) {
     console.error(`❌ Failed to send assignment notifications to ${teacherEmail}:`, error);
     // Don't throw error to avoid failing the main operation
+  }
+} 
+
+/**
+ * Sends timetable schedule notification email to teacher
+ */
+export async function sendTimetableScheduleEmail(data: {
+  teacherName: string;
+  teacherEmail: string;
+  schoolName: string;
+  subjectName: string;
+  className: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  room?: string;
+  notes?: string;
+  assignedBy: string;
+}): Promise<void> {
+  try {
+    const emailHtml = timetableScheduleTemplate({
+      ...data,
+      scheduleDate: new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+    });
+
+    await sendMail({
+      to: data.teacherEmail,
+      subject: `📅 New Class Schedule - ${data.schoolName}`,
+      html: emailHtml
+    });
+
+    console.log(`✅ Timetable schedule email sent to: ${data.teacherEmail}`);
+  } catch (error) {
+    console.error(`❌ Failed to send timetable schedule email to ${data.teacherEmail}:`, error);
+    throw error;
   }
 } 

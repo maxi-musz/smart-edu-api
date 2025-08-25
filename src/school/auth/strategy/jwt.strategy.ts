@@ -11,7 +11,6 @@ export class JwtStrategy extends PassportStrategy(
 ) {
     constructor(config: ConfigService) {
         const secret = config.get('JWT_SECRET');
-        console.log(colors.cyan('JWT Strategy - Initializing with secret:'), secret);
         
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -21,7 +20,6 @@ export class JwtStrategy extends PassportStrategy(
     }
 
     async validate(payload: any) {
-        console.log(colors.yellow('JWT Strategy - Validating payload:'), payload);
         
         if (!payload) {
             console.log(colors.red('JWT Strategy - No payload found'));
@@ -42,7 +40,6 @@ export class JwtStrategy extends PassportStrategy(
             throw new UnauthorizedException('Token has expired');
         }
 
-        console.log(colors.green('JWT Strategy - Token validated successfully'));
         return payload;
     }
 }

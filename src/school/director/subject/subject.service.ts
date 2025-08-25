@@ -4,6 +4,7 @@ import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { User } from '@prisma/client';
 import { CreateSubjectDto, EditSubjectDto } from 'src/shared/dto/subject.dto';
+import { sendSubjectRoleEmail } from 'src/common/mailer/send-assignment-notifications';
 
 export interface AssignSubjectToClassDto {
   classId: string;
@@ -276,6 +277,7 @@ export class SubjectService {
       });
 
       if (existingSubject) {
+        this.logger.error(`A subject with the code ${dto.code} already exists in this school`);
         return new ApiResponse(
           false,
           `Subject with code ${dto.code} already exists in this school`,
@@ -295,6 +297,7 @@ export class SubjectService {
       });
 
       if (!classExists) {
+        this.logger.error(`The specified class does not exist or does not belong to this school`);
         return new ApiResponse(
           false,
           'Specified class not found',
@@ -305,15 +308,16 @@ export class SubjectService {
 
     // If teacher is specified, verify they exist and are a teacher
     if (dto.teacher_taking_it) {
-      const teacherExists = await this.prisma.user.findFirst({
+      this.logger.log(`Checking if teacher exists: ${dto.teacher_taking_it}`);
+      const teacherExists = await this.prisma.teacher.findFirst({
         where: {
           id: dto.teacher_taking_it,
           school_id: existingSchool.id,
-          role: 'teacher',
         },
       });
 
       if (!teacherExists) {
+        this.logger.error(`The specified teacher does not exist or does not belong to this school`);
         return new ApiResponse(
           false,
           'Specified teacher not found or is not a teacher',
@@ -335,12 +339,41 @@ export class SubjectService {
 
     // If teacher is specified, create the teacher-subject relationship
     if (dto.teacher_taking_it) {
+      this.logger.log(`Creating teacher-subject relationship: ${dto.teacher_taking_it} for subject: ${subject.id}`);
       await this.prisma.teacherSubject.create({
         data: {
           teacherId: dto.teacher_taking_it,
           subjectId: subject.id,
         },
       });
+
+      // Send email notification to the teacher
+      try {
+        // Get teacher details
+        const teacher = await this.prisma.teacher.findFirst({
+          where: { id: dto.teacher_taking_it },
+          select: {
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        });
+
+        if (teacher) {
+          await sendSubjectRoleEmail({
+            teacherName: `${teacher.first_name} ${teacher.last_name}`,
+            teacherEmail: teacher.email,
+            schoolName: existingSchool.school_name,
+            subjects: [subjectName],
+            assignedBy: 'School Administrator'
+          });
+
+          this.logger.log(colors.green(`✅ Subject assignment email sent to teacher: ${teacher.email}`));
+        }
+      } catch (emailError) {
+        this.logger.error(colors.red(`❌ Failed to send subject assignment email: ${emailError.message}`));
+        // Don't fail the entire operation if email fails
+      }
     }
 
     return new ApiResponse(
@@ -567,10 +600,9 @@ export class SubjectService {
 
     try {
       // Get available teachers
-      const availableTeachers = await this.prisma.user.findMany({
+      const availableTeachers = await this.prisma.teacher.findMany({
         where: {
           school_id: user.school_id,
-          role: 'teacher',
           status: 'active'
         },
         select: {

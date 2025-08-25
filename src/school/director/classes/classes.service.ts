@@ -106,6 +106,7 @@ export class ClassesService {
     });
 
     if (existingClass) {
+      this.logger.error(`A class with the name "${createClassDto.name}" already exists in this school`);
       return new ApiResponse(
         false,
         `A class with the name "${createClassDto.name}" already exists in this school`,
@@ -115,21 +116,28 @@ export class ClassesService {
 
     // If classTeacherId is provided, verify the teacher exists and belongs to the school
     if (createClassDto.classTeacherId) {
-      const teacher = await this.prisma.user.findFirst({
+
+      this.logger.log(`Checking if teacher exists: ${createClassDto.classTeacherId}`);
+
+      // Find the Teacher record using the User ID
+      const teacher = await this.prisma.teacher.findFirst({
         where: {
-          id: createClassDto.classTeacherId,
+          user_id: createClassDto.classTeacherId,
           school_id: userData.school_id,
-          role: 'teacher',
         },
       });
 
       if (!teacher) {
+        this.logger.error(`The specified teacher does not exist or does not belong to this school`);
         return new ApiResponse(
           false,
           'The specified teacher does not exist or does not belong to this school',
           null
         );
       }
+
+      // Use the Teacher ID for class creation
+      createClassDto.classTeacherId = teacher.id;
     }
 
     const newClass = await this.prisma.class.create({
@@ -221,11 +229,11 @@ export class ClassesService {
 
     // If classTeacherId is provided, verify the teacher exists and belongs to the school
     if (editClassDto.classTeacherId) {
-      const teacher = await this.prisma.user.findFirst({
+      // Find the Teacher record using the User ID
+      const teacher = await this.prisma.teacher.findFirst({
         where: {
-          id: editClassDto.classTeacherId,
+          user_id: editClassDto.classTeacherId,
           school_id: userData.school_id,
-          role: 'teacher',
         },
       });
 
@@ -236,6 +244,9 @@ export class ClassesService {
           null
         );
       }
+
+      // Use the Teacher ID for class update
+      editClassDto.classTeacherId = teacher.id;
     }
 
     // Build update data object with only provided fields
