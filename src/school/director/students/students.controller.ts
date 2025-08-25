@@ -1,10 +1,11 @@
-import { Controller, Get, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, UseGuards, Query, HttpCode, HttpStatus, Post, Body } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
-import { GetStudentsDashboardDocs } from 'src/docs/director/students';
+import { StudentsDocs } from './api-docs/students.docs';
+import { AddStudentToClassDto } from './dto/auth.dto';
 
 @ApiTags('Students')
 @Controller('director/students')
@@ -13,10 +14,10 @@ export class StudentsController {
     constructor(private readonly studentsService: StudentsService) {}
 
     @Get('dashboard')
-    @GetStudentsDashboardDocs.bearerAuth
-    @GetStudentsDashboardDocs.operation
-    @GetStudentsDashboardDocs.response200
-    @GetStudentsDashboardDocs.response401
+    @StudentsDocs.bearerAuth
+    @StudentsDocs.operation
+    @StudentsDocs.response200
+    @StudentsDocs.response401
     fetchStudentsDashboard(
         @GetUser() user: User,
         @Query('page') page: string = '1',
@@ -38,4 +39,27 @@ export class StudentsController {
             sort_order: sort_order as any
         });
     }
-} 
+
+    @Post('enroll-student')
+    @HttpCode(HttpStatus.CREATED)
+    @StudentsDocs.bearerAuth
+    @StudentsDocs.enrollStudentOperation
+    @StudentsDocs.enrollStudentResponse201
+    @StudentsDocs.enrollStudentResponse400
+    @StudentsDocs.response401
+    @StudentsDocs.enrollStudentResponse403
+    @StudentsDocs.enrollStudentResponse404
+    addStudentToClass(@GetUser() user: User, @Body() dto: AddStudentToClassDto) {
+        return this.studentsService.addStudentToClass(user, dto);
+    }
+
+    @Get('available-classes')
+    @HttpCode(HttpStatus.OK)
+    @StudentsDocs.bearerAuth
+    @StudentsDocs.availableClassesOperation
+    @StudentsDocs.availableClassesResponse200
+    @StudentsDocs.response401
+    getAvailableClasses(@GetUser() user: User) {
+        return this.studentsService.getAvailableClasses(user);
+    }
+}
