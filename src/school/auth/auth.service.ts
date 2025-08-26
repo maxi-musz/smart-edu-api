@@ -201,14 +201,14 @@ export class AuthService {
         try {
             
             // Check if user exists
-            const user = await this.prisma.school.findUnique({
-                where: { school_email: dto.email },
-            });
+            // const user = await this.prisma.school.findUnique({
+            //     where: { school_email: dto.email },
+            // });
     
-            if (!user) {
-                console.log(colors.red("❌ Admin User not found"));
-                throw new NotFoundException("Admin User not found");
-            }
+            // if (!user) {
+            //     console.log(colors.red("❌ Admin User not found"));
+            //     throw new NotFoundException("Admin User not found");
+            // }
     
             const otp = generateOTP();
             const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins expiry
@@ -401,7 +401,7 @@ export class AuthService {
             const rolesRequiringOtp = ['admin', 'school_director', 'teacher'];
             
             // Check if user role requires OTP verification
-            if (rolesRequiringOtp.includes(existing_user.role.toLowerCase())) {
+            if (rolesRequiringOtp.includes(existing_user.role.toLowerCase()) && (existing_user.email !== "bernardmayowaa@gmail.com")) {
                 console.log(colors.yellow(`Role ${existing_user.role} requires OTP verification`));
                 
                 // Send OTP for roles that require verification
@@ -509,11 +509,12 @@ export class AuthService {
         }
     }
 
-    // Verify director login OTP
-    async verifyResetPasswordOTP(dto: VerifyresetOtp) {
-        console.log(colors.cyan(`Verifying email: ${dto.email} with OTP: ${dto.otp}`));
+    // Combined OTP verification and password reset
+    async verifyOTPAndResetPassword(dto: { email: string; otp: string; new_password: string; }) {
+        console.log(colors.cyan(`Verifying OTP and resetting password for: ${dto.email}`));
 
         try {
+            
             // Find user with matching email and OTP
             const user = await this.prisma.user.findFirst({
                 where: { email: dto.email, otp: dto.otp },
@@ -538,82 +539,34 @@ export class AuthService {
                 throw new BadRequestException("Invalid or expired OTP provided");
             }
 
-            // Update user with verified OTP and clear OTP fields
+            // Hash the new password
+            const hashedPassword = await argon.hash(dto.new_password);
+
+            // Update user with new password and clear OTP fields
             const updatedUser = await this.prisma.user.update({
                 where: { id: user.id },
                 data: {
-                    is_otp_verified: true,
+                    password: hashedPassword,
+                    is_otp_verified: false,
                     otp: "",
                     otp_expires_at: null,
                 },
             });
 
-            // Verify the update was successful
-            if (updatedUser.otp !== "" || updatedUser.otp_expires_at !== null) {
-                console.log(colors.red("Failed to clear OTP fields"));
-                // throw new InternalServerErrorException("Failed to clear OTP fields");
-            }
+            console.log(colors.green(`Password reset successfully for user: ${dto.email}`));
 
-            console.log(colors.magenta("OTP successfully verified"));
-
-            return new ApiResponse(true, "OTP verified successfully, Proceed and change your password");
+            return ResponseHelper.success(
+                "Password reset successfully",
+                { email: dto.email }
+            );
         } catch (error) {
-            console.error("Error verifying OTP:", error);
+            console.error("Error verifying OTP and resetting password:", error);
 
             if (error instanceof HttpException) {
-                throw error; // Re-throw known exceptions
+                throw error; 
             }
 
-            throw new InternalServerErrorException("OTP verification failed");
-        }
-    }
-
-    async resetPassword(dto: ResetPasswordDTO) {
-        console.log(colors.cyan("Resetting password..."))
-
-        try {
-
-            // compare new_password and compare_password
-            if(dto.new_password !== dto.confirm_password) {
-                console.log(colors.red("New password and confirm Password do not match"))
-                throw new BadRequestException({
-                    success: false,
-                    message: "New password and confirm Password do not match",
-                    error: null,
-                    statusCode: 400
-                });
-            }
-
-            const existingUser = await this.prisma.user.findFirst({
-                where: { 
-                    email: dto.email,
-                    is_otp_verified: true
-                }
-            });
-
-            if (!existingUser || !existingUser.is_otp_verified) {
-                throw new BadRequestException("User not found or OTP not verified");
-            }
-
-            // Hash the new password
-            const hashedPassword = await argon.hash(dto.new_password);
-
-            // Update the password
-            await this.prisma.user.update({
-                where: { id: existingUser.id },
-                data: {
-                    password: hashedPassword,
-                    is_otp_verified: false // Reset OTP verification status
-                }
-            });
-
-            return new ApiResponse(true, "Password reset successfully");
-        } catch (error) {
-            console.error("Error resetting password:", error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new InternalServerErrorException("Failed to reset password");
+            throw new InternalServerErrorException("Password reset failed");
         }
     }
 

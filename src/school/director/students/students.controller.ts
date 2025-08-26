@@ -1,11 +1,11 @@
-import { Controller, Get, UseGuards, Query, HttpCode, HttpStatus, Post, Body } from '@nestjs/common';
+import { Controller, Get, UseGuards, Query, HttpCode, HttpStatus, Post, Body, Patch, Param } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { StudentsDocs } from './api-docs/students.docs';
-import { AddStudentToClassDto, EnrollNewStudentDto } from './dto/auth.dto';
+import { AddStudentToClassDto, EnrollNewStudentDto, UpdateStudentDto } from './dto/auth.dto';
 
 @ApiTags('Students')
 @Controller('director/students')
@@ -68,5 +68,16 @@ export class StudentsController {
     @StudentsDocs.response401
     getAvailableClasses(@GetUser() user: User) {
         return this.studentsService.getAvailableClasses(user);
+    }
+
+    @Patch(':studentId')
+    @HttpCode(HttpStatus.OK)
+    @StudentsDocs.bearerAuth
+    updateStudent(
+        @GetUser() user: User,
+        @Param('studentId') studentId: string,
+        @Body() dto: UpdateStudentDto
+    ) {
+        return this.studentsService.updateStudent(studentId, dto, user);
     }
 }

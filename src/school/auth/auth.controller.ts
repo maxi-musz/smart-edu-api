@@ -2,7 +2,7 @@ import { Body, Controller, Post, UseInterceptors, UploadedFiles, Get, HttpCode, 
 import { Response } from 'express';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
-import { OnboardSchoolDto, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyresetOtp, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto, RefreshTokenDto, RequestEmailVerificationDto } from 'src/school/director/students/dto/auth.dto';
+import { OnboardSchoolDto, RequestPasswordResetDTO, SignInDto, OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto, OnboardDataDto, RequestLoginOtpDTO, VerifyEmailOTPDto, RefreshTokenDto, RequestEmailVerificationDto, VerifyOTPAndResetPasswordDto } from 'src/school/director/students/dto/auth.dto';
 import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
 import { FileValidationInterceptor } from 'src/shared/interceptors/file-validation.interceptor';
 import { ApiTags } from '@nestjs/swagger';
@@ -111,26 +111,13 @@ export class AuthController {
         return this.authService.requestPasswordResetOTP(dto)
     }
 
-    // Verify password reset OTP
-    // POST /api/v1/auth/verify-password-reset-otp
+    // Verify OTP and reset password (combined)
+    // POST /api/v1/auth/verify-otp-and-reset-password
     // Public endpoint
-    @Post("verify-password-reset-otp")
+    @Post("verify-otp-and-reset-password")
     @HttpCode(200)
-    @AuthControllerDocs.verifyPasswordResetOtp.operation
-    @AuthControllerDocs.verifyPasswordResetOtp.response200
-    verifyResetPasswordOTP(@Body() dto: VerifyresetOtp) {
-        return this.authService.verifyResetPasswordOTP(dto)
-    }
-
-    // Reset password
-    // POST /api/v1/auth/reset-password
-    // Public endpoint
-    @Post("reset-password")
-    @HttpCode(200)
-    @AuthControllerDocs.resetPassword.operation
-    @AuthControllerDocs.resetPassword.response200
-    resetPassword(@Body() dto: ResetPasswordDTO) {
-        return this.authService.resetPassword(dto)
+    verifyOTPAndResetPassword(@Body() dto: VerifyOTPAndResetPasswordDto) {
+        return this.authService.verifyOTPAndResetPassword(dto)
     }
 
     // Request email verification code

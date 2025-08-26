@@ -4,6 +4,7 @@ export async function generateUniqueStudentId(prisma: PrismaService): Promise<st
     const currentYear = new Date().getFullYear();
     const yearPrefix = currentYear.toString().slice(-2);
     
+    // Get the highest sequence number for the current year
     const existingStudents = await prisma.student.findMany({
         where: {
             student_id: {
@@ -23,12 +24,27 @@ export async function generateUniqueStudentId(prisma: PrismaService): Promise<st
     
     if (existingStudents.length > 0) {
         const lastStudentId = existingStudents[0].student_id;
-        const match = lastStudentId.match(/STD\/\d{2}\/(\d+)/);
+        const match = lastStudentId.match(/STUD\/\d{2}\/(\d+)/);
         if (match) {
             sequenceNumber = parseInt(match[1]) + 1;
         }
     }
 
+    // Generate the student ID
     const formattedSequence = sequenceNumber.toString().padStart(3, '0');
-    return `STD/${yearPrefix}/${formattedSequence}`;
+    const studentId = `STUD/${yearPrefix}/${formattedSequence}`;
+
+    // Double-check uniqueness to prevent race conditions
+    const existingStudent = await prisma.student.findUnique({
+        where: { student_id: studentId }
+    });
+
+    if (existingStudent) {
+        // If ID already exists, try the next sequence number
+        const retrySequence = sequenceNumber + 1;
+        const retryFormattedSequence = retrySequence.toString().padStart(3, '0');
+        return `STUD/${yearPrefix}/${retryFormattedSequence}`;
+    }
+
+    return studentId;
 }

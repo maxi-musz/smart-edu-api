@@ -282,3 +282,5 @@ export const timetableScheduleTemplate = (payload: {
     </div>
   `;
 }; 
+
+ 
