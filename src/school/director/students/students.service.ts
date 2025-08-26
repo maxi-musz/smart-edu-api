@@ -3,11 +3,12 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import { AcademicTerm, UserStatus, User, DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
-import { AddStudentToClassDto, EnrollNewStudentDto } from './dto/auth.dto';
+import { AddStudentToClassDto, EnrollNewStudentDto, UpdateStudentDto } from './dto/auth.dto';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import { generateUniqueStudentId } from './helper-functions';
 import * as argon from 'argon2';
 import { generateStrongPassword } from '../../../shared/helper-functions/password-generator';
+import { sendNewStudentEnrollmentNotification, sendStudentWelcomeEmail, sendClassTeacherNotification } from '../../../common/mailer/send-enrollment-notifications';
 
 export interface FetchStudentsDashboardDto {
     page?: number;
@@ -572,7 +573,18 @@ export class StudentsService {
             return new ApiResponse(false, 'Missing required fields', null);
           }
 
-          // 2. Check if student already exists
+          // 2. Get full user data with school_id
+          const fullUser = await this.prisma.user.findFirst({
+            where: { id: user.id },
+            select: { id: true, school_id: true, first_name: true, last_name: true }
+          });
+
+          if (!fullUser || !fullUser.school_id) {
+            this.logger.error(colors.red("User not found or missing school_id"));
+            return new ApiResponse(false, 'User not found or invalid school data', 400);
+          }
+
+          // 3. Check if student already exists
           const existingStudent = await this.prisma.user.findFirst({
             where: { email: dto.email }
           });
@@ -581,11 +593,11 @@ export class StudentsService {
             return new ApiResponse(false, 'A student with this email already exists', 409);
           }
 
-          // 3. Verify class exists and belongs to the school
+          // 4. Verify class exists and belongs to the school
           const classExists = await this.prisma.class.findFirst({
             where: {
               id: dto.class_id,
-              schoolId: user.school_id,
+              schoolId: fullUser.school_id,
             },
           });
 
@@ -594,11 +606,11 @@ export class StudentsService {
             return new ApiResponse(false, 'Specified class not found', null);
           }
 
-          // 4. Generate strong password if not provided
+          // 5. Generate strong password if not provided
           const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
           const hashedPassword = await argon.hash(generatedPassword);
 
-          // 5. Create new user
+          // 6. Create new user
           const newUser = await this.prisma.user.create({
             data: {
               first_name: dto.first_name,
@@ -610,34 +622,56 @@ export class StudentsService {
               status: UserStatus.active,
               role: 'student',
               password: hashedPassword,
-              school_id: user.school_id
+              school_id: fullUser.school_id
             }
           });
 
-          // 6. Create student record
-          const student = await this.prisma.student.create({
-            data: {
-              school_id: user.school_id,
-              user_id: newUser.id,
-              student_id: await generateUniqueStudentId(this.prisma),
-              admission_number: dto.admission_number,
-              date_of_birth: dto.date_of_birth ? new Date(dto.date_of_birth) : null,
-              admission_date: new Date(),
-              current_class_id: dto.class_id,
-              guardian_name: dto.guardian_name,
-              guardian_phone: dto.guardian_phone,
-              guardian_email: dto.guardian_email,
-              address: dto.address,
-              emergency_contact: dto.emergency_contact,
-              blood_group: dto.blood_group,
-              medical_conditions: dto.medical_conditions,
-              allergies: dto.allergies,
-              previous_school: dto.previous_school,
-              academic_level: dto.academic_level,
-              parent_id: dto.parent_id,
-              status: UserStatus.active
+          // 7. Create student record with retry mechanism for unique constraint
+          let student;
+          let retryCount = 0;
+          const maxRetries = 3;
+
+          while (retryCount < maxRetries) {
+            try {
+              student = await this.prisma.student.create({
+                data: {
+                  school_id: fullUser.school_id,
+                  user_id: newUser.id,
+                  student_id: await generateUniqueStudentId(this.prisma),
+                  admission_number: dto.admission_number,
+                  date_of_birth: dto.date_of_birth ? new Date(dto.date_of_birth) : null,
+                  admission_date: new Date(),
+                  current_class_id: dto.class_id,
+                  guardian_name: dto.guardian_name,
+                  guardian_phone: dto.guardian_phone,
+                  guardian_email: dto.guardian_email,
+                  address: dto.address,
+                  emergency_contact: dto.emergency_contact,
+                  blood_group: dto.blood_group,
+                  medical_conditions: dto.medical_conditions,
+                  allergies: dto.allergies,
+                  previous_school: dto.previous_school,
+                  academic_level: dto.academic_level,
+                  parent_id: dto.parent_id,
+                  status: UserStatus.active
+                }
+              });
+              break; // Success, exit the retry loop
+            } catch (error: any) {
+              if (error.code === 'P2002' && error.meta?.target?.includes('student_id')) {
+                retryCount++;
+                if (retryCount >= maxRetries) {
+                  this.logger.error(colors.red(`Failed to create student after ${maxRetries} retries due to duplicate student_id`));
+                  throw error;
+                }
+                this.logger.warn(colors.yellow(`Duplicate student_id detected, retrying... (${retryCount}/${maxRetries})`));
+                // Small delay before retry
+                await new Promise(resolve => setTimeout(resolve, 100));
+              } else {
+                throw error; // Re-throw if it's not a duplicate key error
+              }
             }
-          });
+          }
 
           // 7. Enroll student to the specified class
           await this.prisma.user.update({
@@ -650,6 +684,77 @@ export class StudentsService {
               }
             }
           });
+
+          // Send email notifications
+          try {
+            // Get school name
+            const school = await this.prisma.school.findFirst({
+              where: { id: fullUser.school_id },
+              select: { school_name: true }
+            });
+
+            // Get class teacher information
+            const classTeacher = classExists.classTeacherId ? await this.prisma.teacher.findFirst({
+              where: { id: classExists.classTeacherId },
+              select: { first_name: true, last_name: true, email: true }
+            }) : null;
+
+            // Send notification to school directors
+            await sendNewStudentEnrollmentNotification({
+              studentName: `${dto.first_name} ${dto.last_name}`,
+              studentEmail: dto.email,
+              schoolName: school?.school_name || 'Your School',
+              studentId: student.student_id,
+              className: classExists.name,
+              studentDetails: {
+                guardianName: dto.guardian_name,
+                guardianPhone: dto.guardian_phone,
+                guardianEmail: dto.guardian_email,
+                address: dto.address,
+                academicLevel: dto.academic_level,
+                previousSchool: dto.previous_school
+              }
+            });
+
+            // Send welcome email to student
+            await sendStudentWelcomeEmail({
+              studentName: `${dto.first_name} ${dto.last_name}`,
+              studentEmail: dto.email,
+              schoolName: school?.school_name || 'Your School',
+              studentId: student.student_id,
+              className: classExists.name,
+              classTeacher: classTeacher ? `${classTeacher.first_name} ${classTeacher.last_name}` : undefined,
+              loginCredentials: {
+                email: dto.email,
+                password: generatedPassword
+              }
+            });
+
+            // Send notification to class teacher (if class has a teacher)
+            if (classTeacher) {
+              await sendClassTeacherNotification({
+                teacherEmail: classTeacher.email,
+                teacherName: `${classTeacher.first_name} ${classTeacher.last_name}`,
+                className: classExists.name,
+                schoolName: school?.school_name || 'Your School',
+                studentName: `${dto.first_name} ${dto.last_name}`,
+                studentId: student.student_id,
+                studentEmail: dto.email,
+                studentDetails: {
+                  guardianName: dto.guardian_name,
+                  guardianPhone: dto.guardian_phone,
+                  guardianEmail: dto.guardian_email,
+                  academicLevel: dto.academic_level,
+                  previousSchool: dto.previous_school
+                }
+              });
+            }
+
+            this.logger.log(colors.green(`✅ Enrollment notification emails sent successfully`));
+          } catch (emailError) {
+            this.logger.error(colors.red(`❌ Failed to send enrollment notification emails: ${emailError.message}`));
+            // Don't fail the entire operation if email fails
+          }
 
           this.logger.log(colors.green(`✅ New student enrolled successfully: ${dto.first_name} ${dto.last_name}`));
 
@@ -668,6 +773,235 @@ export class StudentsService {
         } catch (error) {
           this.logger.error(colors.red('Error enrolling new student: '), error);
           return new ApiResponse(false, 'Failed to enroll new student', null);
+        }
+      }
+
+      // Update student information
+      async updateStudent(studentId: string, dto: UpdateStudentDto, user: User) {
+        this.logger.log(colors.cyan(`Updating student with ID: ${studentId}`));
+
+        try {
+          // 1. Get full user data with school_id
+          const fullUser = await this.prisma.user.findFirst({
+            where: { id: user.id },
+            select: { id: true, school_id: true, first_name: true, last_name: true }
+          });
+
+          if (!fullUser || !fullUser.school_id) {
+            this.logger.error(colors.red("User not found or missing school_id"));
+            return new ApiResponse(false, 'User not found or invalid school data', 400);
+          }
+
+          // 2. Check if student exists and belongs to the same school
+          const existingStudent = await this.prisma.student.findFirst({
+            where: { 
+              user_id: studentId,
+              school_id: fullUser.school_id
+            },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  first_name: true,
+                  last_name: true,
+                  email: true,
+                  phone_number: true,
+                  display_picture: true,
+                  gender: true,
+                  status: true
+                }
+              },
+              school: {
+                select: { school_name: true }
+              }
+            }
+          });
+
+          if (!existingStudent) {
+            this.logger.error(colors.red(`Student not found or doesn't belong to school: ${fullUser.school_id}`));
+            return new ApiResponse(false, 'Student not found or access denied', 404);
+          }
+
+          // 3. Check if email is being updated and if it's already taken
+          if (dto.email && dto.email !== existingStudent.user.email) {
+            const emailExists = await this.prisma.user.findFirst({
+              where: { 
+                email: dto.email,
+                id: { not: existingStudent.user.id }
+              }
+            });
+            
+            if (emailExists) {
+              this.logger.error(colors.red(`Email already exists: ${dto.email}`));
+              return new ApiResponse(false, 'Email already exists', 409);
+            }
+          }
+
+          // 4. Check if class transfer is requested and validate the new class
+          if (dto.class_id && dto.class_id !== existingStudent.current_class_id) {
+            const newClass = await this.prisma.class.findFirst({
+              where: {
+                id: dto.class_id,
+                schoolId: fullUser.school_id
+              }
+            });
+
+            if (!newClass) {
+              this.logger.error(colors.red(`New class not found: ${dto.class_id}`));
+              return new ApiResponse(false, 'New class not found or access denied', 404);
+            }
+          }
+
+          // 5. Build update data objects
+          const userUpdateData: any = {};
+          const studentUpdateData: any = {};
+          
+          // User fields
+          if (dto.first_name !== undefined) userUpdateData.first_name = dto.first_name;
+          if (dto.last_name !== undefined) userUpdateData.last_name = dto.last_name;
+          if (dto.email !== undefined) userUpdateData.email = dto.email;
+          if (dto.phone_number !== undefined) userUpdateData.phone_number = dto.phone_number;
+          if (dto.display_picture !== undefined) userUpdateData.display_picture = dto.display_picture;
+          if (dto.gender !== undefined) userUpdateData.gender = dto.gender;
+          if (dto.status !== undefined) userUpdateData.status = dto.status as UserStatus;
+
+          // Student fields
+          if (dto.date_of_birth !== undefined) studentUpdateData.date_of_birth = dto.date_of_birth ? new Date(dto.date_of_birth) : null;
+          if (dto.admission_number !== undefined) studentUpdateData.admission_number = dto.admission_number;
+          if (dto.guardian_name !== undefined) studentUpdateData.guardian_name = dto.guardian_name;
+          if (dto.guardian_phone !== undefined) studentUpdateData.guardian_phone = dto.guardian_phone;
+          if (dto.guardian_email !== undefined) studentUpdateData.guardian_email = dto.guardian_email;
+          if (dto.address !== undefined) studentUpdateData.address = dto.address;
+          if (dto.emergency_contact !== undefined) studentUpdateData.emergency_contact = dto.emergency_contact;
+          if (dto.blood_group !== undefined) studentUpdateData.blood_group = dto.blood_group;
+          if (dto.medical_conditions !== undefined) studentUpdateData.medical_conditions = dto.medical_conditions;
+          if (dto.allergies !== undefined) studentUpdateData.allergies = dto.allergies;
+          if (dto.previous_school !== undefined) studentUpdateData.previous_school = dto.previous_school;
+          if (dto.academic_level !== undefined) studentUpdateData.academic_level = dto.academic_level;
+          if (dto.parent_id !== undefined) studentUpdateData.parent_id = dto.parent_id;
+          if (dto.class_id !== undefined) studentUpdateData.current_class_id = dto.class_id;
+
+          // 6. Update user record
+          let updatedUser = existingStudent.user;
+          if (Object.keys(userUpdateData).length > 0) {
+            updatedUser = await this.prisma.user.update({
+              where: { id: existingStudent.user.id },
+              data: userUpdateData,
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true,
+                phone_number: true,
+                display_picture: true,
+                gender: true,
+                status: true
+              }
+            });
+          }
+
+          // 7. Update student record
+          let updatedStudent = existingStudent;
+          if (Object.keys(studentUpdateData).length > 0) {
+            updatedStudent = await this.prisma.student.update({
+              where: { id: studentId },
+              data: studentUpdateData,
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    first_name: true,
+                    last_name: true,
+                    email: true,
+                    phone_number: true,
+                    display_picture: true,
+                    gender: true,
+                    status: true
+                  }
+                },
+                school: {
+                  select: { school_name: true }
+                }
+              }
+            });
+          }
+
+          // 8. Handle class transfer if requested
+          let classTransferInfo: { from: string; to: string; transferred: boolean } | null = null;
+          if (dto.class_id && dto.class_id !== existingStudent.current_class_id) {
+            // Remove from old class
+            if (existingStudent.current_class_id) {
+              await this.prisma.user.update({
+                where: { id: existingStudent.user.id },
+                data: {
+                  classesEnrolled: {
+                    disconnect: { id: existingStudent.current_class_id }
+                  }
+                }
+              });
+            }
+
+            // Add to new class
+            await this.prisma.user.update({
+              where: { id: existingStudent.user.id },
+              data: {
+                classesEnrolled: {
+                  connect: { id: dto.class_id }
+                }
+              }
+            });
+
+            // Get class information for response
+            const newClass = await this.prisma.class.findFirst({
+              where: { id: dto.class_id },
+              select: { name: true }
+            });
+
+            classTransferInfo = {
+              from: existingStudent.current_class_id ? 'Previous Class' : 'No Class',
+              to: newClass?.name || 'Unknown Class',
+              transferred: true
+            };
+          }
+
+          this.logger.log(colors.green(`✅ Student updated successfully: ${studentId}`));
+
+          return new ApiResponse(true, 'Student updated successfully', {
+            student: {
+              id: updatedStudent.id,
+              user_id: updatedStudent.user_id,
+              student_id: updatedStudent.student_id,
+              name: `${updatedStudent.user.first_name} ${updatedStudent.user.last_name}`,
+              email: updatedStudent.user.email,
+              phone_number: updatedStudent.user.phone_number,
+              display_picture: updatedStudent.user.display_picture,
+              gender: updatedStudent.user.gender,
+              status: updatedStudent.user.status,
+              current_class_id: updatedStudent.current_class_id,
+              guardian_name: updatedStudent.guardian_name,
+              guardian_phone: updatedStudent.guardian_phone,
+              guardian_email: updatedStudent.guardian_email,
+              address: updatedStudent.address,
+              emergency_contact: updatedStudent.emergency_contact,
+              blood_group: updatedStudent.blood_group,
+              medical_conditions: updatedStudent.medical_conditions,
+              allergies: updatedStudent.allergies,
+              previous_school: updatedStudent.previous_school,
+              academic_level: updatedStudent.academic_level,
+              parent_id: updatedStudent.parent_id,
+              date_of_birth: updatedStudent.date_of_birth,
+              admission_number: updatedStudent.admission_number
+            },
+            updatedFields: {
+              user: Object.keys(userUpdateData),
+              student: Object.keys(studentUpdateData)
+            },
+            classTransfer: classTransferInfo
+          });
+
+        } catch (error) {
+          this.logger.error(colors.red('Error updating student: '), error);
+          return new ApiResponse(false, 'Failed to update student', null);
         }
       }
     } 
