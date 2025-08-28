@@ -4,12 +4,16 @@ import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { User } from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
+import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 
 @Injectable()
 export class UserService {
     private readonly logger = new Logger(UserService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly academicSessionService: AcademicSessionService
+    ) {}
 
     async getUserProfile(user: User) {
         this.logger.log(colors.cyan(`Fetching user profile for: ${user.email}`));
@@ -52,8 +56,28 @@ export class UserService {
                 throw new NotFoundException('User not found');
             }
 
+            // Get current academic session for the school
+            let currentSession: any = null;
+            let currentTerm: any = null;
+            let currentSessionId: any = null;
+            if (userProfile.school_id) {
+                try {
+                    const currentSessionResponse = await this.academicSessionService.getCurrentSession(userProfile.school_id);
+                    if (currentSessionResponse.success) {
+                        currentSession = currentSessionResponse.data.academic_year;
+                        currentTerm = currentSessionResponse.data.term;
+                        currentSessionId = currentSessionResponse.data.id;
+                    }
+                } catch (error) {
+                    this.logger.warn(colors.yellow(`Could not fetch current session for school ${userProfile.school_id}: ${error.message}`));
+                }
+            }
+
             // Format the response
             const formattedProfile = {
+                current_academic_session_id: currentSessionId,
+                current_academic_session: currentSession,
+                current_term: currentTerm,
                 id: userProfile.id,
                 email: userProfile.email,
                 first_name: userProfile.first_name,
@@ -76,7 +100,7 @@ export class UserService {
                     type: userProfile.school.school_type,
                     ownership: userProfile.school.school_ownership,
                     status: userProfile.school.status
-                } : null
+                } : null,
             };
 
             this.logger.log(colors.green(`User profile retrieved successfully for: ${user.email}`));

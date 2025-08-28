@@ -3,12 +3,16 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { CreateClassDto, EditClassDto } from './dto/class.dto';
+import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 
 @Injectable()
 export class ClassesService {
   private readonly logger = new Logger(ClassesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly academicSessionService: AcademicSessionService
+  ) {}
 
   async getAllClasses(user: any) {
     // Fetch complete user data including school_id
@@ -140,11 +144,22 @@ export class ClassesService {
       createClassDto.classTeacherId = teacher.id;
     }
 
+    // Get current academic session for the school
+    const currentSessionResponse = await this.academicSessionService.getCurrentSession(userData.school_id);
+    if (!currentSessionResponse.success) {
+      return new ApiResponse(
+        false,
+        'No current academic session found for the school',
+        null
+      );
+    }
+
     const newClass = await this.prisma.class.create({
       data: {
         name: createClassDto.name,
         schoolId: userData.school_id,
         classTeacherId: createClassDto.classTeacherId || null,
+        academic_session_id: currentSessionResponse.data.id,
       },
       select: {
         id: true,

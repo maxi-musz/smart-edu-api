@@ -3,8 +3,9 @@ import { DirectorModule } from './director/director.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { StudentsModule } from './students/students.module';
 import { AuthModule } from './auth/auth.module';
+import { AcademicSessionModule } from '../academic-session/academic-session.module';
 
 @Module({
-  imports: [DirectorModule, TeachersModule, StudentsModule, AuthModule]
+  imports: [DirectorModule, TeachersModule, StudentsModule, AuthModule, AcademicSessionModule]
 })
 export class SchoolModule {}

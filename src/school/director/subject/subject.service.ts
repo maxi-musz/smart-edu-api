@@ -5,6 +5,7 @@ import { ApiResponse } from 'src/shared/helper-functions/response';
 import { User } from '@prisma/client';
 import { CreateSubjectDto, EditSubjectDto } from 'src/shared/dto/subject.dto';
 import { sendSubjectRoleEmail } from 'src/common/mailer/send-assignment-notifications';
+import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 
 export interface AssignSubjectToClassDto {
   classId: string;
@@ -16,7 +17,10 @@ export interface AssignSubjectToClassDto {
 export class SubjectService {
   private readonly logger = new Logger(SubjectService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly academicSessionService: AcademicSessionService
+  ) {}
 
    ////////////////////////////////////////////////////////////////////////// FETCH ALL SUBJECT
   // GET -  /API/v1/director/subjects/fetch-all-subjects
@@ -326,6 +330,16 @@ export class SubjectService {
       }
     }
 
+    // Get current academic session for the school
+    const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+    if (!currentSessionResponse.success) {
+      return new ApiResponse(
+        false,
+        'No current academic session found for the school',
+        null
+      );
+    }
+
     const subject = await this.prisma.subject.create({
       data: {
         name: subjectName,
@@ -334,6 +348,7 @@ export class SubjectService {
         description: description,
         schoolId: existingSchool.id,
         classId: dto.class_taking_it,
+        academic_session_id: currentSessionResponse.data.id,
       },
     });
 

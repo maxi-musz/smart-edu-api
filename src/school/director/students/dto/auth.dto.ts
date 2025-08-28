@@ -1,5 +1,6 @@
-import { IsNotEmpty, IsString, IsArray, IsEmail } from "class-validator";
+import { IsNotEmpty, IsString, IsArray, IsEmail, IsEnum, IsOptional, IsDateString } from "class-validator";
 import { ApiProperty } from '@nestjs/swagger';
+import { AcademicTerm } from '@prisma/client';
 
 export class OnboardSchoolDto {
     @ApiProperty({
@@ -51,6 +52,40 @@ export class OnboardSchoolDto {
     @IsNotEmpty()
     @IsString()
     school_ownership: SchoolOwnership;
+
+    @ApiProperty({
+        description: 'Current academic year (e.g., "2024/2025", "2024-2025")',
+        example: '2024/2025'
+    })
+    @IsNotEmpty()
+    @IsString()
+    academic_year: string;
+
+    @ApiProperty({
+        description: 'Current academic term',
+        enum: ['first', 'second', 'third'],
+        example: 'first'
+    })
+    @IsNotEmpty()
+    @IsEnum(AcademicTerm)
+    current_term: AcademicTerm;
+
+    @ApiProperty({
+        description: 'Start date of the current term',
+        example: '2024-09-01'
+    })
+    @IsNotEmpty()
+    @IsDateString()
+    term_start_date: string;
+
+    @ApiProperty({
+        description: 'End date of the current term (optional - can be updated later)',
+        example: '2024-12-20',
+        required: false
+    })
+    @IsOptional()
+    @IsDateString()
+    term_end_date?: string;
 }
 
 enum SchoolType {

@@ -9,6 +9,7 @@ import { generateUniqueStudentId } from './helper-functions';
 import * as argon from 'argon2';
 import { generateStrongPassword } from '../../../shared/helper-functions/password-generator';
 import { sendNewStudentEnrollmentNotification, sendStudentWelcomeEmail, sendClassTeacherNotification } from '../../../common/mailer/send-enrollment-notifications';
+import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 
 export interface FetchStudentsDashboardDto {
     page?: number;
@@ -40,7 +41,10 @@ interface StudentWithDetails extends User {
 @Injectable()
 export class StudentsService {
     private readonly logger = new Logger(StudentsService.name);
-    constructor(private prisma: PrismaService) {}
+    constructor(
+        private prisma: PrismaService,
+        private readonly academicSessionService: AcademicSessionService
+    ) {}
 
     // Helper to get current DayOfWeek enum string
     private getCurrentDayOfWeek(): DayOfWeek {
@@ -105,20 +109,26 @@ export class StudentsService {
                 }
             },
             select: {
-                current_term: true,
-                current_year: true
+                id: true
             }
         });
 
         if (!school) return 0;
 
-        const termNumber = school.current_term === AcademicTerm.first ? 1 :
-                          school.current_term === AcademicTerm.second ? 2 : 3;
+        // Get current academic session for the school
+        const currentSessionResponse = await this.academicSessionService.getCurrentSession(school.id);
+        if (!currentSessionResponse.success) {
+            return 0;
+        }
+
+        const currentSession = currentSessionResponse.data;
+        const termNumber = currentSession.term === AcademicTerm.first ? 1 :
+                          currentSession.term === AcademicTerm.second ? 2 : 3;
 
         const performances = await this.prisma.studentPerformance.findMany({
             where: {
                 class_id: classId,
-                year: school.current_year,
+                year: currentSession.start_year,
                 term: termNumber
             },
             orderBy: {
@@ -631,6 +641,16 @@ export class StudentsService {
           let retryCount = 0;
           const maxRetries = 3;
 
+          // Get current academic session for the school
+          const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
+          if (!currentSessionResponse.success) {
+            return new ApiResponse(
+              false,
+              'No current academic session found for the school',
+              null
+            );
+          }
+
           while (retryCount < maxRetries) {
             try {
               student = await this.prisma.student.create({
@@ -653,7 +673,8 @@ export class StudentsService {
                   previous_school: dto.previous_school,
                   academic_level: dto.academic_level,
                   parent_id: dto.parent_id,
-                  status: UserStatus.active
+                  status: UserStatus.active,
+                  academic_session_id: currentSessionResponse.data.id
                 }
               });
               break; // Success, exit the retry loop

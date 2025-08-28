@@ -5,12 +5,14 @@ import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { DayOfWeek, User } from '@prisma/client';
 import { TeachersService } from '../teachers/teachers.service';
 import { formatDate } from 'src/shared/helper-functions/formatter';
+import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 
 @Injectable()
 export class DashboardService {
     constructor(
         private readonly prisma: PrismaService,
-        private readonly teachersService: TeachersService
+        private readonly teachersService: TeachersService,
+        private readonly academicSessionService: AcademicSessionService
     ) {}
 
     // Helper to get current DayOfWeek enum string
@@ -44,25 +46,47 @@ export class DashboardService {
             console.log(colors.red("User not found..."));
             throw new NotFoundException("Director not found");
           }
+
+          // Get current academic session for the school
+          const currentSessionResponse = await this.academicSessionService.getCurrentSession(director.school_id);
+          if (!currentSessionResponse.success) {
+            throw new NotFoundException("No current academic session found for the school");
+          }
+          const currentSessionId = currentSessionResponse.data.id;
       
           const [teachers, classes, subjects, totalStudents, activeStudents, suspendedStudents, finance, ongoingClasses, notifications] = await Promise.all([
             this.prisma.user.count({
               where: { school_id: director.school_id, role: "teacher" },
             }),
             this.prisma.class.count({
-              where: { schoolId: director.school_id },
+              where: { 
+                schoolId: director.school_id,
+                academic_session_id: currentSessionId
+              },
             }),
             this.prisma.subject.count({
-              where: { schoolId: director.school_id },
+              where: { 
+                schoolId: director.school_id,
+                academic_session_id: currentSessionId
+              },
             }),
             this.prisma.user.count({
-              where: { school_id: director.school_id, role: "student" },
+              where: { 
+                school_id: director.school_id, 
+                role: "student",
+                student: {
+                  academic_session_id: currentSessionId
+                }
+              },
             }),
             this.prisma.user.count({
               where: {
                 school_id: director.school_id,
                 role: "student",
                 status: "active",
+                student: {
+                  academic_session_id: currentSessionId
+                }
               },
             }),
             this.prisma.user.count({
@@ -70,19 +94,26 @@ export class DashboardService {
                 school_id: director.school_id,
                 role: "student",
                 status: "suspended",
+                student: {
+                  academic_session_id: currentSessionId
+                }
               },
             }),
-            this.prisma.finance.findUnique({
-              where: { school_id: director.school_id },
-              select: {
-                total_revenue: true,
-                outstanding_fee: true,
-                amount_withdrawn: true
+            this.prisma.payment.aggregate({
+              where: { 
+                finance: {
+                  school_id: director.school_id
+                },
+                academic_session_id: currentSessionId
+              },
+              _sum: {
+                amount: true
               }
             }),
             this.prisma.timetableEntry.findMany({
               where: {
                 school_id: director.school_id,
+                academic_session_id: currentSessionId,
                 day_of_week: this.getCurrentDayOfWeek(),
                 timeSlot: {
                   startTime: {
@@ -117,6 +148,7 @@ export class DashboardService {
             this.prisma.notification.findMany({
               where: {
                 school_id: director.school_id,
+                academic_session_id: currentSessionId,
                 OR: [
                   { type: 'all' },
                   { type: 'school_director' }
@@ -145,10 +177,10 @@ export class DashboardService {
               suspendedStudents,
             },
             finance: {
-              totalRevenue: finance?.total_revenue || 0,
-              outstandingFees: finance?.outstanding_fee || 0,
-              totalExpenses: finance?.amount_withdrawn || 0,
-              netBalance: (finance?.total_revenue || 0) - (finance?.amount_withdrawn || 0)
+              totalRevenue: finance?._sum?.amount || 0,
+              outstandingFees: 0, // TODO: Calculate outstanding fees for current session
+              totalExpenses: 0, // TODO: Calculate expenses for current session
+              netBalance: finance?._sum?.amount || 0
             },
             ongoingClasses: ongoingClasses.map(entry => ({
               className: entry.class.name,

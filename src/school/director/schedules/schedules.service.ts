@@ -5,12 +5,16 @@ import { ApiResponse } from 'src/shared/helper-functions/response';
 import { getTimeTableDTO, CreateTimetableDTO, TimeSlotDTO, UpdateTimeSlotDTO } from 'src/shared/dto/schedules.dto';
 import { User } from '@prisma/client';
 import { sendTimetableScheduleEmail } from 'src/common/mailer/send-assignment-notifications';
+import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 
 @Injectable()
 export class SchedulesService {
   private readonly logger = new Logger(SchedulesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly academicSessionService: AcademicSessionService
+  ) {}
 
   async getTimetable(dto: getTimeTableDTO): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`Fetching timetable for class: ${dto.class}`));
@@ -362,6 +366,16 @@ export class SchedulesService {
       );
     }
 
+    // Get current academic session for the school
+    const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+    if (!currentSessionResponse.success) {
+      return new ApiResponse(
+        false,
+        'No current academic session found for the school',
+        null
+      );
+    }
+
     const schedule = await this.prisma.timetableEntry.create({
       data: {
         class_id: dto.class_id,
@@ -373,7 +387,13 @@ export class SchedulesService {
         room: dto.room,
         notes: dto.notes,
         isActive: true,
+        academic_session_id: currentSessionResponse.data.id,
       },
+    });
+
+    // Fetch related data separately since include is not working properly
+    const scheduleWithRelations = await this.prisma.timetableEntry.findUnique({
+      where: { id: schedule.id },
       include: {
         class: true,
         subject: true,
@@ -391,22 +411,22 @@ export class SchedulesService {
 
     // Send email notification to the teacher
     try {
-      if (schedule.teacher) {
+      if (scheduleWithRelations?.teacher) {
         await sendTimetableScheduleEmail({
-          teacherName: `${schedule.teacher.first_name} ${schedule.teacher.last_name}`,
-          teacherEmail: schedule.teacher.email,
+          teacherName: `${scheduleWithRelations.teacher.first_name} ${scheduleWithRelations.teacher.last_name}`,
+          teacherEmail: scheduleWithRelations.teacher.email,
           schoolName: existingSchool.school_name,
-          subjectName: schedule.subject.name,
-          className: schedule.class.name,
-          dayOfWeek: schedule.day_of_week,
-          startTime: schedule.timeSlot.startTime,
-          endTime: schedule.timeSlot.endTime,
-          room: schedule.room || undefined,
-          notes: schedule.notes || undefined,
+          subjectName: scheduleWithRelations.subject?.name || 'Unknown Subject',
+          className: scheduleWithRelations.class?.name || 'Unknown Class',
+          dayOfWeek: scheduleWithRelations.day_of_week,
+          startTime: scheduleWithRelations.timeSlot?.startTime || 'Unknown',
+          endTime: scheduleWithRelations.timeSlot?.endTime || 'Unknown',
+          room: scheduleWithRelations.room || undefined,
+          notes: scheduleWithRelations.notes || undefined,
           assignedBy: 'School Administrator'
         });
 
-        this.logger.log(colors.green(`✅ Timetable schedule email sent to teacher: ${schedule.teacher.email}`));
+        this.logger.log(colors.green(`✅ Timetable schedule email sent to teacher: ${scheduleWithRelations.teacher.email}`));
       }
     } catch (emailError) {
       this.logger.error(colors.red(`❌ Failed to send timetable schedule email: ${emailError.message}`));
@@ -417,7 +437,7 @@ export class SchedulesService {
     return new ApiResponse(
       true,
       'Schedule created successfully',
-      schedule
+      scheduleWithRelations || schedule
     );
   }
 

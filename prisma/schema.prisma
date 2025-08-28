@@ -59,6 +59,12 @@ enum AcademicTerm {
   third
 }
 
+enum AcademicSessionStatus {
+  active
+  inactive
+  completed
+}
+
 enum Roles {
   student
   teacher
@@ -111,6 +117,40 @@ enum WalletType {
   TEACHER_WALLET
 }
 
+model AcademicSession {
+  id            String                @id @default(cuid())
+  school_id     String
+  academic_year String // e.g., "2024/2025", "2024-2025", "2024"
+  start_year    Int // e.g., 2024 (for easier querying)
+  end_year      Int // e.g., 2025 (for easier querying)
+  term          AcademicTerm // first, second, third
+  start_date    DateTime
+  end_date      DateTime
+  status        AcademicSessionStatus @default(active)
+  is_current    Boolean               @default(false) // Only one session per school can be current
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  school School @relation(fields: [school_id], references: [id])
+
+  // All academic data that depends on session
+  students      Student[]
+  teachers      Teacher[]
+  classes       Class[]
+  subjects      Subject[]
+  payments      Payment[]
+  performances  StudentPerformance[]
+  schedules     TimetableEntry[]
+  notifications Notification[]
+
+  @@unique([school_id, academic_year, term])
+  @@index([school_id, is_current])
+  @@index([start_year, end_year])
+  @@index([academic_year])
+}
+
 model School {
   id               String          @id @default(cuid())
   school_name      String
@@ -120,10 +160,7 @@ model School {
   school_type      SchoolType
   school_ownership SchoolOwnership
   status           SchoolStatus    @default(pending)
-  current_term     AcademicTerm    @default(first)
-  current_year     Int             @default(2024)
-  term_start_date  DateTime?
-  term_end_date    DateTime?
+  // Removed: current_term, current_year, term_start_date, term_end_date
 
   cacId          String? @unique
   utilityBillId  String? @unique
@@ -139,23 +176,25 @@ model School {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           User[]
-  students        Student[]
-  teachers        Teacher[]
-  parents         Parent[]
-  classes         Class[]
-  subjects        Subject[]
-  finance         Finance?
-  schedules       TimetableEntry[]
-  timeSlots       TimeSlot[]
-  notifications   Notification[]
-  wallet          Wallet?
-  videoContent    VideoContent[]
-  pdfMaterial     PDFMaterial[]
-  assignment      Assignment[]
-  cbtQuiz         CBTQuiz[]
-  liveClass       LiveClass[]
-  libraryResource LibraryResource[]
+  // Relations
+  academicSessions AcademicSession[]
+  users            User[]
+  students         Student[]
+  teachers         Teacher[]
+  parents          Parent[]
+  classes          Class[]
+  subjects         Subject[]
+  finance          Finance?
+  schedules        TimetableEntry[]
+  timeSlots        TimeSlot[]
+  notifications    Notification[]
+  wallet           Wallet?
+  videoContent     VideoContent[]
+  pdfMaterial      PDFMaterial[]
+  assignment       Assignment[]
+  cbtQuiz          CBTQuiz[]
+  liveClass        LiveClass[]
+  libraryResource  LibraryResource[]
 }
 
 model Document {
@@ -215,6 +254,7 @@ model Teacher {
   phone_number        String
   display_picture     Json? // { secure_url: string, public_id: string }
   school_id           String
+  academic_session_id String     @default("1") // Reference to current academic session
   user_id             String     @unique
   gender              Gender     @default(other)
   role                Roles      @default(teacher)
@@ -235,11 +275,13 @@ model Teacher {
   // relations
   user              User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
   school            School           @relation(fields: [school_id], references: [id])
+  academicSession   AcademicSession  @relation(fields: [academic_session_id], references: [id])
   classesManaging   Class[]          @relation("ClassTeacher")
   subjectsTeaching  TeacherSubject[]
   schedulesTeaching TimetableEntry[] @relation("TeacherSchedule")
 
   @@index([school_id])
+  @@index([academic_session_id])
   @@index([teacher_id])
   @@index([employee_number])
   @@index([department])
@@ -247,35 +289,38 @@ model Teacher {
 }
 
 model Student {
-  id                 String     @id @default(cuid())
-  school_id          String
-  user_id            String     @unique // Reference to User for authentication
-  student_id         String     @unique // Custom student ID like "STD/2024/001"
-  admission_number   String?    @unique // School admission number
-  date_of_birth      DateTime?
-  admission_date     DateTime   @default(now())
-  current_class_id   String?
-  guardian_name      String?
-  guardian_phone     String?
-  guardian_email     String?
-  address            String?
-  emergency_contact  String?
-  blood_group        String?
-  medical_conditions String?
-  allergies          String?
-  previous_school    String? // Previous school attended
-  academic_level     String? // e.g., "Primary 5", "JSS 2", "SSS 1"
-  parent_id          String? // Reference to parent
-  status             UserStatus @default(active)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id                  String     @id @default(cuid())
+  school_id           String
+  academic_session_id String // Reference to current academic session
+  user_id             String     @unique // Reference to User for authentication
+  student_id          String     @unique // Custom student ID like "STD/2024/001"
+  admission_number    String?    @unique // School admission number
+  date_of_birth       DateTime?
+  admission_date      DateTime   @default(now())
+  current_class_id    String?
+  guardian_name       String?
+  guardian_phone      String?
+  guardian_email      String?
+  address             String?
+  emergency_contact   String?
+  blood_group         String?
+  medical_conditions  String?
+  allergies           String?
+  previous_school     String? // Previous school attended
+  academic_level      String? // e.g., "Primary 5", "JSS 2", "SSS 1"
+  parent_id           String? // Reference to parent
+  status              UserStatus @default(active)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   // relations
-  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school School  @relation(fields: [school_id], references: [id])
-  parent Parent? @relation("ParentChildren", fields: [parent_id], references: [id])
+  user            User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school          School          @relation(fields: [school_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
+  parent          Parent?         @relation("ParentChildren", fields: [parent_id], references: [id])
 
   @@index([school_id])
+  @@index([academic_session_id])
   @@index([current_class_id])
   @@index([student_id])
   @@index([admission_number])
@@ -310,32 +355,41 @@ model Parent {
 }
 
 model Class {
-  id             String  @id @default(cuid())
-  name           String
-  schoolId       String
-  classTeacherId String?
+  id                  String  @id @default(cuid())
+  classId             Int     @default(autoincrement()) // Auto-incrementing class order (1, 2, 3...)
+  name                String
+  schoolId            String
+  academic_session_id String // Reference to current academic session
+  classTeacherId      String?
 
-  school       School    @relation(fields: [schoolId], references: [id])
-  classTeacher Teacher?  @relation("ClassTeacher", fields: [classTeacherId], references: [id])
-  students     User[]    @relation("StudentClass")
-  subjects     Subject[]
+  school          School          @relation(fields: [schoolId], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
+  classTeacher    Teacher?        @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  students        User[]          @relation("StudentClass")
+  subjects        Subject[]
 
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   payments     Payment[]
   schedules    TimetableEntry[]
   performances StudentPerformance[]
+
+  @@unique([schoolId, academic_session_id, classId])
+  @@index([schoolId, academic_session_id])
+  @@index([classId])
 }
 
 model Subject {
-  id          String  @id @default(cuid())
-  name        String // e.g., "Mathematics"
-  code        String? // e.g., "MATH101"
-  color       String  @default("#3B82F6") // Hex color for UI
-  description String?
-  schoolId    String
+  id                  String  @id @default(cuid())
+  name                String // e.g., "Mathematics"
+  code                String? // e.g., "MATH101"
+  color               String  @default("#3B82F6") // Hex color for UI
+  description         String?
+  schoolId            String
+  academic_session_id String // Reference to current academic session
 
   school           School           @relation(fields: [schoolId], references: [id])
+  academicSession  AcademicSession  @relation(fields: [academic_session_id], references: [id])
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   timetableEntries TimetableEntry[]
@@ -343,7 +397,7 @@ model Subject {
   Class            Class?           @relation(fields: [classId], references: [id])
   classId          String?
 
-  @@unique([code, schoolId])
+  @@unique([code, schoolId, academic_session_id])
 }
 
 model Finance {
@@ -362,48 +416,52 @@ model Finance {
 }
 
 model Payment {
-  id               String          @id @default(cuid())
-  finance_id       String
-  student_id       String
-  class_id         String
-  payment_for      String // e.g., "Tuition Fee", "Exam Fee", etc.
-  amount           Float
-  payment_type     PaymentType
-  transaction_type TransactionType
-  payment_date     DateTime        @default(now())
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id                  String          @id @default(cuid())
+  finance_id          String
+  academic_session_id String // Reference to current academic session
+  student_id          String
+  class_id            String
+  payment_for         String // e.g., "Tuition Fee", "Exam Fee", etc.
+  amount              Float
+  payment_type        PaymentType
+  transaction_type    TransactionType
+  payment_date        DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   // relations
-  finance Finance @relation(fields: [finance_id], references: [id])
-  student User    @relation("StudentPayment", fields: [student_id], references: [id])
-  class   Class   @relation(fields: [class_id], references: [id])
+  finance         Finance         @relation(fields: [finance_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
+  student         User            @relation("StudentPayment", fields: [student_id], references: [id])
+  class           Class           @relation(fields: [class_id], references: [id])
 }
 
 model TimetableEntry {
-  id          String    @id @default(cuid())
-  class_id    String
-  subject_id  String
-  teacher_id  String
-  school_id   String
-  timeSlotId  String
-  day_of_week DayOfWeek
-  room        String?
-  notes       String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  class_id            String
+  subject_id          String
+  teacher_id          String
+  school_id           String
+  academic_session_id String // Reference to current academic session
+  timeSlotId          String
+  day_of_week         DayOfWeek
+  room                String?
+  notes               String?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   // relations
-  class    Class    @relation(fields: [class_id], references: [id])
-  subject  Subject  @relation(fields: [subject_id], references: [id])
-  teacher  Teacher  @relation("TeacherSchedule", fields: [teacher_id], references: [id])
-  timeSlot TimeSlot @relation(fields: [timeSlotId], references: [id])
-  school   School   @relation(fields: [school_id], references: [id])
+  class           Class           @relation(fields: [class_id], references: [id])
+  subject         Subject         @relation(fields: [subject_id], references: [id])
+  teacher         Teacher         @relation("TeacherSchedule", fields: [teacher_id], references: [id])
+  timeSlot        TimeSlot        @relation(fields: [timeSlotId], references: [id])
+  school          School          @relation(fields: [school_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
 
-  @@unique([class_id, timeSlotId, day_of_week])
-  @@index([teacher_id, timeSlotId, day_of_week])
-  @@index([school_id, day_of_week, timeSlotId])
+  @@unique([class_id, timeSlotId, day_of_week, academic_session_id])
+  @@index([teacher_id, timeSlotId, day_of_week, academic_session_id])
+  @@index([school_id, day_of_week, timeSlotId, academic_session_id])
 }
 
 model TimeSlot {
@@ -481,34 +539,38 @@ model TeacherSubject {
 }
 
 model Notification {
-  id          String           @id @default(cuid())
-  school_id   String
-  title       String
-  description String
-  type        NotificationType
-  comingUpOn  DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id                  String           @id @default(cuid())
+  school_id           String
+  academic_session_id String // Reference to current academic session
+  title               String
+  description         String
+  type                NotificationType
+  comingUpOn          DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   // relations
-  school School @relation(fields: [school_id], references: [id])
+  school          School          @relation(fields: [school_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
 }
 
 model StudentPerformance {
-  id          String   @id @default(cuid())
-  student_id  String
-  class_id    String
-  term        Int // 1, 2, or 3
-  year        Int
-  total_score Float
-  max_score   Float
-  position    Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  student_id          String
+  class_id            String
+  academic_session_id String // Reference to current academic session
+  term                Int // 1, 2, or 3
+  year                Int
+  total_score         Float
+  max_score           Float
+  position            Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   // relations
-  student User  @relation("StudentPerformance", fields: [student_id], references: [id])
-  class   Class @relation(fields: [class_id], references: [id])
+  student         User            @relation("StudentPerformance", fields: [student_id], references: [id])
+  class           Class           @relation(fields: [class_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
 }
 
 model Organisation {
