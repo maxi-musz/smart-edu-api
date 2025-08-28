@@ -583,6 +583,7 @@ export class TeachersService {
                 where: { 
                     id,
                     school_id: fullUser.school_id
+                    // school_id: fullUser.school_id
                 },
                 include: {
                     subjectsTeaching: {
@@ -1098,10 +1099,12 @@ export class TeachersService {
 
         try {
             // Verify the teacher exists and belongs to the same school
-            const teacher = await this.prisma.user.findFirst({
+            const teacher = await this.prisma.teacher.findFirst({
                 where: {
-                    id: teacherId,
-                    role: 'teacher',
+                    OR: [
+                        { id: teacherId }, // Try as Teacher ID first
+                        { user_id: teacherId } // Try as User ID
+                    ],
                     school_id: user.school_id
                 },
                 select: {
@@ -1109,18 +1112,24 @@ export class TeachersService {
                     first_name: true,
                     last_name: true,
                     email: true,
-                    display_picture: true
+                    display_picture: true,
+                    user_id: true
                 }
             });
+
+            this.logger.log(colors.magenta(`Teacher ID: ${teacher?.id}`));
 
             if (!teacher) {
                 this.logger.error(colors.red(`Teacher not found or doesn't belong to school: ${user.school_id}`));
                 return ResponseHelper.error('Teacher not found or access denied', 404);
             }
 
+            // Use the actual teacher ID for subsequent queries
+            const actualTeacherId = teacher.id;
+
             // Fetch teacher's assigned subjects
             const assignedSubjects = await this.prisma.teacherSubject.findMany({
-                where: { teacherId },
+                where: { teacherId: actualTeacherId },
                 include: {
                     subject: {
                         select: {
@@ -1148,7 +1157,7 @@ export class TeachersService {
 
             // Fetch teacher's managed classes
             const managedClasses = await this.prisma.class.findMany({
-                where: { classTeacherId: teacherId },
+                where: { classTeacherId: actualTeacherId },
                 select: {
                     id: true,
                     name: true,

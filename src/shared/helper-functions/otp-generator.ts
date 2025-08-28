@@ -6,18 +6,15 @@ import * as crypto from 'crypto';
  */
 export function generateOTP(): string {
   const numbers = '0123456789';
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const allChars = numbers + letters;
   
   let otp = '';
   
   // Ensure at least one number and one letter
   otp += numbers[crypto.randomInt(0, numbers.length)];
-  otp += letters[crypto.randomInt(0, letters.length)];
   
   // Fill the remaining 4 characters with random alphanumeric
-  for (let i = 2; i < 6; i++) {
-    otp += allChars[crypto.randomInt(0, allChars.length)];
+  for (let i = 2; i < 7; i++) {
+    otp += numbers[crypto.randomInt(0, numbers.length)];
   }
   
   // Shuffle the OTP to randomize the position of number and letter
