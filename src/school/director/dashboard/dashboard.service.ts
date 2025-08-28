@@ -53,10 +53,27 @@ export class DashboardService {
             throw new NotFoundException("No current academic session found for the school");
           }
           const currentSessionId = currentSessionResponse.data.id;
-      
+
+          // Debug: Check all students in the school
+          const allStudents = await this.prisma.student.findMany({
+            where: { school_id: director.school_id },
+            select: { id: true, academic_session_id: true, user: { select: { email: true } } }
+          });
+
+          // Debug: Check current session details
+          const currentSessionDetails = await this.prisma.academicSession.findUnique({
+            where: { id: currentSessionId },
+            select: { id: true, academic_year: true, term: true, is_current: true }
+          });
+
+          // Debug: Check total students without session filter
+          const totalStudentsNoFilter = await this.prisma.student.count({
+            where: { school_id: director.school_id }
+          });
+
           const [teachers, classes, subjects, totalStudents, activeStudents, suspendedStudents, finance, ongoingClasses, notifications] = await Promise.all([
-            this.prisma.user.count({
-              where: { school_id: director.school_id, role: "teacher" },
+            this.prisma.teacher.count({
+              where: { school_id: director.school_id },
             }),
             this.prisma.class.count({
               where: { 
@@ -70,32 +87,27 @@ export class DashboardService {
                 academic_session_id: currentSessionId
               },
             }),
-            this.prisma.user.count({
+            this.prisma.student.count({
               where: { 
-                school_id: director.school_id, 
-                role: "student",
-                student: {
-                  academic_session_id: currentSessionId
+                school_id: director.school_id,
+                academic_session_id: currentSessionId
+              },
+            }),
+            this.prisma.student.count({
+              where: {
+                school_id: director.school_id,
+                academic_session_id: currentSessionId,
+                user: {
+                  status: "active"
                 }
               },
             }),
-            this.prisma.user.count({
+            this.prisma.student.count({
               where: {
                 school_id: director.school_id,
-                role: "student",
-                status: "active",
-                student: {
-                  academic_session_id: currentSessionId
-                }
-              },
-            }),
-            this.prisma.user.count({
-              where: {
-                school_id: director.school_id,
-                role: "student",
-                status: "suspended",
-                student: {
-                  academic_session_id: currentSessionId
+                academic_session_id: currentSessionId,
+                user: {
+                  status: "suspended"
                 }
               },
             }),
