@@ -575,7 +575,7 @@ export class StudentsService {
 
       // Enroll a completely new student
       async enrollNewStudent(user: User, dto: EnrollNewStudentDto) {
-        this.logger.log(colors.cyan(`Enrolling new student: ${dto.first_name} ${dto.last_name}`));
+        this.logger.log(colors.blue(`Enrolling new student, Dto: ${JSON.stringify(dto)}`));
 
         try {
           // 1. Validate required fields
@@ -607,7 +607,7 @@ export class StudentsService {
           const classExists = await this.prisma.class.findFirst({
             where: {
               id: dto.class_id,
-              schoolId: fullUser.school_id,
+              // schoolId: fullUser.school_id,
             },
           });
 
@@ -620,28 +620,7 @@ export class StudentsService {
           const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
           const hashedPassword = await argon.hash(generatedPassword);
 
-          // 6. Create new user
-          const newUser = await this.prisma.user.create({
-            data: {
-              first_name: dto.first_name,
-              last_name: dto.last_name,
-              email: dto.email,
-              phone_number: dto.phone_number,
-              display_picture: dto.display_picture,
-              gender: dto.gender,
-              status: UserStatus.active,
-              role: 'student',
-              password: hashedPassword,
-              school_id: fullUser.school_id
-            }
-          });
-
-          // 7. Create student record with retry mechanism for unique constraint
-          let student;
-          let retryCount = 0;
-          const maxRetries = 3;
-
-          // Get current academic session for the school
+          // 6. Get current academic session for the school
           const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
           if (!currentSessionResponse.success) {
             return new ApiResponse(
@@ -651,60 +630,92 @@ export class StudentsService {
             );
           }
 
-          while (retryCount < maxRetries) {
-            try {
-              student = await this.prisma.student.create({
+          // 7. Execute everything in a transaction
+          let result;
+          try {
+            result = await this.prisma.$transaction(async (tx) => {
+              // Create new user
+              const newUser = await tx.user.create({
                 data: {
-                  school_id: fullUser.school_id,
-                  user_id: newUser.id,
-                  student_id: await generateUniqueStudentId(this.prisma),
-                  admission_number: dto.admission_number,
-                  date_of_birth: dto.date_of_birth ? new Date(dto.date_of_birth) : null,
-                  admission_date: new Date(),
-                  current_class_id: dto.class_id,
-                  guardian_name: dto.guardian_name,
-                  guardian_phone: dto.guardian_phone,
-                  guardian_email: dto.guardian_email,
-                  address: dto.address,
-                  emergency_contact: dto.emergency_contact,
-                  blood_group: dto.blood_group,
-                  medical_conditions: dto.medical_conditions,
-                  allergies: dto.allergies,
-                  previous_school: dto.previous_school,
-                  academic_level: dto.academic_level,
-                  parent_id: dto.parent_id,
+                  first_name: dto.first_name,
+                  last_name: dto.last_name,
+                  email: dto.email,
+                  phone_number: dto.phone_number,
+                  display_picture: dto.display_picture,
+                  gender: dto.gender,
                   status: UserStatus.active,
-                  academic_session_id: currentSessionResponse.data.id
+                  role: 'student',
+                  password: hashedPassword,
+                  school_id: fullUser.school_id
                 }
               });
-              break; // Success, exit the retry loop
-            } catch (error: any) {
-              if (error.code === 'P2002' && error.meta?.target?.includes('student_id')) {
-                retryCount++;
-                if (retryCount >= maxRetries) {
-                  this.logger.error(colors.red(`Failed to create student after ${maxRetries} retries due to duplicate student_id`));
-                  throw error;
-                }
-                this.logger.warn(colors.yellow(`Duplicate student_id detected, retrying... (${retryCount}/${maxRetries})`));
-                // Small delay before retry
-                await new Promise(resolve => setTimeout(resolve, 100));
-              } else {
-                throw error; // Re-throw if it's not a duplicate key error
-              }
-            }
-          }
 
-          // 7. Enroll student to the specified class
-          await this.prisma.user.update({
-            where: { id: newUser.id },
-            data: {
-              classesEnrolled: {
-                connect: {
-                  id: dto.class_id
+              // Create student record with retry mechanism for unique constraint
+              let student;
+              let retryCount = 0;
+              const maxRetries = 3;
+
+              while (retryCount < maxRetries) {
+                try {
+                  student = await tx.student.create({
+                    data: {
+                      school_id: fullUser.school_id,
+                      user_id: newUser.id,
+                      student_id: await generateUniqueStudentId(this.prisma),
+                      admission_number: dto.admission_number,
+                      date_of_birth: dto.date_of_birth ? new Date(dto.date_of_birth) : null,
+                      admission_date: new Date(),
+                      current_class_id: dto.class_id,
+                      guardian_name: dto.guardian_name,
+                      guardian_phone: dto.guardian_phone,
+                      guardian_email: dto.guardian_email,
+                      address: dto.address,
+                      emergency_contact: dto.emergency_contact,
+                      blood_group: dto.blood_group,
+                      medical_conditions: dto.medical_conditions,
+                      allergies: dto.allergies,
+                      previous_school: dto.previous_school,
+                      academic_level: dto.academic_level,
+                      parent_id: dto.parent_id,
+                      status: UserStatus.active,
+                      academic_session_id: currentSessionResponse.data.id
+                    }
+                  });
+                  break; // Success, exit the retry loop
+                } catch (error: any) {
+                  if (error.code === 'P2002' && error.meta?.target?.includes('student_id')) {
+                    retryCount++;
+                    if (retryCount >= maxRetries) {
+                      this.logger.error(colors.red(`Failed to create student after ${maxRetries} retries due to duplicate student_id`));
+                      throw error;
+                    }
+                    this.logger.warn(colors.yellow(`Duplicate student_id detected, retrying... (${retryCount}/${maxRetries})`));
+                    // Small delay before retry
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                  } else {
+                    throw error; // Re-throw if it's not a duplicate key error
+                  }
                 }
               }
-            }
-          });
+
+              // Enroll student to the specified class
+              await tx.user.update({
+                where: { id: newUser.id },
+                data: {
+                  classesEnrolled: {
+                    connect: {
+                      id: dto.class_id
+                    }
+                  }
+                }
+              });
+
+              return { newUser, student };
+            });
+          } catch (error) {
+            this.logger.error(colors.red(`❌ Failed to create student: ${error.message}`), error);
+            return new ApiResponse(false, `Failed to create student: ${error.message}`, 500);
+          }
 
           // Send email notifications
           try {
@@ -725,7 +736,7 @@ export class StudentsService {
               studentName: `${dto.first_name} ${dto.last_name}`,
               studentEmail: dto.email,
               schoolName: school?.school_name || 'Your School',
-              studentId: student.student_id,
+              studentId: result.student.student_id,
               className: classExists.name,
               studentDetails: {
                 guardianName: dto.guardian_name,
@@ -742,7 +753,7 @@ export class StudentsService {
               studentName: `${dto.first_name} ${dto.last_name}`,
               studentEmail: dto.email,
               schoolName: school?.school_name || 'Your School',
-              studentId: student.student_id,
+              studentId: result.student.student_id,
               className: classExists.name,
               classTeacher: classTeacher ? `${classTeacher.first_name} ${classTeacher.last_name}` : undefined,
               loginCredentials: {
@@ -759,7 +770,7 @@ export class StudentsService {
                 className: classExists.name,
                 schoolName: school?.school_name || 'Your School',
                 studentName: `${dto.first_name} ${dto.last_name}`,
-                studentId: student.student_id,
+                studentId: result.student.student_id,
                 studentEmail: dto.email,
                 studentDetails: {
                   guardianName: dto.guardian_name,
@@ -781,9 +792,9 @@ export class StudentsService {
 
           return new ApiResponse(true, 'Student enrolled successfully', { 
             student: {
-              id: student.id,
-              user_id: newUser.id,
-              student_id: student.student_id,
+              id: result.student.id,
+              user_id: result.newUser.id,
+              student_id: result.student.student_id,
               name: `${dto.first_name} ${dto.last_name}`,
               email: dto.email,
               class: classExists.name,
