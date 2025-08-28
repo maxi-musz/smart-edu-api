@@ -3,9 +3,10 @@ import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { TeachersModule } from '../teachers/teachers.module';
+import { AcademicSessionModule } from '../../../academic-session/academic-session.module';
 
 @Module({
-  imports: [PrismaModule, TeachersModule],
+  imports: [PrismaModule, TeachersModule, AcademicSessionModule],
   controllers: [DashboardController],
   providers: [DashboardService]
 })

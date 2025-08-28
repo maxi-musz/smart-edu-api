@@ -18,6 +18,7 @@ import { OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirec
 import { generateOTP } from 'src/shared/helper-functions/otp-generator';
 import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
 import { ExcelProcessorService } from 'src/shared/services/excel-processor.service';
+import { AcademicSessionService } from '../../academic-session/academic-session.service';
 
 interface CloudinaryUploadResult {
     secure_url: string;
@@ -34,7 +35,8 @@ export class AuthService {
         private jwt: JwtService,
         private config: ConfigService,
         private readonly cloudinaryService: CloudinaryService,
-        private readonly excelProcessorService: ExcelProcessorService
+        private readonly excelProcessorService: ExcelProcessorService,
+        private readonly academicSessionService: AcademicSessionService
     ) {}
     
     // Onboard new school
@@ -95,6 +97,30 @@ export class AuthService {
                         }
                     } : undefined,
                     status: 'pending'
+                }
+            });
+
+            // Create the initial academic session for the school
+            const academicYearParts = dto.academic_year.split(/[\/\-]/);
+            const startYear = parseInt(academicYearParts[0]);
+            const endYear = academicYearParts.length > 1 ? parseInt(academicYearParts[1]) : startYear + 1;
+
+            // Calculate a default end date if not provided (3 months from start date)
+            const startDate = new Date(dto.term_start_date);
+            const defaultEndDate = new Date(startDate);
+            defaultEndDate.setMonth(defaultEndDate.getMonth() + 3); // 3 months later
+
+            await this.prisma.academicSession.create({
+                data: {
+                    school_id: school.id,
+                    academic_year: dto.academic_year,
+                    start_year: startYear,
+                    end_year: endYear,
+                    term: dto.current_term,
+                    start_date: startDate,
+                    end_date: dto.term_end_date ? new Date(dto.term_end_date) : defaultEndDate,
+                    status: 'active',
+                    is_current: true
                 }
             });
 
@@ -610,11 +636,23 @@ export class AuthService {
                 });
             }
 
+            // Get current academic session for the school
+            const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+            if (!currentSessionResponse.success) {
+                throw new BadRequestException({
+                    success: false,
+                    message: "No current academic session found for the school",
+                    error: null,
+                    statusCode: 400
+                });
+            }
+
             // Create the classes
             await this.prisma.class.createMany({
                 data: dto.class_names.map(className => ({
                     name: className.toLowerCase().replace(/\s+/g, ''),
-                    schoolId: existingSchool.id
+                    schoolId: existingSchool.id,
+                    academic_session_id: currentSessionResponse.data.id
                 }))
             });
 
@@ -1145,11 +1183,23 @@ export class AuthService {
                         });
                     }
 
+                    // Get current academic session for the school
+                    const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+                    if (!currentSessionResponse.success) {
+                        throw new BadRequestException({
+                            success: false,
+                            message: "No current academic session found for the school",
+                            error: null,
+                            statusCode: 400
+                        });
+                    }
+
                     // Create the classes
                     await prisma.class.createMany({
                         data: dto.class_names.map(className => ({
                             name: className.toLowerCase().replace(/\s+/g, ''),
-                            schoolId: existingSchool.id
+                            schoolId: existingSchool.id,
+                            academic_session_id: currentSessionResponse.data.id
                         }))
                     });
 

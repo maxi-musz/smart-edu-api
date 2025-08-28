@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, InternalServerErrorException, NotFound
 import { PrismaService } from 'src/prisma/prisma.service';
 import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import * as colors from 'colors';
+import { AcademicSessionService } from '../../academic-session/academic-session.service';
 
 export interface PaymentData {
   student_id: string;
@@ -33,7 +34,10 @@ export interface PaymentValidationResult {
 
 @Injectable()
 export class PaymentProcessorService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly academicSessionService: AcademicSessionService
+  ) {}
 
   /**
    * Process a student payment with full validation and error handling
@@ -115,6 +119,17 @@ export class PaymentProcessorService {
           });
         }
 
+        // Get current academic session for the school
+        const currentSessionResponse = await this.academicSessionService.getCurrentSession(school.id);
+        if (!currentSessionResponse.success) {
+          throw new BadRequestException({
+            success: false,
+            message: "No current academic session found for the school",
+            error: null,
+            statusCode: 400
+          });
+        }
+
         // Generate unique reference if not provided
         const reference = paymentData.reference || this.generatePaymentReference();
 
@@ -129,7 +144,8 @@ export class PaymentProcessorService {
             amount: paymentData.amount,
             payment_type: paymentData.payment_type,
             transaction_type: paymentData.transaction_type,
-            payment_date: new Date()
+            payment_date: new Date(),
+            academic_session_id: currentSessionResponse.data.id
           }
         });
 

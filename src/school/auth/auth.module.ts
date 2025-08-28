@@ -8,10 +8,12 @@ import { CloudinaryService } from 'src/shared/services/cloudinary.service';
 import { ExcelProcessorService } from 'src/shared/services/excel-processor.service';
 import { JwtStrategy } from './strategy/jwt.strategy';
 import * as colors from 'colors';
+import { AcademicSessionModule } from '../../academic-session/academic-session.module';
 
 @Module({
   imports: [
     PrismaModule,
+    AcademicSessionModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (config: ConfigService) => {

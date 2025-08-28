@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AcademicSessionService } from '../../academic-session/academic-session.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { User, DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
@@ -10,7 +11,10 @@ import { AddStudentToClassDto } from '../director/students/dto/auth.dto';
 export class TeachersService {
   private readonly logger = new Logger(TeachersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly academicSessionService: AcademicSessionService
+  ) {}
 
   ////////////////////////////////////////////////////////////////////////// GET TEACHER PROFILE
   // GET - /api/v1/teachers/profile
@@ -406,27 +410,25 @@ export class TeachersService {
 
       this.logger.log(colors.green(`✅ Recent notifications found: ${recentNotifications.length}`));
 
-      // Get school information for current session and term
-      const schoolInfo = await this.prisma.school.findUnique({
-        where: {
-          id: teacher.school_id
-        },
-        select: {
-          current_term: true,
-          current_year: true,
-          term_start_date: true,
-          term_end_date: true
-        }
-      });
+      // Get current academic session
+      const currentSessionResponse = await this.academicSessionService.getCurrentSession(teacher.school_id);
+      
+      if (!currentSessionResponse.success) {
+        return new ApiResponse(false, 'No current academic session found', null);
+      }
 
-      this.logger.log(colors.green(`✅ School info found: ${schoolInfo?.current_year} - ${schoolInfo?.current_term} term`));
+      const currentSession = currentSessionResponse.data;
+
+      this.logger.log(colors.green(`✅ Current session found: ${currentSession.academic_year} - ${currentSession.term} term`));
 
       const dashboardData = {
         current_session: {
-          year: schoolInfo?.current_year || 2024,
-          term: schoolInfo?.current_term || 'first',
-          term_start_date: schoolInfo?.term_start_date,
-          term_end_date: schoolInfo?.term_end_date
+          academic_year: currentSession.academic_year,
+          start_year: currentSession.start_year,
+          end_year: currentSession.end_year,
+          term: currentSession.term,
+          term_start_date: currentSession.start_date,
+          term_end_date: currentSession.end_date
         },
         managed_class: {
           id: managedClass.id,
