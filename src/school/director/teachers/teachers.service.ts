@@ -10,6 +10,7 @@ import { sendTeacherOnboardEmail } from 'src/common/mailer/send-congratulatory-e
 import { sendAssignmentNotifications, sendSubjectRoleEmail, sendClassManagementEmail } from 'src/common/mailer/send-assignment-notifications';
 import { sendDirectorNotifications } from 'src/common/mailer/send-director-notifications';
 import { generateUniqueTeacherId } from './helper-functions';
+import { AcademicSessionService } from 'src/academic-session/academic-session.service';
 
 export interface FetchTeachersDashboardDto {
     user: User;
@@ -28,7 +29,8 @@ export class TeachersService {
     private readonly logger = new Logger(TeachersService.name);
 
     constructor(
-        private readonly prisma: PrismaService
+        private readonly prisma: PrismaService,
+        private readonly academicSessionService: AcademicSessionService
     ) {}
 
     // Helper to get current DayOfWeek enum string
@@ -46,7 +48,34 @@ export class TeachersService {
       return `${hours}:${minutes}`;
     }
 
+    // Helper method to clean up orphaned users
+    private async cleanupOrphanedUsers(email: string) {
+        try {
+            // Find users with this email that don't have corresponding teacher records
+            const orphanedUsers = await this.prisma.user.findMany({
+                where: {
+                    email,
+                    role: 'teacher',
+                    teacher: null // No corresponding teacher record
+                }
+            });
 
+            if (orphanedUsers.length > 0) {
+                this.logger.log(colors.yellow(`Found ${orphanedUsers.length} orphaned user(s) for email: ${email}`));
+                
+                // Delete orphaned users
+                await this.prisma.user.deleteMany({
+                    where: {
+                        id: { in: orphanedUsers.map(u => u.id) }
+                    }
+                });
+                
+                this.logger.log(colors.green(`✅ Cleaned up ${orphanedUsers.length} orphaned user(s) for email: ${email}`));
+            }
+        } catch (error) {
+            this.logger.error(colors.red(`❌ Failed to cleanup orphaned users for email: ${email}`), error);
+        }
+    }
 
     ////////////////////////////////////////////////////// Fetch classes and subjects for teacher creation
     async fetchClassesAndSubjects(dto: { school_id: string }) {
@@ -98,6 +127,7 @@ export class TeachersService {
                 description: subject.description
             }));
 
+            this.logger.log(colors.green(`Total of ${classes.length} classes and ${subjects.length} subjects fetched successfully`));
             return ResponseHelper.success(
                 "Classes and subjects fetched successfully",
                 {
@@ -116,7 +146,7 @@ export class TeachersService {
     }
 
     ////////////////////////////////////////////////////// Teachers dashboard
-        async fetchTeachersDashboard(dto: FetchTeachersDashboardDto) {
+    async fetchTeachersDashboard(dto: FetchTeachersDashboardDto) {
         this.logger.log(colors.cyan("Fetching teacher dashboard for school director..."));
 
         try {
@@ -331,9 +361,6 @@ export class TeachersService {
         if (!first_name || !last_name || !email || !phone_number) {
             return ResponseHelper.error('Missing required fields', 400);
         }
-
-        // Validate user and get full user data
-        // this.logger.log(colors.yellow(`User object: ${JSON.stringify(user, null, 2)}`));
         
         if (!user || !user.sub) {
             this.logger.error(colors.red("Invalid user data or missing user ID"));
@@ -351,7 +378,10 @@ export class TeachersService {
             return ResponseHelper.error('User not found or invalid school data', 400);
         }
 
-        // 2. Check if teacher already exists
+        // 2. Clean up any orphaned users from previous failed attempts
+        await this.cleanupOrphanedUsers(email);
+
+        // 3. Check if teacher already exists
         const existing = await this.prisma.teacher.findFirst({
             where: { email }
         });
@@ -360,11 +390,11 @@ export class TeachersService {
             return ResponseHelper.error('A teacher with this email already exists', 409);
         }
 
-        // 3. Generate strong password if not provided
+        // 4. Generate strong password if not provided
         const generatedPassword = password || generateStrongPassword(first_name, last_name, email, phone_number);
         const hashedPassword = await argon.hash(generatedPassword);
 
-        // 4. Get school name for email
+        // 5. Get school name for email
         this.logger.log(colors.cyan(`Enrolling new teacher for school_id: ${fullUser.school_id}`));
         
         const school = await this.prisma.school.findFirst({
@@ -372,161 +402,176 @@ export class TeachersService {
             select: { school_name: true, id: true }
         });
 
-        //create a new user 
-        const newUser = await this.prisma.user.create({
-            data: {
-                first_name,
-                last_name,
-                email,
-                phone_number,
-                display_picture,
-                status: (status as UserStatus) || UserStatus.active,
-                role: 'teacher',
-                password: hashedPassword,
-                school_id: fullUser.school_id
-            }
-        });
+        // 6. Get current academic session
+        const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
+        if (!currentSessionResponse.success) {
+            return ResponseHelper.error('No current academic session found for the school', 400);
+        }
+        const currentSession = currentSessionResponse.data;
 
-        // 5. Create teacher
-        const teacher = await this.prisma.teacher.create({
-            data: {
-                first_name,
-                last_name,
-                email,
-                phone_number,
-                display_picture,
-                teacher_id: await generateUniqueTeacherId(this.prisma),
-                school_id: fullUser.school_id,
-                user_id: newUser.id,
-                role: 'teacher',
-                password: hashedPassword,
-                employee_number: null,
-                qualification: null,
-                specialization: null,
-                years_of_experience: null,
-                hire_date: new Date(),
-                salary: null,
-                department: null,
-                is_class_teacher: false,
-                status: (status as UserStatus) || UserStatus.active,
-                gender: gender as Gender
-            }
-        });
-
-        
-
-        // 6. Assign subjects
-        if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
-            for (const subjectId of subjectsTeaching) {
-                await this.prisma.teacherSubject.create({
+        // 7. Execute everything in a transaction
+        try {
+            const result = await this.prisma.$transaction(async (tx) => {
+                // Create a new user 
+                const newUser = await tx.user.create({
                     data: {
-                        teacherId: teacher.id,
-                        subjectId: subjectId
+                        first_name,
+                        last_name,
+                        email,
+                        phone_number,
+                        display_picture,
+                        status: (status as UserStatus) || UserStatus.active,
+                        role: 'teacher',
+                        password: hashedPassword,
+                        school_id: fullUser.school_id
                     }
                 });
-            }
-        }
 
-        // 7. Assign classes
-        if (classesManaging && Array.isArray(classesManaging)) {
-            for (const classId of classesManaging) {
-                await this.prisma.class.update({
-                    where: { id: classId },
-                    data: { classTeacherId: teacher.id }
+                // Create teacher
+                const teacher = await tx.teacher.create({
+                    data: {
+                        first_name,
+                        last_name,
+                        email,
+                        phone_number,
+                        display_picture,
+                        teacher_id: await generateUniqueTeacherId(this.prisma),
+                        school_id: fullUser.school_id,
+                        academic_session_id: currentSession.id,
+                        user_id: newUser.id,
+                        role: 'teacher',
+                        password: hashedPassword,
+                        employee_number: null,
+                        qualification: null,
+                        specialization: null,
+                        years_of_experience: null,
+                        hire_date: new Date(),
+                        salary: null,
+                        department: null,
+                        is_class_teacher: false,
+                        status: (status as UserStatus) || UserStatus.active,
+                        gender: gender as Gender
+                    }
                 });
-            }
-        }
 
-        // 8. Send congratulatory email to teacher
-        try {
-            await sendTeacherOnboardEmail({
-                firstName: first_name,
-                lastName: last_name,
-                email,
-                phone: phone_number,
-                schoolName: school?.school_name || 'Your School'
+                // Assign subjects
+                if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
+                    for (const subjectId of subjectsTeaching) {
+                        await tx.teacherSubject.create({
+                            data: {
+                                teacherId: teacher.id,
+                                subjectId: subjectId
+                            }
+                        });
+                    }
+                }
+
+                // Assign classes
+                if (classesManaging && Array.isArray(classesManaging)) {
+                    for (const classId of classesManaging) {
+                        await tx.class.update({
+                            where: { id: classId },
+                            data: { classTeacherId: teacher.id }
+                        });
+                    }
+                }
+
+                return { newUser, teacher };
             });
-            this.logger.log(colors.green(`✅ Welcome email sent to teacher: ${email}`));
-        } catch (emailError) {
-            this.logger.error(colors.red(`❌ Failed to send welcome email to teacher: ${email}`), emailError);
-            // Don't fail the entire operation if email fails
-        }
 
-        
-
-        // 9. Send assignment notifications if subjects or classes are assigned
-        try {
-            const teacherName = `${first_name} ${last_name}`;
-            const assignedBy = `${fullUser.first_name} ${fullUser.last_name}` || 'School Administrator';
-            
-            // Get subject names for notification
-            const subjectNames: string[] = [];
-            if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
-                const subjects = await this.prisma.subject.findMany({
-                    where: { id: { in: subjectsTeaching } },
-                    select: { name: true }
-                });
-                subjectNames.push(...subjects.map(s => s.name));
-            }
-
-            // Get class names for notification
-            const classNames: string[] = [];
-            if (classesManaging && Array.isArray(classesManaging)) {
-                const classes = await this.prisma.class.findMany({
-                    where: { id: { in: classesManaging } },
-                    select: { name: true }
-                });
-                classNames.push(...classes.map(c => c.name));
-            }
-
-            if (subjectNames.length > 0 || classNames.length > 0) {
-                await sendAssignmentNotifications(
-                    teacher.id,
-                    email,
-                    teacherName,
-                    school?.school_name || 'Your School',
-                    assignedBy,
-                    subjectNames.length > 0 ? subjectNames : undefined,
-                    undefined, // No removed subjects for new teacher
-                    classNames.length > 0 ? classNames : undefined,
-                    undefined  // No removed classes for new teacher
-                );
-                this.logger.log(colors.green(`✅ Assignment notifications sent to teacher: ${email}`));
-            }
-
-            // Send director notifications for new teacher
+            // 8. Send congratulatory email to teacher (outside transaction)
             try {
-                await sendDirectorNotifications(
-                    this.prisma,
-                    fullUser.school_id,
-                    school?.school_name || 'Your School',
-                    teacher.id,
-                    teacherName,
+                await sendTeacherOnboardEmail({
+                    firstName: first_name,
+                    lastName: last_name,
                     email,
-                    phone_number,
-                    assignedBy,
-                    subjectNames.length > 0 ? subjectNames : undefined,
-                    undefined, // No removed subjects for new teacher
-                    classNames.length > 0 ? classNames : undefined,
-                    undefined, // No removed classes for new teacher
-                    undefined, // No previous subjects for new teacher
-                    undefined, // No previous classes for new teacher
-                    true // isNewTeacher flag
-                );
-                this.logger.log(colors.green(`✅ Director notifications sent for new teacher: ${email}`));
-            } catch (directorEmailError) {
-                this.logger.error(colors.red(`❌ Failed to send director notifications for new teacher: ${email}`), directorEmailError);
-                // Don't fail the entire operation if director email fails
+                    phone: phone_number,
+                    schoolName: school?.school_name || 'Your School'
+                });
+                this.logger.log(colors.green(`✅ Welcome email sent to teacher: ${email}`));
+            } catch (emailError) {
+                this.logger.error(colors.red(`❌ Failed to send welcome email to teacher: ${email}`), emailError);
+                // Don't fail the entire operation if email fails
             }
-        } catch (assignmentEmailError) {
-            this.logger.error(colors.red(`❌ Failed to send assignment notifications to teacher: ${email}`), assignmentEmailError);
-            // Don't fail the entire operation if assignment email fails
-        }
 
-        return ResponseHelper.success('Teacher added successfully', { 
-            teacher,
-            generatedPassword: !password ? generatedPassword : undefined // Only return if auto-generated
-        });
+            // 9. Send assignment notifications if subjects or classes are assigned (outside transaction)
+            try {
+                const teacherName = `${first_name} ${last_name}`;
+                const assignedBy = `${fullUser.first_name} ${fullUser.last_name}` || 'School Administrator';
+                
+                // Get subject names for notification
+                const subjectNames: string[] = [];
+                if (subjectsTeaching && Array.isArray(subjectsTeaching)) {
+                    const subjects = await this.prisma.subject.findMany({
+                        where: { id: { in: subjectsTeaching } },
+                        select: { name: true }
+                    });
+                    subjectNames.push(...subjects.map(s => s.name));
+                }
+
+                // Get class names for notification
+                const classNames: string[] = [];
+                if (classesManaging && Array.isArray(classesManaging)) {
+                    const classes = await this.prisma.class.findMany({
+                        where: { id: { in: classesManaging } },
+                        select: { name: true }
+                    });
+                    classNames.push(...classes.map(c => c.name));
+                }
+
+                if (subjectNames.length > 0 || classNames.length > 0) {
+                    await sendAssignmentNotifications(
+                        result.teacher.id,
+                        email,
+                        teacherName,
+                        school?.school_name || 'Your School',
+                        assignedBy,
+                        subjectNames.length > 0 ? subjectNames : undefined,
+                        undefined, // No removed subjects for new teacher
+                        classNames.length > 0 ? classNames : undefined,
+                        undefined  // No removed classes for new teacher
+                    );
+                    this.logger.log(colors.green(`✅ Assignment notifications sent to teacher: ${email}`));
+                }
+
+                // Send director notifications for new teacher
+                try {
+                    await sendDirectorNotifications(
+                        this.prisma,
+                        fullUser.school_id,
+                        school?.school_name || 'Your School',
+                        result.teacher.id,
+                        teacherName,
+                        email,
+                        phone_number,
+                        assignedBy,
+                        subjectNames.length > 0 ? subjectNames : undefined,
+                        undefined, // No removed subjects for new teacher
+                        classNames.length > 0 ? classNames : undefined,
+                        undefined, // No removed classes for new teacher
+                        undefined, // No previous subjects for new teacher
+                        undefined, // No previous classes for new teacher
+                        true // isNewTeacher flag
+                    );
+                    this.logger.log(colors.green(`✅ Director notifications sent for new teacher: ${email}`));
+                } catch (directorEmailError) {
+                    this.logger.error(colors.red(`❌ Failed to send director notifications for new teacher: ${email}`), directorEmailError);
+                    // Don't fail the entire operation if director email fails
+                }
+            } catch (assignmentEmailError) {
+                this.logger.error(colors.red(`❌ Failed to send assignment notifications to teacher: ${email}`), assignmentEmailError);
+                // Don't fail the entire operation if assignment email fails
+            }
+
+            return ResponseHelper.success('Teacher added successfully', { 
+                teacher: result.teacher,
+                generatedPassword: !password ? generatedPassword : undefined // Only return if auto-generated
+            });
+
+        } catch (error) {
+            this.logger.error(colors.red(`❌ Failed to create teacher: ${error.message}`), error);
+            return ResponseHelper.error(`Failed to create teacher: ${error.message}`, 500);
+        }
     }
 
     // Get teacher by ID
