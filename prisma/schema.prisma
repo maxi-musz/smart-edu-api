@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -195,6 +195,7 @@ model School {
   cbtQuiz          CBTQuiz[]
   liveClass        LiveClass[]
   libraryResource  LibraryResource[]
+  deviceTokens     DeviceToken[]
 }
 
 model Document {
@@ -239,6 +240,7 @@ model User {
   cbtQuiz         CBTQuiz[]
   liveClass       LiveClass[]
   libraryResource LibraryResource[]
+  deviceTokens    DeviceToken[]
 
   // New relationships with specific models
   teacher Teacher?
@@ -552,6 +554,26 @@ model Notification {
   // relations
   school          School          @relation(fields: [school_id], references: [id])
   academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  token      String   @unique // Expo push token
+  deviceType String // "ios" or "android"
+  user_id    String
+  school_id  String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // relations
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school School @relation(fields: [school_id], references: [id])
+
+  @@index([user_id])
+  @@index([school_id])
+  @@index([token])
+  @@index([isActive])
 }
 
 model StudentPerformance {
