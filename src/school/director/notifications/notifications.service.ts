@@ -7,6 +7,7 @@ import { AcademicSessionService } from 'src/academic-session/academic-session.se
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
 import { formatDate } from 'src/shared/helper-functions/formatter';
+import { PushNotificationsService } from 'src/push-notifications/push-notifications.service';
 
 @Injectable()
 export class NotificationsService {
@@ -14,7 +15,8 @@ export class NotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService
+    private readonly academicSessionService: AcademicSessionService,
+    private readonly pushNotificationsService: PushNotificationsService
   ) {}
 
   // Create notification
@@ -53,6 +55,30 @@ export class NotificationsService {
       });
 
       this.logger.log(colors.green(`✅ Notification created successfully: ${notification.id}`));
+
+      // 4. Send push notifications to relevant users
+      try {
+        const pushResult = await this.pushNotificationsService.sendNotificationByType({
+          title: dto.title,
+          body: dto.description,
+          notificationType: dto.type,
+          schoolId: fullUser.school_id,
+          data: {
+            type: 'notification',
+            notificationId: notification.id,
+            screen: 'NotificationDetail'
+          }
+        });
+
+        if (pushResult.success) {
+          this.logger.log(colors.green(`✅ Push notifications sent to ${pushResult.sent} devices`));
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ Push notification failed: ${pushResult.message}`));
+        }
+      } catch (pushError) {
+        this.logger.error(colors.red(`❌ Push notification error: ${pushError.message}`), pushError);
+        // Don't fail the notification creation if push fails
+      }
 
       // Format the response
       const formattedNotification = {

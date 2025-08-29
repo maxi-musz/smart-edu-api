@@ -5,6 +5,7 @@ import { HelloModule } from './hello/hello.module';
 import { AdminModule } from './admin/admin.module';
 import { SchoolModule } from './school/school.module';
 import { AcademicSessionModule } from './academic-session/academic-session.module';
+import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 import { SchedulesModule } from './school/director/schedules/schedules.module';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
@@ -35,6 +36,7 @@ import { UserModule } from './user/user.module';
     AdminModule, 
     SchoolModule, 
     AcademicSessionModule,
+    PushNotificationsModule,
     SchedulesModule,
     PrismaModule,
     UserModule

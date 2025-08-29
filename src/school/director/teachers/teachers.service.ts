@@ -11,6 +11,7 @@ import { sendAssignmentNotifications, sendSubjectRoleEmail, sendClassManagementE
 import { sendDirectorNotifications } from 'src/common/mailer/send-director-notifications';
 import { generateUniqueTeacherId } from './helper-functions';
 import { AcademicSessionService } from 'src/academic-session/academic-session.service';
+import { PushNotificationsService } from 'src/push-notifications/push-notifications.service';
 
 export interface FetchTeachersDashboardDto {
     user: User;
@@ -28,10 +29,11 @@ export interface FetchTeachersDashboardDto {
 export class TeachersService {
     private readonly logger = new Logger(TeachersService.name);
 
-    constructor(
-        private readonly prisma: PrismaService,
-        private readonly academicSessionService: AcademicSessionService
-    ) {}
+      constructor(
+    private readonly prisma: PrismaService,
+    private readonly academicSessionService: AcademicSessionService,
+    private readonly pushNotificationsService: PushNotificationsService
+  ) {}
 
     // Helper to get current DayOfWeek enum string
     private getCurrentDayOfWeek(): DayOfWeek {
@@ -561,6 +563,30 @@ export class TeachersService {
             } catch (assignmentEmailError) {
                 this.logger.error(colors.red(`❌ Failed to send assignment notifications to teacher: ${email}`), assignmentEmailError);
                 // Don't fail the entire operation if assignment email fails
+            }
+
+            // 8. Send push notification to the new teacher
+            try {
+              const pushResult = await this.pushNotificationsService.sendNotificationByType({
+                title: 'Welcome to SmartEdu!',
+                body: `Welcome ${first_name} ${last_name}! You have been successfully enrolled as a teacher.`,
+                recipients: [result.newUser.id],
+                schoolId: fullUser.school_id,
+                data: {
+                  type: 'teacher_enrollment',
+                  teacherId: result.teacher.id,
+                  screen: 'TeacherDashboard'
+                }
+              });
+
+              if (pushResult.success) {
+                this.logger.log(colors.green(`✅ Welcome push notification sent to new teacher`));
+              } else {
+                this.logger.warn(colors.yellow(`⚠️ Welcome push notification failed: ${pushResult.message}`));
+              }
+            } catch (pushError) {
+              this.logger.error(colors.red(`❌ Push notification error: ${pushError.message}`), pushError);
+              // Don't fail the enrollment if push fails
             }
 
             return ResponseHelper.success('Teacher added successfully', { 
