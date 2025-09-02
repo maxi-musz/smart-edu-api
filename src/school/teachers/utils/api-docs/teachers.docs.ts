@@ -518,6 +518,161 @@ export class TeachersDocs {
     });
   }
 
+  // Subjects tab endpoint documentation
+  static get subjectsTabOperation() {
+    return ApiOperation({
+      summary: 'Get teacher subjects dashboard tab',
+      description: 'Fetch teacher subjects dashboard with stats, academic session, and subjects details with pagination, search, and filtering'
+    });
+  }
+
+  static get subjectsTabQueries() {
+    return applyDecorators(
+      ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)', example: 1 }),
+      ApiQuery({ name: 'limit', required: false, description: 'Number of subjects per page (default: 5, max: 10)', example: 5 }),
+      ApiQuery({ name: 'search', required: false, description: 'Search by subject name or code', example: 'math' }),
+      ApiQuery({ name: 'academic_session_id', required: false, description: 'Filter by academic session ID', example: 'session-uuid' }),
+      ApiQuery({ name: 'class_id', required: false, description: 'Filter by class ID', example: 'class-uuid' }),
+      ApiQuery({ name: 'sort_by', required: false, description: 'Sort by field (name, code, createdAt)', example: 'name' }),
+      ApiQuery({ name: 'sort_order', required: false, description: 'Sort order (asc, desc)', example: 'asc' })
+    );
+  }
+
+  static get subjectsTabResponse200() {
+    return ApiResponse({
+      status: 200,
+      description: 'Subjects dashboard tab fetched successfully',
+      schema: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          message: { type: 'string', example: 'Subjects dashboard tab fetched successfully' },
+          data: {
+            type: 'object',
+            properties: {
+              stats: {
+                type: 'object',
+                properties: {
+                  totalSubjects: { type: 'number', example: 3 },
+                  totalVideos: { type: 'number', example: 5 },
+                  totalMaterials: { type: 'number', example: 2 },
+                  totalClasses: { type: 'number', example: 1 }
+                }
+              },
+              academicSession: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', example: 'session-uuid' },
+                  academic_year: { type: 'string', example: '2024/2025' },
+                  term: { type: 'string', example: 'first' }
+                }
+              },
+              subjects: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', example: 'subject-uuid' },
+                    name: { type: 'string', example: 'Mathematics' },
+                    code: { type: 'string', example: 'MATH101' },
+                    color: { type: 'string', example: '#FF5733' },
+                    description: { type: 'string', example: 'Advanced mathematics course' },
+                    thumbnail: { 
+                      type: 'object', 
+                      nullable: true,
+                      example: { secure_url: 'https://example.com/thumbnail.jpg', public_id: 'thumbnail_id' } 
+                    },
+                    timetableEntries: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', example: 'entry-uuid' },
+                          day_of_week: { type: 'string', example: 'MONDAY' },
+                          startTime: { type: 'string', example: '08:30' },
+                          endTime: { type: 'string', example: '10:30' },
+                          room: { type: 'string', example: 'Room 101' },
+                          class: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string', example: 'class-uuid' },
+                              name: { type: 'string', example: 'Class 10A' }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    classesTakingSubject: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', example: 'class-uuid' },
+                          name: { type: 'string', example: 'Class 10A' }
+                        }
+                      }
+                    },
+                    contentCounts: {
+                      type: 'object',
+                      properties: {
+                        totalVideos: { type: 'number', example: 3 },
+                        totalMaterials: { type: 'number', example: 2 },
+                        totalAssignments: { type: 'number', example: 1 }
+                      }
+                    },
+                    createdAt: { type: 'string', example: 'Aug 28, 2025, 4:00 PM' },
+                    updatedAt: { type: 'string', example: 'Aug 28, 2025, 4:00 PM' }
+                  }
+                }
+              },
+              pagination: {
+                type: 'object',
+                properties: {
+                  page: { type: 'number', example: 1 },
+                  limit: { type: 'number', example: 5 },
+                  total: { type: 'number', example: 12 },
+                  totalPages: { type: 'number', example: 3 },
+                  hasNext: { type: 'boolean', example: true },
+                  hasPrev: { type: 'boolean', example: false }
+                }
+              },
+              managedClasses: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', example: 'class-uuid' },
+                    name: { type: 'string', example: 'Class 10A' },
+                    classId: { type: 'number', example: 1 }
+                  }
+                }
+              },
+              teachingSubjects: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', example: 'subject-uuid' },
+                    name: { type: 'string', example: 'Mathematics' },
+                    code: { type: 'string', example: 'MATH101' },
+                    color: { type: 'string', example: '#FF5733' },
+                    description: { type: 'string', example: 'Advanced mathematics course' },
+                    thumbnail: { 
+                      type: 'object', 
+                      nullable: true,
+                      example: { secure_url: 'https://example.com/thumbnail.jpg', public_id: 'thumbnail_id' } 
+                    }
+                  }
+                }
+              }
+            }
+          },
+          statusCode: { type: 'number', example: 200 }
+        }
+      }
+    });
+  }
+
   // Common error responses
   static get response401() {
     return ApiResponse({
