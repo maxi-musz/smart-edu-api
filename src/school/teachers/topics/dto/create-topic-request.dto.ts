@@ -1,11 +1,11 @@
-import { IsString, IsOptional, IsNotEmpty, IsUUID, IsInt, Min, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsUUID, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
-export class CreateTopicDto {
+export class CreateTopicRequestDto {
   @ApiProperty({
     description: 'Title of the topic',
-    example: 'Introduction to Algebra',
+    example: 'Introduction to English Grammar',
   })
   @IsString()
   @IsNotEmpty()
@@ -13,13 +13,19 @@ export class CreateTopicDto {
 
   @ApiPropertyOptional({
     description: 'Description of the topic',
-    example: 'Basic concepts of algebra including variables, equations, and expressions',
+    example: 'Basic concepts and fundamentals of English grammar',
   })
   @IsOptional()
   @IsString()
   description?: string;
 
-
+  @ApiPropertyOptional({
+    description: 'Instructions for the topic',
+    example: 'Watch the introduction videos and complete the practice problems',
+  })
+  @IsOptional()
+  @IsString()
+  instructions?: string;
 
   @ApiPropertyOptional({
     description: 'Whether the topic is active (default: true)',
@@ -30,7 +36,7 @@ export class CreateTopicDto {
   is_active?: boolean;
 
   @ApiProperty({
-    description: 'Subject ID that this topic belongs to',
+    description: 'Subject ID that this topic belongs to (accepts both subjectId and subject_id)',
     example: 'cmevi6gbj000xvlhl2dxmixr0',
   })
   @IsString()
@@ -40,14 +46,6 @@ export class CreateTopicDto {
     return value || obj.subjectId;
   })
   subject_id: string;
-
-  @ApiPropertyOptional({
-    description: 'Instructions for the topic',
-    example: 'Watch the introduction videos and complete the practice problems',
-  })
-  @IsOptional()
-  @IsString()
-  instructions?: string;
 
   @ApiPropertyOptional({
     description: 'Academic session ID (optional - will use current active session if not provided)',

@@ -307,7 +307,7 @@ export class SubjectsService {
 
     // Build where clause for topics
     const topicsWhere: any = {
-      subjectId,
+      subject_id: subjectId,
       is_active: true, // Only active topics
     };
 
@@ -440,6 +440,7 @@ export class SubjectsService {
 
     const totalPages = Math.ceil(totalTopics / limit);
 
+    this.logger.log(colors.america(`Subject and topics fetched successfully`));
     return {
       success: true,
       message: 'Subject and topics fetched successfully',

@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -414,6 +414,7 @@ model Topic {
   id                  String   @id @default(cuid())
   title               String
   description         String?
+  instructions        String? // Instructions for completing the topic
   order               Int // For ordering topics within a subject (e.g., Topic 1, Topic 2)
   subject_id          String
   school_id           String
