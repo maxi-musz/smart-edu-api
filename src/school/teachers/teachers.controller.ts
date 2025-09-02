@@ -171,4 +171,37 @@ export class TeachersController {
   getSchedulesTab(@GetUser() user: User) {
     return this.teachersService.fetchSchedulesTabForTeacher(user);
   }
+
+  /**
+   * Get teacher's subjects dashboard tab with pagination, search, and filtering
+   * GET /api/v1/teachers/subjects-dashboard
+   */
+  @Get('subjects-dashboard')
+  @HttpCode(HttpStatus.OK)
+  @TeachersDocs.bearerAuth
+  @TeachersDocs.subjectsTabOperation
+  @TeachersDocs.subjectsTabQueries
+  @TeachersDocs.subjectsTabResponse200
+  @TeachersDocs.response401
+  @TeachersDocs.response404
+  getSubjectsTab(
+    @GetUser() user: User,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '5',
+    @Query('search') search?: string,
+    @Query('academic_session_id') academic_session_id?: string,
+    @Query('class_id') class_id?: string,
+    @Query('sort_by') sort_by: string = 'name',
+    @Query('sort_order') sort_order: string = 'asc'
+  ) {
+    return this.teachersService.fetchSubjectsTabForTeacher(user, {
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 5,
+      search,
+      academic_session_id,
+      class_id,
+      sort_by: sort_by as any,
+      sort_order: sort_order as 'asc' | 'desc'
+    });
+  }
 }

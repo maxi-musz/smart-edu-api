@@ -3,11 +3,13 @@ import { TeachersService } from './teachers.service';
 import { TeachersController } from './teachers.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AcademicSessionModule } from '../../academic-session/academic-session.module';
+import { SubjectsModule } from './subjects/subjects.module';
+import { TopicsModule } from './topics/topics.module';
 
 @Module({
-  imports: [PrismaModule, AcademicSessionModule],
+  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule],
   controllers: [TeachersController],
   providers: [TeachersService],
-  exports: [TeachersService]
+  exports: [TeachersService, SubjectsModule, TopicsModule]
 })
 export class TeachersModule {}

@@ -5,6 +5,7 @@ import { ApiResponse } from '../../shared/helper-functions/response';
 import { User, DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
 import { DateHelpers } from './utils/date-helpers';
+import { formatDate } from '../../shared/helper-functions/formatter';
 import { AddStudentToClassDto } from '../director/students/dto/auth.dto';
 
 @Injectable()
@@ -914,6 +915,309 @@ export class TeachersService {
     } catch (error) {
       this.logger.error(colors.red(`Error fetching schedules tab for teacher: ${error.message}`));
       return new ApiResponse(false, 'Failed to fetch schedules tab', null);
+    }
+  }
+
+  // fetch subjects dashboard tab with pagination, search, and filtering
+  async fetchSubjectsTabForTeacher(
+    user: User, 
+    query: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      academic_session_id?: string;
+      class_id?: string;
+      sort_by?: string;
+      sort_order?: 'asc' | 'desc';
+    }
+  ) {
+    this.logger.log(colors.cyan(`Fetching subjects dashboard tab for teacher: ${user.email} with filters: ${JSON.stringify(query)}`));
+
+    try {
+      // 1. Get full user data with school_id
+      const fullUser = await this.prisma.user.findFirst({
+        where: { id: user.id },
+        select: { id: true, school_id: true }
+      });
+
+      if (!fullUser || !fullUser.school_id) {
+        this.logger.error(colors.red("User not found or missing school_id"));
+        return new ApiResponse(false, 'User not found or invalid school data', null);
+      }
+
+      // 2. Get current academic session for the school
+      const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
+      if (!currentSessionResponse.success) {
+        return new ApiResponse(false, 'No current academic session found for the school', null);
+      }
+      const currentSession = currentSessionResponse.data;
+
+      // 3. Get teacher data
+      const teacher = await this.prisma.teacher.findFirst({
+        where: {
+          OR: [
+            { user_id: user.id },
+            { email: user.email }
+          ],
+          school_id: fullUser.school_id,
+          academic_session_id: currentSession.id
+        },
+        include: {
+          subjectsTeaching: {
+            include: {
+              subject: {
+                include: {
+                  timetableEntries: {
+                    include: {
+                      class: true,
+                      timeSlot: true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          classesManaging: true
+        }
+      });
+
+      if (!teacher) {
+        return new ApiResponse(false, 'Teacher not found', null);
+      }
+
+      // 4. Get stats (always get total counts regardless of pagination)
+      const totalSubjects = teacher.subjectsTeaching.length;
+      const totalClasses = teacher.classesManaging.length;
+      
+      // Count videos uploaded by teacher
+      const totalVideos = await this.prisma.videoContent.count({
+        where: {
+          uploadedById: user.id,
+          schoolId: fullUser.school_id
+        }
+      });
+
+      // Count materials uploaded by teacher
+      const totalMaterials = await this.prisma.pDFMaterial.count({
+        where: {
+          uploadedById: user.id,
+          schoolId: fullUser.school_id
+        }
+      });
+
+      const stats = {
+        totalSubjects,
+        totalVideos,
+        totalMaterials,
+        totalClasses
+      };
+
+      // 5. Format academic session
+      const academicSession = {
+        id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term
+      };
+
+      // 6. Filter and format subjects with content counts
+      let filteredSubjects = await Promise.all(teacher.subjectsTeaching.map(async (teacherSubject) => {
+        const subject = teacherSubject.subject;
+        
+        // Get classes taking this subject
+        const classesTakingSubject = subject.timetableEntries.map(entry => ({
+          id: entry.class.id,
+          name: entry.class.name
+        }));
+
+        // Get timetable entries for this subject
+        const timetableEntries = subject.timetableEntries.map(entry => ({
+          id: entry.id,
+          day_of_week: entry.day_of_week,
+          startTime: entry.timeSlot.startTime,
+          endTime: entry.timeSlot.endTime,
+          room: entry.room || null,
+          class: {
+            id: entry.class.id,
+            name: entry.class.name
+          }
+        }));
+
+        // Get content counts for this subject in current academic session
+        const [totalVideos, totalMaterials, totalAssignments] = await Promise.all([
+          // Count videos for this subject
+          this.prisma.videoContent.count({
+            where: {
+              topic_id: subject.id,
+              schoolId: fullUser.school_id,
+              platform: {
+                schools: {
+                  some: {
+                    id: fullUser.school_id
+                  }
+                }
+              }
+            }
+          }),
+          // Count PDF materials for this subject
+          this.prisma.pDFMaterial.count({
+            where: {
+              topic_id: subject.id,
+              schoolId: fullUser.school_id,
+              platform: {
+                schools: {
+                  some: {
+                    id: fullUser.school_id
+                  }
+                }
+              }
+            }
+          }),
+          // Count assignments for this subject
+          this.prisma.assignment.count({
+            where: {
+              topic_id: subject.id,
+              schoolId: fullUser.school_id,
+              platform: {
+                schools: {
+                  some: {
+                    id: fullUser.school_id
+                  }
+                }
+              }
+            }
+          })
+        ]);
+
+        return {
+          id: subject.id,
+          name: subject.name,
+          code: subject.code,
+          color: subject.color,
+          description: subject.description,
+          thumbnail: subject.thumbnail || null,
+          timetableEntries,
+          classesTakingSubject,
+          contentCounts: {
+            totalVideos,
+            totalMaterials,
+            totalAssignments
+          },
+          createdAt: formatDate(subject.createdAt),
+          updatedAt: formatDate(subject.updatedAt)
+        };
+      }));
+
+      // 7. Apply search filter
+      if (query.search) {
+        const searchTerm = query.search.toLowerCase();
+        filteredSubjects = filteredSubjects.filter(subject => 
+          subject.name.toLowerCase().includes(searchTerm) ||
+          (subject.code && subject.code.toLowerCase().includes(searchTerm))
+        );
+      }
+
+      // 8. Apply academic session filter
+      if (query.academic_session_id) {
+        // Filter subjects that have timetable entries in the specified academic session
+        filteredSubjects = filteredSubjects.filter(subject => 
+          subject.timetableEntries.some(entry => 
+            entry.class && entry.class.id // This would need to be enhanced if we store academic_session_id in timetable entries
+          )
+        );
+      }
+
+      // 9. Apply class filter
+      if (query.class_id) {
+        filteredSubjects = filteredSubjects.filter(subject => 
+          subject.classesTakingSubject.some(cls => cls.id === query.class_id)
+        );
+      }
+
+      // 10. Apply sorting
+      const sortBy = query.sort_by || 'name';
+      const sortOrder = query.sort_order || 'asc';
+      
+      filteredSubjects.sort((a, b) => {
+        let aValue, bValue;
+        
+        switch (sortBy) {
+          case 'name':
+            aValue = a.name.toLowerCase();
+            bValue = b.name.toLowerCase();
+            break;
+          case 'code':
+            aValue = (a.code || '').toLowerCase();
+            bValue = (b.code || '').toLowerCase();
+            break;
+          case 'createdAt':
+            aValue = new Date(a.createdAt).getTime();
+            bValue = new Date(b.createdAt).getTime();
+            break;
+          default:
+            aValue = a.name.toLowerCase();
+            bValue = b.name.toLowerCase();
+        }
+        
+        if (sortOrder === 'asc') {
+          return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+        } else {
+          return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+        }
+      });
+
+      // 11. Apply pagination
+      const page = query.page || 1;
+      const limit = Math.min(query.limit || 5, 10); // Max 10 subjects per page
+      const skip = (page - 1) * limit;
+      
+      const totalCount = filteredSubjects.length;
+      const paginatedSubjects = filteredSubjects.slice(skip, skip + limit);
+
+      // 12. Calculate pagination info
+      const totalPages = Math.ceil(totalCount / limit);
+      const hasNext = page < totalPages;
+      const hasPrev = page > 1;
+
+      const pagination = {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+        hasNext,
+        hasPrev
+      };
+
+      // 13. Get teacher's managed classes and teaching subjects
+      const managedClasses = teacher.classesManaging.map(cls => ({
+        id: cls.id,
+        name: cls.name,
+        classId: cls.classId
+      }));
+
+      const teachingSubjects = teacher.subjectsTeaching.map(ts => ({
+        id: ts.subject.id,
+        name: ts.subject.name,
+        code: ts.subject.code,
+        color: ts.subject.color,
+        description: ts.subject.description
+      }));
+
+      const responseData = {
+        pagination,
+        managedClasses,
+        teachingSubjects,
+        stats,
+        academicSession,
+        subjects: paginatedSubjects,
+      };
+
+      this.logger.log(colors.green(`Subjects dashboard tab fetched successfully for teacher: ${user.email} - ${paginatedSubjects.length} subjects returned`));
+
+      return new ApiResponse(true, 'Subjects dashboard tab fetched successfully', responseData);
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error fetching subjects dashboard tab for teacher: ${error.message}`), error);
+      return new ApiResponse(false, `Failed to fetch subjects dashboard tab: ${error.message}`, null);
     }
   }
 }
