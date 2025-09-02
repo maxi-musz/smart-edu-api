@@ -13,9 +13,10 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { TopicsService } from './topics.service';
-import { CreateTopicDto } from './dto/create-topic.dto';
+import { CreateTopicRequestDto } from './dto/create-topic-request.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import { TopicResponseDto } from './dto/topic-response.dto';
+import { ReorderTopicsDto } from './dto/reorder-topics.dto';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
 
@@ -36,14 +37,10 @@ export class TopicsController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 404, description: 'Subject or academic session not found' })
   async createTopic(
-    @Body() createTopicDto: CreateTopicDto,
+    @Body() createTopicRequestDto: CreateTopicRequestDto,
     @GetUser() user: any,
-  ): Promise<TopicResponseDto> {
-    return this.topicsService.createTopic(
-      createTopicDto,
-      user.school_id,
-      user.id,
-    );
+  ) {
+    return this.topicsService.createTopic(createTopicRequestDto, user);
   }
 
   @Get()
@@ -68,7 +65,7 @@ export class TopicsController {
     @Query('subjectId') subjectId?: string,
     @Query('academicSessionId') academicSessionId?: string,
   ): Promise<TopicResponseDto[]> {
-    return this.topicsService.getAllTopics(user.school_id, subjectId, academicSessionId);
+    return this.topicsService.getAllTopics(user, subjectId, academicSessionId);
   }
 
   @Get('subject/:subjectId')
@@ -83,7 +80,7 @@ export class TopicsController {
     @Param('subjectId') subjectId: string,
     @GetUser() user: any,
   ): Promise<TopicResponseDto[]> {
-    return this.topicsService.getTopicsBySubject(subjectId, user.school_id);
+    return this.topicsService.getTopicsBySubject(subjectId, user);
   }
 
   @Get(':id')
@@ -99,7 +96,7 @@ export class TopicsController {
     @Param('id') id: string,
     @GetUser() user: any,
   ): Promise<TopicResponseDto> {
-    return this.topicsService.getTopicById(id, user.school_id);
+    return this.topicsService.getTopicById(id, user);
   }
 
   @Patch(':id')
@@ -117,7 +114,7 @@ export class TopicsController {
     @Body() updateTopicDto: UpdateTopicDto,
     @GetUser() user: any,
   ): Promise<TopicResponseDto> {
-    return this.topicsService.updateTopic(id, updateTopicDto, user.school_id);
+    return this.topicsService.updateTopic(id, updateTopicDto, user);
   }
 
   @Delete(':id')
@@ -131,19 +128,35 @@ export class TopicsController {
     @Param('id') id: string,
     @GetUser() user: any,
   ): Promise<void> {
-    return this.topicsService.deleteTopic(id, user.school_id);
+    return this.topicsService.deleteTopic(id, user);
   }
 
   @Post('reorder/:subjectId')
-  @ApiOperation({ summary: 'Reorder topics within a subject' })
+  @ApiOperation({ summary: 'Reorder multiple topics within a subject' })
   @ApiParam({ name: 'subjectId', description: 'Subject ID' })
   @ApiResponse({ status: 200, description: 'Topics reordered successfully' })
   @ApiResponse({ status: 404, description: 'Subject not found' })
   async reorderTopics(
     @Param('subjectId') subjectId: string,
-    @Body() topicOrders: { id: string; order: number }[],
+    @Body() reorderDto: ReorderTopicsDto,
     @GetUser() user: any,
   ): Promise<void> {
-    return this.topicsService.reorderTopics(subjectId, topicOrders, user.school_id);
+    return this.topicsService.reorderTopics(subjectId, reorderDto.topics, user);
+  }
+
+  @Patch('reorder/:subjectId/:topicId')
+  @ApiOperation({ summary: 'Reorder a single topic to a new position (drag and drop)' })
+  @ApiParam({ name: 'subjectId', description: 'Subject ID' })
+  @ApiParam({ name: 'topicId', description: 'Topic ID to reorder' })
+  @ApiResponse({ status: 200, description: 'Topic reordered successfully' })
+  @ApiResponse({ status: 404, description: 'Subject or topic not found' })
+  @ApiResponse({ status: 400, description: 'Invalid position' })
+  async reorderSingleTopic(
+    @Param('subjectId') subjectId: string,
+    @Param('topicId') topicId: string,
+    @Body() body: { newPosition: number },
+    @GetUser() user: any,
+  ) {
+    return this.topicsService.reorderSingleTopic(subjectId, topicId, body.newPosition, user);
   }
 }

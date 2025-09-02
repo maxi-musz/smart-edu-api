@@ -10,6 +10,9 @@ export class TopicResponseDto {
   @ApiPropertyOptional()
   description?: string;
 
+  @ApiPropertyOptional()
+  instructions?: string;
+
   @ApiProperty()
   order: number;
 
