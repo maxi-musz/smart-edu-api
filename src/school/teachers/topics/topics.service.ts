@@ -768,7 +768,7 @@ export class TopicsService {
             topic_id: topicId,
             schoolId: schoolId,
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { order: 'asc' }, // Order by content order, not creation date
           select: {
             id: true,
             title: true,
@@ -776,6 +776,7 @@ export class TopicsService {
             url: true,
             thumbnail: true,
             duration: true,
+            order: true,
             size: true,
             views: true,
             status: true,
@@ -796,6 +797,7 @@ export class TopicsService {
             title: true,
             description: true,
             url: true,
+            order: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -813,6 +815,7 @@ export class TopicsService {
             title: true,
             description: true,
             dueDate: true,
+            order: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -830,6 +833,7 @@ export class TopicsService {
             title: true,
             description: true,
             duration: true,
+            order: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -1038,6 +1042,22 @@ export class TopicsService {
       const videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
       const videoDuration = await this.extractVideoDuration(videoFile);
 
+      // Get the next order number for videos in this topic
+      this.logger.log(colors.blue(`📊 Getting next order number for videos in topic...`));
+      const lastVideo = await this.prisma.videoContent.findFirst({
+        where: {
+          topic_id: uploadDto.topic_id,
+          schoolId: schoolId,
+        },
+        orderBy: {
+          order: 'desc',
+        },
+        select: { order: true }
+      });
+
+      const nextOrder = (lastVideo?.order || 0) + 1;
+      this.logger.log(colors.blue(`   - Next video order: ${nextOrder}`));
+
       // Create video content record in database
       this.logger.log(colors.blue(`💾 Saving video lesson to database...`));
       
@@ -1049,6 +1069,7 @@ export class TopicsService {
           schoolId: schoolId,
           platformId: 's3-platform-001', // Using S3 organisation ID
           uploadedById: userId,
+          order: nextOrder, // Auto-assign order
           url: videoUploadResult.url, // S3 URL
           duration: videoDuration,
           size: videoSize,
