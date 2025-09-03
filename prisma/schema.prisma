@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -666,6 +666,11 @@ model VideoContent {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  duration     String? // Duration in format "15:30" or "1h 25m"
+  thumbnail    Json? // { secure_url: string, public_id: string }
+  size         String? // File size like "45.2 MB"
+  views        Int     @default(0)
+  status       String  @default("published") // published, draft, archived
 
   platform   Organisation @relation(fields: [platformId], references: [id])
   school     School?      @relation(fields: [schoolId], references: [id])
@@ -678,6 +683,8 @@ model VideoContent {
   @@index([schoolId])
   @@index([platformId])
   @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model PDFMaterial {
@@ -689,6 +696,9 @@ model PDFMaterial {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  size         String? // File size like "2.3 MB"
+  downloads    Int     @default(0)
+  status       String  @default("published") // published, draft, archived
 
   platform   Organisation @relation(fields: [platformId], references: [id])
   school     School?      @relation(fields: [schoolId], references: [id])
@@ -701,6 +711,8 @@ model PDFMaterial {
   @@index([schoolId])
   @@index([platformId])
   @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Assignment {
@@ -712,6 +724,9 @@ model Assignment {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  status       String    @default("active") // active, completed, expired
+  maxScore     Int? // Maximum possible score
+  timeLimit    Int? // Time limit in minutes
 
   platform   Organisation @relation(fields: [platformId], references: [id])
   school     School?      @relation(fields: [schoolId], references: [id])
@@ -725,17 +740,22 @@ model Assignment {
   @@index([platformId])
   @@index([topic_id])
   @@index([dueDate])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model CBTQuiz {
-  id           String  @id @default(cuid())
-  title        String
-  description  String?
-  topic_id     String? // Reference to topic instead of subject
-  duration     Int? // Duration in minutes
-  schoolId     String? // Optional: assigned to a specific school
-  platformId   String
-  uploadedById String
+  id             String  @id @default(cuid())
+  title          String
+  description    String?
+  topic_id       String? // Reference to topic instead of subject
+  duration       Int? // Duration in minutes
+  schoolId       String? // Optional: assigned to a specific school
+  platformId     String
+  uploadedById   String
+  totalQuestions Int? // Total number of questions
+  passingScore   Int? // Minimum score to pass
+  status         String  @default("active") // active, inactive, completed
 
   platform   Organisation @relation(fields: [platformId], references: [id])
   school     School?      @relation(fields: [schoolId], references: [id])
@@ -748,19 +768,23 @@ model CBTQuiz {
   @@index([schoolId])
   @@index([platformId])
   @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model LiveClass {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  topic_id    String? // Reference to topic instead of subject
-  meetingUrl  String
-  startTime   DateTime
-  endTime     DateTime
-  schoolId    String? // Optional: assigned to a specific school
-  platformId  String
-  createdById String
+  id              String   @id @default(cuid())
+  title           String
+  description     String?
+  topic_id        String? // Reference to topic instead of subject
+  meetingUrl      String
+  startTime       DateTime
+  endTime         DateTime
+  schoolId        String? // Optional: assigned to a specific school
+  platformId      String
+  createdById     String
+  status          String   @default("scheduled") // scheduled, ongoing, completed, cancelled
+  maxParticipants Int? // Maximum number of participants
 
   platform  Organisation @relation(fields: [platformId], references: [id])
   school    School?      @relation(fields: [schoolId], references: [id])
@@ -774,6 +798,8 @@ model LiveClass {
   @@index([platformId])
   @@index([topic_id])
   @@index([startTime])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model LibraryResource {
@@ -786,6 +812,8 @@ model LibraryResource {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  status       String  @default("available") // available, borrowed, archived
+  format       String? // pdf, epub, docx, etc.
 
   platform   Organisation @relation(fields: [platformId], references: [id])
   school     School?      @relation(fields: [schoolId], references: [id])
@@ -799,4 +827,6 @@ model LibraryResource {
   @@index([platformId])
   @@index([resourceType])
   @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
 }

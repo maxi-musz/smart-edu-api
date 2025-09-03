@@ -4,8 +4,10 @@ import { TopicsController } from './topics.controller';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { AcademicSessionModule } from '../../../academic-session/academic-session.module';
 
+import { S3Module } from '../../../shared/services/s3.module';
+
 @Module({
-  imports: [PrismaModule, AcademicSessionModule],
+  imports: [PrismaModule, AcademicSessionModule, S3Module],
   controllers: [TopicsController],
   providers: [TopicsService],
   exports: [TopicsService]

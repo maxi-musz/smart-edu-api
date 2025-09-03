@@ -5,9 +5,13 @@ import { CreateTopicDto } from './dto/create-topic.dto';
 import { CreateTopicRequestDto } from './dto/create-topic-request.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import { TopicResponseDto } from './dto/topic-response.dto';
+import { UploadVideoLessonDto, VideoLessonResponseDto, UploadProgressDto } from './dto/upload-video-lesson.dto';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
+
+import { S3Service } from '../../../shared/services/s3.service';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
+import { formatDate } from 'src/shared/helper-functions/formatter';
 
 @Injectable()
 export class TopicsService {
@@ -16,6 +20,7 @@ export class TopicsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly academicSessionService: AcademicSessionService,
+    private readonly s3Service: S3Service,
   ) {}
 
   async createTopic(createTopicRequestDto: CreateTopicRequestDto, user: any) {
@@ -698,5 +703,455 @@ export class TopicsService {
       createdAt: topic.createdAt,
       updatedAt: topic.updatedAt,
     };
+  }
+
+  /**
+   * Get all content for a specific topic including videos, materials, assignments, etc.
+   */
+  async getTopicContent(topicId: string, user: any) {
+    this.logger.log(colors.cyan(`🔄 Starting to fetch content for topic: ${topicId}`));
+    
+    try {
+      // Fetch user from database to get school_id
+      this.logger.log(colors.blue(`📋 Fetching user details for topic content...`));
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { id: true, school_id: true }
+      });
+
+      if (!dbUser) {
+        this.logger.error(colors.red(`❌ User not found for topic content fetch`));
+        throw new NotFoundException('User not found');
+      }
+
+      const schoolId = dbUser.school_id;
+      // this.logger.log(colors.blue(`✅ User validated. School ID: ${schoolId}`));
+
+      // Get the topic first to validate it exists and belongs to the school
+      // this.logger.log(colors.blue(`📚 Validating topic exists and belongs to school...`));
+      const topic = await this.prisma.topic.findFirst({
+        where: {
+          id: topicId,
+          school_id: schoolId,
+          is_active: true,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!topic) {
+        this.logger.error(colors.red(`❌ Topic not found: ${topicId}`));
+        throw new NotFoundException('Topic not found');
+      }
+
+      // this.logger.log(colors.blue(`✅ Topic validated: "${topic.title}" (Order: ${topic.order})`));
+
+      // Fetch all content for this topic in parallel
+      // this.logger.log(colors.blue(`🚀 Fetching all content types in parallel...`));
+      const [
+        videos,
+        materials,
+        assignments,
+        quizzes,
+        liveClasses,
+        libraryResources
+      ] = await Promise.all([
+        // Videos
+        this.prisma.videoContent.findMany({
+          where: {
+            topic_id: topicId,
+            schoolId: schoolId,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            url: true,
+            thumbnail: true,
+            duration: true,
+            size: true,
+            views: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+
+        // PDF Materials
+        this.prisma.pDFMaterial.findMany({
+          where: {
+            topic_id: topicId,
+            schoolId: schoolId,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            url: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+
+        // Assignments
+        this.prisma.assignment.findMany({
+          where: {
+            topic_id: topicId,
+            schoolId: schoolId,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            dueDate: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+
+        // CBT Quizzes
+        this.prisma.cBTQuiz.findMany({
+          where: {
+            topic_id: topicId,
+            schoolId: schoolId,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            duration: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+
+        // Live Classes
+        this.prisma.liveClass.findMany({
+          where: {
+            topic_id: topicId,
+            schoolId: schoolId,
+          },
+          orderBy: { startTime: 'asc' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            meetingUrl: true,
+            startTime: true,
+            endTime: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+
+        // Library Resources
+        this.prisma.libraryResource.findMany({
+          where: {
+            topic_id: topicId,
+            schoolId: schoolId,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            resourceType: true,
+            url: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ]);
+
+      this.logger.log(colors.blue(`📊 Content fetched successfully:`));
+      this.logger.log(colors.blue(`   - Videos: ${videos.length}`));
+      this.logger.log(colors.blue(`   - Materials: ${materials.length}`));
+      this.logger.log(colors.blue(`   - Assignments: ${assignments.length}`));
+      this.logger.log(colors.blue(`   - Quizzes: ${quizzes.length}`));
+      this.logger.log(colors.blue(`   - Live Classes: ${liveClasses.length}`));
+      this.logger.log(colors.blue(`   - Library Resources: ${libraryResources.length}`));
+
+      // Calculate content summary
+      const contentSummary = {
+        totalVideos: videos.length,
+        totalMaterials: materials.length,
+        totalAssignments: assignments.length,
+        totalQuizzes: quizzes.length,
+        totalLiveClasses: liveClasses.length,
+        totalLibraryResources: libraryResources.length,
+        totalContent: videos.length + materials.length + assignments.length + 
+                     quizzes.length + liveClasses.length + libraryResources.length,
+      };
+
+      // Build response
+      const response = {
+        topicId: topic.id,
+        topicTitle: topic.title,
+        topicDescription: topic.description,
+        topicOrder: topic.order,
+        contentSummary,
+        videos,
+        materials,
+        assignments,
+        quizzes,
+        liveClasses,
+        libraryResources,
+        createdAt: formatDate(topic.createdAt),
+        updatedAt: formatDate(topic.updatedAt),
+      };
+
+      this.logger.log(colors.green(`🎉 Successfully retrieved content for topic "${topic.title}": ${contentSummary.totalContent} total items`));
+      
+      return ResponseHelper.success(
+        'Topic content retrieved successfully',
+        response
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching topic content for ${topicId}: ${error.message}`));
+      
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new Error(`Failed to fetch topic content: ${error.message}`);
+    }
+  }
+
+  /**
+   * Upload video lesson for a topic with progress tracking
+   */
+  async uploadVideoLesson(
+    uploadDto: UploadVideoLessonDto,
+    videoFile: Express.Multer.File,
+    thumbnailFile: Express.Multer.File | undefined,
+    user: any
+  ): Promise<VideoLessonResponseDto> {
+    this.logger.log(colors.cyan(`🎬 Starting video lesson upload: "${uploadDto.title}"`));
+    
+    try {
+      // Validate file sizes
+      this.logger.log(colors.blue(`📁 Validating file sizes...`));
+      
+      const maxVideoSize = 300 * 1024 * 1024; // 300MB
+      const maxThumbnailSize = 10 * 1024 * 1024; // 10MB
+      
+      if (videoFile.size > maxVideoSize) {
+        this.logger.error(colors.red(`❌ Video file too large: ${(videoFile.size / 1024 / 1024).toFixed(2)}MB (max: 300MB)`));
+        throw new BadRequestException('Video file size exceeds 300MB limit');
+      }
+      
+      if (thumbnailFile && thumbnailFile.size > maxThumbnailSize) {
+        this.logger.error(colors.red(`❌ Thumbnail file too large: ${(thumbnailFile.size / 1024 / 1024).toFixed(2)}MB (max: 10MB)`));
+        throw new BadRequestException('Thumbnail file size exceeds 10MB limit');
+      }
+
+      // Fetch user from database to get school_id
+      this.logger.log(colors.blue(`📋 Fetching user details...`));
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { id: true, school_id: true }
+      });
+
+      if (!dbUser) {
+        this.logger.error(colors.red(`❌ User not found for video upload`));
+        throw new NotFoundException('User not found');
+      }
+
+      const schoolId = dbUser.school_id;
+      const userId = dbUser.id;
+      this.logger.log(colors.blue(`✅ User validated. School ID: ${schoolId}`));
+
+      // Validate subject exists and belongs to the school
+      this.logger.log(colors.blue(`📚 Validating subject...`));
+      const subject = await this.prisma.subject.findFirst({
+        where: {
+          id: uploadDto.subject_id,
+          schoolId: schoolId,
+        },
+      });
+
+      if (!subject) {
+        this.logger.error(colors.red(`❌ Subject not found: ${uploadDto.subject_id}`));
+        throw new NotFoundException('Subject not found or does not belong to this school');
+      }
+
+      // Validate topic exists and belongs to the subject
+      this.logger.log(colors.blue(`📖 Validating topic...`));
+      const topic = await this.prisma.topic.findFirst({
+        where: {
+          id: uploadDto.topic_id,
+          subject_id: uploadDto.subject_id,
+          school_id: schoolId,
+          is_active: true,
+        },
+      });
+
+      if (!topic) {
+        this.logger.error(colors.red(`❌ Topic not found: ${uploadDto.topic_id}`));
+        throw new NotFoundException('Topic not found or does not belong to this subject');
+      }
+
+      this.logger.log(colors.blue(`✅ Subject and topic validated successfully`));
+
+      // Use S3 for video uploads (much faster than Cloudinary)
+      this.logger.log(colors.blue(`🚀 Starting S3 video upload (much faster than Cloudinary)...`));
+      
+      const videoUploadResult = await this.s3Service.uploadFile(
+        videoFile,
+        `lecture-videos/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`
+      );
+
+               this.logger.log(colors.green(`✅ Video uploaded successfully to S3`));
+
+      // Upload thumbnail to S3 if provided
+      let thumbnailResult: any = null;
+      if (thumbnailFile) {
+        this.logger.log(colors.blue(`🖼️ Uploading thumbnail to S3...`));
+        
+        const thumbnailUploadResult = await this.s3Service.uploadFile(
+          thumbnailFile,
+          `thumbnails/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+          `${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`
+        );
+        
+        thumbnailResult = {
+          secure_url: thumbnailUploadResult.url,
+          public_id: thumbnailUploadResult.key
+        };
+        
+        this.logger.log(colors.green(`✅ Thumbnail uploaded successfully to S3`));
+      }
+
+      // Calculate video duration and size
+      const videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
+      const videoDuration = await this.extractVideoDuration(videoFile);
+
+      // Create video content record in database
+      this.logger.log(colors.blue(`💾 Saving video lesson to database...`));
+      
+      const videoContent = await this.prisma.videoContent.create({
+        data: {
+          title: uploadDto.title.toLowerCase(),
+          description: uploadDto.description?.toLowerCase(),
+          topic_id: uploadDto.topic_id,
+          schoolId: schoolId,
+          platformId: 's3-platform-001', // Using S3 organisation ID
+          uploadedById: userId,
+          url: videoUploadResult.url, // S3 URL
+          duration: videoDuration,
+          size: videoSize,
+          thumbnail: thumbnailResult ? {
+            secure_url: thumbnailResult.secure_url,
+            public_id: thumbnailResult.public_id
+          } : undefined,
+          status: 'published',
+          views: 0
+        },
+        include: {
+          topic: {
+            select: {
+              id: true,
+              title: true,
+              subject: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      this.logger.log(colors.green(`🎉 Video lesson "${uploadDto.title}" uploaded successfully!`));
+      this.logger.log(colors.blue(`📊 Video Details:`));
+      this.logger.log(colors.blue(`   - Size: ${videoSize}`));
+      this.logger.log(colors.blue(`   - Duration: ${videoDuration}`));
+      this.logger.log(colors.blue(`   - URL: ${videoContent.url}`));
+      this.logger.log(colors.blue(`   - Thumbnail: ${thumbnailResult ? 'Yes' : 'No'}`));
+
+      // Return the created video lesson
+      return {
+        id: videoContent.id,
+        title: videoContent.title,
+        description: videoContent.description || undefined,
+        url: videoContent.url,
+        thumbnail: videoContent.thumbnail || undefined,
+        size: videoContent.size || '0 MB',
+        duration: videoContent.duration || '00:00:00',
+        status: videoContent.status || 'published',
+        subject_id: uploadDto.subject_id,
+        topic_id: uploadDto.topic_id,
+        uploaded_by: userId,
+        createdAt: videoContent.createdAt,
+        updatedAt: videoContent.updatedAt
+      };
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error uploading video lesson: ${error.message}`));
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new Error(`Failed to upload video lesson: ${error.message}`);
+    }
+  }
+
+  /**
+   * Extract video duration from uploaded file
+   * Note: This is a simplified implementation. For production, you might want to use ffmpeg or similar
+   */
+  private async extractVideoDuration(videoFile: Express.Multer.File): Promise<string> {
+    // This is a placeholder. In production, you'd use ffmpeg or a video processing library
+    // For now, we'll return a default duration
+    return '00:00:00';
+  }
+
+  /**
+   * Get upload progress for a specific upload
+   * This can be used with WebSockets or Server-Sent Events for real-time progress
+   */
+  async getUploadProgress(uploadId: string): Promise<UploadProgressDto> {
+    // This is a placeholder for progress tracking
+    // In production, you'd implement actual progress tracking
+    return {
+      progress: 100,
+      status: 'completed',
+      message: 'Upload completed successfully'
+    };
+  }
+
+  /**
+   * Test AWS S3 connection
+   */
+  async testS3Connection(): Promise<boolean> {
+    try {
+      this.logger.log(colors.cyan(`🧪 Testing AWS S3 connection...`));
+      const isConnected = await this.s3Service.testConnection();
+      
+      if (isConnected) {
+        this.logger.log(colors.green(`✅ AWS S3 connection test successful`));
+      } else {
+        this.logger.error(colors.red(`❌ AWS S3 connection test failed`));
+      }
+      
+      return isConnected;
+    } catch (error) {
+      this.logger.error(colors.red(`❌ AWS S3 connection test error: ${error.message}`));
+      return false;
+    }
   }
 }

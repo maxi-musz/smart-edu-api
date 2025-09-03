@@ -10,15 +10,21 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { TopicsService } from './topics.service';
 import { CreateTopicRequestDto } from './dto/create-topic-request.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import { TopicResponseDto } from './dto/topic-response.dto';
 import { ReorderTopicsDto } from './dto/reorder-topics.dto';
+import { TopicContentResponseDto } from './dto/topic-content.dto';
+import { UploadVideoLessonDto, VideoLessonResponseDto } from './dto/upload-video-lesson.dto';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('Teachers - Topics')
 @ApiBearerAuth()
@@ -66,6 +72,33 @@ export class TopicsController {
     @Query('academicSessionId') academicSessionId?: string,
   ): Promise<TopicResponseDto[]> {
     return this.topicsService.getAllTopics(user, subjectId, academicSessionId);
+  }
+
+  @Get('test-s3-connection')
+  @ApiOperation({ summary: 'Test AWS S3 connection' })
+  @ApiResponse({ status: 200, description: 'S3 connection test result' })
+  async testS3Connection() {
+    try {
+      const isConnected = await this.topicsService.testS3Connection();
+      return {
+        success: true,
+        message: 'S3 connection test completed',
+        data: {
+          connected: isConnected,
+          timestamp: new Date().toISOString(),
+          message: isConnected 
+            ? '✅ AWS S3 connection successful!' 
+            : '❌ AWS S3 connection failed. Check your credentials and bucket.'
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'S3 connection test failed',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 
   @Get('subject/:subjectId')
@@ -159,4 +192,64 @@ export class TopicsController {
   ) {
     return this.topicsService.reorderSingleTopic(subjectId, topicId, body.newPosition, user);
   }
+
+  
+
+  @Get(':id/content')
+  @ApiOperation({ summary: 'Get all content for a specific topic' })
+  @ApiParam({ name: 'id', description: 'Topic ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Topic content retrieved successfully',
+    type: TopicContentResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Topic not found' })
+  async getTopicContent(
+    @Param('id') id: string,
+    @GetUser() user: any,
+  ) {
+    return this.topicsService.getTopicContent(id, user);
+  }
+
+  @Post('upload-video')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'video', maxCount: 1 },
+      { name: 'thumbnail', maxCount: 1 }
+    ])
+  )
+  @ApiOperation({ summary: 'Upload video lesson for a topic' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Video lesson upload data',
+    type: UploadVideoLessonDto,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Video lesson uploaded successfully',
+    type: VideoLessonResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid file or data' })
+  @ApiResponse({ status: 404, description: 'Subject or topic not found' })
+  @ApiResponse({ status: 413, description: 'File too large' })
+  async uploadVideoLesson(
+    @Body() uploadDto: UploadVideoLessonDto,
+    @UploadedFiles() files: { video?: Express.Multer.File[], thumbnail?: Express.Multer.File[] },
+    @GetUser() user: any,
+  ) {
+    const videoFile = files.video?.[0];
+    const thumbnailFile = files.thumbnail?.[0];
+    
+    if (!videoFile) {
+      throw new BadRequestException('Video file is required');
+    }
+    
+    return this.topicsService.uploadVideoLesson(
+      uploadDto,
+      videoFile,
+      thumbnailFile,
+      user
+    );
+  }
+
 }
