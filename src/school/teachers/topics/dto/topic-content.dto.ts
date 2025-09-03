@@ -13,6 +13,9 @@ export class VideoContentDto {
   @ApiProperty()
   url: string;
 
+  @ApiProperty()
+  order: number;
+
   @ApiPropertyOptional()
   duration?: string;
 

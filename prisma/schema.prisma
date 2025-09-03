@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -666,6 +666,7 @@ model VideoContent {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  order        Int     @default(0) // Order for reordering within topic
   duration     String? // Duration in format "15:30" or "1h 25m"
   thumbnail    Json? // { secure_url: string, public_id: string }
   size         String? // File size like "45.2 MB"
@@ -696,6 +697,7 @@ model PDFMaterial {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  order        Int     @default(0) // Order for reordering within topic
   size         String? // File size like "2.3 MB"
   downloads    Int     @default(0)
   status       String  @default("published") // published, draft, archived
@@ -724,6 +726,7 @@ model Assignment {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  order        Int       @default(1) // Order for reordering within topic
   status       String    @default("active") // active, completed, expired
   maxScore     Int? // Maximum possible score
   timeLimit    Int? // Time limit in minutes
@@ -753,6 +756,7 @@ model CBTQuiz {
   schoolId       String? // Optional: assigned to a specific school
   platformId     String
   uploadedById   String
+  order          Int     @default(0) // Order for reordering within topic
   totalQuestions Int? // Total number of questions
   passingScore   Int? // Minimum score to pass
   status         String  @default("active") // active, inactive, completed
@@ -783,6 +787,7 @@ model LiveClass {
   schoolId        String? // Optional: assigned to a specific school
   platformId      String
   createdById     String
+  order           Int      @default(0) // Order for reordering within topic
   status          String   @default("scheduled") // scheduled, ongoing, completed, cancelled
   maxParticipants Int? // Maximum number of participants
 
@@ -812,6 +817,7 @@ model LibraryResource {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
+  order        Int     @default(0) // Order for reordering within topic
   status       String  @default("available") // available, borrowed, archived
   format       String? // pdf, epub, docx, etc.
 
