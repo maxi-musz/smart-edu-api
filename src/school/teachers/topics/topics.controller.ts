@@ -22,6 +22,7 @@ import { TopicResponseDto } from './dto/topic-response.dto';
 import { ReorderTopicsDto } from './dto/reorder-topics.dto';
 import { TopicContentResponseDto } from './dto/topic-content.dto';
 import { UploadVideoLessonDto, VideoLessonResponseDto } from './dto/upload-video-lesson.dto';
+import { UploadMaterialDto, MaterialResponseDto } from './dto/upload-material.dto';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -227,7 +228,15 @@ export class TopicsController {
   @ApiResponse({
     status: 201,
     description: 'Video lesson uploaded successfully',
-    type: VideoLessonResponseDto,
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Video lesson uploaded successfully' },
+        data: { $ref: '#/components/schemas/VideoLessonResponseDto' },
+        statusCode: { type: 'number', example: 201 }
+      }
+    }
   })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid file or data' })
   @ApiResponse({ status: 404, description: 'Subject or topic not found' })
@@ -248,6 +257,52 @@ export class TopicsController {
       uploadDto,
       videoFile,
       thumbnailFile,
+      user
+    );
+  }
+
+  @Post('upload-material')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'material', maxCount: 1 }
+    ])
+  )
+  @ApiOperation({ summary: 'Upload material (PDF, DOC, DOCX, PPT, PPTX) for a topic' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Material upload data',
+    type: UploadMaterialDto,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Material uploaded successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Material uploaded successfully' },
+        data: { $ref: '#/components/schemas/MaterialResponseDto' },
+        statusCode: { type: 'number', example: 201 }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid file or data' })
+  @ApiResponse({ status: 404, description: 'Subject or topic not found' })
+  @ApiResponse({ status: 413, description: 'File too large' })
+  async uploadMaterial(
+    @Body() uploadDto: UploadMaterialDto,
+    @UploadedFiles() files: { material?: Express.Multer.File[] },
+    @GetUser() user: any,
+  ) {
+    const materialFile = files.material?.[0];
+    
+    if (!materialFile) {
+      throw new BadRequestException('Material file is required');
+    }
+    
+    return this.topicsService.uploadMaterial(
+      uploadDto,
+      materialFile,
       user
     );
   }

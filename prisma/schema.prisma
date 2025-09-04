@@ -697,10 +697,12 @@ model PDFMaterial {
   schoolId     String? // Optional: assigned to a specific school
   platformId   String
   uploadedById String
-  order        Int     @default(0) // Order for reordering within topic
+  order        Int     @default(1) // Order for reordering within topic
   size         String? // File size like "2.3 MB"
   downloads    Int     @default(0)
   status       String  @default("published") // published, draft, archived
+  fileType     String? // File extension (pdf, doc, docx, ppt, pptx)
+  originalName String? // Original filename
 
   platform   Organisation @relation(fields: [platformId], references: [id])
   school     School?      @relation(fields: [schoolId], references: [id])

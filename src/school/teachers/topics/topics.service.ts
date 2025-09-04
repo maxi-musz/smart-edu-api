@@ -12,6 +12,7 @@ import { S3Service } from '../../../shared/services/s3.service';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { formatDate } from 'src/shared/helper-functions/formatter';
+import { FileValidationHelper } from 'src/shared/helper-functions/file-validation.helper';
 
 @Injectable()
 export class TopicsService {
@@ -749,11 +750,6 @@ export class TopicsService {
         this.logger.error(colors.red(`❌ Topic not found: ${topicId}`));
         throw new NotFoundException('Topic not found');
       }
-
-      // this.logger.log(colors.blue(`✅ Topic validated: "${topic.title}" (Order: ${topic.order})`));
-
-      // Fetch all content for this topic in parallel
-      // this.logger.log(colors.blue(`🚀 Fetching all content types in parallel...`));
       const [
         videos,
         materials,
@@ -1173,6 +1169,182 @@ export class TopicsService {
     } catch (error) {
       this.logger.error(colors.red(`❌ AWS S3 connection test error: ${error.message}`));
       return false;
+    }
+  }
+
+  /**
+   * Upload material (PDF, DOC, DOCX, PPT, PPTX) for a topic
+   */
+  async uploadMaterial(
+    uploadDto: any,
+    materialFile: Express.Multer.File,
+    user: any
+  ): Promise<any> {
+    this.logger.log(colors.cyan(`📚 Starting material upload: "${uploadDto.title}"`));
+    
+    try {
+      // Validate file
+      this.logger.log(colors.blue(`📁 Validating material file...`));
+      const validationResult = FileValidationHelper.validateMaterialFile(materialFile);
+      
+      if (!validationResult.isValid) {
+        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
+        throw new BadRequestException(validationResult.error);
+      }
+
+      this.logger.log(colors.green(`✅ File validation passed: ${materialFile.originalname}`));
+
+      // Fetch user from database to get school_id
+      this.logger.log(colors.blue(`📋 Fetching user details...`));
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { id: true, school_id: true }
+      });
+
+      if (!dbUser) {
+        this.logger.error(colors.red(`❌ User not found: ${user.sub}`));
+        throw new NotFoundException('User not found');
+      }
+
+      const schoolId = dbUser.school_id;
+      const userId = dbUser.id;
+      this.logger.log(colors.blue(`✅ User validated. School ID: ${schoolId}`));
+
+      // Validate subject exists and belongs to the school
+      this.logger.log(colors.blue(`📚 Validating subject...`));
+      const subject = await this.prisma.subject.findFirst({
+        where: {
+          id: uploadDto.subject_id,
+          schoolId: schoolId,
+        },
+      });
+
+      if (!subject) {
+        this.logger.error(colors.red(`❌ Subject not found: ${uploadDto.subject_id}`));
+        throw new NotFoundException('Subject not found or does not belong to this school');
+      }
+
+      // Validate topic exists and belongs to the subject
+      this.logger.log(colors.blue(`📖 Validating topic...`));
+      const topic = await this.prisma.topic.findFirst({
+        where: {
+          id: uploadDto.topic_id,
+          subject_id: uploadDto.subject_id,
+          school_id: schoolId,
+          is_active: true,
+        },
+      });
+
+      if (!topic) {
+        this.logger.error(colors.red(`❌ Topic not found: ${uploadDto.topic_id}`));
+        throw new NotFoundException('Topic not found or does not belong to this subject');
+      }
+
+      this.logger.log(colors.blue(`✅ Subject and topic validated successfully`));
+
+      // Get the next order number for materials in this topic
+      this.logger.log(colors.blue(`📊 Getting next order number for materials in topic...`));
+      const lastMaterial = await this.prisma.pDFMaterial.findFirst({
+        where: {
+          topic_id: uploadDto.topic_id,
+          schoolId: schoolId,
+        },
+        orderBy: {
+          order: 'desc',
+        },
+        select: { order: true }
+      });
+
+      const nextOrder = (lastMaterial?.order || 0) + 1;
+      this.logger.log(colors.blue(`   - Next material order: ${nextOrder}`));
+
+      // Upload material to S3
+      this.logger.log(colors.blue(`🚀 Starting S3 material upload...`));
+      const materialUploadResult = await this.s3Service.uploadFile(
+        materialFile,
+        `materials/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
+      );
+
+      this.logger.log(colors.green(`✅ Material uploaded successfully to S3`));
+
+      // Calculate material size
+      const materialSize = FileValidationHelper.formatFileSize(materialFile.size);
+
+      // Create material record in database
+      this.logger.log(colors.blue(`💾 Saving material to database...`));
+      
+      const material = await this.prisma.pDFMaterial.create({
+        data: {
+          title: uploadDto.title.toLowerCase(),
+          description: uploadDto.description?.toLowerCase(),
+          topic_id: uploadDto.topic_id,
+          schoolId: schoolId,
+          platformId: 's3-platform-001', // Using S3 organisation ID
+          uploadedById: userId,
+          order: nextOrder, // Auto-assign order
+          url: materialUploadResult.url, // S3 URL
+          size: materialSize,
+          fileType: validationResult.fileType,
+          originalName: materialFile.originalname,
+          status: 'published',
+          downloads: 0
+        },
+        include: {
+          topic: {
+            select: {
+              id: true,
+              title: true,
+              subject: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      this.logger.log(colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully!`));
+      this.logger.log(colors.blue(`📊 Material Details:`));
+      this.logger.log(colors.blue(`   - Size: ${materialSize}`));
+      this.logger.log(colors.blue(`   - Type: ${validationResult.fileType}`));
+      this.logger.log(colors.blue(`   - URL: ${material.url}`));
+
+      // Return the created material using ResponseHelper
+      const materialResponse = {
+        id: material.id,
+        title: material.title,
+        description: material.description || undefined,
+        url: material.url,
+        thumbnail: undefined, // Materials don't have thumbnails by default
+        size: material.size || '0 Bytes',
+        fileType: material.fileType || 'unknown',
+        originalName: material.originalName || '',
+        downloads: material.downloads || 0,
+        status: material.status || 'published',
+        order: material.order || 1,
+        subject_id: uploadDto.subject_id,
+        topic_id: uploadDto.topic_id,
+        uploaded_by: userId,
+        createdAt: material.createdAt,
+        updatedAt: material.updatedAt
+      };
+
+      return ResponseHelper.created(
+        'Material uploaded successfully',
+        materialResponse
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error uploading material: ${error.message}`));
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new Error(`Failed to upload material: ${error.message}`);
     }
   }
 }
