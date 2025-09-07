@@ -803,14 +803,14 @@ export class TopicsService {
         this.prisma.assignment.findMany({
           where: {
             topic_id: topicId,
-            schoolId: schoolId,
+            school_id: schoolId,
           },
           orderBy: { createdAt: 'desc' },
           select: {
             id: true,
             title: true,
             description: true,
-            dueDate: true,
+            due_date: true,
             order: true,
             createdAt: true,
             updatedAt: true,

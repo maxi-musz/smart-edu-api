@@ -1076,14 +1076,7 @@ export class TeachersService {
           this.prisma.assignment.count({
             where: {
               topic_id: subject.id,
-              schoolId: fullUser.school_id,
-              platform: {
-                schools: {
-                  some: {
-                    id: fullUser.school_id
-                  }
-                }
-              }
+              school_id: fullUser.school_id
             }
           })
         ]);

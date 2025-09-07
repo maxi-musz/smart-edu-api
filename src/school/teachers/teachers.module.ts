@@ -5,11 +5,12 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { AcademicSessionModule } from '../../academic-session/academic-session.module';
 import { SubjectsModule } from './subjects/subjects.module';
 import { TopicsModule } from './topics/topics.module';
+import { AssessmentsModule } from './assessments/assessments.module';
 
 @Module({
-  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule],
+  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule],
   controllers: [TeachersController],
   providers: [TeachersService],
-  exports: [TeachersService, SubjectsModule, TopicsModule]
+  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule]
 })
 export class TeachersModule {}
