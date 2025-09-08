@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -152,6 +152,10 @@ model AcademicSession {
   assignmentSubmissions AssignmentSubmission[]
   assignmentGrades      AssignmentGrade[]
 
+  // CBT Quiz relations
+  cbtQuizzes      CBTQuiz[]
+  cbtQuizAttempts CBTQuizAttempt[]
+
   @@unique([school_id, academic_year, term])
   @@index([school_id, is_current])
   @@index([start_year, end_year])
@@ -198,7 +202,6 @@ model School {
   wallet           Wallet?
   videoContent     VideoContent[]
   pdfMaterial      PDFMaterial[]
-  cbtQuiz          CBTQuiz[]
   liveClass        LiveClass[]
   libraryResource  LibraryResource[]
   deviceTokens     DeviceToken[]
@@ -209,6 +212,10 @@ model School {
   gradingRubrics        GradingRubric[]
   assignmentSubmissions AssignmentSubmission[]
   assignmentGrades      AssignmentGrade[]
+
+  // CBT Quiz relations
+  cbtQuizzes      CBTQuiz[]
+  cbtQuizAttempts CBTQuizAttempt[]
 }
 
 model Document {
@@ -249,7 +256,6 @@ model User {
   performances    StudentPerformance[] @relation("StudentPerformance")
   videoContent    VideoContent[]
   pdfMaterial     PDFMaterial[]
-  cbtQuiz         CBTQuiz[]
   liveClass       LiveClass[]
   libraryResource LibraryResource[]
   deviceTokens    DeviceToken[]
@@ -266,6 +272,12 @@ model User {
   assignmentSubmissions    AssignmentSubmission[]
   assignmentGradesReceived AssignmentGrade[]
   assignmentGradesGiven    AssignmentGrade[]      @relation("AssignmentGradeGiver")
+
+  // CBT Quiz relations
+  cbtQuizzesCreated CBTQuiz[]
+  cbtQuizAttempts   CBTQuizAttempt[]
+  cbtResponses      CBTResponse[]
+  cbtGradesGiven    CBTQuizAttempt[] @relation("CBTGrader")
 }
 
 model Teacher {
@@ -422,6 +434,9 @@ model Subject {
 
   // New relation to topics
   topics Topic[]
+
+  // CBT Quizzes relation
+  cbtQuizzes CBTQuiz[]
 
   @@unique([code, schoolId, academic_session_id])
 }
@@ -668,7 +683,6 @@ model Organisation {
   updatedAt       DateTime          @updatedAt
   videoContent    VideoContent[]
   pdfMaterial     PDFMaterial[]
-  cbtQuiz         CBTQuiz[]
   liveClass       LiveClass[]
   libraryResource LibraryResource[]
 }
@@ -793,33 +807,345 @@ model Assignment {
   @@index([is_published])
 }
 
-model CBTQuiz {
-  id             String  @id @default(cuid())
-  title          String
-  description    String?
-  topic_id       String? // Reference to topic instead of subject
-  duration       Int? // Duration in minutes
-  schoolId       String? // Optional: assigned to a specific school
-  platformId     String
-  uploadedById   String
-  order          Int     @default(0) // Order for reordering within topic
-  totalQuestions Int? // Total number of questions
-  passingScore   Int? // Minimum score to pass
-  status         String  @default("active") // active, inactive, completed
+// ========================================
+// CBT QUIZ SYSTEM ENUMS
+// ========================================
 
-  platform   Organisation @relation(fields: [platformId], references: [id])
-  school     School?      @relation(fields: [schoolId], references: [id])
-  uploadedBy User         @relation(fields: [uploadedById], references: [id])
-  topic      Topic?       @relation(fields: [topic_id], references: [id])
+enum QuestionType {
+  MULTIPLE_CHOICE_SINGLE // Single correct answer
+  MULTIPLE_CHOICE_MULTIPLE // Multiple correct answers
+  SHORT_ANSWER // Short text answer
+  LONG_ANSWER // Long text/paragraph answer
+  TRUE_FALSE // True/False question
+  FILL_IN_BLANK // Fill in the blank
+  MATCHING // Matching questions
+  ORDERING // Put items in order
+  FILE_UPLOAD // File/image upload
+  NUMERIC // Numeric answer
+  DATE // Date answer
+  RATING_SCALE // Rating scale (1-5, 1-10)
+}
+
+enum QuizStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum QuizAttemptStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+  EXPIRED
+}
+
+enum GradingType {
+  AUTOMATIC // Auto-grade based on correct answers
+  MANUAL // Manual grading required
+  MIXED // Some auto, some manual
+}
+
+enum AssessmentType {
+  CBT // Computer-Based Test
+  ASSIGNMENT // Assignment-based assessment
+  EXAM // Major examination
+  OTHER // Other types of assessments
+  FORMATIVE // Ongoing assessment for learning
+  SUMMATIVE // Final assessment for grading
+  DIAGNOSTIC // Assessment to identify knowledge gaps
+  BENCHMARK // Standardized assessment for comparison
+  PRACTICE // Practice test without grading
+  MOCK_EXAM // Mock examination
+  QUIZ // Short assessment
+  TEST // Formal test
+}
+
+// ========================================
+// ENHANCED CBT QUIZ SYSTEM
+// ========================================
+
+model CBTQuiz {
+  id           String  @id @default(cuid())
+  title        String
+  description  String?
+  instructions String? // Instructions for students
+
+  // Quiz Configuration
+  subject_id          String
+  topic_id            String? // Optional - for topic-specific quizzes
+  school_id           String
+  academic_session_id String
+  created_by          String
+
+  // Quiz Settings
+  duration      Int? // Duration in minutes
+  max_attempts  Int   @default(1) // Maximum attempts allowed
+  passing_score Float @default(50.0) // Passing percentage
+  total_points  Float @default(100.0) // Total possible points
+
+  // Quiz Behavior
+  shuffle_questions    Boolean @default(false)
+  shuffle_options      Boolean @default(false)
+  show_correct_answers Boolean @default(false) // Show after submission
+  show_feedback        Boolean @default(true)
+  allow_review         Boolean @default(true) // Allow students to review
+
+  // Timing
+  start_date DateTime?
+  end_date   DateTime?
+  time_limit Int? // Time limit in minutes
+
+  // Grading
+  grading_type GradingType @default(AUTOMATIC)
+  auto_submit  Boolean     @default(false) // Auto-submit when time expires
+
+  // Assessment Type
+  assessment_type AssessmentType @default(CBT)
+
+  // Status
+  status       QuizStatus @default(DRAFT)
+  is_published Boolean    @default(false)
+  published_at DateTime?
+
+  // Metadata
+  order Int      @default(0)
+  tags  String[] // Tags for categorization
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([schoolId])
-  @@index([platformId])
+  // Relations
+  subject         Subject         @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic           Topic?          @relation(fields: [topic_id], references: [id])
+  school          School          @relation(fields: [school_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
+  createdBy       User            @relation(fields: [created_by], references: [id])
+
+  // Quiz Content
+  questions CBTQuestion[]
+  attempts  CBTQuizAttempt[]
+
+  // Analytics
+  analytics CBTQuizAnalytics?
+
+  @@index([school_id, academic_session_id])
   @@index([topic_id])
+  @@index([created_by])
   @@index([status])
-  @@index([createdAt])
+  @@index([is_published])
+  @@index([assessment_type])
+  @@index([start_date, end_date])
+}
+
+model CBTQuestion {
+  id            String       @id @default(cuid())
+  quiz_id       String
+  question_text String
+  question_type QuestionType
+  order         Int // Question order in quiz
+
+  // Question Configuration
+  points      Float   @default(1.0) // Points for this question
+  is_required Boolean @default(true)
+  time_limit  Int? // Time limit for this specific question
+
+  // Media Attachments
+  image_url String? // Question image
+  audio_url String? // Question audio
+  video_url String? // Question video
+
+  // Question Settings
+  allow_multiple_attempts Boolean @default(false)
+  show_hint               Boolean @default(false)
+  hint_text               String?
+
+  // Validation
+  min_length Int? // For text answers
+  max_length Int? // For text answers
+  min_value  Float? // For numeric answers
+  max_value  Float? // For numeric answers
+
+  // Metadata
+  explanation      String? // Explanation for correct answer
+  difficulty_level DifficultyLevel @default(MEDIUM)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  quiz            CBTQuiz            @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  options         CBTOption[] // For multiple choice questions
+  correct_answers CBTCorrectAnswer[] // Correct answers for auto-grading
+  responses       CBTResponse[] // Student responses
+
+  @@index([quiz_id, order])
+  @@index([question_type])
+}
+
+model CBTOption {
+  id          String  @id @default(cuid())
+  question_id String
+  option_text String
+  order       Int // Option order
+  is_correct  Boolean @default(false) // For multiple choice questions
+
+  // Media
+  image_url String? // Option image
+  audio_url String? // Option audio
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  question  CBTQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  responses CBTResponse[] @relation("ResponseOptions") // Student selections
+
+  @@index([question_id, order])
+}
+
+model CBTCorrectAnswer {
+  id            String    @id @default(cuid())
+  question_id   String
+  answer_text   String? // For text-based answers
+  answer_number Float? // For numeric answers
+  answer_date   DateTime? // For date answers
+  option_ids    String[] // For multiple choice (array of option IDs)
+
+  // For complex answers
+  answer_json Json? // For matching, ordering, etc.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  question CBTQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
+
+  @@index([question_id])
+}
+
+model CBTQuizAttempt {
+  id                  String @id @default(cuid())
+  quiz_id             String
+  student_id          String
+  school_id           String
+  academic_session_id String
+
+  // Attempt Details
+  attempt_number Int               @default(1) // Which attempt this is
+  status         QuizAttemptStatus @default(NOT_STARTED)
+
+  // Timing
+  started_at   DateTime?
+  submitted_at DateTime?
+  time_spent   Int? // Time spent in seconds
+
+  // Results
+  total_score Float   @default(0)
+  max_score   Float
+  percentage  Float   @default(0)
+  passed      Boolean @default(false)
+
+  // Grading
+  is_graded Boolean   @default(false)
+  graded_at DateTime?
+  graded_by String? // Teacher who graded (for manual grading)
+
+  // Feedback
+  overall_feedback String?
+  grade_letter     String? // A, B, C, D, F
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  quiz            CBTQuiz         @relation(fields: [quiz_id], references: [id])
+  student         User            @relation(fields: [student_id], references: [id])
+  school          School          @relation(fields: [school_id], references: [id])
+  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
+  grader          User?           @relation("CBTGrader", fields: [graded_by], references: [id])
+
+  responses CBTResponse[]
+
+  @@unique([quiz_id, student_id, attempt_number])
+  @@index([quiz_id])
+  @@index([student_id])
+  @@index([status])
+  @@index([submitted_at])
+}
+
+model CBTResponse {
+  id          String @id @default(cuid())
+  attempt_id  String
+  question_id String
+  student_id  String
+
+  // Response Content
+  text_answer      String? // For text-based questions
+  numeric_answer   Float? // For numeric questions
+  date_answer      DateTime? // For date questions
+  selected_options String[] // Array of selected option IDs
+  file_urls        String[] // Array of uploaded file URLs
+
+  // Response Metadata
+  is_correct    Boolean? // Whether this response is correct
+  points_earned Float    @default(0)
+  max_points    Float
+
+  // Timing
+  time_spent Int? // Time spent on this question in seconds
+
+  // Feedback
+  feedback  String? // Teacher feedback for this response
+  is_graded Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  attempt         CBTQuizAttempt @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
+  question        CBTQuestion    @relation(fields: [question_id], references: [id])
+  student         User           @relation(fields: [student_id], references: [id])
+  selectedOptions CBTOption[]    @relation("ResponseOptions")
+
+  @@unique([attempt_id, question_id])
+  @@index([attempt_id])
+  @@index([question_id])
+  @@index([student_id])
+}
+
+model CBTQuizAnalytics {
+  id      String @id @default(cuid())
+  quiz_id String @unique
+
+  // Statistics
+  total_attempts Int   @default(0)
+  total_students Int   @default(0)
+  average_score  Float @default(0)
+  average_time   Int   @default(0) // Average time in seconds
+  pass_rate      Float @default(0) // Percentage who passed
+
+  // Question Analytics
+  question_stats Json // Detailed question-by-question stats
+
+  // Time-based Analytics
+  daily_attempts  Json // Daily attempt counts
+  hourly_attempts Json // Hourly attempt counts
+
+  // Performance Metrics
+  completion_rate  Float @default(0) // Percentage who completed
+  abandonment_rate Float @default(0) // Percentage who abandoned
+
+  last_updated DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  quiz CBTQuiz @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+
+  @@index([quiz_id])
 }
 
 model LiveClass {
