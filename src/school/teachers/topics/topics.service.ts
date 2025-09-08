@@ -821,7 +821,7 @@ export class TopicsService {
         this.prisma.cBTQuiz.findMany({
           where: {
             topic_id: topicId,
-            schoolId: schoolId,
+            school_id: schoolId,
           },
           orderBy: { createdAt: 'desc' },
           select: {
