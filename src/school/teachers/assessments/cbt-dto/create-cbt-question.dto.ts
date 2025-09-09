@@ -139,14 +139,15 @@ export class CreateCBTQuestionDto {
   @IsEnum(QuestionType)
   question_type: QuestionType;
 
-  @ApiProperty({
-    description: 'Order of the question in the quiz',
+  @ApiPropertyOptional({
+    description: 'Order of the question in the quiz (auto-assigned if not provided)',
     example: 1,
     minimum: 1
   })
   @IsNumber()
+  @IsOptional()
   @Min(1)
-  order: number;
+  order?: number;
 
   @ApiPropertyOptional({
     description: 'Points for this question',

@@ -23,7 +23,7 @@ import {
 import { AssessmentService } from './assessment.service';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
-import { CreateCBTQuizDto, UpdateCBTQuizDto } from './cbt-dto';
+import { CreateCBTQuizDto, UpdateCBTQuizDto, CreateCBTQuestionDto, UpdateCBTQuestionDto } from './cbt-dto';
 
 @ApiTags('Teachers - Assessments')
 @ApiBearerAuth()
@@ -86,15 +86,15 @@ export class AssessmentController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a specific quiz by ID' })
-  @ApiParam({ name: 'id', description: 'ID of the quiz' })
-  @ApiResponse({ status: 200, description: 'Quiz retrieved successfully' })
-  @ApiResponse({ status: 404, description: 'Not found - Quiz not found or access denied' })
-  async getQuizById(
-    @Param('id') quizId: string,
+  @ApiOperation({ summary: 'Get a specific assessment by ID' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  async getAssessmentById(
+    @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.getQuizById(quizId, user.id);
+    return this.assessmentService.getQuizById(assessmentId, user.id);
   }
 
   @Get(':id/questions')
@@ -110,46 +110,97 @@ export class AssessmentController {
     return this.assessmentService.getAssessmentQuestions(assessmentId, user.id);
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update a quiz' })
-  @ApiParam({ name: 'id', description: 'ID of the quiz' })
-  @ApiResponse({ status: 200, description: 'Quiz updated successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
-  @ApiResponse({ status: 404, description: 'Not found - Quiz not found or access denied' })
-  @ApiBody({ type: UpdateCBTQuizDto })
-  async updateQuiz(
-    @Param('id') quizId: string,
-    @Body() updateQuizDto: UpdateCBTQuizDto,
+  @Post(':id/questions')
+  @ApiOperation({ summary: 'Add a new question to an assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiBody({ type: CreateCBTQuestionDto })
+  @ApiResponse({ status: 201, description: 'Question created successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid question data' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async createQuestion(
+    @Param('id') assessmentId: string,
+    @Body() createQuestionDto: CreateCBTQuestionDto,
     @GetUser() user: any
   ) {
-    return this.assessmentService.updateQuiz(quizId, updateQuizDto, user.id, user.school_id);
+    return this.assessmentService.createQuestion(assessmentId, createQuestionDto, user.id);
+  }
+
+  @Patch(':assessmentId/questions/:questionId')
+  @ApiOperation({ summary: 'Update a specific question in an assessment' })
+  @ApiParam({ name: 'assessmentId', description: 'ID of the assessment' })
+  @ApiParam({ name: 'questionId', description: 'ID of the question' })
+  @ApiBody({ type: UpdateCBTQuestionDto })
+  @ApiResponse({ status: 200, description: 'Question updated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid question data' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment or question not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async updateQuestion(
+    @Param('assessmentId') assessmentId: string,
+    @Param('questionId') questionId: string,
+    @Body() updateQuestionDto: UpdateCBTQuestionDto,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user.id);
+  }
+
+  @Delete(':assessmentId/questions/:questionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a specific question from an assessment' })
+  @ApiParam({ name: 'assessmentId', description: 'ID of the assessment' })
+  @ApiParam({ name: 'questionId', description: 'ID of the question' })
+  @ApiResponse({ status: 200, description: 'Question deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Cannot delete question with responses' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment or question not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async deleteQuestion(
+    @Param('assessmentId') assessmentId: string,
+    @Param('questionId') questionId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.deleteQuestion(assessmentId, questionId, user.id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update an assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment updated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  @ApiBody({ type: UpdateCBTQuizDto })
+  async updateAssessment(
+    @Param('id') assessmentId: string,
+    @Body() updateAssessmentDto: UpdateCBTQuizDto,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.updateQuiz(assessmentId, updateAssessmentDto, user.id, user.school_id);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Delete a quiz' })
-  @ApiParam({ name: 'id', description: 'ID of the quiz' })
-  @ApiResponse({ status: 200, description: 'Quiz deleted successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Cannot delete quiz with attempts' })
-  @ApiResponse({ status: 404, description: 'Not found - Quiz not found or access denied' })
-  async deleteQuiz(
-    @Param('id') quizId: string,
+  @ApiOperation({ summary: 'Delete an assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Cannot delete assessment with attempts' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  async deleteAssessment(
+    @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.deleteQuiz(quizId, user.id, user.school_id);
+    return this.assessmentService.deleteQuiz(assessmentId, user.id, user.school_id);
   }
 
   @Post(':id/publish')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Publish a quiz' })
-  @ApiParam({ name: 'id', description: 'ID of the quiz' })
-  @ApiResponse({ status: 200, description: 'Quiz published successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Cannot publish quiz without questions' })
-  @ApiResponse({ status: 404, description: 'Not found - Quiz not found or access denied' })
-  async publishQuiz(
-    @Param('id') quizId: string,
+  @ApiOperation({ summary: 'Publish an assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment published successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Cannot publish assessment without questions' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  async publishAssessment(
+    @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.publishQuiz(quizId, user.id, user.school_id);
+    return this.assessmentService.publishQuiz(assessmentId, user.id, user.school_id);
   }
 }

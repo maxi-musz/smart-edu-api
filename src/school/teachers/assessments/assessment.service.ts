@@ -457,6 +457,525 @@ export class AssessmentService {
   }
 
   /**
+   * Create a new question for an assessment
+   * @param assessmentId - ID of the assessment
+   * @param createQuestionDto - Question data
+   * @param userId - ID of the teacher
+   */
+  async createQuestion(assessmentId: string, createQuestionDto: CreateCBTQuestionDto, userId: string) {
+    try {
+      this.logger.log(colors.cyan(`Creating question for assessment: ${assessmentId} by user: ${userId}`));
+
+      // First verify the assessment exists and the teacher has access to it
+      const assessment = await this.prisma.cBTQuiz.findFirst({
+        where: {
+          id: assessmentId,
+          created_by: userId
+        }
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Check if the assessment is in a state that allows adding questions
+      if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
+        throw new BadRequestException('Cannot add questions to a closed or archived assessment');
+      }
+
+      // Auto-calculate the next available order if not provided or if the provided order already exists
+      let questionOrder = createQuestionDto.order;
+      
+      if (!questionOrder) {
+        // If no order provided, get the highest order and add 1
+        const lastQuestion = await this.prisma.cBTQuestion.findFirst({
+          where: { quiz_id: assessmentId },
+          orderBy: { order: 'desc' }
+        });
+        questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
+      } else {
+        // If order is provided, check if it already exists
+        const existingQuestion = await this.prisma.cBTQuestion.findFirst({
+          where: {
+            quiz_id: assessmentId,
+            order: questionOrder
+          }
+        });
+
+        if (existingQuestion) {
+          // If the provided order exists, find the next available order
+          const lastQuestion = await this.prisma.cBTQuestion.findFirst({
+            where: { quiz_id: assessmentId },
+            orderBy: { order: 'desc' }
+          });
+          questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
+          this.logger.log(colors.yellow(`Order ${createQuestionDto.order} already exists, auto-assigning order ${questionOrder}`));
+        }
+      }
+
+      // Create the question with options and correct answers in a transaction
+      const result = await this.prisma.$transaction(async (prisma) => {
+        // Create the question
+        const question = await prisma.cBTQuestion.create({
+          data: {
+            quiz_id: assessmentId,
+            question_text: createQuestionDto.question_text,
+            question_type: createQuestionDto.question_type,
+            order: questionOrder,
+            points: createQuestionDto.points || 1.0,
+            is_required: createQuestionDto.is_required !== undefined ? createQuestionDto.is_required : true,
+            time_limit: createQuestionDto.time_limit,
+            image_url: createQuestionDto.image_url,
+            audio_url: createQuestionDto.audio_url,
+            video_url: createQuestionDto.video_url,
+            allow_multiple_attempts: createQuestionDto.allow_multiple_attempts || false,
+            show_hint: createQuestionDto.show_hint || false,
+            hint_text: createQuestionDto.hint_text,
+            min_length: createQuestionDto.min_length,
+            max_length: createQuestionDto.max_length,
+            min_value: createQuestionDto.min_value,
+            max_value: createQuestionDto.max_value,
+            explanation: createQuestionDto.explanation,
+            difficulty_level: createQuestionDto.difficulty_level || 'MEDIUM'
+          }
+        });
+
+        // Create options if provided
+        let options: any[] = [];
+        if (createQuestionDto.options && createQuestionDto.options.length > 0) {
+          options = await Promise.all(
+            createQuestionDto.options.map(async (optionData: any) => {
+              return await prisma.cBTOption.create({
+                data: {
+                  question_id: question.id,
+                  option_text: optionData.option_text,
+                  order: optionData.order,
+                  is_correct: optionData.is_correct,
+                  image_url: optionData.image_url,
+                  audio_url: optionData.audio_url
+                }
+              });
+            })
+          );
+        }
+
+        // Create correct answers if provided
+        let correctAnswers: any[] = [];
+        if (createQuestionDto.correct_answers && createQuestionDto.correct_answers.length > 0) {
+          correctAnswers = await Promise.all(
+            createQuestionDto.correct_answers.map(async (answerData: any) => {
+              return await prisma.cBTCorrectAnswer.create({
+                data: {
+                  question_id: question.id,
+                  answer_text: answerData.answer_text,
+                  answer_number: answerData.answer_number,
+                  answer_date: answerData.answer_date ? new Date(answerData.answer_date) : null,
+                  option_ids: answerData.option_ids || [],
+                  answer_json: answerData.answer_json
+                }
+              });
+            })
+          );
+        }
+
+        return { question, options, correctAnswers };
+      });
+
+      // Update the assessment's total points
+      const totalPoints = await this.prisma.cBTQuestion.aggregate({
+        where: { quiz_id: assessmentId },
+        _sum: { points: true }
+      });
+
+      await this.prisma.cBTQuiz.update({
+        where: { id: assessmentId },
+        data: { total_points: totalPoints._sum.points || 0 }
+      });
+
+      this.logger.log(colors.green(`Question created successfully with ID: ${result.question.id}`));
+
+      return ResponseHelper.success(
+        'Question created successfully',
+        {
+          question: {
+            id: result.question.id,
+            question_text: result.question.question_text,
+            question_type: result.question.question_type,
+            order: result.question.order,
+            points: result.question.points,
+            is_required: result.question.is_required,
+            time_limit: result.question.time_limit,
+            image_url: result.question.image_url,
+            audio_url: result.question.audio_url,
+            video_url: result.question.video_url,
+            allow_multiple_attempts: result.question.allow_multiple_attempts,
+            show_hint: result.question.show_hint,
+            hint_text: result.question.hint_text,
+            min_length: result.question.min_length,
+            max_length: result.question.max_length,
+            min_value: result.question.min_value,
+            max_value: result.question.max_value,
+            explanation: result.question.explanation,
+            difficulty_level: result.question.difficulty_level,
+            createdAt: result.question.createdAt,
+            updatedAt: result.question.updatedAt
+          },
+          options: result.options.map(option => ({
+            id: option.id,
+            option_text: option.option_text,
+            order: option.order,
+            is_correct: option.is_correct,
+            image_url: option.image_url,
+            audio_url: option.audio_url
+          })),
+          correct_answers: result.correctAnswers.map(answer => ({
+            id: answer.id,
+            answer_text: answer.answer_text,
+            answer_number: answer.answer_number,
+            answer_date: answer.answer_date,
+            option_ids: answer.option_ids,
+            answer_json: answer.answer_json
+          })),
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            total_points: totalPoints._sum.points || 0
+          }
+        },
+        201
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error creating question: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Update a specific question in an assessment
+   * @param assessmentId - ID of the assessment
+   * @param questionId - ID of the question
+   * @param updateQuestionDto - Updated question data
+   * @param userId - ID of the teacher
+   */
+  async updateQuestion(assessmentId: string, questionId: string, updateQuestionDto: any, userId: string) {
+    try {
+      this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
+
+      // First verify the assessment exists and the teacher has access to it
+      const assessment = await this.prisma.cBTQuiz.findFirst({
+        where: {
+          id: assessmentId,
+          created_by: userId
+        }
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Check if the assessment is in a state that allows editing questions
+      if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
+        throw new BadRequestException('Cannot edit questions in a closed or archived assessment');
+      }
+
+      // Verify the question exists and belongs to this assessment
+      const existingQuestion = await this.prisma.cBTQuestion.findFirst({
+        where: {
+          id: questionId,
+          quiz_id: assessmentId
+        }
+      });
+
+      if (!existingQuestion) {
+        throw new NotFoundException('Question not found in this assessment');
+      }
+
+      // If order is being changed, check for conflicts
+      if (updateQuestionDto.order && updateQuestionDto.order !== existingQuestion.order) {
+        const conflictingQuestion = await this.prisma.cBTQuestion.findFirst({
+          where: {
+            quiz_id: assessmentId,
+            order: updateQuestionDto.order,
+            id: { not: questionId }
+          }
+        });
+
+        if (conflictingQuestion) {
+          throw new BadRequestException(`A question with order ${updateQuestionDto.order} already exists in this assessment`);
+        }
+      }
+
+      // Update the question with options and correct answers in a transaction
+      const result = await this.prisma.$transaction(async (prisma) => {
+        // Update the question
+        const updatedQuestion = await prisma.cBTQuestion.update({
+          where: { id: questionId },
+          data: {
+            question_text: updateQuestionDto.question_text,
+            question_type: updateQuestionDto.question_type,
+            order: updateQuestionDto.order,
+            points: updateQuestionDto.points,
+            is_required: updateQuestionDto.is_required,
+            time_limit: updateQuestionDto.time_limit,
+            image_url: updateQuestionDto.image_url,
+            audio_url: updateQuestionDto.audio_url,
+            video_url: updateQuestionDto.video_url,
+            allow_multiple_attempts: updateQuestionDto.allow_multiple_attempts,
+            show_hint: updateQuestionDto.show_hint,
+            hint_text: updateQuestionDto.hint_text,
+            min_length: updateQuestionDto.min_length,
+            max_length: updateQuestionDto.max_length,
+            min_value: updateQuestionDto.min_value,
+            max_value: updateQuestionDto.max_value,
+            explanation: updateQuestionDto.explanation,
+            difficulty_level: updateQuestionDto.difficulty_level
+          }
+        });
+
+        // Handle options update if provided
+        let options: any[] = [];
+        if (updateQuestionDto.options !== undefined) {
+          // Delete existing options
+          await prisma.cBTOption.deleteMany({
+            where: { question_id: questionId }
+          });
+
+          // Create new options if provided
+          if (updateQuestionDto.options.length > 0) {
+            options = await Promise.all(
+              updateQuestionDto.options.map(async (optionData: any) => {
+                return await prisma.cBTOption.create({
+                  data: {
+                    question_id: questionId,
+                    option_text: optionData.option_text,
+                    order: optionData.order,
+                    is_correct: optionData.is_correct,
+                    image_url: optionData.image_url,
+                    audio_url: optionData.audio_url
+                  }
+                });
+              })
+            );
+          }
+        } else {
+          // Keep existing options
+          options = await prisma.cBTOption.findMany({
+            where: { question_id: questionId },
+            orderBy: { order: 'asc' }
+          });
+        }
+
+        // Handle correct answers update if provided
+        let correctAnswers: any[] = [];
+        if (updateQuestionDto.correct_answers !== undefined) {
+          // Delete existing correct answers
+          await prisma.cBTCorrectAnswer.deleteMany({
+            where: { question_id: questionId }
+          });
+
+          // Create new correct answers if provided
+          if (updateQuestionDto.correct_answers.length > 0) {
+            correctAnswers = await Promise.all(
+              updateQuestionDto.correct_answers.map(async (answerData: any) => {
+                return await prisma.cBTCorrectAnswer.create({
+                  data: {
+                    question_id: questionId,
+                    answer_text: answerData.answer_text,
+                    answer_number: answerData.answer_number,
+                    answer_date: answerData.answer_date ? new Date(answerData.answer_date) : null,
+                    option_ids: answerData.option_ids || [],
+                    answer_json: answerData.answer_json
+                  }
+                });
+              })
+            );
+          }
+        } else {
+          // Keep existing correct answers
+          correctAnswers = await prisma.cBTCorrectAnswer.findMany({
+            where: { question_id: questionId }
+          });
+        }
+
+        return { question: updatedQuestion, options, correctAnswers };
+      });
+
+      // Update the assessment's total points
+      const totalPoints = await this.prisma.cBTQuestion.aggregate({
+        where: { quiz_id: assessmentId },
+        _sum: { points: true }
+      });
+
+      await this.prisma.cBTQuiz.update({
+        where: { id: assessmentId },
+        data: { total_points: totalPoints._sum.points || 0 }
+      });
+
+      this.logger.log(colors.green(`Question updated successfully: ${questionId}`));
+
+      return ResponseHelper.success(
+        'Question updated successfully',
+        {
+          question: {
+            id: result.question.id,
+            question_text: result.question.question_text,
+            question_type: result.question.question_type,
+            order: result.question.order,
+            points: result.question.points,
+            is_required: result.question.is_required,
+            time_limit: result.question.time_limit,
+            image_url: result.question.image_url,
+            audio_url: result.question.audio_url,
+            video_url: result.question.video_url,
+            allow_multiple_attempts: result.question.allow_multiple_attempts,
+            show_hint: result.question.show_hint,
+            hint_text: result.question.hint_text,
+            min_length: result.question.min_length,
+            max_length: result.question.max_length,
+            min_value: result.question.min_value,
+            max_value: result.question.max_value,
+            explanation: result.question.explanation,
+            difficulty_level: result.question.difficulty_level,
+            createdAt: result.question.createdAt,
+            updatedAt: result.question.updatedAt
+          },
+          options: result.options.map(option => ({
+            id: option.id,
+            option_text: option.option_text,
+            order: option.order,
+            is_correct: option.is_correct,
+            image_url: option.image_url,
+            audio_url: option.audio_url
+          })),
+          correct_answers: result.correctAnswers.map(answer => ({
+            id: answer.id,
+            answer_text: answer.answer_text,
+            answer_number: answer.answer_number,
+            answer_date: answer.answer_date,
+            option_ids: answer.option_ids,
+            answer_json: answer.answer_json
+          })),
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            total_points: totalPoints._sum.points || 0
+          }
+        }
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error updating question: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a specific question from an assessment
+   * @param assessmentId - ID of the assessment
+   * @param questionId - ID of the question
+   * @param userId - ID of the teacher
+   */
+  async deleteQuestion(assessmentId: string, questionId: string, userId: string) {
+    try {
+      this.logger.log(colors.cyan(`Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`));
+
+      // First verify the assessment exists and the teacher has access to it
+      const assessment = await this.prisma.cBTQuiz.findFirst({
+        where: {
+          id: assessmentId,
+          created_by: userId
+        }
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Check if the assessment is in a state that allows deleting questions
+      if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
+        throw new BadRequestException('Cannot delete questions from a closed or archived assessment');
+      }
+
+      // Verify the question exists and belongs to this assessment
+      const existingQuestion = await this.prisma.cBTQuestion.findFirst({
+        where: {
+          id: questionId,
+          quiz_id: assessmentId
+        },
+        include: {
+          _count: {
+            select: {
+              responses: true
+            }
+          }
+        }
+      });
+
+      if (!existingQuestion) {
+        throw new NotFoundException('Question not found in this assessment');
+      }
+
+      // Check if the question has any student responses
+      if (existingQuestion._count.responses > 0) {
+        throw new BadRequestException('Cannot delete question that has student responses. Consider archiving the assessment instead.');
+      }
+
+      // Delete the question and all related data in a transaction
+      await this.prisma.$transaction(async (prisma) => {
+        // Delete correct answers first (due to foreign key constraints)
+        await prisma.cBTCorrectAnswer.deleteMany({
+          where: { question_id: questionId }
+        });
+
+        // Delete options
+        await prisma.cBTOption.deleteMany({
+          where: { question_id: questionId }
+        });
+
+        // Delete the question
+        await prisma.cBTQuestion.delete({
+          where: { id: questionId }
+        });
+      });
+
+      // Update the assessment's total points
+      const totalPoints = await this.prisma.cBTQuestion.aggregate({
+        where: { quiz_id: assessmentId },
+        _sum: { points: true }
+      });
+
+      await this.prisma.cBTQuiz.update({
+        where: { id: assessmentId },
+        data: { total_points: totalPoints._sum.points || 0 }
+      });
+
+      this.logger.log(colors.green(`Question deleted successfully: ${questionId}`));
+
+      return ResponseHelper.success(
+        'Question deleted successfully',
+        {
+          deleted_question: {
+            id: questionId,
+            question_text: existingQuestion.question_text,
+            order: existingQuestion.order,
+            points: existingQuestion.points
+          },
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            total_points: totalPoints._sum.points || 0
+          }
+        }
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error deleting question: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
    * Get all assessments for a specific topic
    * @param topicId - ID of the topic
    * @param teacherId - ID of the teacher
@@ -680,7 +1199,7 @@ export class AssessmentService {
    */
   async deleteQuiz(quizId: string, teacherId: string, schoolId: string) {
     try {
-      this.logger.log(colors.cyan(`Deleting quiz: ${quizId}`));
+      this.logger.log(colors.cyan(`Deleting Assessment: ${quizId}`));
 
       // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.cBTQuiz.findFirst({
@@ -692,7 +1211,7 @@ export class AssessmentService {
       });
 
       if (!existingQuiz) {
-        throw new NotFoundException('Quiz not found or access denied');
+        throw new NotFoundException('Assessment not found or access denied');
       }
 
       // Check if quiz has attempts (prevent deletion if students have taken it)
@@ -701,17 +1220,17 @@ export class AssessmentService {
       });
 
       if (attemptCount > 0) {
-        throw new BadRequestException('Cannot delete quiz that has student attempts. Consider archiving instead.');
+        throw new BadRequestException('Cannot delete assessment that has student attempts. Consider archiving instead.');
       }
 
       await this.prisma.cBTQuiz.delete({
         where: { id: quizId }
       });
 
-      this.logger.log(colors.green(`Quiz deleted successfully: ${quizId}`));
-      return ResponseHelper.success('Quiz deleted successfully');
+      this.logger.log(colors.green(`Assessment deleted successfully: ${quizId}`));
+      return ResponseHelper.success('Assessment deleted successfully');
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting quiz: ${error.message}`));
+      this.logger.error(colors.red(`Error deleting assessment: ${error.message}`));
       throw error;
     }
   }
