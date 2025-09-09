@@ -978,15 +978,21 @@ export class AssessmentService {
   /**
    * Get all assessments for a specific topic
    * @param topicId - ID of the topic
-   * @param teacherId - ID of the teacher
+   * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async getTopicQuizzes(topicId: string, teacherId: string, schoolId: string) {
+  async getTopicQuizzes(topicId: string, userId: string, schoolId: string) {
     try {
       this.logger.log(colors.cyan(`Getting quizzes for topic: ${topicId}`));
 
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
+
       // Verify teacher has access to the topic
-      await this.verifyTeacherTopicAccess(topicId, teacherId, schoolId);
+      await this.verifyTeacherTopicAccess(topicId, teacher.id, schoolId);
 
       const quizzes = await this.prisma.cBTQuiz.findMany({
         where: {
@@ -1036,28 +1042,21 @@ export class AssessmentService {
   /**
    * Get a specific quiz by ID
    * @param quizId - ID of the quiz
-   * @param teacherId - ID of the teacher
-   * @param schoolId - ID of the school
+   * @param userId - ID of the user (teacher)
    */
   async getQuizById(quizId: string, userId: string) {
     try {
       this.logger.log(colors.cyan(`Getting quiz: ${quizId}`));
 
-      const teacher = await this.prisma.teacher.findFirst({
-        where: {
-          user_id: userId
-        }
-      });
-
+      const teacher = await this.getTeacherByUserId(userId);
       if (!teacher) {
-          this.logger.error(colors.red(`Teacher not found: ${userId}`));
         throw new NotFoundException('Teacher not found');
       }
 
       const quiz = await this.prisma.cBTQuiz.findFirst({
         where: {
           id: quizId,
-          created_by: teacher.id
+          created_by: userId
         },
         include: {
           topic: {
@@ -1117,34 +1116,57 @@ export class AssessmentService {
    * Update a quiz
    * @param quizId - ID of the quiz
    * @param updateQuizDto - Update data
-   * @param teacherId - ID of the teacher
-   * @param schoolId - ID of the school
+   * @param userId - ID of the user (teacher)
    */
   async updateQuiz(
     quizId: string,
     updateQuizDto: UpdateCBTQuizDto,
-    teacherId: string,
-    schoolId: string
+    userId: string
   ) {
     try {
-      this.logger.log(colors.cyan(`Updating quiz: ${quizId}`));
+      // Log exactly what the user is sending for update
+      this.logger.log(colors.cyan(`Updating assessment: ${quizId}`));
+      this.logger.log(colors.yellow(`Update payload received: ${JSON.stringify(updateQuizDto, null, 2)}`));
+
+      // Get teacher record to access school and academic session
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
 
       // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.cBTQuiz.findFirst({
         where: {
           id: quizId,
-          school_id: schoolId,
-          created_by: teacherId
+          school_id: teacher.school_id,
+          created_by: userId
         }
       });
 
       if (!existingQuiz) {
-        throw new NotFoundException('Quiz not found or access denied');
+        this.logger.error(colors.red(`Assessment not found or access denied: ${quizId}`));
+        throw new NotFoundException('Assessment not found or access denied');
+      }
+
+      // If subject is being changed, verify access to new subject
+      if (updateQuizDto.subject_id && updateQuizDto.subject_id !== existingQuiz.subject_id) {
+        await this.verifyTeacherSubjectAccess(updateQuizDto.subject_id, userId);
       }
 
       // If topic is being changed, verify access to new topic
       if (updateQuizDto.topic_id && updateQuizDto.topic_id !== existingQuiz.topic_id) {
-        await this.verifyTeacherTopicAccess(updateQuizDto.topic_id, teacherId, schoolId);
+        await this.verifyTeacherTopicAccess(updateQuizDto.topic_id, teacher.id, teacher.school_id);
+      }
+
+      // Check if quiz has attempts and is being changed to a state that would affect students
+      if (updateQuizDto.status && ['CLOSED', 'ARCHIVED'].includes(updateQuizDto.status)) {
+        const attemptCount = await this.prisma.cBTQuizAttempt.count({
+          where: { quiz_id: quizId }
+        });
+
+        if (attemptCount > 0) {
+          this.logger.warn(colors.yellow(`Assessment ${quizId} has ${attemptCount} attempts but status is being changed to ${updateQuizDto.status}`));
+        }
       }
 
       const updateData: any = { ...updateQuizDto };
@@ -1157,20 +1179,27 @@ export class AssessmentService {
         updateData.end_date = new Date(updateQuizDto.end_date);
       }
 
+      // If status is being changed to PUBLISHED, set published_at
+      if (updateQuizDto.status === 'PUBLISHED' && existingQuiz.status !== 'PUBLISHED') {
+        updateData.is_published = true;
+        updateData.published_at = new Date();
+      }
+
       const quiz = await this.prisma.cBTQuiz.update({
         where: { id: quizId },
         data: updateData,
         include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
           topic: {
             select: {
               id: true,
-              title: true,
-              subject: {
-                select: {
-                  id: true,
-                  name: true
-                }
-              }
+              title: true
             }
           },
           createdBy: {
@@ -1179,14 +1208,20 @@ export class AssessmentService {
               first_name: true,
               last_name: true
             }
+          },
+          _count: {
+            select: {
+              questions: true,
+              attempts: true
+            }
           }
         }
       });
 
-      this.logger.log(colors.green(`Quiz updated successfully: ${quiz.title}`));
-      return ResponseHelper.success('Quiz updated successfully', quiz);
+      this.logger.log(colors.green(`Assessment updated successfully: ${quiz.title}`));
+      return ResponseHelper.success('Assessment updated successfully', quiz);
     } catch (error) {
-      this.logger.error(colors.red(`Error updating quiz: ${error.message}`));
+      this.logger.error(colors.red(`Error updating assessment: ${error.message}`));
       throw error;
     }
   }
@@ -1194,19 +1229,25 @@ export class AssessmentService {
   /**
    * Delete a quiz
    * @param quizId - ID of the quiz
-   * @param teacherId - ID of the teacher
+   * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async deleteQuiz(quizId: string, teacherId: string, schoolId: string) {
+  async deleteQuiz(quizId: string, userId: string, schoolId: string) {
     try {
       this.logger.log(colors.cyan(`Deleting Assessment: ${quizId}`));
+
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
 
       // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.cBTQuiz.findFirst({
         where: {
           id: quizId,
           school_id: schoolId,
-          created_by: teacherId
+          created_by: userId
         }
       });
 
@@ -1238,19 +1279,25 @@ export class AssessmentService {
   /**
    * Publish a quiz (make it available to students)
    * @param quizId - ID of the quiz
-   * @param teacherId - ID of the teacher
+   * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async publishQuiz(quizId: string, teacherId: string, schoolId: string) {
+  async publishQuiz(quizId: string, userId: string, schoolId: string) {
     try {
       this.logger.log(colors.cyan(`Publishing quiz: ${quizId}`));
+
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
 
       // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.cBTQuiz.findFirst({
         where: {
           id: quizId,
           school_id: schoolId,
-          created_by: teacherId
+          created_by: userId
         },
         include: {
           questions: true
@@ -1258,18 +1305,20 @@ export class AssessmentService {
       });
 
       if (!existingQuiz) {
+        this.logger.error(colors.red(`Quiz not found or access denied: ${quizId}`));
         throw new NotFoundException('Quiz not found or access denied');
       }
 
       // Check if quiz has questions
       if (existingQuiz.questions.length === 0) {
+        this.logger.error(colors.red(`Quiz ${quizId} has no questions`));
         throw new BadRequestException('Cannot publish quiz without questions');
       }
 
       const quiz = await this.prisma.cBTQuiz.update({
         where: { id: quizId },
         data: {
-          status: 'PUBLISHED',
+          status: 'ACTIVE',
           is_published: true,
           published_at: new Date()
         },
