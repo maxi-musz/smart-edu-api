@@ -82,7 +82,7 @@ export class AssessmentController {
     @Param('topicId') topicId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.getTopicQuizzes(topicId, user.id, user.school_id);
+    return this.assessmentService.getTopicQuizzes(topicId, user.sub, user.school_id);
   }
 
   @Get(':id')
@@ -94,7 +94,7 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.getQuizById(assessmentId, user.id);
+    return this.assessmentService.getQuizById(assessmentId, user.sub);
   }
 
   @Get(':id/questions')
@@ -107,7 +107,7 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.getAssessmentQuestions(assessmentId, user.id);
+    return this.assessmentService.getAssessmentQuestions(assessmentId, user.sub);
   }
 
   @Post(':id/questions')
@@ -123,7 +123,7 @@ export class AssessmentController {
     @Body() createQuestionDto: CreateCBTQuestionDto,
     @GetUser() user: any
   ) {
-    return this.assessmentService.createQuestion(assessmentId, createQuestionDto, user.id);
+    return this.assessmentService.createQuestion(assessmentId, createQuestionDto, user.sub);
   }
 
   @Patch(':assessmentId/questions/:questionId')
@@ -141,7 +141,7 @@ export class AssessmentController {
     @Body() updateQuestionDto: UpdateCBTQuestionDto,
     @GetUser() user: any
   ) {
-    return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user.id);
+    return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user.sub);
   }
 
   @Delete(':assessmentId/questions/:questionId')
@@ -158,7 +158,7 @@ export class AssessmentController {
     @Param('questionId') questionId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.deleteQuestion(assessmentId, questionId, user.id);
+    return this.assessmentService.deleteQuestion(assessmentId, questionId, user.sub);
   }
 
   @Patch(':id')
@@ -167,13 +167,14 @@ export class AssessmentController {
   @ApiResponse({ status: 200, description: 'Assessment updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
   @ApiBody({ type: UpdateCBTQuizDto })
   async updateAssessment(
     @Param('id') assessmentId: string,
     @Body() updateAssessmentDto: UpdateCBTQuizDto,
     @GetUser() user: any
   ) {
-    return this.assessmentService.updateQuiz(assessmentId, updateAssessmentDto, user.id, user.school_id);
+    return this.assessmentService.updateQuiz(assessmentId, updateAssessmentDto, user.sub);
   }
 
   @Delete(':id')
@@ -187,7 +188,7 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.deleteQuiz(assessmentId, user.id, user.school_id);
+    return this.assessmentService.deleteQuiz(assessmentId, user.sub, user.school_id);
   }
 
   @Post(':id/publish')
@@ -201,6 +202,6 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.publishQuiz(assessmentId, user.id, user.school_id);
+    return this.assessmentService.publishQuiz(assessmentId, user.sub, user.school_id);
   }
 }
