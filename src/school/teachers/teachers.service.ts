@@ -278,6 +278,7 @@ export class TeachersService {
       });
 
       if (!teacher) {
+        this.logger.error(colors.red(`Teacher not found for user: ${user.email}`));
         return new ApiResponse(false, 'Teacher not found', null);
       }
 
@@ -301,15 +302,16 @@ export class TeachersService {
       });
 
       if (!managedClass) {
-        return new ApiResponse(false, 'No class assigned to manage', null);
+        this.logger.error(colors.red(`No class assigned to manage for teacher: ${teacher.first_name} ${teacher.last_name}`));
+        // return new ApiResponse(false, 'No class assigned to manage', null);
       }
 
-      this.logger.log(colors.green(`✅ Managed class found: ${managedClass.name}`));
+      this.logger.log(colors.green(`✅ Managed class found: ${managedClass?.name}`));
 
       // Calculate student statistics
-      const totalStudents = managedClass.students.length;
-      const maleStudents = managedClass.students.filter(student => student.gender === 'male').length;
-      const femaleStudents = managedClass.students.filter(student => student.gender === 'female').length;
+      const totalStudents = managedClass?.students.length;
+      const maleStudents = managedClass?.students.filter(student => student.gender === 'male').length;
+      const femaleStudents = managedClass?.students.filter(student => student.gender === 'female').length;
 
       // Get current day and next two days
       const currentDay = DateHelpers.getCurrentDayOfWeek();
@@ -432,8 +434,8 @@ export class TeachersService {
           term_end_date: currentSession.end_date
         },
         managed_class: {
-          id: managedClass.id,
-          name: managedClass.name,
+          id: managedClass?.id,
+          name: managedClass?.name,
           students: {
             total: totalStudents,
             males: maleStudents,
@@ -543,6 +545,7 @@ export class TeachersService {
       });
 
       if (!teacher) {
+        this.logger.error(colors.red(`Teacher not found for user: ${user.email}`));
         return new ApiResponse(false, 'Teacher not found', null);
       }
 
