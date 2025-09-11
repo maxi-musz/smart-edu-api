@@ -150,4 +150,135 @@ export class StudentsController {
   getSchedulesTab(@GetUser() user: any) {
     return this.studentsService.fetchSchedulesTabForStudent(user);
   }
+
+  /**
+   * Get all assessments for currently signed in student
+   * GET /api/v1/students/assessments
+   */
+  @Get('assessments')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get all assessments for student' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search in assessment title or description' })
+  @ApiQuery({ name: 'assessmentType', required: false, type: String, description: 'Filter by assessment type' })
+  @ApiQuery({ name: 'status', required: false, type: String, description: 'Filter by assessment status' })
+  @ApiResponse({ status: 200, description: 'Assessments retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Student not found' })
+  getAssessments(
+    @GetUser() user: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('assessmentType') assessmentType?: string,
+    @Query('status') status?: string
+  ) {
+    const pageNum = page ? parseInt(page.toString(), 10) : 1;
+    const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
+    return this.studentsService.fetchAssessmentsForStudent(
+      user, 
+      pageNum, 
+      limitNum, 
+      search, 
+      assessmentType, 
+      status
+    );
+  }
+
+  /**
+   * Get assessment questions for student to work on
+   * GET /api/v1/students/assessments/:id/questions
+   */
+  @Get('assessments/:id/questions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get assessment questions for student to work on' })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiResponse({ status: 200, description: 'Assessment questions retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Assessment not found' })
+  @ApiResponse({ status: 403, description: 'Access denied or maximum attempts reached' })
+  getAssessmentQuestions(
+    @Param('id') assessmentId: string,
+    @GetUser() user: any
+  ) {
+    return this.studentsService.getAssessmentQuestions(user, assessmentId);
+  }
+
+  /**
+   * Submit assessment answers
+   * POST /api/v1/students/assessments/:id/submit
+   */
+  @Post('assessments/:id/submit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Submit assessment answers and auto-grade' })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiBody({
+    description: 'Assessment submission data',
+    schema: {
+      type: 'object',
+      properties: {
+        assessment_id: { type: 'string' },
+        student_id: { type: 'string' },
+        submission_time: { type: 'string', format: 'date-time' },
+        time_taken: { type: 'number' },
+        answers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              question_id: { type: 'string' },
+              question_type: { type: 'string', enum: ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'NUMERIC', 'DATE'] },
+              selected_options: { type: 'array', items: { type: 'string' } },
+              text_answer: { type: 'string' },
+              points_earned: { type: 'number' }
+            }
+          }
+        },
+        total_questions: { type: 'number' },
+        questions_answered: { type: 'number' },
+        questions_skipped: { type: 'number' },
+        total_points_possible: { type: 'number' },
+        total_points_earned: { type: 'number' },
+        submission_status: { type: 'string', enum: ['COMPLETED', 'IN_PROGRESS', 'ABANDONED'] },
+        device_info: {
+          type: 'object',
+          properties: {
+            platform: { type: 'string' },
+            app_version: { type: 'string' },
+            device_model: { type: 'string' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Assessment submitted successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Assessment not found' })
+  @ApiResponse({ status: 403, description: 'Access denied or maximum attempts reached' })
+  submitAssessment(
+    @Param('id') assessmentId: string,
+    @Body() submissionData: any,
+    @GetUser() user: any
+  ) {
+    return this.studentsService.submitAssessment(user, assessmentId, submissionData);
+  }
+
+  /**
+   * Get assessment questions with user's previous answers
+   * GET /api/v1/students/assessments/:id/answers
+   */
+  @Get('assessments/:id/answers')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get assessment questions with user answers' })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiResponse({ status: 200, description: 'Assessment with answers retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Assessment not found' })
+  getAssessmentWithAnswers(
+    @Param('id') assessmentId: string,
+    @GetUser() user: any
+  ) {
+    return this.studentsService.getAssessmentWithAnswers(user, assessmentId);
+  }
 }
