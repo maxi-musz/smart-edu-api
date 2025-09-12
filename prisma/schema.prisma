@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum SchoolType {
@@ -336,6 +336,10 @@ model Student {
   guardian_phone      String?
   guardian_email      String?
   address             String?
+  city                String?
+  state               String?
+  country             String?
+  postal_code         String?
   emergency_contact   String?
   blood_group         String?
   medical_conditions  String?
@@ -913,6 +917,9 @@ model CBTQuiz {
   // Metadata
   order Int      @default(0)
   tags  String[] // Tags for categorization
+
+  // Submission Tracking
+  submissions Json? // { total_submissions: number, recent_submissions: [{ user_id, name, email, submitted_at }] }
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
