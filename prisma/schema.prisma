@@ -117,6 +117,37 @@ enum WalletType {
   TEACHER_WALLET
 }
 
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum ConversationStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+  ARCHIVED
+}
+
+enum MaterialProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRYING
+}
+
+enum ChunkType {
+  TEXT
+  HEADING
+  PARAGRAPH
+  LIST
+  TABLE
+  IMAGE_CAPTION
+  FOOTNOTE
+}
+
 model AcademicSession {
   id            String                @id @default(cuid())
   school_id     String
@@ -216,6 +247,14 @@ model School {
   // CBT Quiz relations
   cbtQuizzes      CBTQuiz[]
   cbtQuizAttempts CBTQuizAttempt[]
+
+  // AI Chat relations
+  chatMessages        ChatMessage[]
+  chatConversations   ChatConversation[]
+  materialProcessings MaterialProcessing[]
+  documentChunks      DocumentChunk[]
+  chatContexts        ChatContext[]
+  chatAnalytics       ChatAnalytics[]
 }
 
 model Document {
@@ -278,6 +317,11 @@ model User {
   cbtQuizAttempts   CBTQuizAttempt[]
   cbtResponses      CBTResponse[]
   cbtGradesGiven    CBTQuizAttempt[] @relation("CBTGrader")
+
+  // AI Chat relations
+  chatMessages      ChatMessage[]
+  chatConversations ChatConversation[]
+  chatAnalytics     ChatAnalytics[]
 }
 
 model Teacher {
@@ -743,6 +787,13 @@ model PDFMaterial {
   school     School?      @relation(fields: [schoolId], references: [id])
   uploadedBy User         @relation(fields: [uploadedById], references: [id])
   topic      Topic?       @relation(fields: [topic_id], references: [id])
+
+  // AI Chat relations
+  materialProcessings MaterialProcessing[]
+  documentChunks      DocumentChunk[]
+  chatConversations   ChatConversation[]
+  chatMessages        ChatMessage[]
+  chatAnalytics       ChatAnalytics[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1392,4 +1443,231 @@ model AssignmentGrade {
   @@index([teacher_id])
   @@index([school_id, academic_session_id])
   @@index([graded_at])
+}
+
+// ========================================
+// AI CHAT WITH PDF SYSTEM MODELS
+// ========================================
+
+model MaterialProcessing {
+  id          String                   @id @default(cuid())
+  material_id String // Reference to PDFMaterial
+  school_id   String
+  status      MaterialProcessingStatus @default(PENDING)
+
+  // Processing Details
+  total_chunks     Int @default(0)
+  processed_chunks Int @default(0)
+  failed_chunks    Int @default(0)
+
+  // Processing Metadata
+  processing_started_at   DateTime?
+  processing_completed_at DateTime?
+  error_message           String?
+  retry_count             Int       @default(0)
+
+  // Vector Database Info
+  vector_database_id String? // External vector DB reference
+  embedding_model    String? // e.g., "text-embedding-3-small"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  material PDFMaterial     @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  school   School          @relation(fields: [school_id], references: [id])
+  chunks   DocumentChunk[]
+
+  @@unique([material_id])
+  @@index([school_id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DocumentChunk {
+  id                     String @id @default(cuid())
+  material_processing_id String
+  material_id            String
+  school_id              String
+
+  // Chunk Content
+  content       String
+  chunk_type    ChunkType @default(TEXT)
+  page_number   Int?
+  section_title String?
+
+  // Vector Embedding
+  embedding       Float[] // Vector embedding for semantic search
+  embedding_model String // e.g., "text-embedding-3-small"
+
+  // Chunk Metadata
+  token_count Int @default(0)
+  word_count  Int @default(0)
+  order_index Int // Order within the document
+
+  // Search Metadata
+  keywords String[] // Extracted keywords for hybrid search
+  summary  String? // Brief summary of chunk content
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  materialProcessing MaterialProcessing @relation(fields: [material_processing_id], references: [id], onDelete: Cascade)
+  material           PDFMaterial        @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  school             School             @relation(fields: [school_id], references: [id])
+
+  // Chat context references
+  chatContexts ChatContext[]
+
+  @@index([material_id])
+  @@index([school_id])
+  @@index([chunk_type])
+  @@index([page_number])
+  @@index([order_index])
+  @@index([createdAt])
+}
+
+model ChatConversation {
+  id          String  @id @default(cuid())
+  user_id     String
+  school_id   String
+  material_id String? // Optional - for material-specific chats
+
+  // Conversation Details
+  title  String?
+  status ConversationStatus @default(ACTIVE)
+
+  // Context and Memory
+  system_prompt   String? // Custom system prompt for this conversation
+  context_summary String? // Summary of older conversation for memory
+
+  // Conversation Metadata
+  total_messages Int      @default(0)
+  last_activity  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user     User          @relation(fields: [user_id], references: [id])
+  school   School        @relation(fields: [school_id], references: [id])
+  material PDFMaterial?  @relation(fields: [material_id], references: [id])
+  messages ChatMessage[]
+  contexts ChatContext[]
+
+  @@index([user_id])
+  @@index([school_id])
+  @@index([material_id])
+  @@index([status])
+  @@index([last_activity])
+}
+
+model ChatMessage {
+  id              String  @id @default(cuid())
+  conversation_id String
+  user_id         String
+  school_id       String
+  material_id     String? // Optional - for material-specific messages
+
+  // Message Content
+  role         MessageRole @default(USER)
+  content      String
+  message_type String      @default("TEXT")
+
+  // AI Response Details (for assistant messages)
+  model_used       String? // e.g., "gpt-4o-mini", "claude-haiku"
+  tokens_used      Int? // Token count for cost tracking
+  response_time_ms Int? // Response time in milliseconds
+
+  // Context and Memory
+  context_chunks  String[] // IDs of document chunks used as context
+  context_summary String? // Summary of context used
+
+  // Message Metadata
+  is_edited         Boolean   @default(false)
+  edited_at         DateTime?
+  parent_message_id String? // For threaded conversations
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  conversation ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [user_id], references: [id])
+  school       School           @relation(fields: [school_id], references: [id])
+  material     PDFMaterial?     @relation(fields: [material_id], references: [id])
+  contexts     ChatContext[]
+
+  @@index([conversation_id])
+  @@index([user_id])
+  @@index([school_id])
+  @@index([material_id])
+  @@index([role])
+  @@index([createdAt])
+}
+
+model ChatContext {
+  id              String @id @default(cuid())
+  conversation_id String
+  message_id      String
+  chunk_id        String
+  school_id       String
+
+  // Context Details
+  relevance_score     Float // How relevant this chunk is to the message
+  context_type        String @default("semantic") // semantic, keyword, hybrid
+  position_in_context Int // Order of this chunk in the context
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  conversation ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  message      ChatMessage      @relation(fields: [message_id], references: [id], onDelete: Cascade)
+  chunk        DocumentChunk    @relation(fields: [chunk_id], references: [id], onDelete: Cascade)
+  school       School           @relation(fields: [school_id], references: [id])
+
+  @@unique([message_id, chunk_id])
+  @@index([conversation_id])
+  @@index([message_id])
+  @@index([chunk_id])
+  @@index([school_id])
+  @@index([relevance_score])
+}
+
+model ChatAnalytics {
+  id          String  @id @default(cuid())
+  school_id   String
+  material_id String?
+  user_id     String?
+
+  // Usage Statistics
+  total_conversations      Int @default(0)
+  total_messages           Int @default(0)
+  total_tokens_used        Int @default(0)
+  average_response_time_ms Int @default(0)
+
+  // Performance Metrics
+  average_relevance_score Float    @default(0)
+  most_used_chunks        String[] // Chunk IDs most frequently used
+  popular_questions       String[] // Most common question patterns
+
+  // Time-based Analytics
+  date          DateTime @default(now())
+  daily_usage   Int      @default(0)
+  weekly_usage  Int      @default(0)
+  monthly_usage Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  school   School       @relation(fields: [school_id], references: [id])
+  material PDFMaterial? @relation(fields: [material_id], references: [id])
+  user     User?        @relation(fields: [user_id], references: [id])
+
+  @@index([school_id])
+  @@index([material_id])
+  @@index([user_id])
+  @@index([date])
 }

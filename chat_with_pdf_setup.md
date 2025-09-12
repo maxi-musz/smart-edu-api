@@ -1,225 +1,171 @@
-# Smart Edu Hub — Chat with PDF Setup Guide
+# Smart Edu Hub — Chat with PDF Setup Plan  
 
-This guide shows how to implement **chat-with-PDF with memory** in your NestJS + React Native project, using Cursor AI for code integration.
+This is the high-level plan for enabling students to **chat with PDF or DOC materials** inside the Smart Edu Hub platform.  
 
----
-
-## 🛠️ Step 1: Database Schema
-
-Add a `chat_messages` table.
-
-### Prisma Example:
-```prisma
-model ChatMessage {
-  id         String   @id @default(uuid())
-  userId     String
-  materialId String
-  role       String   // 'user' or 'assistant'
-  content    String
-  createdAt  DateTime @default(now())
-
-  @@index([userId, materialId])
-}
-```
-
-Run migration:
-```
-npx prisma migrate dev --name add_chat_messages
-```
+## 🎯 **Current Status: Phase 1 Complete ✅**
+- Document upload and storage is working
+- Ready to move to Phase 2: Document Processing Pipeline
 
 ---
 
-## 🛠️ Step 2: DTOs
+## 1. Goal  
 
-`chat/dto/chat-message.dto.ts`:
-
-```ts
-import { IsString } from 'class-validator';
-
-export class ChatMessageDto {
-  @IsString()
-  userId: string;
-
-  @IsString()
-  materialId: string;
-
-  @IsString()
-  message: string;
-}
-```
+- Teachers upload study materials (PDF, DOC).  
+  - ✅ Already implemented in another service (do not re-implement in AI-chat module).  
+- Students can click **“Chat with this material”** on the app.  
+  - ✅ Already implemented (no extra work needed here).  
+- Students ask questions in natural language (supports **English, Hausa, Yoruba**, etc.).  
+- The system answers in a conversational way, with **memory of past messages** and **context from the document**.  
 
 ---
 
-## 🛠️ Step 3: Chat Service
+## 2. Data Flow  
 
-`chat/chat.service.ts`:
+### 2.1 Upload & Store  
+- Teacher uploads PDF/DOC → stored in **AWS S3**.  
+- File is pre-processed into **chunks** (sections of text).  
+- Each chunk is **embedded** (converted into vectors) and stored in a **vector database** (pgvector, Pinecone, or similar).  
 
-```ts
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+### 2.2 Chat Session  
+- Student opens a material and starts a chat.  
+- Every message is saved in a **chat_messages history table** with:  
+  - student  
+  - material  
+  - role (user/assistant)  
+  - content  
+  - timestamp  
 
-@Injectable()
-export class ChatService {
-  constructor(private prisma: PrismaService) {}
+### 2.3 Handling a Message  
+When a student sends a question:  
+1. Save the question in the chat history.  
+2. Fetch recent conversation history for continuity.  
+3. Generate embedding for the new question.  
+4. Search the vector database for **relevant chunks** from the material.  
+5. Build a **prompt** for the LLM containing:  
+   - System role (e.g. *“You are a helpful tutor for this material”*).  
+   - Previous chat history.  
+   - The student’s new question.  
+   - Context snippets retrieved from the document.  
+6. Send the prompt to the LLM.  
+7. Save the assistant’s response to chat history.  
+8. Return the response to the app.  
 
-  async saveMessage(userId: string, materialId: string, role: 'user' | 'assistant', content: string) {
-    return this.prisma.chatMessage.create({
-      data: { userId, materialId, role, content },
-    });
-  }
-
-  async getRecentHistory(userId: string, materialId: string, limit = 5) {
-    const messages = await this.prisma.chatMessage.findMany({
-      where: { userId, materialId },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-    });
-
-    return messages.map(m => ({ role: m.role, content: m.content }));
-  }
-}
-```
-
----
-
-## 🛠️ Step 4: Chat Controller
-
-`chat/chat.controller.ts`:
-
-```ts
-import { Body, Controller, Post } from '@nestjs/common';
-import { ChatService } from './chat.service';
-import { ChatMessageDto } from './dto/chat-message.dto';
-import { LlmService } from '../llm/llm.service';
-import { EmbeddingService } from '../llm/embedding.service';
-
-@Controller('chat')
-export class ChatController {
-  constructor(
-    private chatService: ChatService,
-    private llmService: LlmService,
-    private embeddingService: EmbeddingService
-  ) {}
-
-  @Post('message')
-  async handleMessage(@Body() dto: ChatMessageDto) {
-    const { userId, materialId, message } = dto;
-
-    await this.chatService.saveMessage(userId, materialId, 'user', message);
-    const history = await this.chatService.getRecentHistory(userId, materialId, 5);
-
-    const embedding = await this.embeddingService.createEmbedding(message);
-    const contextChunks = await this.embeddingService.searchInMaterial(materialId, embedding);
-
-    const messages = [
-      { role: 'system', content: 'You are a helpful tutor for this material.' },
-      ...history,
-      { role: 'user', content: message },
-      { role: 'system', content: `Context:\n${contextChunks.join('\n')}` },
-    ];
-
-    const answer = await this.llmService.ask(messages);
-    await this.chatService.saveMessage(userId, materialId, 'assistant', answer);
-
-    return { answer };
-  }
-}
-```
+### 2.4 Conversation Continuity  
+- Each new student question should include **recent history** in the prompt.  
+- If the history grows too long:  
+  - Use a **sliding window** (last N messages), or  
+  - **Summarize older messages**.  
 
 ---
 
-## 🛠️ Step 5: LLM & Embedding Services
+## 3. Expected Outcome  
 
-`llm/llm.service.ts`:
-
-```ts
-import OpenAI from 'openai';
-import { Injectable } from '@nestjs/common';
-
-@Injectable()
-export class LlmService {
-  private client: OpenAI;
-
-  constructor() {
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-
-  async ask(messages: { role: string; content: string }[]) {
-    const response = await this.client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages,
-    });
-
-    return response.choices[0].message.content;
-  }
-}
-```
-
-`llm/embedding.service.ts`:
-
-```ts
-import OpenAI from 'openai';
-import { Injectable } from '@nestjs/common';
-
-@Injectable()
-export class EmbeddingService {
-  private client: OpenAI;
-
-  constructor() {
-    this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-
-  async createEmbedding(text: string) {
-    const embedding = await this.client.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text,
-    });
-    return embedding.data[0].embedding;
-  }
-
-  async searchInMaterial(materialId: string, queryEmbedding: number[]) {
-    // Placeholder for pgvector / Pinecone / Weaviate integration
-    return ["Relevant chunk 1", "Relevant chunk 2"];
-  }
-}
-```
+- Student can ask: *“What is photosynthesis?”*  
+- System answers from the material.  
+- Student can then ask: *“And what role does chlorophyll play?”*  
+- System understands the follow-up because it has the **previous chat history in memory**.  
 
 ---
 
-## 🛠️ Step 6: React Native Integration
+## 4. Tech Stack Recommendations  
 
-```tsx
-const sendMessage = async () => {
-  const response = await fetch(`${API_URL}/chat/message`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      userId,
-      materialId,
-      message: inputText,
-    }),
-  });
+- **LLM (Large Language Model)**  
+  - Use **OpenAI GPT-4o-mini** (cheap, fast, good quality).  
+  - Alternative: **Claude Haiku** (Anthropic) or **DeepSeek** (if cost-sensitive).  
 
-  const data = await response.json();
-  setMessages([...messages, { role: 'assistant', content: data.answer }]);
-};
-```
+- **Vector Database**  
+  - **Option 1: pgvector** (recommended if you already use PostgreSQL with NestJS).  
+  - **Option 2: Pinecone** (scalable, easy setup, but external cost).  
+  - **Option 3: Weaviate or Qdrant** (open-source alternatives if you want self-hosting).  
 
----
+- **Embeddings**  
+  - Use **OpenAI `text-embedding-3-small`** for cost efficiency.  
+  - If needed for multilingual (Yoruba, Hausa, etc.), **text-embedding-3-large** offers better coverage.  
 
-✅ With this setup:
-- First question → stored + answered with material context.  
-- Follow-up → history ensures continuity.  
+- **Storage**  
+  - Already handled with **AWS S3** (no changes needed).  
 
 ---
 
-## 💰 Cheapest LLM API Option
+## 5. Implementation Checklist
 
-- **OpenAI `gpt-4o-mini`** → Best balance of price and capability.  
-  - Input: $0.0006 per 1K tokens  
-  - Output: $0.0024 per 1K tokens  
-- **Anthropic Claude Haiku** → Also very cheap, but not as widely supported in Node/NestJS SDKs.  
-- **DeepSeek / Groq-backed models** → Extremely cheap (fractions of a cent) but less integrated.  
+### ✅ **Phase 1: Document Upload & Storage (COMPLETED)**
+- [x] Document upload to S3
+- [x] Database storage of materials
+- [x] Basic API endpoints
+- [x] File validation and processing
 
-👉 If you want lowest cost with strong ecosystem: **OpenAI gpt-4o-mini** is the winner right now.
+### ❌ **Phase 2: Document Processing Pipeline (PENDING)**
+- [ ] **Text Extraction**: Extract text from PDF/DOC files
+- [ ] **Document Chunking**: Break documents into smaller text sections (500-1000 tokens)
+- [ ] **Embedding Generation**: Convert chunks to vectors using OpenAI embeddings
+- [ ] **Vector Storage**: Store embeddings in vector database (pgvector/Pinecone)
+- [ ] **Processing Status**: Track document processing status (pending/processing/completed)
 
+### ❌ **Phase 3: Chat Functionality (PENDING)**
+- [ ] **Chat Endpoints**: 
+  - `POST /api/v1/ai-chat/send-message` - Send message to AI
+  - `GET /api/v1/ai-chat/chat-history/:materialId` - Get conversation history
+  - `GET /api/v1/ai-chat/conversations` - List user's conversations
+- [ ] **Conversation Memory**: Store chat history with user, material, role, content, timestamp
+- [ ] **Context Retrieval**: Find relevant chunks for questions using vector search
+- [ ] **Session Management**: Handle multiple concurrent chat sessions
+
+### ❌ **Phase 4: AI Integration (PENDING)**
+- [ ] **LLM Integration**: Connect to OpenAI GPT-4o-mini or Claude Haiku
+- [ ] **Prompt Building**: Combine context + history + question into effective prompts
+- [ ] **Response Generation**: Get AI answers and stream responses
+- [ ] **Multilingual Support**: Handle English, Hausa, Yoruba questions
+- [ ] **Error Handling**: Graceful fallbacks for AI service failures
+
+### ❌ **Phase 5: Advanced Features (FUTURE)**
+- [ ] **Streaming Responses**: Real-time typing effect for better UX
+- [ ] **Conversation Summarization**: Summarize long chat histories
+- [ ] **Cost Monitoring**: Track LLM usage per student
+- [ ] **Analytics**: Track popular questions and materials
+- [ ] **Caching**: Cache frequent embeddings and responses
+
+---
+
+## 6. Next Steps Priority
+
+### **Immediate Next Step: Document Processing Pipeline**
+1. **Text Extraction Service**: Extract text from uploaded PDFs
+2. **Chunking Service**: Split text into manageable chunks
+3. **Embedding Service**: Generate vectors for each chunk
+4. **Vector Database Setup**: Configure pgvector or Pinecone
+5. **Processing Queue**: Handle document processing asynchronously
+
+### **Then: Chat System**
+1. **Chat Message Model**: Database schema for conversations
+2. **Chat Endpoints**: Basic send/receive message functionality
+3. **Context Search**: Find relevant chunks for questions
+4. **LLM Integration**: Connect to AI service
+5. **Memory Management**: Handle conversation continuity
+
+---
+
+## 7. Scalability Considerations  
+
+1. **Token Cost Management**  
+   - Use shorter context windows (e.g. last 5–10 messages).  
+   - Summarize older conversations before passing to the LLM.  
+   - Cache embeddings to avoid recomputation.  
+
+2. **Parallel Users**  
+   - Ensure chat history is stored per **student + material** to avoid mix-ups.  
+   - Use database indexing for fast retrieval of chat history and embeddings.  
+
+3. **Large Documents**  
+   - Break materials into **smaller chunks (500–1000 tokens)** for efficient retrieval.  
+   - Use a hybrid search: semantic (vector) + keyword filtering for precision.  
+
+4. **Response Latency**  
+   - Pre-compute embeddings at upload time, not during chat.  
+   - Use streaming responses from the LLM for better UX (students see answers being typed).  
+
+5. **Monitoring & Logging**  
+   - Track LLM usage per student to control costs.  
+   - Store logs of queries and responses for debugging and future model fine-tuning.  
+
+---
