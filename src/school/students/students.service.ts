@@ -1632,7 +1632,33 @@ export class StudentsService {
           },
           questions: {
             select: {
-              id: true
+              id: true,
+              question_type: true,
+              points: true,
+              options: {
+                select: {
+                  id: true,
+                  is_correct: true
+                }
+              }
+            }
+          },
+          attempts: {
+            where: {
+              student_id: user.sub
+            },
+            select: {
+              id: true,
+              attempt_number: true,
+              status: true,
+              total_score: true,
+              percentage: true,
+              passed: true,
+              submitted_at: true,
+              max_score: true
+            },
+            orderBy: {
+              submitted_at: 'desc'
             }
           }
         },
@@ -1646,32 +1672,77 @@ export class StudentsService {
       });
 
       // Format assessments data
-      const formattedAssessments = assessments.map(assessment => ({
-        id: assessment.id,
-        title: assessment.title,
-        description: assessment.description,
-        assessment_type: assessment.assessment_type,
-        status: assessment.status,
-        duration: assessment.duration,
-        total_points: assessment.total_points,
-        questions_count: assessment.questions.length,
-        subject: {
-          id: assessment.subject.id,
-          name: assessment.subject.name,
-          code: assessment.subject.code,
-          color: assessment.subject.color
-        },
-        teacher: {
-          id: assessment.createdBy.id,
-          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`
-        },
-        due_date: assessment.end_date ? (assessment.end_date.toISOString()) : null,
-        created_at: (assessment.createdAt.toISOString()),
-        is_published: assessment.is_published,
-        _count: {
-          questions: assessment.questions.length
-        }
-      }));
+      const formattedAssessments = assessments.map(assessment => {
+        const studentAttempts = assessment.attempts || [];
+        const attemptCount = studentAttempts.length;
+        const hasReachedMaxAttempts = attemptCount >= assessment.max_attempts;
+        const latestAttempt = studentAttempts[0]; // Most recent attempt
+
+        // Calculate highest marks across all attempts
+        const highestScore = studentAttempts.length > 0 
+          ? Math.max(...studentAttempts.map(attempt => attempt.total_score || 0))
+          : 0;
+        const highestPercentage = studentAttempts.length > 0
+          ? Math.max(...studentAttempts.map(attempt => attempt.percentage || 0))
+          : 0;
+        const overallAchievableMark = assessment.total_points;
+
+        return {
+          id: assessment.id,
+          title: assessment.title,
+          description: assessment.description,
+          assessment_type: assessment.assessment_type,
+          status: assessment.status,
+          duration: assessment.duration,
+          total_points: assessment.total_points,
+          max_attempts: assessment.max_attempts,
+          passing_score: assessment.passing_score,
+          questions_count: assessment.questions.length,
+          subject: {
+            id: assessment.subject.id,
+            name: assessment.subject.name,
+            code: assessment.subject.code,
+            color: assessment.subject.color
+          },
+          teacher: {
+            id: assessment.createdBy.id,
+            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`
+          },
+          due_date: assessment.end_date ? (assessment.end_date.toISOString()) : null,
+          created_at: (assessment.createdAt.toISOString()),
+          is_published: assessment.is_published,
+          submissions: assessment.submissions || {
+            total_submissions: 0,
+            recent_submissions: [],
+            student_counts: {}
+          },
+          student_attempts: {
+            total_attempts: attemptCount,
+            remaining_attempts: Math.max(0, assessment.max_attempts - attemptCount),
+            has_reached_max: hasReachedMaxAttempts,
+            latest_attempt: latestAttempt ? {
+              id: latestAttempt.id,
+              attempt_number: latestAttempt.attempt_number,
+              status: latestAttempt.status,
+              total_score: latestAttempt.total_score,
+              percentage: latestAttempt.percentage,
+              passed: latestAttempt.passed,
+              submitted_at: latestAttempt.submitted_at?.toISOString()
+            } : null
+          },
+          performance_summary: {
+            highest_score: highestScore,
+            highest_percentage: highestPercentage,
+            overall_achievable_mark: overallAchievableMark,
+            best_attempt: studentAttempts.length > 0 
+              ? studentAttempts.find(attempt => attempt.total_score === highestScore) || null
+              : null
+          },
+          _count: {
+            questions: assessment.questions.length
+          }
+        };
+      });
 
       // Group assessments by assessment_type and status
       const groupedAssessments = formattedAssessments.reduce((groups, assessment) => {
@@ -2037,7 +2108,13 @@ export class StudentsService {
         include: {
           questions: {
             include: {
-              correct_answers: true
+              correct_answers: true,
+              options: {
+                select: {
+                  id: true,
+                  is_correct: true
+                }
+              }
             }
           }
         }
@@ -2051,9 +2128,11 @@ export class StudentsService {
       // Check if assessment is still active
       const now = new Date();
       if (assessment.start_date && assessment.start_date > now) {
+        this.logger.error(colors.red(`❌ Assessment has not started yet: ${assessmentId}`));
         return new ApiResponse(false, 'Assessment has not started yet', null);
       }
       if (assessment.end_date && assessment.end_date < now) {
+        this.logger.error(colors.red(`❌ Assessment has expired: ${assessmentId}`));
         return new ApiResponse(false, 'Assessment has expired', null);
       }
 
@@ -2061,47 +2140,70 @@ export class StudentsService {
       const attemptCount = await this.prisma.cBTQuizAttempt.count({
         where: {
           quiz_id: assessmentId,
-          student_id: user.sub // Use user.sub (User.id) not student.id
+          student_id: user.sub 
         }
       });
 
       if (attemptCount >= assessment.max_attempts) {
+        this.logger.error(colors.red(`❌ Maximum attempts reached for this assessment: ${assessmentId}`));
         return new ApiResponse(false, 'Maximum attempts reached for this assessment', null);
       }
-
-      // Create attempt
-      const attempt = await this.prisma.cBTQuizAttempt.create({
-        data: {
-          quiz_id: assessmentId,
-          student_id: user.sub, // Use user.sub (User.id) not student.id
-          school_id: student.school_id,
-          academic_session_id: currentSession.id,
-          attempt_number: attemptCount + 1,
-          status: 'IN_PROGRESS',
-          started_at: new Date(),
-          max_score: assessment.total_points
-        }
-      });
 
       // Extract data from submission
       const { answers, submission_time, time_taken, total_questions, questions_answered, questions_skipped, total_points_possible, total_points_earned, submission_status, device_info } = submissionData;
 
-      // Save student answers and auto-grade
+      // Log the incoming submission data for debugging
+      this.logger.log(colors.blue(`📝 Submission data received:`));
+      this.logger.log(colors.blue(`   - Assessment ID: ${assessmentId}`));
+      this.logger.log(colors.blue(`   - Student ID: ${user.sub}`));
+      this.logger.log(colors.blue(`   - Total answers: ${answers.length}`));
+      this.logger.log(colors.blue(`   - Answers: ${JSON.stringify(answers, null, 2)}`));
+
+      // Process answers and calculate scores (outside transaction for validation)
       let totalScore = 0;
       let totalPoints = 0;
       const gradedAnswers: any[] = [];
+      const studentAnswersToCreate: any[] = [];
 
       for (const answer of answers) {
         const question = assessment.questions.find(q => q.id === answer.question_id);
-        if (!question) continue;
+        if (!question) {
+          this.logger.warn(colors.yellow(`⚠️ Question not found: ${answer.question_id}`));
+          continue;
+        }
+
+        this.logger.log(colors.blue(`🔍 Processing answer for question ${answer.question_id}:`));
+        this.logger.log(colors.blue(`   - Question type: ${answer.question_type}`));
+        this.logger.log(colors.blue(`   - Student answer: ${JSON.stringify(answer)}`));
+        this.logger.log(colors.blue(`   - Question points: ${question.points}`));
 
         // Check if answer is correct based on question type
-        const isCorrect = this.checkAnswerByType(answer, question);
+        let isCorrect = this.checkAnswerByType(answer, question);
+        
+        // Fallback: If no correct_answers configured, check against option is_correct
+        if (!isCorrect && question.question_type === 'MULTIPLE_CHOICE_SINGLE' && answer.selected_options?.length > 0) {
+          const selectedOptionId = answer.selected_options[0];
+          const selectedOption = question.options.find(opt => opt.id === selectedOptionId);
+          isCorrect = selectedOption?.is_correct || false;
+        }
+        
         const pointsEarned = isCorrect ? question.points : 0;
 
-        // Save student answer (using a generic approach since CBTStudentAnswer might not exist)
-        // For now, we'll store the answers in the attempt or create a simple storage
-        // This would need the CBTStudentAnswer model to be added to the schema
+        this.logger.log(colors.blue(`   - Is correct: ${isCorrect}`));
+        this.logger.log(colors.blue(`   - Points earned: ${pointsEarned}`));
+
+        // Prepare student answer data for batch creation
+        studentAnswersToCreate.push({
+          question_id: answer.question_id,
+          student_id: user.sub,
+          text_answer: answer.text_answer || null,
+          numeric_answer: answer.question_type === 'NUMERIC' && answer.text_answer ? parseFloat(answer.text_answer) : null,
+          date_answer: answer.question_type === 'DATE' && answer.text_answer ? new Date(answer.text_answer) : null,
+          selected_options: answer.selected_options || [],
+          max_points: question.points,
+          is_correct: isCorrect,
+          points_earned: pointsEarned
+        });
 
         gradedAnswers.push({
           question_id: answer.question_id,
@@ -2121,28 +2223,63 @@ export class StudentsService {
       const percentage = totalPoints > 0 ? (totalScore / totalPoints) * 100 : 0;
       const passed = percentage >= assessment.passing_score;
       const grade = this.calculateGrade(percentage);
+      const timeSpent = time_taken || 0;
 
-      // Update attempt with final scores
-      const timeSpent = time_taken || (attempt.started_at ? Math.floor((new Date().getTime() - attempt.started_at.getTime()) / 1000) : 0);
-      
-      await this.prisma.cBTQuizAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          status: 'GRADED',
-          submitted_at: submission_time ? new Date(submission_time) : new Date(),
-          time_spent: timeSpent,
-          total_score: totalScore,
-          percentage: percentage,
-          passed: passed,
-          is_graded: true,
-          graded_at: new Date()
-        }
+      // Execute everything in a transaction
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Create attempt
+        const attempt = await tx.cBTQuizAttempt.create({
+          data: {
+            quiz_id: assessmentId,
+            student_id: user.sub,
+            school_id: student.school_id,
+            academic_session_id: currentSession.id,
+            attempt_number: attemptCount + 1,
+            status: 'IN_PROGRESS',
+            started_at: new Date(),
+            max_score: assessment.total_points
+          }
+        });
+
+        // Create all student answers
+        const studentAnswers = await Promise.all(
+          studentAnswersToCreate.map(answerData => 
+            tx.cBTResponse.create({
+              data: {
+                ...answerData,
+                attempt_id: attempt.id
+              }
+            })
+          )
+        );
+
+        this.logger.log(colors.green(`✅ All student answers saved: ${studentAnswers.length} answers`));
+
+        // Update attempt with final scores
+        const updatedAttempt = await tx.cBTQuizAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            status: 'GRADED',
+            submitted_at: submission_time ? new Date(submission_time) : new Date(),
+            time_spent: timeSpent,
+            total_score: totalScore,
+            percentage: percentage,
+            passed: passed,
+            is_graded: true,
+            graded_at: new Date()
+          }
+        });
+
+        // Update quiz submissions tracking
+        await this.updateQuizSubmissionsInTransaction(tx, assessmentId, user.sub, user.email, user.first_name, user.last_name);
+
+        return { attempt: updatedAttempt, studentAnswers };
       });
 
       const responseData = {
-        attempt_id: attempt.id,
+        attempt_id: result.attempt.id,
         assessment_id: assessmentId,
-        student_id: user.sub, // Use user.sub (User.id) not student.id
+        student_id: user.sub,
         total_score: totalScore,
         total_points: totalPoints,
         percentage_score: percentage,
@@ -2182,17 +2319,31 @@ export class StudentsService {
    */
   private checkAnswerByType(answer: any, question: any): boolean {
     const correctAnswers = question.correct_answers;
-    if (!correctAnswers || correctAnswers.length === 0) return false;
+    this.logger.log(colors.cyan(`🔍 Checking answer for question ${answer.question_id}:`));
+    this.logger.log(colors.cyan(`   - Question type: ${answer.question_type}`));
+    this.logger.log(colors.cyan(`   - Correct answers: ${JSON.stringify(correctAnswers)}`));
+    this.logger.log(colors.cyan(`   - Student answer: ${JSON.stringify(answer)}`));
+
+    if (!correctAnswers || correctAnswers.length === 0) {
+      this.logger.warn(colors.yellow(`⚠️ No correct answers found for question ${answer.question_id}, will use fallback method`));
+      // Return false here, but the fallback in the calling method will handle it
+      return false;
+    }
 
     const correctAnswer = correctAnswers[0]; // Assuming one correct answer per question
+    this.logger.log(colors.cyan(`   - Using correct answer: ${JSON.stringify(correctAnswer)}`));
 
     // Handle different question types
-    switch (answer.question_type) {
+    switch (answer.question_type || question.question_type) {
       case 'MULTIPLE_CHOICE':
         if (answer.selected_options && correctAnswer.option_ids) {
           const studentOptions = answer.selected_options.sort();
           const correctOptions = correctAnswer.option_ids.sort();
-          return JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
+          const isCorrect = JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
+          this.logger.log(colors.cyan(`   - Student options: ${JSON.stringify(studentOptions)}`));
+          this.logger.log(colors.cyan(`   - Correct options: ${JSON.stringify(correctOptions)}`));
+          this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
+          return isCorrect;
         }
         break;
 
@@ -2200,7 +2351,11 @@ export class StudentsService {
         if (answer.selected_options && correctAnswer.option_ids) {
           const studentAnswer = answer.selected_options[0]; // Should be "true" or "false"
           const correctOption = correctAnswer.option_ids[0];
-          return studentAnswer === correctOption;
+          const isCorrect = studentAnswer === correctOption;
+          this.logger.log(colors.cyan(`   - Student answer: ${studentAnswer}`));
+          this.logger.log(colors.cyan(`   - Correct option: ${correctOption}`));
+          this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
+          return isCorrect;
         }
         break;
 
@@ -2209,18 +2364,30 @@ export class StudentsService {
         if (answer.text_answer && correctAnswer.answer_text) {
           // For fill-in-blank, do exact match (case-insensitive)
           if (answer.question_type === 'FILL_IN_BLANK') {
-            return answer.text_answer.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
+            const isCorrect = answer.text_answer.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
+            this.logger.log(colors.cyan(`   - Student text: "${answer.text_answer}"`));
+            this.logger.log(colors.cyan(`   - Correct text: "${correctAnswer.answer_text}"`));
+            this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
+            return isCorrect;
           }
           // For essay, you might want more sophisticated checking or manual grading
           // For now, do basic text comparison
-          return answer.text_answer.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
+          const isCorrect = answer.text_answer.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
+          this.logger.log(colors.cyan(`   - Student text: "${answer.text_answer}"`));
+          this.logger.log(colors.cyan(`   - Correct text: "${correctAnswer.answer_text}"`));
+          this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
+          return isCorrect;
         }
         break;
 
       case 'NUMERIC':
         if (answer.text_answer && correctAnswer.answer_number !== undefined) {
           const studentNumber = parseFloat(answer.text_answer);
-          return !isNaN(studentNumber) && Math.abs(studentNumber - correctAnswer.answer_number) < 0.01;
+          const isCorrect = !isNaN(studentNumber) && Math.abs(studentNumber - correctAnswer.answer_number) < 0.01;
+          this.logger.log(colors.cyan(`   - Student number: ${studentNumber}`));
+          this.logger.log(colors.cyan(`   - Correct number: ${correctAnswer.answer_number}`));
+          this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
+          return isCorrect;
         }
         break;
 
@@ -2228,15 +2395,21 @@ export class StudentsService {
         if (answer.text_answer && correctAnswer.answer_date) {
           const studentDate = new Date(answer.text_answer);
           const correctDate = new Date(correctAnswer.answer_date);
-          return !isNaN(studentDate.getTime()) && studentDate.getTime() === correctDate.getTime();
+          const isCorrect = !isNaN(studentDate.getTime()) && studentDate.getTime() === correctDate.getTime();
+          this.logger.log(colors.cyan(`   - Student date: ${studentDate.toISOString()}`));
+          this.logger.log(colors.cyan(`   - Correct date: ${correctDate.toISOString()}`));
+          this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
+          return isCorrect;
         }
         break;
 
       default:
+        this.logger.log(colors.cyan(`   - Using fallback method for type: ${answer.question_type}`));
         // Fallback to old method for other types
         return this.checkAnswer(answer, correctAnswers);
     }
 
+    this.logger.warn(colors.yellow(`⚠️ No matching condition for question type: ${answer.question_type}`));
     return false;
   }
 
@@ -2287,6 +2460,166 @@ export class StudentsService {
     if (percentage >= 70) return 'C';
     if (percentage >= 60) return 'D';
     return 'F';
+  }
+
+  /**
+   * Get student's submission count for a specific quiz
+   * @param quizId - Quiz ID
+   * @param userId - User ID
+   */
+  async getStudentSubmissionCount(quizId: string, userId: string): Promise<number> {
+    try {
+      const quiz = await this.prisma.cBTQuiz.findUnique({
+        where: { id: quizId },
+        select: { submissions: true }
+      });
+
+      if (!quiz || !quiz.submissions) return 0;
+
+      const submissions = quiz.submissions as any;
+      return submissions.student_counts?.[userId] || 0;
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error getting student submission count: ${error.message}`));
+      return 0;
+    }
+  }
+
+  /**
+   * Update quiz submissions tracking (transaction version)
+   * @param tx - Prisma transaction
+   * @param quizId - Quiz ID
+   * @param userId - User ID
+   * @param email - User email
+   * @param firstName - User first name
+   * @param lastName - User last name
+   */
+  private async updateQuizSubmissionsInTransaction(tx: any, quizId: string, userId: string, email: string, firstName: string, lastName: string) {
+    try {
+      // Get current quiz data
+      const quiz = await tx.cBTQuiz.findUnique({
+        where: { id: quizId },
+        select: { submissions: true }
+      });
+
+      if (!quiz) return;
+
+      // Parse existing submissions or initialize
+      const currentSubmissions = quiz.submissions as any || {
+        total_submissions: 0,
+        recent_submissions: [],
+        student_counts: {} // Track individual student submission counts
+      };
+
+      // Check if user already submitted and get current count
+      const existingSubmission = currentSubmissions.recent_submissions.find(
+        (sub: any) => sub.user_id === userId
+      );
+      const userAlreadySubmitted = !!existingSubmission;
+      const currentUserCount = currentSubmissions.student_counts[userId] || 0;
+
+      // Update submissions data
+      const updatedSubmissions = {
+        total_submissions: userAlreadySubmitted 
+          ? currentSubmissions.total_submissions 
+          : currentSubmissions.total_submissions + 1,
+        student_counts: {
+          ...currentSubmissions.student_counts,
+          [userId]: currentUserCount + 1
+        },
+        recent_submissions: [
+          {
+            user_id: userId,
+            name: `${firstName} ${lastName}`,
+            email: email,
+            submitted_at: new Date().toISOString(),
+            count: currentUserCount + 1 // Add count for this specific submission
+          },
+          // Keep only the 10 most recent submissions, excluding current user's old entries
+          ...currentSubmissions.recent_submissions.filter((sub: any) => sub.user_id !== userId)
+        ].slice(0, 10)
+      };
+
+      // Update quiz with new submissions data
+      await tx.cBTQuiz.update({
+        where: { id: quizId },
+        data: {
+          submissions: updatedSubmissions
+        }
+      });
+
+      this.logger.log(colors.green(`✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`));
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error updating quiz submissions: ${error.message}`));
+    }
+  }
+
+  /**
+   * Update quiz submissions tracking
+   * @param quizId - Quiz ID
+   * @param userId - User ID
+   * @param email - User email
+   * @param firstName - User first name
+   * @param lastName - User last name
+   */
+  private async updateQuizSubmissions(quizId: string, userId: string, email: string, firstName: string, lastName: string) {
+    try {
+      // Get current quiz data
+      const quiz = await this.prisma.cBTQuiz.findUnique({
+        where: { id: quizId },
+        select: { submissions: true }
+      });
+
+      if (!quiz) return;
+
+      // Parse existing submissions or initialize
+      const currentSubmissions = quiz.submissions as any || {
+        total_submissions: 0,
+        recent_submissions: [],
+        student_counts: {} // Track individual student submission counts
+      };
+
+      // Check if user already submitted and get current count
+      const existingSubmission = currentSubmissions.recent_submissions.find(
+        (sub: any) => sub.user_id === userId
+      );
+      const userAlreadySubmitted = !!existingSubmission;
+      const currentUserCount = currentSubmissions.student_counts[userId] || 0;
+
+      // Update submissions data
+      const updatedSubmissions = {
+        total_submissions: userAlreadySubmitted 
+          ? currentSubmissions.total_submissions 
+          : currentSubmissions.total_submissions + 1,
+        student_counts: {
+          ...currentSubmissions.student_counts,
+          [userId]: currentUserCount + 1
+        },
+        recent_submissions: [
+          {
+            user_id: userId,
+            name: `${firstName} ${lastName}`,
+            email: email,
+            submitted_at: new Date().toISOString(),
+            count: currentUserCount + 1 // Add count for this specific submission
+          },
+          // Keep only the 10 most recent submissions, excluding current user's old entries
+          ...currentSubmissions.recent_submissions.filter((sub: any) => sub.user_id !== userId)
+        ].slice(0, 10)
+      };
+
+      // Update quiz with new submissions data
+      await this.prisma.cBTQuiz.update({
+        where: { id: quizId },
+        data: {
+          submissions: updatedSubmissions
+        }
+      });
+      
+
+      this.logger.log(colors.green(`✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`));
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error updating quiz submissions: ${error.message}`));
+    }
   }
 
   /**
@@ -2440,6 +2773,9 @@ export class StudentsService {
                   option_text: true,
                   is_correct: true,
                   order: true
+                },
+                orderBy: {
+                  order: 'asc'
                 }
               }
             }
@@ -2448,6 +2784,11 @@ export class StudentsService {
         orderBy: {
           submitted_at: 'desc'
         }
+      });
+
+      this.logger.log(colors.blue(`📊 Found ${attempts.length} attempts for assessment ${assessmentId}`));
+      attempts.forEach((attempt, index) => {
+        this.logger.log(colors.blue(`   Attempt ${index + 1}: ${attempt.id} - ${attempt.status} - ${attempt.responses.length} answers`));
       });
 
       // Format assessment data
@@ -2480,72 +2821,104 @@ export class StudentsService {
         remaining_attempts: Math.max(0, assessment.max_attempts - attempts.length)
       };
 
-      // Format questions with user answers
-      const formattedQuestions = assessment.questions.map(question => {
-        // Find user's answer for this question from the latest attempt
-        const latestAttempt = attempts[0];
-        const userAnswer = latestAttempt?.responses.find(response => response.question_id === question.id);
+      // Format submissions array - each attempt is a submission
+      const formattedSubmissions = attempts.map((attempt, attemptIndex) => {
+        this.logger.log(colors.blue(`📝 Processing submission ${attemptIndex + 1}: ${attempt.id}`));
+        
+        // Format questions with user answers for this specific attempt
+        const formattedQuestions = assessment.questions.map(question => {
+          // Find user's answer for this question from this specific attempt
+          const userAnswer = attempt.responses.find(response => response.question_id === question.id);
+          
+          this.logger.log(colors.blue(`🔍 Processing question ${question.id} for attempt ${attemptIndex + 1}:`));
+          this.logger.log(colors.blue(`   - Question text: ${question.question_text}`));
+          this.logger.log(colors.blue(`   - User answer found: ${!!userAnswer}`));
+          if (userAnswer) {
+            this.logger.log(colors.blue(`   - User answer data: ${JSON.stringify({
+              selected_options: userAnswer.selected_options,
+              text_answer: userAnswer.text_answer,
+              numeric_answer: userAnswer.numeric_answer,
+              date_answer: userAnswer.date_answer,
+              is_correct: userAnswer.is_correct,
+              points_earned: userAnswer.points_earned
+            })}`));
+          }
+
+          return {
+            id: question.id,
+            question_text: question.question_text,
+            question_image: question.image_url,
+            question_type: question.question_type,
+            points: question.points,
+            order: question.order,
+            explanation: question.explanation,
+            options: question.options.map(option => ({
+              id: option.id,
+              text: option.option_text,
+              is_correct: option.is_correct,
+              order: option.order,
+              is_selected: userAnswer?.selected_options.includes(option.id) || false
+            })),
+            user_answer: userAnswer ? {
+              text_answer: userAnswer.text_answer,
+              numeric_answer: userAnswer.numeric_answer,
+              date_answer: userAnswer.date_answer?.toISOString(),
+              selected_options: userAnswer.selected_options.map(optionId => {
+                const option = question.options.find(opt => opt.id === optionId);
+                return option ? {
+                  id: option.id,
+                  text: option.option_text,
+                  is_correct: option.is_correct
+                } : null;
+              }).filter(Boolean),
+              is_correct: userAnswer.is_correct,
+              points_earned: userAnswer.points_earned,
+              answered_at: userAnswer.createdAt
+            } : null,
+            correct_answers: question.correct_answers.map(answer => ({
+              id: answer.id,
+              option_ids: answer.option_ids
+            }))
+          };
+        });
 
         return {
-          id: question.id,
-          question_text: question.question_text,
-          question_image: question.image_url,
-          question_type: question.question_type,
-          points: question.points,
-          order: question.order,
-          explanation: question.explanation,
-          options: question.options.map(option => ({
-            id: option.id,
-            text: option.option_text,
-            is_correct: option.is_correct,
-            order: option.order,
-            is_selected: userAnswer?.selectedOptions.some(selected => selected.id === option.id) || false
-          })),
-          user_answer: userAnswer ? {
-            text_answer: userAnswer.text_answer,
-            selected_options: userAnswer.selectedOptions.map(opt => ({
-              id: opt.id,
-              text: opt.option_text,
-              is_correct: opt.is_correct
-            })),
-            is_correct: userAnswer.is_correct,
-            points_earned: userAnswer.points_earned,
-            answered_at: userAnswer.createdAt
-          } : null,
-          correct_answers: question.correct_answers.map(answer => ({
-            id: answer.id,
-            option_ids: answer.option_ids
-          }))
+          submission_id: attempt.id,
+          attempt_number: attempt.attempt_number,
+          status: attempt.status,
+          total_score: attempt.total_score,
+          percentage: attempt.percentage,
+          passed: attempt.passed,
+          grade_letter: attempt.grade_letter,
+          time_spent: attempt.time_spent,
+          started_at: attempt.started_at?.toISOString(),
+          submitted_at: attempt.submitted_at?.toISOString(),
+          graded_at: attempt.graded_at?.toISOString(),
+          is_graded: attempt.is_graded,
+          overall_feedback: attempt.overall_feedback,
+          questions: formattedQuestions,
+          total_questions: formattedQuestions.length,
+          questions_answered: formattedQuestions.filter(q => q.user_answer).length,
+          questions_correct: formattedQuestions.filter(q => q.user_answer?.is_correct).length
         };
       });
 
-      // Format attempts history
-      const formattedAttempts = attempts.map(attempt => ({
-        id: attempt.id,
-        attempt_number: attempt.attempt_number,
-        status: attempt.status,
-        total_score: attempt.total_score,
-        percentage: attempt.percentage,
-        passed: attempt.passed,
-        grade_letter: attempt.grade_letter,
-        time_spent: attempt.time_spent,
-        started_at: attempt.started_at?.toISOString(),
-        submitted_at: attempt.submitted_at?.toISOString(),
-        graded_at: attempt.graded_at?.toISOString(),
-        is_graded: attempt.is_graded,
-        overall_feedback: attempt.overall_feedback
-      }));
-
       const responseData = {
         assessment: formattedAssessment,
-        questions: formattedQuestions,
-        attempts: formattedAttempts,
-        total_questions: formattedQuestions.length,
+        submissions: formattedSubmissions, // Array of all submissions/attempts
+        total_questions: assessment.questions.length,
         total_points: assessment.total_points,
-        estimated_duration: assessment.duration
+        estimated_duration: assessment.duration,
+        submission_summary: {
+          total_submissions: formattedSubmissions.length,
+          latest_submission: formattedSubmissions[0] || null, // Most recent submission
+          best_score: Math.max(...formattedSubmissions.map(s => s.total_score || 0)),
+          best_percentage: Math.max(...formattedSubmissions.map(s => s.percentage || 0)),
+          passed_attempts: formattedSubmissions.filter(s => s.passed).length
+        }
       };
 
-      this.logger.log(colors.green(`✅ Successfully retrieved assessment with answers: ${formattedQuestions.length} questions, ${attempts.length} attempts`));
+      this.logger.log(colors.green(`✅ Successfully retrieved assessment with answers: ${assessment.questions.length} questions, ${formattedSubmissions.length} submissions`));
 
       return new ApiResponse(
         true,
