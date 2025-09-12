@@ -7,6 +7,7 @@ import { User } from '@prisma/client';
 import * as colors from 'colors';
 import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto } from './dto';
 import { UploadProgressService } from './upload-progress.service';
+import { DocumentProcessingService } from './services';
 
 @Injectable()
 export class AiChatService {
@@ -15,7 +16,8 @@ export class AiChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
-    private readonly uploadProgressService: UploadProgressService
+    private readonly uploadProgressService: UploadProgressService,
+    private readonly documentProcessingService: DocumentProcessingService,
   ) {}
 
   ////////////////////////////////////////////////////////////////////////// HELPER METHODS
@@ -83,32 +85,43 @@ export class AiChatService {
     documentTitle: string
   ): Promise<void> {
     try {
+      this.logger.log(colors.cyan(`🔄 Background upload process started for: ${documentTitle}`));
+      
       // Stage 1: Validation (0-10%)
       this.uploadProgressService.updateProgress(sessionId, 'validating', 0, 'Validating file...');
+      this.logger.log(colors.blue(`🔍 Validating file: ${documentFile.originalname}`));
       
       const validationResult = FileValidationHelper.validateMaterialFile(documentFile);
       if (!validationResult.isValid) {
+        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
         this.uploadProgressService.updateProgress(sessionId, 'error', 0, 'File validation failed', validationResult.error);
         return;
       }
 
+      this.logger.log(colors.green(`✅ File validation passed`));
       this.uploadProgressService.updateProgress(sessionId, 'validating', documentFile.size * 0.1, 'File validation passed');
 
       // Stage 2: Upload to S3 (10-80%)
       this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.1, 'Uploading to cloud storage...');
+      this.logger.log(colors.blue(`📤 Starting S3 upload...`));
 
       // Get user's school ID and ID
+      this.logger.log(colors.blue(`👤 Looking up user: ${(user as any).sub}`));
       const existingUser = await this.prisma.user.findUnique({
-        where: { email: user.email },
+        where: { id: (user as any).sub },
         select: { id: true, school_id: true }
       });
       if (!existingUser) {
+        this.logger.error(colors.red(`❌ User not found: ${(user as any).sub}`));
         this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'User not found');
         return;
       }
       const schoolId = existingUser.school_id;
       const userId = existingUser.id;
+      this.logger.log(colors.green(`✅ User found: ${userId}, School: ${schoolId}`));
+      
       if (!schoolId) {
+        this.logger.error(colors.red(`❌ User not associated with school`));
         this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'User must be associated with a school');
         return;
       }
@@ -122,16 +135,28 @@ export class AiChatService {
       }
       s3Path += '/materials';
 
-      const documentUploadResult = await this.s3Service.uploadFile(
-        documentFile,
-        s3Path,
-        `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
-      );
+      this.logger.log(colors.blue(`📤 Uploading to S3: ${s3Path}`));
+      
+      let documentUploadResult;
+      try {
+        documentUploadResult = await this.s3Service.uploadFile(
+          documentFile,
+          s3Path,
+          `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
+        );
 
-      this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.8, 'Upload completed');
+        this.logger.log(colors.green(`✅ S3 upload completed: ${documentUploadResult.url}`));
+        this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.8, 'Upload completed');
+      } catch (s3Error) {
+        this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'S3 upload failed', s3Error.message);
+        return;
+      }
 
       // Stage 3: Processing (80-90%)
       this.uploadProgressService.updateProgress(sessionId, 'processing', documentFile.size * 0.8, 'Processing document for AI chat...');
+      
+      this.logger.log(colors.blue(`🔍 Starting database operations...`));
 
       // Validate subject and topic if provided
       let subject: any = null;
@@ -170,43 +195,70 @@ export class AiChatService {
       const documentSize = FileValidationHelper.formatFileSize(documentFile.size);
 
       // Get or create default AI Chat platform
-      const aiChatPlatform = await this.prisma.organisation.upsert({
-        where: { name: 'AI Chat Platform' },
-        update: {},
-        create: {
-          name: 'AI Chat Platform',
-          email: 'ai-chat@platform.com'
-        }
-      });
+      this.logger.log(colors.blue(`🏢 Creating/updating AI Chat platform...`));
+      let aiChatPlatform;
+      try {
+        aiChatPlatform = await this.prisma.organisation.upsert({
+          where: { name: 'AI Chat Platform' },
+          update: {},
+          create: {
+            name: 'AI Chat Platform',
+            email: 'ai-chat@platform.com'
+          }
+        });
+        this.logger.log(colors.green(`✅ AI Chat platform ready: ${aiChatPlatform.id}`));
+      } catch (platformError) {
+        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Platform creation failed', platformError.message);
+        return;
+      }
 
-      const material = await this.prisma.pDFMaterial.create({
-        data: {
-          title: documentTitle, // Use auto-generated title
-          description: uploadDto.description || null,
-          topic_id: uploadDto.topic_id || null,
-          url: documentUploadResult.url,
-          schoolId: schoolId,
-          platformId: aiChatPlatform.id, // Use AI Chat platform
-          uploadedById: userId,
-          order: 1,
-          size: documentSize,
-          status: 'published',
-          fileType: validationResult.fileType,
-          originalName: documentFile.originalname,
-        },
-      });
+      this.logger.log(colors.blue(`📄 Creating material record...`));
+      let material;
+      try {
+        material = await this.prisma.pDFMaterial.create({
+          data: {
+            title: documentTitle, // Use auto-generated title
+            description: uploadDto.description || null,
+            topic_id: uploadDto.topic_id || null,
+            url: documentUploadResult.url,
+            schoolId: schoolId,
+            platformId: aiChatPlatform.id, // Use AI Chat platform
+            uploadedById: userId,
+            order: 1,
+            size: documentSize,
+            status: 'published',
+            fileType: validationResult.fileType,
+            originalName: documentFile.originalname,
+          },
+        });
+        this.logger.log(colors.green(`✅ Material record created: ${material.id}`));
+      } catch (materialError) {
+        this.logger.error(colors.red(`❌ Material creation failed: ${materialError.message}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Material creation failed', materialError.message);
+        return;
+      }
 
-      const materialProcessing = await this.prisma.materialProcessing.create({
-        data: {
-          material_id: material.id,
-          school_id: schoolId,
-          status: 'PENDING',
-          total_chunks: 0,
-          processed_chunks: 0,
-          failed_chunks: 0,
-          embedding_model: 'text-embedding-3-small',
-        },
-      });
+      this.logger.log(colors.blue(`⚙️ Creating material processing record...`));
+      let materialProcessing;
+      try {
+        materialProcessing = await this.prisma.materialProcessing.create({
+          data: {
+            material_id: material.id,
+            school_id: schoolId,
+            status: 'PENDING',
+            total_chunks: 0,
+            processed_chunks: 0,
+            failed_chunks: 0,
+            embedding_model: 'text-embedding-3-small',
+          },
+        });
+        this.logger.log(colors.green(`✅ Material processing record created: ${materialProcessing.id}`));
+      } catch (processingError) {
+        this.logger.error(colors.red(`❌ Material processing creation failed: ${processingError.message}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Material processing creation failed', processingError.message);
+        return;
+      }
 
       // Stage 5: Completed
       this.uploadProgressService.updateProgress(
@@ -222,6 +274,7 @@ export class AiChatService {
 
     } catch (error) {
       this.logger.error(colors.red(`❌ Error in background upload: ${error.message}`));
+      this.logger.error(colors.red(`❌ Error stack: ${error.stack}`));
       this.uploadProgressService.updateProgress(sessionId, 'error', 0, 'Upload failed', error.message);
     }
   }
@@ -382,6 +435,11 @@ export class AiChatService {
           embedding_model: 'text-embedding-3-small', // Default embedding model
         },
       });
+
+      // Auto-start processing in background
+      this.logger.log(colors.blue(`🔄 Starting document processing in background...`));
+      this.documentProcessingService.processDocument(material.id);
+      this.logger.log(colors.green(`✅ Document processing started`));
 
       this.logger.log(colors.green(`✅ Material processing record created with ID: ${materialProcessing.id}`));
 

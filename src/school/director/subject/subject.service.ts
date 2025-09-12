@@ -478,7 +478,7 @@ export class SubjectService {
     }
 
     // Update class assignment if provided
-    if (dto.class_taking_it !== undefined) {
+    if (dto.class_taking_it !== undefined && dto.class_taking_it !== null) {
       // Verify class exists
       const classExists = await this.prisma.class.findFirst({
         where: {
@@ -498,6 +498,7 @@ export class SubjectService {
     }
 
     // Update the subject
+    this.logger.log(colors.blue(`Updating subject with data: ${JSON.stringify(updateData)}`));
     const updatedSubject = await this.prisma.subject.update({
       where: { id: subjectId },
       data: updateData,
@@ -516,16 +517,19 @@ export class SubjectService {
         },
       },
     });
+    this.logger.log(colors.green(`Subject updated successfully: ${updatedSubject.name}`));
 
     // Handle teacher assignments if provided
     if (dto.teachers_taking_it !== undefined) {
+      this.logger.log(colors.blue(`Handling teacher assignments: ${JSON.stringify(dto.teachers_taking_it)}`));
       // Verify all teachers exist and are teachers
       if (dto.teachers_taking_it.length > 0) {
-        const teachers = await this.prisma.user.findMany({
+        this.logger.log(colors.blue(`Validating teachers: ${dto.teachers_taking_it.join(', ')}`));
+        const teachers = await this.prisma.teacher.findMany({
           where: {
             id: { in: dto.teachers_taking_it },
             school_id: existingSchool.id,
-            role: 'teacher',
+            status: 'active',
           },
           select: {
             id: true,
@@ -533,6 +537,7 @@ export class SubjectService {
             last_name: true,
           },
         });
+        this.logger.log(colors.green(`Found ${teachers.length} valid teachers`));
 
         if (teachers.length !== dto.teachers_taking_it.length) {
           return new ApiResponse(
@@ -543,11 +548,14 @@ export class SubjectService {
         }
 
         // Remove existing teacher-subject relationships
+        this.logger.log(colors.blue(`Removing existing teacher-subject relationships`));
         await this.prisma.teacherSubject.deleteMany({
           where: { subjectId },
         });
+        this.logger.log(colors.green(`Removed existing relationships`));
 
         // Create new teacher-subject relationships
+        this.logger.log(colors.blue(`Creating new teacher-subject relationships`));
         const teacherSubjectData = dto.teachers_taking_it.map(teacherId => ({
           teacherId,
           subjectId,
@@ -556,6 +564,7 @@ export class SubjectService {
         await this.prisma.teacherSubject.createMany({
           data: teacherSubjectData,
         });
+        this.logger.log(colors.green(`Created ${teacherSubjectData.length} new relationships`));
       } else {
         // If empty array, remove all teacher assignments
         await this.prisma.teacherSubject.deleteMany({
@@ -597,7 +606,7 @@ export class SubjectService {
 
     this.logger.log(colors.green(`Subject ${existingSubject.name} updated successfully`));
 
-    return new ApiResponse(
+    const response = new ApiResponse(
       true,
       `Subject updated successfully`,
       {
@@ -606,6 +615,9 @@ export class SubjectService {
         teachersAssigned: finalSubject?.teacherSubjects?.length || 0,
       }
     );
+    
+    this.logger.log(colors.green(`Returning response for subject edit`));
+    return response;
   }
 
   ////////////////////////////////////////////////////////////////////////// FETCH AVAILABLE TEACHERS AND CLASSES

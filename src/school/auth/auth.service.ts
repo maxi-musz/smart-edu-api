@@ -65,7 +65,7 @@ export class AuthService {
             uploadedFiles = await this.cloudinaryService.uploadToCloudinary(files);
 
             // hash the password 
-            const hashedPassword = await argon.hash(defaultPassword);
+            const hashedPassword = await argon.hash("maximus123");
             console.log(colors.green("Hashed password: "), hashedPassword);
 
             // create a new school in the database
@@ -739,7 +739,8 @@ export class AuthService {
             // Generate strong passwords for each teacher
             const teachersWithPasswords = await Promise.all(
                 dto.teachers.map(async (teacher) => {
-                    const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
+                    // const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
+                    const defaultPassword = `maximus123`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {
@@ -890,7 +891,8 @@ export class AuthService {
             // Generate default password for each student (first 3 letters of first name + last 4 digits of phone)
             const studentsWithPasswords = await Promise.all(
                 dto.students.map(async (student) => {
-                    const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
+                    // const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
+                    const defaultPassword = `maximus123`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {
@@ -1047,7 +1049,8 @@ export class AuthService {
             // Generate default password for each director (first 3 letters of first name + last 4 digits of phone)
             const directorsWithPasswords = await Promise.all(
                 dto.directors.map(async (director) => {
-                    const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
+                    const defaultPassword = `maximus123`;
+                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {
@@ -1249,7 +1252,8 @@ export class AuthService {
                     // Generate passwords and create teachers
                     const teachersWithPasswords = await Promise.all(
                         dto.teachers.map(async (teacher) => {
-                            const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
+                            const defaultPassword = `maximus123`;
+                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                             const hashedPassword = await argon.hash(defaultPassword);
                             return {
                                 ...teacher,
@@ -1346,7 +1350,8 @@ export class AuthService {
                     // Generate passwords and create students
                     const studentsWithPasswords = await Promise.all(
                         dto.students.map(async (student) => {
-                            const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
+                            const defaultPassword = `maximus123`;
+                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                             const hashedPassword = await argon.hash(defaultPassword);
                             return {
                                 ...student,
@@ -1443,7 +1448,8 @@ export class AuthService {
                     // Generate passwords and create directors
                     const directorsWithPasswords = await Promise.all(
                         dto.directors.map(async (director) => {
-                            const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
+                            const defaultPassword = `maximus123`;
+                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                             const hashedPassword = await argon.hash(defaultPassword);
                             return {
                                 ...director,

@@ -1497,7 +1497,7 @@ model DocumentChunk {
   section_title String?
 
   // Vector Embedding
-  embedding       Float[] // Vector embedding for semantic search
+  embedding       Unsupported("vector(1536)") // Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
   embedding_model String // e.g., "text-embedding-3-small"
 
   // Chunk Metadata
