@@ -6,6 +6,7 @@ import { ApiResponse } from '../../shared/helper-functions/response';
 import { User } from '@prisma/client';
 import * as colors from 'colors';
 import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto } from './dto';
+import { InitiateAiChatDto, TeacherMaterialDto, SupportedDocumentTypeDto } from './dto/initiate-ai-chat.dto';
 import { UploadProgressService } from './upload-progress.service';
 import { DocumentProcessingService } from './services';
 
@@ -307,13 +308,21 @@ export class AiChatService {
   // POST - /api/v1/ai-chat/upload-document
   async uploadDocument(
     uploadDto: UploadDocumentDto,
-    documentFile: Express.Multer.File,
+    files: { document?: Express.Multer.File[] },
     user: User
   ): Promise<ApiResponse<DocumentUploadResponseDto>> {
+    this.logger.log(colors.cyan(`📄 Starting document upload for AI chat without progress tracking`));
+
+    const documentFile = files.document?.[0];
+
+    if (!documentFile) {
+      this.logger.error(colors.red(`❌ Document file is required`));
+      throw new BadRequestException('Document file is required');
+    }
+    
     // Auto-generate title from filename if not provided
     const documentTitle = uploadDto.title || this.generateTitleFromFilename(documentFile.originalname);
     
-    this.logger.log(colors.cyan(`📄 Starting document upload for AI chat without progress tracking: ${documentTitle}`));
 
     try {
       // Validate file
@@ -500,5 +509,262 @@ export class AiChatService {
       
       throw new Error(`Failed to upload document: ${error.message}`);
     }
+  }
+
+  /**
+   * Initiate AI chat session based on user role
+   */
+  async initiateAiChat(
+    user: User,
+    initiateDto: InitiateAiChatDto
+  ): Promise<{
+    userRole: string;
+    documentCount: number;
+    supportedDocumentTypes: SupportedDocumentTypeDto[];
+    uploadedDocuments: TeacherMaterialDto[];
+    conversations: any[];
+  }> {
+    try {
+      this.logger.log(colors.cyan(`🤖 Initiating AI chat for user role: ${initiateDto.userRole}`));
+
+      // Extract user data from JWT payload (now includes school_id)
+      const userId = user.id || (user as any).sub;
+      const schoolId = user.school_id;
+
+      if (!userId) {
+        this.logger.error(colors.red(`❌ User ID not found in token`));
+        throw new Error('User ID not found in token');
+      }
+
+      if (!schoolId) {
+        this.logger.error(colors.red(`❌ User school_id is missing from token`));
+        throw new Error('User school_id is missing from token');
+      }
+
+      // Get supported document types
+      const supportedDocumentTypes = this.getSupportedDocumentTypes();
+
+      // Get user's conversations
+      const conversations = await this.getUserConversations(userId);
+
+      // Handle different user roles
+      switch (initiateDto.userRole) {
+        case 'teacher':
+          const teacherData = await this.getTeacherMaterials(userId, schoolId);
+          return {
+            userRole: 'teacher',
+            documentCount: teacherData.documentCount,
+            supportedDocumentTypes,
+            uploadedDocuments: teacherData.uploadedDocuments,
+            conversations
+          };
+        
+        case 'student':
+          // For now, return empty for students
+          return {
+            userRole: 'student',
+            documentCount: 0,
+            supportedDocumentTypes,
+            uploadedDocuments: [],
+            conversations
+          };
+        
+        case 'school_director':
+        case 'school_admin':
+          // For now, return empty for admins
+          return {
+            userRole: initiateDto.userRole,
+            documentCount: 0,
+            supportedDocumentTypes,
+            uploadedDocuments: [],
+            conversations
+          };
+        
+        default:
+          this.logger.error(colors.red(`❌ Unsupported user role: ${initiateDto.userRole}`));
+          throw new Error(`Unsupported user role: ${initiateDto.userRole}`);
+      }
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error initiating AI chat: ${error.message}`));
+      throw new Error(`Failed to initiate AI chat: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get teacher's uploaded materials
+   */
+  private async getTeacherMaterials(
+    userId: string,
+    schoolId: string
+  ): Promise<{
+    documentCount: number;
+    uploadedDocuments: TeacherMaterialDto[];
+  }> {
+    try {
+      this.logger.log(colors.blue(`📚 Fetching materials for teacher: ${userId}`));
+
+      // Get teacher's uploaded materials
+      const materials = await this.prisma.pDFMaterial.findMany({
+        where: {
+          uploadedById: userId,
+          schoolId: schoolId,
+          status: 'published'
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          fileType: true,
+          originalName: true,
+          size: true,
+          status: true,
+          createdAt: true,
+          materialProcessings: {
+            select: {
+              status: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      // Transform materials to DTO format
+      const uploadedDocuments: TeacherMaterialDto[] = materials.map(material => ({
+        id: material.id,
+        title: material.title,
+        description: material.description,
+        fileType: material.fileType,
+        originalName: material.originalName,
+        size: material.size,
+        status: material.status,
+        createdAt: material.createdAt.toISOString(),
+        isProcessed: material.materialProcessings?.status === 'COMPLETED'
+      }));
+
+      this.logger.log(colors.green(`✅ Found ${materials.length} materials for teacher`));
+
+      return {
+        documentCount: materials.length,
+        uploadedDocuments
+      };
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching teacher materials: ${error.message}`));
+      throw new Error(`Failed to fetch teacher materials: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get user's conversations
+   */
+  private async getUserConversations(userId: string): Promise<any[]> {
+    try {
+      this.logger.log(colors.blue(`💬 Fetching conversations for user: ${userId}`));
+
+      const conversations = await this.prisma.chatConversation.findMany({
+        where: {
+          user_id: userId,
+        },
+        orderBy: { last_activity: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          material_id: true,
+          total_messages: true,
+          last_activity: true,
+          createdAt: true,
+          updatedAt: true,
+          material: {
+            select: {
+              title: true,
+              originalName: true
+            }
+          }
+        }
+      });
+
+      const formattedConversations = conversations.map(conversation => ({
+        id: conversation.id,
+        title: conversation.material?.title || conversation.title,
+        documentTitle: conversation.material?.title || null,
+        originalFileName: conversation.material?.originalName || null,
+        status: conversation.status,
+        materialId: conversation.material_id,
+        totalMessages: conversation.total_messages,
+        lastActivity: conversation.last_activity.toISOString(),
+        createdAt: conversation.createdAt.toISOString(),
+        updatedAt: conversation.updatedAt.toISOString(),
+      }));
+
+      this.logger.log(colors.green(`✅ Found ${conversations.length} conversations for user`));
+
+      return formattedConversations;
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching user conversations: ${error.message}`));
+      return [];
+    }
+  }
+
+  /**
+   * Get supported document types for upload
+   */
+  private getSupportedDocumentTypes(): SupportedDocumentTypeDto[] {
+    return [
+      {
+        type: 'PDF',
+        extension: '.pdf',
+        mimeType: 'application/pdf',
+        maxSize: '50MB',
+        description: 'Portable Document Format files'
+      },
+      {
+        type: 'Word Document',
+        extension: '.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        maxSize: '25MB',
+        description: 'Microsoft Word documents'
+      },
+      {
+        type: 'Word Document (Legacy)',
+        extension: '.doc',
+        mimeType: 'application/msword',
+        maxSize: '25MB',
+        description: 'Legacy Microsoft Word documents'
+      },
+      {
+        type: 'PowerPoint',
+        extension: '.pptx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        maxSize: '50MB',
+        description: 'Microsoft PowerPoint presentations'
+      },
+      {
+        type: 'Excel',
+        extension: '.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        maxSize: '25MB',
+        description: 'Microsoft Excel spreadsheets'
+      },
+      {
+        type: 'Text Document',
+        extension: '.txt',
+        mimeType: 'text/plain',
+        maxSize: '10MB',
+        description: 'Plain text documents'
+      },
+      {
+        type: 'Rich Text Format',
+        extension: '.rtf',
+        mimeType: 'application/rtf',
+        maxSize: '10MB',
+        description: 'Rich Text Format documents'
+      }
+    ];
   }
 }

@@ -30,6 +30,16 @@ export class ChatService {
     });
   }
 
+  private readonly DEFAULT_SYSTEM_PROMPT = `
+  You are a helpful AI assistant.
+  You are to help school owners, teachers and students on any material they want to chat with.
+  You are an expert in the subject of the material uploaded.
+  Answer them with 100% assurance like you are tutoring them, they are looking up to you for answers.
+  You are to use the material uploaded to answer their questions.
+  Do not answer a question that is in no way relating to the material uploaded (imagine someone asking how can I become rich when chatting with a mathematics material).
+  This is Important -- Keep your nswer as brief as possible without unnecessary story, unless the user is asking for a specif amount or number of things, give them complete
+`;
+
   /**
    * Extract user ID and fetch school ID from database
    */
@@ -69,13 +79,15 @@ export class ChatService {
       
       this.logger.log(colors.blue(`💬 Creating new conversation for user: ${userId}`));
 
+      
+
       const conversation = await this.prisma.chatConversation.create({
         data: {
           user_id: userId,
           school_id: schoolId,
           material_id: createConversationDto.materialId || null,
           title: createConversationDto.title || 'New Conversation',
-          system_prompt: createConversationDto.systemPrompt || 'You are a helpful AI assistant.',
+          system_prompt: this.DEFAULT_SYSTEM_PROMPT,
           status: 'ACTIVE',
           total_messages: 0,
         },
@@ -148,8 +160,8 @@ export class ChatService {
       const aiResponse = await this.generateAIResponse(
         sendMessageDto.message,
         contextChunks,
-        (conversation as any).system_prompt || 'You are a helpful AI assistant.',
-        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 10) : []
+        this.DEFAULT_SYSTEM_PROMPT,
+        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 20) : []
       );
 
       // Save AI message
@@ -227,9 +239,9 @@ export class ChatService {
           conversation_id: conversationId,
           user_id: userId,
         },
-        orderBy: { createdAt: 'asc' },
-        take: getChatHistoryDto.limit,
-        skip: getChatHistoryDto.offset,
+        orderBy: { createdAt: 'desc' },
+        take: parseInt((getChatHistoryDto.limit || 25).toString()),
+        skip: parseInt((getChatHistoryDto.offset || 0).toString()),
       });
 
       return messages.map(message => ({
@@ -351,14 +363,14 @@ export class ChatService {
 
       // Log the complete prompt being sent to ChatGPT
       this.logger.log(colors.cyan(`🤖 Full prompt being sent to ChatGPT:`));
-      messages.forEach((msg, index) => {
-        this.logger.log(colors.cyan(`   ${index + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`));
-      });
+      // messages.forEach((msg, index) => {
+      //   this.logger.log(colors.cyan(`   ${index + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`));
+      // });
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: messages as any,
-        max_tokens: 1000,
+        max_tokens: 4000,
         temperature: 0.7,
       });
 
