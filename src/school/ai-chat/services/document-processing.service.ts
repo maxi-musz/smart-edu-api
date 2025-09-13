@@ -31,7 +31,110 @@ export class DocumentProcessingService {
   ) {}
 
   /**
-   * Process a document from start to finish
+   * Process a document directly from buffer (more efficient)
+   */
+  async processDocumentFromBuffer(
+    materialId: string,
+    fileBuffer: Buffer,
+    fileType: string
+  ): Promise<ProcessingResult> {
+    const startTime = Date.now();
+    this.logger.log(colors.cyan(`🔄 Starting direct document processing for material: ${materialId}`));
+
+    try {
+      // Step 1: Get material from database
+      const material = await this.getMaterial(materialId);
+      if (!material) {
+        throw new Error(`Material not found: ${materialId}`);
+      }
+
+      // Step 2: Extract text directly from buffer
+      this.logger.log(colors.blue(`📄 Extracting text from document buffer...`));
+      const extractedText = await this.textExtractionService.extractText(
+        fileBuffer, 
+        fileType
+      );
+
+      // Validate extraction
+      const extractionValidation = this.textExtractionService.validateExtraction(extractedText);
+      if (!extractionValidation.isValid) {
+        this.logger.warn(colors.yellow(`⚠️ Text extraction validation issues: ${extractionValidation.issues.join(', ')}`));
+        this.logger.warn(colors.yellow(`⚠️ Continuing with processing despite warnings...`));
+      }
+
+      // Step 3: Chunk the document
+      this.logger.log(colors.blue(`✂️ Chunking document into sections...`));
+      const chunkingResult = await this.chunkingService.chunkDocument(
+        extractedText.text,
+        materialId,
+        {
+          pageCount: extractedText.pageCount,
+          originalName: material.originalName || undefined,
+        }
+      );
+
+      // Validate chunking
+      const chunkingValidation = this.chunkingService.validateChunks(chunkingResult.chunks);
+      if (!chunkingValidation.isValid) {
+        this.logger.warn(colors.yellow(`⚠️ Chunking validation issues: ${chunkingValidation.issues.join(', ')}`));
+      }
+
+      // Step 4: Generate embeddings
+      this.logger.log(colors.blue(`🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`));
+      const embeddingResult = await this.embeddingService.generateBatchEmbeddings(
+        chunkingResult.chunks.map(chunk => chunk.content)
+      );
+
+      // Step 5: Save chunks and embeddings to Pinecone
+      this.logger.log(colors.blue(`💾 Saving chunks and embeddings to Pinecone...`));
+      
+      // Check if we have valid embeddings before saving
+      if (embeddingResult.successCount === 0) {
+        this.logger.error(colors.red('No valid embeddings generated - cannot save to Pinecone'));
+        throw new Error('No valid embeddings generated - cannot save to Pinecone');
+      }
+      
+      await this.saveChunksAndEmbeddings(materialId, chunkingResult.chunks, embeddingResult.embeddings, material.schoolId || '');
+
+      // Step 6: Update material processing status
+      await this.updateProcessingStatus(materialId, 'COMPLETED', {
+        totalChunks: chunkingResult.totalChunks,
+        processedChunks: embeddingResult.successCount,
+        failedChunks: embeddingResult.failureCount,
+      });
+
+      const processingTime = Date.now() - startTime;
+      this.logger.log(colors.green(`🎉 Direct document processing completed successfully in ${processingTime}ms`));
+
+      return {
+        materialId,
+        success: true,
+        extractedText,
+        chunkingResult,
+        embeddingResult,
+        processingTime,
+      };
+
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      this.logger.error(colors.red(`❌ Direct document processing failed: ${error.message}`));
+
+      // Update processing status to failed
+      await this.updateProcessingStatus(materialId, 'FAILED', {
+        error: error.message,
+      });
+
+      return {
+        materialId,
+        success: false,
+        error: error.message,
+        processingTime,
+      };
+    }
+  }
+
+  /**
+   * Process a document from start to finish (legacy method with S3 download)
    */
   async processDocument(materialId: string): Promise<ProcessingResult> {
     const startTime = Date.now();
@@ -155,19 +258,69 @@ export class DocumentProcessingService {
    */
   private async downloadDocument(s3Url: string): Promise<Buffer> {
     try {
+      this.logger.log(colors.blue(`📥 Starting S3 download from: ${s3Url}`));
+      
       // Extract S3 key from URL
       const url = new URL(s3Url);
       const s3Key = url.pathname.substring(1); // Remove leading slash
       
+      this.logger.log(colors.blue(`🔑 Generating presigned URL for key: ${s3Key}`));
+      
       // Download from S3 using presigned URL
       const presignedUrl = await this.s3Service.generateReadPresignedUrl(s3Key);
-      const response = await fetch(presignedUrl);
+      
+      this.logger.log(colors.blue(`🌐 Downloading from presigned URL...`));
+      
+      // Add timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
+      const response = await fetch(presignedUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'SmartEdu-AI-Chat/1.0'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        throw new Error(`Failed to download file: ${response.statusText}`);
+        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
       }
-      const buffer = await response.arrayBuffer();
-      return Buffer.from(buffer);
+      
+      this.logger.log(colors.blue(`📦 Converting response to buffer...`));
+      
+      // Use streaming approach for large files
+      const chunks: Uint8Array[] = [];
+      const reader = response.body?.getReader();
+      
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+      
+      let totalBytes = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        chunks.push(value);
+        totalBytes += value.length;
+        
+        // Log progress for large files
+        if (totalBytes % (1024 * 1024) === 0) { // Every MB
+          this.logger.log(colors.blue(`📦 Downloaded ${Math.round(totalBytes / 1024 / 1024)}MB...`));
+        }
+      }
+      
+      // Combine chunks into single buffer
+      const buffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
+      
+      this.logger.log(colors.green(`✅ S3 download completed: ${buffer.length} bytes`));
+      return buffer;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error(`S3 download timed out after 60 seconds`);
+      }
       throw new Error(`Failed to download document from S3: ${error.message}`);
     }
   }
@@ -182,6 +335,19 @@ export class DocumentProcessingService {
     schoolId: string
   ): Promise<void> {
     try {
+      // Get material processing record
+      const materialProcessing = await this.prisma.materialProcessing.findFirst({
+        where: { material_id: materialId },
+        select: { id: true }
+      });
+
+      if (!materialProcessing) {
+        this.logger.error(colors.red(`❌ Material processing record not found for material: ${materialId}`));
+        throw new Error('Material processing record not found');
+      }
+
+      this.logger.log(colors.green(`✅ Found material processing record: ${materialProcessing.id}`));
+
       // Convert chunks to Pinecone format
       const pineconeChunks: PineconeChunk[] = chunks.map((chunk, index) => 
         this.pineconeService.convertToPineconeChunk(
@@ -199,32 +365,35 @@ export class DocumentProcessingService {
       const chunkData = chunks.map((chunk, index) => ({
         id: chunk.id,
         material_id: materialId,
-        content: chunk.content,
-        chunk_index: chunk.chunkIndex,
-        token_count: chunk.tokenCount,
-        char_count: chunk.charCount,
+        content: chunk.content.replace(/\0/g, ''), // Remove null bytes
         chunk_type: this.mapChunkType(chunk.chunkType),
-        page_number: chunk.metadata.pageNumber,
-        section_title: chunk.metadata.sectionTitle,
-        original_position: chunk.metadata.originalPosition,
+        page_number: chunk.metadata.pageNumber || null,
+        section_title: chunk.metadata.sectionTitle?.replace(/\0/g, '') || null, // Clean section title too
         embedding_model: embeddings[index]?.model || 'text-embedding-3-small',
-        material_processing_id: '', // Will be set by the system
+        material_processing_id: materialProcessing.id,
         school_id: schoolId,
         order_index: chunk.chunkIndex,
+        token_count: chunk.tokenCount,
+        word_count: Math.ceil(chunk.content.split(' ').length), // Estimate word count
+        keywords: [],
+        summary: null,
       }));
 
       // Save basic chunk info to database
+      this.logger.log(colors.blue(`💾 Saving ${chunkData.length} chunks to database...`));
       for (const chunk of chunkData) {
+        this.logger.log(colors.blue(`   - Chunk: ${chunk.id}, Material Processing ID: ${chunk.material_processing_id}`));
         await this.prisma.$executeRaw`
           INSERT INTO "DocumentChunk" (
-            id, material_id, content, chunk_index, token_count, char_count, 
-            chunk_type, page_number, section_title, original_position, 
-            embedding_model, material_processing_id, school_id, order_index
+            id, material_processing_id, material_id, school_id, content, chunk_type, 
+            page_number, section_title, embedding, embedding_model, token_count, 
+            word_count, order_index, keywords, summary, "createdAt", "updatedAt"
           ) VALUES (
-            ${chunk.id}, ${chunk.material_id}, ${chunk.content}, ${chunk.chunk_index}, 
-            ${chunk.token_count}, ${chunk.char_count}, ${chunk.chunk_type}, 
-            ${chunk.page_number}, ${chunk.section_title}, ${chunk.original_position}, 
-            ${chunk.embedding_model}, ${chunk.material_processing_id}, ${chunk.school_id}, ${chunk.order_index}
+            ${chunk.id}, ${chunk.material_processing_id}, ${chunk.material_id}, ${chunk.school_id}, 
+            ${chunk.content}, ${chunk.chunk_type}::"ChunkType", ${chunk.page_number}, 
+            ${chunk.section_title}, ${embeddings[chunkData.indexOf(chunk)]?.embedding || []}::vector, 
+            ${chunk.embedding_model}, ${chunk.token_count}, ${chunk.word_count}, ${chunk.order_index},
+            ${chunk.keywords || []}::text[], ${chunk.summary || null}, NOW(), NOW()
           )
         `;
       }

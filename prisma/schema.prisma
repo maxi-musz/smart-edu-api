@@ -7,6 +7,1138 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model AcademicSession {
+  id                    String                 @id @default(cuid())
+  school_id             String
+  academic_year         String
+  start_year            Int
+  end_year              Int
+  term                  AcademicTerm
+  start_date            DateTime
+  end_date              DateTime
+  status                AcademicSessionStatus  @default(active)
+  is_current            Boolean                @default(false)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  school                School                 @relation(fields: [school_id], references: [id])
+  assignments           Assignment[]
+  assignmentGrades      AssignmentGrade[]
+  assignmentSubmissions AssignmentSubmission[]
+  cbtQuizzes            CBTQuiz[]
+  cbtQuizAttempts       CBTQuizAttempt[]
+  classes               Class[]
+  gradingRubrics        GradingRubric[]
+  notifications         Notification[]
+  payments              Payment[]
+  students              Student[]
+  performances          StudentPerformance[]
+  subjects              Subject[]
+  teachers              Teacher[]
+  schedules             TimetableEntry[]
+  topics                Topic[]
+
+  @@unique([school_id, academic_year, term])
+  @@index([school_id, is_current])
+  @@index([start_year, end_year])
+  @@index([academic_year])
+}
+
+model School {
+  id                    String                 @id @default(cuid())
+  school_name           String
+  school_email          String                 @unique
+  school_phone          String
+  school_address        String
+  school_type           SchoolType
+  school_ownership      SchoolOwnership
+  status                SchoolStatus           @default(pending)
+  cacId                 String?                @unique
+  utilityBillId         String?                @unique
+  taxClearanceId        String?                @unique
+  platformId            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  academicSessions      AcademicSession[]
+  assignments           Assignment[]
+  assignmentGrades      AssignmentGrade[]
+  assignmentSubmissions AssignmentSubmission[]
+  cbtQuizzes            CBTQuiz[]
+  cbtQuizAttempts       CBTQuizAttempt[]
+  chatAnalytics         ChatAnalytics[]
+  chatContexts          ChatContext[]
+  chatConversations     ChatConversation[]
+  chatMessages          ChatMessage[]
+  classes               Class[]
+  deviceTokens          DeviceToken[]
+  documentChunks        DocumentChunk[]
+  finance               Finance?
+  gradingRubrics        GradingRubric[]
+  libraryResource       LibraryResource[]
+  liveClass             LiveClass[]
+  materialProcessings   MaterialProcessing[]
+  notifications         Notification[]
+  pdfMaterial           PDFMaterial[]
+  parents               Parent[]
+  cac                   Document?              @relation("CACDoc", fields: [cacId], references: [id])
+  platform              Organisation?          @relation(fields: [platformId], references: [id])
+  tax_clearance         Document?              @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
+  utility_bill          Document?              @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
+  students              Student[]
+  subjects              Subject[]
+  teachers              Teacher[]
+  timeSlots             TimeSlot[]
+  schedules             TimetableEntry[]
+  topics                Topic[]
+  users                 User[]
+  videoContent          VideoContent[]
+  wallet                Wallet?
+}
+
+model Document {
+  id                 String  @id @default(cuid())
+  secure_url         String
+  public_id          String
+  schoolCac          School? @relation("CACDoc")
+  schoolTaxClearance School? @relation("TaxClearanceDoc")
+  schoolUtilityBill  School? @relation("UtilityBillDoc")
+}
+
+model User {
+  id                       String                 @id @default(cuid())
+  school_id                String
+  email                    String                 @unique
+  password                 String
+  first_name               String
+  last_name                String
+  phone_number             String
+  display_picture          Json?
+  gender                   Gender                 @default(other)
+  otp                      String?                @default("")
+  otp_expires_at           DateTime?
+  is_email_verified        Boolean?               @default(false)
+  is_otp_verified          Boolean?               @default(false)
+  role                     Roles                  @default(student)
+  status                   UserStatus             @default(active)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  assignmentsCreated       Assignment[]
+  assignmentGradesReceived AssignmentGrade[]
+  assignmentGradesGiven    AssignmentGrade[]      @relation("AssignmentGradeGiver")
+  assignmentSubmissions    AssignmentSubmission[]
+  cbtQuizzesCreated        CBTQuiz[]
+  cbtGradesGiven           CBTQuizAttempt[]       @relation("CBTGrader")
+  cbtQuizAttempts          CBTQuizAttempt[]
+  cbtResponses             CBTResponse[]
+  chatAnalytics            ChatAnalytics[]
+  chatConversations        ChatConversation[]
+  chatMessages             ChatMessage[]
+  deviceTokens             DeviceToken[]
+  gradingRubricsCreated    GradingRubric[]
+  libraryResource          LibraryResource[]
+  liveClass                LiveClass[]
+  pdfMaterial              PDFMaterial[]
+  parent                   Parent?
+  payments                 Payment[]              @relation("StudentPayment")
+  student                  Student?
+  performances             StudentPerformance[]   @relation("StudentPerformance")
+  teacher                  Teacher?
+  topicsCreated            Topic[]                @relation("TopicCreator")
+  school                   School                 @relation(fields: [school_id], references: [id])
+  videoContent             VideoContent[]
+  classesEnrolled          Class[]                @relation("StudentClass")
+}
+
+model Teacher {
+  id                  String           @id @default(cuid())
+  email               String           @unique
+  first_name          String
+  last_name           String
+  phone_number        String
+  display_picture     Json?
+  school_id           String
+  academic_session_id String           @default("1")
+  user_id             String           @unique
+  gender              Gender           @default(other)
+  role                Roles            @default(teacher)
+  password            String           @default("")
+  teacher_id          String           @unique
+  employee_number     String?          @unique
+  qualification       String?
+  specialization      String?
+  years_of_experience Int?
+  hire_date           DateTime         @default(now())
+  salary              Float?
+  department          String?
+  is_class_teacher    Boolean          @default(false)
+  status              UserStatus       @default(active)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  classesManaging     Class[]          @relation("ClassTeacher")
+  academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
+  school              School           @relation(fields: [school_id], references: [id])
+  user                User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  subjectsTeaching    TeacherSubject[]
+  schedulesTeaching   TimetableEntry[] @relation("TeacherSchedule")
+
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([teacher_id])
+  @@index([employee_number])
+  @@index([department])
+  @@index([is_class_teacher])
+}
+
+model Student {
+  id                  String          @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  user_id             String          @unique
+  student_id          String          @unique
+  admission_number    String?         @unique
+  date_of_birth       DateTime?
+  admission_date      DateTime        @default(now())
+  current_class_id    String?
+  guardian_name       String?
+  guardian_phone      String?
+  guardian_email      String?
+  address             String?
+  emergency_contact   String?
+  blood_group         String?
+  medical_conditions  String?
+  allergies           String?
+  previous_school     String?
+  academic_level      String?
+  parent_id           String?
+  status              UserStatus      @default(active)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  city                String?
+  country             String?
+  postal_code         String?
+  state               String?
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  parent              Parent?         @relation("ParentChildren", fields: [parent_id], references: [id])
+  school              School          @relation(fields: [school_id], references: [id])
+  user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([current_class_id])
+  @@index([student_id])
+  @@index([admission_number])
+  @@index([parent_id])
+  @@index([academic_level])
+}
+
+model Parent {
+  id                 String     @id @default(cuid())
+  school_id          String
+  user_id            String     @unique
+  parent_id          String     @unique
+  occupation         String?
+  employer           String?
+  address            String?
+  emergency_contact  String?
+  relationship       String?
+  is_primary_contact Boolean    @default(true)
+  status             UserStatus @default(active)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  school             School     @relation(fields: [school_id], references: [id])
+  user               User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  children           Student[]  @relation("ParentChildren")
+
+  @@index([school_id])
+  @@index([parent_id])
+  @@index([relationship])
+  @@index([is_primary_contact])
+}
+
+model Class {
+  id                  String               @id @default(cuid())
+  classId             Int                  @default(autoincrement())
+  name                String
+  schoolId            String
+  academic_session_id String
+  classTeacherId      String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  classTeacher        Teacher?             @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  school              School               @relation(fields: [schoolId], references: [id])
+  payments            Payment[]
+  performances        StudentPerformance[]
+  subjects            Subject[]
+  schedules           TimetableEntry[]
+  students            User[]               @relation("StudentClass")
+
+  @@unique([schoolId, academic_session_id, classId])
+  @@index([schoolId, academic_session_id])
+  @@index([classId])
+}
+
+model Subject {
+  id                  String           @id @default(cuid())
+  name                String
+  code                String?
+  color               String           @default("#3B82F6")
+  description         String?
+  schoolId            String
+  academic_session_id String
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  classId             String?
+  thumbnail           Json?
+  cbtQuizzes          CBTQuiz[]
+  academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
+  Class               Class?           @relation(fields: [classId], references: [id])
+  school              School           @relation(fields: [schoolId], references: [id])
+  teacherSubjects     TeacherSubject[]
+  timetableEntries    TimetableEntry[]
+  topics              Topic[]
+
+  @@unique([code, schoolId, academic_session_id])
+}
+
+model Topic {
+  id                   String                 @id @default(cuid())
+  title                String
+  description          String?
+  order                Int
+  subject_id           String
+  school_id            String
+  academic_session_id  String
+  is_active            Boolean                @default(true)
+  created_by           String
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  instructions         String?
+  assignments          Assignment[]
+  AssignmentSubmission AssignmentSubmission[]
+  cbtQuizzes           CBTQuiz[]
+  libraryResources     LibraryResource[]
+  liveClasses          LiveClass[]
+  pdfMaterial          PDFMaterial[]
+  academicSession      AcademicSession        @relation(fields: [academic_session_id], references: [id])
+  createdBy            User                   @relation("TopicCreator", fields: [created_by], references: [id])
+  school               School                 @relation(fields: [school_id], references: [id])
+  subject              Subject                @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  videoContent         VideoContent[]
+
+  @@unique([subject_id, title, academic_session_id])
+  @@index([subject_id, order])
+  @@index([school_id, academic_session_id])
+  @@index([created_by])
+}
+
+model Finance {
+  id               String    @id @default(cuid())
+  school_id        String    @unique
+  total_revenue    Float     @default(0)
+  outstanding_fee  Float     @default(0)
+  amount_withdrawn Float     @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  school           School    @relation(fields: [school_id], references: [id])
+  payments         Payment[]
+  Wallet           Wallet[]
+}
+
+model Payment {
+  id                  String          @id @default(cuid())
+  finance_id          String
+  academic_session_id String
+  student_id          String
+  class_id            String
+  payment_for         String
+  amount              Float
+  payment_type        PaymentType
+  transaction_type    TransactionType
+  payment_date        DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  class               Class           @relation(fields: [class_id], references: [id])
+  finance             Finance         @relation(fields: [finance_id], references: [id])
+  student             User            @relation("StudentPayment", fields: [student_id], references: [id])
+}
+
+model TimetableEntry {
+  id                  String          @id @default(cuid())
+  class_id            String
+  subject_id          String
+  teacher_id          String
+  school_id           String
+  academic_session_id String
+  timeSlotId          String
+  day_of_week         DayOfWeek
+  room                String?
+  notes               String?
+  isActive            Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  class               Class           @relation(fields: [class_id], references: [id])
+  school              School          @relation(fields: [school_id], references: [id])
+  subject             Subject         @relation(fields: [subject_id], references: [id])
+  teacher             Teacher         @relation("TeacherSchedule", fields: [teacher_id], references: [id])
+  timeSlot            TimeSlot        @relation(fields: [timeSlotId], references: [id])
+
+  @@unique([class_id, timeSlotId, day_of_week, academic_session_id])
+  @@index([teacher_id, timeSlotId, day_of_week, academic_session_id])
+  @@index([school_id, day_of_week, timeSlotId, academic_session_id])
+}
+
+model TimeSlot {
+  id               String           @id @default(cuid())
+  startTime        String
+  endTime          String
+  label            String
+  order            Int
+  schoolId         String
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  school           School           @relation(fields: [schoolId], references: [id])
+  timetableEntries TimetableEntry[]
+
+  @@unique([startTime, endTime, schoolId])
+  @@index([order])
+  @@index([schoolId, startTime, endTime])
+}
+
+model Wallet {
+  id           String              @id @default(cuid())
+  school_id    String              @unique
+  balance      Float               @default(0)
+  currency     String              @default("NGN")
+  wallet_type  WalletType          @default(SCHOOL_WALLET)
+  is_active    Boolean             @default(true)
+  last_updated DateTime            @default(now())
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  financeId    String?
+  finance      Finance?            @relation(fields: [financeId], references: [id])
+  school       School              @relation(fields: [school_id], references: [id])
+  transactions WalletTransaction[]
+
+  @@index([school_id])
+  @@index([wallet_type])
+}
+
+model WalletTransaction {
+  id               String                  @id @default(cuid())
+  wallet_id        String
+  transaction_type WalletTransactionType
+  amount           Float
+  description      String
+  reference        String?                 @unique
+  status           WalletTransactionStatus @default(PENDING)
+  metadata         Json?
+  processed_at     DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  wallet           Wallet                  @relation(fields: [wallet_id], references: [id])
+
+  @@index([wallet_id])
+  @@index([transaction_type])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reference])
+}
+
+model TeacherSubject {
+  id        String  @id @default(cuid())
+  teacherId String
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+
+  @@unique([teacherId, subjectId])
+}
+
+model Notification {
+  id                  String           @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  title               String
+  description         String
+  type                NotificationType
+  comingUpOn          DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
+  school              School           @relation(fields: [school_id], references: [id])
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  deviceType String
+  user_id    String
+  school_id  String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  school     School   @relation(fields: [school_id], references: [id])
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([school_id])
+  @@index([token])
+  @@index([isActive])
+}
+
+model StudentPerformance {
+  id                  String          @id @default(cuid())
+  student_id          String
+  class_id            String
+  academic_session_id String
+  term                Int
+  year                Int
+  total_score         Float
+  max_score           Float
+  position            Int?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  class               Class           @relation(fields: [class_id], references: [id])
+  student             User            @relation("StudentPerformance", fields: [student_id], references: [id])
+}
+
+model Organisation {
+  id              String            @id @default(cuid())
+  name            String            @unique
+  email           String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  libraryResource LibraryResource[]
+  liveClass       LiveClass[]
+  pdfMaterial     PDFMaterial[]
+  schools         School[]
+  videoContent    VideoContent[]
+}
+
+model VideoContent {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  url          String
+  schoolId     String?
+  platformId   String
+  uploadedById String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  topic_id     String?
+  duration     String?
+  size         String?
+  status       String       @default("published")
+  thumbnail    Json?
+  views        Int          @default(0)
+  order        Int          @default(0)
+  platform     Organisation @relation(fields: [platformId], references: [id])
+  school       School?      @relation(fields: [schoolId], references: [id])
+  topic        Topic?       @relation(fields: [topic_id], references: [id])
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PDFMaterial {
+  id                  String              @id @default(cuid())
+  title               String
+  description         String?
+  url                 String
+  schoolId            String?
+  platformId          String
+  uploadedById        String
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  topic_id            String?
+  downloads           Int                 @default(0)
+  size                String?
+  status              String              @default("published")
+  order               Int                 @default(1)
+  fileType            String?
+  originalName        String?
+  chatAnalytics       ChatAnalytics[]
+  chatConversations   ChatConversation[]
+  chatMessages        ChatMessage[]
+  documentChunks      DocumentChunk[]
+  materialProcessings MaterialProcessing?
+  platform            Organisation        @relation(fields: [platformId], references: [id])
+  school              School?             @relation(fields: [schoolId], references: [id])
+  topic               Topic?              @relation(fields: [topic_id], references: [id])
+  uploadedBy          User                @relation(fields: [uploadedById], references: [id])
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Assignment {
+  id                    String                 @id @default(cuid())
+  title                 String
+  description           String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  topic_id              String
+  order                 Int                    @default(1)
+  academic_session_id   String
+  allow_late_submission Boolean                @default(false)
+  assignment_type       AssignmentType         @default(HOMEWORK)
+  attachment_type       String?
+  attachment_url        String?
+  auto_grade            Boolean                @default(false)
+  created_by            String
+  difficulty_level      DifficultyLevel        @default(MEDIUM)
+  due_date              DateTime?
+  grading_rubric_id     String?
+  instructions          String?
+  is_published          Boolean                @default(false)
+  late_penalty          Float?
+  max_score             Int                    @default(100)
+  published_at          DateTime?
+  school_id             String
+  time_limit            Int?
+  status                AssignmentStatus       @default(DRAFT)
+  academicSession       AcademicSession        @relation(fields: [academic_session_id], references: [id])
+  createdBy             User                   @relation(fields: [created_by], references: [id])
+  gradingRubric         GradingRubric?         @relation(fields: [grading_rubric_id], references: [id])
+  school                School                 @relation(fields: [school_id], references: [id])
+  topic                 Topic                  @relation(fields: [topic_id], references: [id])
+  grades                AssignmentGrade[]
+  submissions           AssignmentSubmission[]
+
+  @@index([school_id, academic_session_id])
+  @@index([topic_id])
+  @@index([created_by])
+  @@index([due_date])
+  @@index([status])
+  @@index([is_published])
+}
+
+model CBTQuiz {
+  id                   String            @id @default(cuid())
+  title                String
+  description          String?
+  duration             Int?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  topic_id             String?
+  order                Int               @default(0)
+  academic_session_id  String
+  allow_review         Boolean           @default(true)
+  auto_submit          Boolean           @default(false)
+  created_by           String
+  end_date             DateTime?
+  grading_type         GradingType       @default(AUTOMATIC)
+  instructions         String?
+  is_published         Boolean           @default(false)
+  max_attempts         Int               @default(1)
+  passing_score        Float             @default(50.0)
+  published_at         DateTime?
+  school_id            String
+  show_correct_answers Boolean           @default(false)
+  show_feedback        Boolean           @default(true)
+  shuffle_options      Boolean           @default(false)
+  shuffle_questions    Boolean           @default(false)
+  start_date           DateTime?
+  tags                 String[]
+  time_limit           Int?
+  total_points         Float             @default(100.0)
+  status               QuizStatus        @default(DRAFT)
+  subject_id           String
+  assessment_type      AssessmentType    @default(CBT)
+  submissions          Json?
+  questions            CBTQuestion[]
+  academicSession      AcademicSession   @relation(fields: [academic_session_id], references: [id])
+  createdBy            User              @relation(fields: [created_by], references: [id])
+  school               School            @relation(fields: [school_id], references: [id])
+  subject              Subject           @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic                Topic?            @relation(fields: [topic_id], references: [id])
+  analytics            CBTQuizAnalytics?
+  attempts             CBTQuizAttempt[]
+
+  @@index([school_id, academic_session_id])
+  @@index([topic_id])
+  @@index([created_by])
+  @@index([status])
+  @@index([is_published])
+  @@index([assessment_type])
+  @@index([start_date, end_date])
+}
+
+model CBTQuestion {
+  id                      String             @id @default(cuid())
+  quiz_id                 String
+  question_text           String
+  question_type           QuestionType
+  order                   Int
+  points                  Float              @default(1.0)
+  is_required             Boolean            @default(true)
+  time_limit              Int?
+  image_url               String?
+  audio_url               String?
+  video_url               String?
+  allow_multiple_attempts Boolean            @default(false)
+  show_hint               Boolean            @default(false)
+  hint_text               String?
+  min_length              Int?
+  max_length              Int?
+  min_value               Float?
+  max_value               Float?
+  explanation             String?
+  difficulty_level        DifficultyLevel    @default(MEDIUM)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  correct_answers         CBTCorrectAnswer[]
+  options                 CBTOption[]
+  quiz                    CBTQuiz            @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  responses               CBTResponse[]
+
+  @@index([quiz_id, order])
+  @@index([question_type])
+}
+
+model CBTOption {
+  id          String        @id @default(cuid())
+  question_id String
+  option_text String
+  order       Int
+  is_correct  Boolean       @default(false)
+  image_url   String?
+  audio_url   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  question    CBTQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  responses   CBTResponse[] @relation("ResponseOptions")
+
+  @@index([question_id, order])
+}
+
+model CBTCorrectAnswer {
+  id            String      @id @default(cuid())
+  question_id   String
+  answer_text   String?
+  answer_number Float?
+  answer_date   DateTime?
+  option_ids    String[]
+  answer_json   Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  question      CBTQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
+
+  @@index([question_id])
+}
+
+model CBTQuizAttempt {
+  id                  String            @id @default(cuid())
+  quiz_id             String
+  student_id          String
+  school_id           String
+  academic_session_id String
+  attempt_number      Int               @default(1)
+  status              QuizAttemptStatus @default(NOT_STARTED)
+  started_at          DateTime?
+  submitted_at        DateTime?
+  time_spent          Int?
+  total_score         Float             @default(0)
+  max_score           Float
+  percentage          Float             @default(0)
+  passed              Boolean           @default(false)
+  is_graded           Boolean           @default(false)
+  graded_at           DateTime?
+  graded_by           String?
+  overall_feedback    String?
+  grade_letter        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  academicSession     AcademicSession   @relation(fields: [academic_session_id], references: [id])
+  grader              User?             @relation("CBTGrader", fields: [graded_by], references: [id])
+  quiz                CBTQuiz           @relation(fields: [quiz_id], references: [id])
+  school              School            @relation(fields: [school_id], references: [id])
+  student             User              @relation(fields: [student_id], references: [id])
+  responses           CBTResponse[]
+
+  @@unique([quiz_id, student_id, attempt_number])
+  @@index([quiz_id])
+  @@index([student_id])
+  @@index([status])
+  @@index([submitted_at])
+}
+
+model CBTResponse {
+  id               String         @id @default(cuid())
+  attempt_id       String
+  question_id      String
+  student_id       String
+  text_answer      String?
+  numeric_answer   Float?
+  date_answer      DateTime?
+  selected_options String[]
+  file_urls        String[]
+  is_correct       Boolean?
+  points_earned    Float          @default(0)
+  max_points       Float
+  time_spent       Int?
+  feedback         String?
+  is_graded        Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  attempt          CBTQuizAttempt @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
+  question         CBTQuestion    @relation(fields: [question_id], references: [id])
+  student          User           @relation(fields: [student_id], references: [id])
+  selectedOptions  CBTOption[]    @relation("ResponseOptions")
+
+  @@unique([attempt_id, question_id])
+  @@index([attempt_id])
+  @@index([question_id])
+  @@index([student_id])
+}
+
+model CBTQuizAnalytics {
+  id               String   @id @default(cuid())
+  quiz_id          String   @unique
+  total_attempts   Int      @default(0)
+  total_students   Int      @default(0)
+  average_score    Float    @default(0)
+  average_time     Int      @default(0)
+  pass_rate        Float    @default(0)
+  question_stats   Json
+  daily_attempts   Json
+  hourly_attempts  Json
+  completion_rate  Float    @default(0)
+  abandonment_rate Float    @default(0)
+  last_updated     DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  quiz             CBTQuiz  @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+
+  @@index([quiz_id])
+}
+
+model LiveClass {
+  id              String       @id @default(cuid())
+  title           String
+  description     String?
+  meetingUrl      String
+  startTime       DateTime
+  endTime         DateTime
+  schoolId        String?
+  platformId      String
+  createdById     String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  topic_id        String?
+  maxParticipants Int?
+  status          String       @default("scheduled")
+  order           Int          @default(0)
+  createdBy       User         @relation(fields: [createdById], references: [id])
+  platform        Organisation @relation(fields: [platformId], references: [id])
+  school          School?      @relation(fields: [schoolId], references: [id])
+  topic           Topic?       @relation(fields: [topic_id], references: [id])
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([topic_id])
+  @@index([startTime])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model LibraryResource {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  resourceType String
+  url          String?
+  schoolId     String?
+  platformId   String
+  uploadedById String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  topic_id     String?
+  format       String?
+  status       String       @default("available")
+  order        Int          @default(0)
+  platform     Organisation @relation(fields: [platformId], references: [id])
+  school       School?      @relation(fields: [schoolId], references: [id])
+  topic        Topic?       @relation(fields: [topic_id], references: [id])
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([resourceType])
+  @@index([topic_id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model GradingRubric {
+  id                  String          @id @default(cuid())
+  name                String
+  description         String?
+  school_id           String
+  academic_session_id String
+  created_by          String
+  criteria            Json
+  total_points        Float
+  scale_type          RubricScale     @default(POINTS)
+  is_template         Boolean         @default(false)
+  is_active           Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  assignments         Assignment[]
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  createdBy           User            @relation(fields: [created_by], references: [id])
+  school              School          @relation(fields: [school_id], references: [id])
+
+  @@index([school_id, academic_session_id])
+  @@index([created_by])
+  @@index([is_template])
+}
+
+model AssignmentSubmission {
+  id                  String           @id @default(cuid())
+  assignment_id       String
+  student_id          String
+  school_id           String
+  academic_session_id String
+  content             String?
+  attachment_url      String?
+  attachment_type     String?
+  status              SubmissionStatus @default(SUBMITTED)
+  submitted_at        DateTime         @default(now())
+  late_submission     Boolean          @default(false)
+  word_count          Int?
+  file_size           String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  topicId             String?
+  grades              AssignmentGrade?
+  academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
+  assignment          Assignment       @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+  school              School           @relation(fields: [school_id], references: [id])
+  student             User             @relation(fields: [student_id], references: [id])
+  Topic               Topic?           @relation(fields: [topicId], references: [id])
+
+  @@unique([assignment_id, student_id])
+  @@index([assignment_id])
+  @@index([student_id])
+  @@index([school_id, academic_session_id])
+  @@index([submitted_at])
+}
+
+model AssignmentGrade {
+  id                  String               @id @default(cuid())
+  assignment_id       String
+  submission_id       String               @unique
+  student_id          String
+  teacher_id          String
+  school_id           String
+  academic_session_id String
+  score               Float
+  max_score           Float
+  percentage          Float
+  letter_grade        String?
+  feedback            String?
+  comments            String?
+  rubric_scores       Json?
+  status              GradeStatus          @default(PENDING)
+  graded_at           DateTime?
+  returned_at         DateTime?
+  grading_time        Int?
+  is_final            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  assignment          Assignment           @relation(fields: [assignment_id], references: [id])
+  school              School               @relation(fields: [school_id], references: [id])
+  student             User                 @relation(fields: [student_id], references: [id])
+  submission          AssignmentSubmission @relation(fields: [submission_id], references: [id])
+  teacher             User                 @relation("AssignmentGradeGiver", fields: [teacher_id], references: [id])
+
+  @@index([assignment_id])
+  @@index([student_id])
+  @@index([teacher_id])
+  @@index([school_id, academic_session_id])
+  @@index([graded_at])
+}
+
+model MaterialProcessing {
+  id                      String                   @id @default(cuid())
+  material_id             String                   @unique
+  school_id               String
+  status                  MaterialProcessingStatus @default(PENDING)
+  total_chunks            Int                      @default(0)
+  processed_chunks        Int                      @default(0)
+  failed_chunks           Int                      @default(0)
+  processing_started_at   DateTime?
+  processing_completed_at DateTime?
+  error_message           String?
+  retry_count             Int                      @default(0)
+  vector_database_id      String?
+  embedding_model         String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  chunks                  DocumentChunk[]
+  material                PDFMaterial              @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  school                  School                   @relation(fields: [school_id], references: [id])
+
+  @@index([school_id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DocumentChunk {
+  id                     String                @id @default(cuid())
+  material_processing_id String
+  material_id            String
+  school_id              String
+  content                String
+  chunk_type             ChunkType             @default(TEXT)
+  page_number            Int?
+  section_title          String?
+  embedding              Unsupported("vector")
+  embedding_model        String
+  token_count            Int                   @default(0)
+  word_count             Int                   @default(0)
+  order_index            Int
+  keywords               String[]              @default([])
+  summary                String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  chatContexts           ChatContext[]
+  material               PDFMaterial           @relation(fields: [material_id], references: [id], onDelete: Cascade)
+  materialProcessing     MaterialProcessing    @relation(fields: [material_processing_id], references: [id], onDelete: Cascade)
+  school                 School                @relation(fields: [school_id], references: [id])
+
+  @@index([material_id])
+  @@index([school_id])
+  @@index([chunk_type])
+  @@index([page_number])
+  @@index([order_index])
+  @@index([createdAt])
+  @@index([embedding], map: "document_chunk_embedding_cosine_idx")
+}
+
+model ChatConversation {
+  id              String             @id @default(cuid())
+  user_id         String
+  school_id       String
+  material_id     String?
+  title           String?
+  status          ConversationStatus @default(ACTIVE)
+  system_prompt   String?
+  context_summary String?
+  total_messages  Int                @default(0)
+  last_activity   DateTime           @default(now())
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  contexts        ChatContext[]
+  material        PDFMaterial?       @relation(fields: [material_id], references: [id])
+  school          School             @relation(fields: [school_id], references: [id])
+  user            User               @relation(fields: [user_id], references: [id])
+  messages        ChatMessage[]
+
+  @@index([user_id])
+  @@index([school_id])
+  @@index([material_id])
+  @@index([status])
+  @@index([last_activity])
+}
+
+model ChatMessage {
+  id                String           @id @default(cuid())
+  conversation_id   String
+  user_id           String
+  school_id         String
+  material_id       String?
+  role              MessageRole      @default(USER)
+  content           String
+  message_type      String           @default("TEXT")
+  model_used        String?
+  tokens_used       Int?
+  response_time_ms  Int?
+  context_chunks    String[]
+  context_summary   String?
+  is_edited         Boolean          @default(false)
+  edited_at         DateTime?
+  parent_message_id String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  contexts          ChatContext[]
+  conversation      ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  material          PDFMaterial?     @relation(fields: [material_id], references: [id])
+  school            School           @relation(fields: [school_id], references: [id])
+  user              User             @relation(fields: [user_id], references: [id])
+
+  @@index([conversation_id])
+  @@index([user_id])
+  @@index([school_id])
+  @@index([material_id])
+  @@index([role])
+  @@index([createdAt])
+}
+
+model ChatContext {
+  id                  String           @id @default(cuid())
+  conversation_id     String
+  message_id          String
+  chunk_id            String
+  school_id           String
+  relevance_score     Float
+  context_type        String           @default("semantic")
+  position_in_context Int
+  createdAt           DateTime         @default(now())
+  chunk               DocumentChunk    @relation(fields: [chunk_id], references: [id], onDelete: Cascade)
+  conversation        ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  message             ChatMessage      @relation(fields: [message_id], references: [id], onDelete: Cascade)
+  school              School           @relation(fields: [school_id], references: [id])
+
+  @@unique([message_id, chunk_id])
+  @@index([conversation_id])
+  @@index([message_id])
+  @@index([chunk_id])
+  @@index([school_id])
+  @@index([relevance_score])
+}
+
+model ChatAnalytics {
+  id                       String       @id @default(cuid())
+  school_id                String
+  material_id              String?
+  user_id                  String?
+  total_conversations      Int          @default(0)
+  total_messages           Int          @default(0)
+  total_tokens_used        Int          @default(0)
+  average_response_time_ms Int          @default(0)
+  average_relevance_score  Float        @default(0)
+  most_used_chunks         String[]
+  popular_questions        String[]
+  date                     DateTime     @default(now())
+  daily_usage              Int          @default(0)
+  weekly_usage             Int          @default(0)
+  monthly_usage            Int          @default(0)
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+  material                 PDFMaterial? @relation(fields: [material_id], references: [id])
+  school                   School       @relation(fields: [school_id], references: [id])
+  user                     User?        @relation(fields: [user_id], references: [id])
+
+  @@index([school_id])
+  @@index([material_id])
+  @@index([user_id])
+  @@index([date])
+}
+
 enum SchoolType {
   primary
   secondary
@@ -148,737 +1280,19 @@ enum ChunkType {
   FOOTNOTE
 }
 
-model AcademicSession {
-  id            String                @id @default(cuid())
-  school_id     String
-  academic_year String // e.g., "2024/2025", "2024-2025", "2024"
-  start_year    Int // e.g., 2024 (for easier querying)
-  end_year      Int // e.g., 2025 (for easier querying)
-  term          AcademicTerm // first, second, third
-  start_date    DateTime
-  end_date      DateTime
-  status        AcademicSessionStatus @default(active)
-  is_current    Boolean               @default(false) // Only one session per school can be current
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  school School @relation(fields: [school_id], references: [id])
-
-  // All academic data that depends on session
-  students      Student[]
-  teachers      Teacher[]
-  classes       Class[]
-  subjects      Subject[]
-  payments      Payment[]
-  performances  StudentPerformance[]
-  schedules     TimetableEntry[]
-  notifications Notification[]
-  topics        Topic[]
-
-  // Grading system relations
-  assignments           Assignment[]
-  gradingRubrics        GradingRubric[]
-  assignmentSubmissions AssignmentSubmission[]
-  assignmentGrades      AssignmentGrade[]
-
-  // CBT Quiz relations
-  cbtQuizzes      CBTQuiz[]
-  cbtQuizAttempts CBTQuizAttempt[]
-
-  @@unique([school_id, academic_year, term])
-  @@index([school_id, is_current])
-  @@index([start_year, end_year])
-  @@index([academic_year])
-}
-
-model School {
-  id               String          @id @default(cuid())
-  school_name      String
-  school_email     String          @unique
-  school_phone     String
-  school_address   String
-  school_type      SchoolType
-  school_ownership SchoolOwnership
-  status           SchoolStatus    @default(pending)
-  // Removed: current_term, current_year, term_start_date, term_end_date
-
-  cacId          String? @unique
-  utilityBillId  String? @unique
-  taxClearanceId String? @unique
-
-  cac           Document? @relation("CACDoc", fields: [cacId], references: [id])
-  utility_bill  Document? @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
-  tax_clearance Document? @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
-
-  platformId String?
-  platform   Organisation? @relation(fields: [platformId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  academicSessions AcademicSession[]
-  users            User[]
-  students         Student[]
-  teachers         Teacher[]
-  parents          Parent[]
-  classes          Class[]
-  subjects         Subject[]
-  finance          Finance?
-  schedules        TimetableEntry[]
-  timeSlots        TimeSlot[]
-  notifications    Notification[]
-  wallet           Wallet?
-  videoContent     VideoContent[]
-  pdfMaterial      PDFMaterial[]
-  liveClass        LiveClass[]
-  libraryResource  LibraryResource[]
-  deviceTokens     DeviceToken[]
-  topics           Topic[]
-
-  // Grading system relations
-  assignments           Assignment[]
-  gradingRubrics        GradingRubric[]
-  assignmentSubmissions AssignmentSubmission[]
-  assignmentGrades      AssignmentGrade[]
-
-  // CBT Quiz relations
-  cbtQuizzes      CBTQuiz[]
-  cbtQuizAttempts CBTQuizAttempt[]
-
-  // AI Chat relations
-  chatMessages        ChatMessage[]
-  chatConversations   ChatConversation[]
-  materialProcessings MaterialProcessing[]
-  documentChunks      DocumentChunk[]
-  chatContexts        ChatContext[]
-  chatAnalytics       ChatAnalytics[]
-}
-
-model Document {
-  id         String @id @default(cuid())
-  secure_url String
-  public_id  String
-
-  schoolCac          School? @relation("CACDoc")
-  schoolUtilityBill  School? @relation("UtilityBillDoc")
-  schoolTaxClearance School? @relation("TaxClearanceDoc")
-}
-
-// Enhanced Teacher, Student, and Parent models with proper school references
-
-model User {
-  id                String     @id @default(cuid())
-  school_id         String
-  email             String     @unique
-  password          String
-  first_name        String
-  last_name         String
-  phone_number      String
-  display_picture   Json? // { secure_url: string, public_id: string }
-  gender            Gender     @default(other)
-  otp               String?    @default("")
-  otp_expires_at    DateTime?
-  is_email_verified Boolean?   @default(false)
-  is_otp_verified   Boolean?   @default(false)
-  role              Roles      @default(student)
-  status            UserStatus @default(active)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-
-  // relations
-  school          School               @relation(fields: [school_id], references: [id])
-  classesEnrolled Class[]              @relation("StudentClass")
-  payments        Payment[]            @relation("StudentPayment")
-  performances    StudentPerformance[] @relation("StudentPerformance")
-  videoContent    VideoContent[]
-  pdfMaterial     PDFMaterial[]
-  liveClass       LiveClass[]
-  libraryResource LibraryResource[]
-  deviceTokens    DeviceToken[]
-
-  // New relationships with specific models
-  teacher       Teacher?
-  student       Student?
-  parent        Parent?
-  topicsCreated Topic[]  @relation("TopicCreator")
-
-  // Grading system relations
-  assignmentsCreated       Assignment[]
-  gradingRubricsCreated    GradingRubric[]
-  assignmentSubmissions    AssignmentSubmission[]
-  assignmentGradesReceived AssignmentGrade[]
-  assignmentGradesGiven    AssignmentGrade[]      @relation("AssignmentGradeGiver")
-
-  // CBT Quiz relations
-  cbtQuizzesCreated CBTQuiz[]
-  cbtQuizAttempts   CBTQuizAttempt[]
-  cbtResponses      CBTResponse[]
-  cbtGradesGiven    CBTQuizAttempt[] @relation("CBTGrader")
-
-  // AI Chat relations
-  chatMessages      ChatMessage[]
-  chatConversations ChatConversation[]
-  chatAnalytics     ChatAnalytics[]
-}
-
-model Teacher {
-  id                  String     @id @default(cuid())
-  email               String     @unique
-  first_name          String
-  last_name           String
-  phone_number        String
-  display_picture     Json? // { secure_url: string, public_id: string }
-  school_id           String
-  academic_session_id String     @default("1") // Reference to current academic session
-  user_id             String     @unique
-  gender              Gender     @default(other)
-  role                Roles      @default(teacher)
-  password            String     @default("")
-  teacher_id          String     @unique // Custom teacher ID like "SMHT-25-001"
-  employee_number     String?    @unique // School employee number
-  qualification       String? // e.g., "B.Sc Education", "M.Ed", "Ph.D"
-  specialization      String? // e.g., "Mathematics", "English Literature"
-  years_of_experience Int? // Number of years teaching
-  hire_date           DateTime   @default(now())
-  salary              Float? // Monthly salary
-  department          String?
-  is_class_teacher    Boolean    @default(false)
-  status              UserStatus @default(active)
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-
-  // relations
-  user              User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school            School           @relation(fields: [school_id], references: [id])
-  academicSession   AcademicSession  @relation(fields: [academic_session_id], references: [id])
-  classesManaging   Class[]          @relation("ClassTeacher")
-  subjectsTeaching  TeacherSubject[]
-  schedulesTeaching TimetableEntry[] @relation("TeacherSchedule")
-
-  @@index([school_id])
-  @@index([academic_session_id])
-  @@index([teacher_id])
-  @@index([employee_number])
-  @@index([department])
-  @@index([is_class_teacher])
-}
-
-model Student {
-  id                  String     @id @default(cuid())
-  school_id           String
-  academic_session_id String // Reference to current academic session
-  user_id             String     @unique // Reference to User for authentication
-  student_id          String     @unique // Custom student ID like "STD/2024/001"
-  admission_number    String?    @unique // School admission number
-  date_of_birth       DateTime?
-  admission_date      DateTime   @default(now())
-  current_class_id    String?
-  guardian_name       String?
-  guardian_phone      String?
-  guardian_email      String?
-  address             String?
-  city                String?
-  state               String?
-  country             String?
-  postal_code         String?
-  emergency_contact   String?
-  blood_group         String?
-  medical_conditions  String?
-  allergies           String?
-  previous_school     String? // Previous school attended
-  academic_level      String? // e.g., "Primary 5", "JSS 2", "SSS 1"
-  parent_id           String? // Reference to parent
-  status              UserStatus @default(active)
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-
-  // relations
-  user            User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  parent          Parent?         @relation("ParentChildren", fields: [parent_id], references: [id])
-
-  @@index([school_id])
-  @@index([academic_session_id])
-  @@index([current_class_id])
-  @@index([student_id])
-  @@index([admission_number])
-  @@index([parent_id])
-  @@index([academic_level])
-}
-
-model Parent {
-  id                 String     @id @default(cuid())
-  school_id          String
-  user_id            String     @unique // Reference to User for authentication
-  parent_id          String     @unique // Custom parent ID like "PAR/2024/001"
-  occupation         String? // e.g., "Engineer", "Teacher", "Business Owner"
-  employer           String? // Company or organization
-  address            String?
-  emergency_contact  String?
-  relationship       String? // e.g., "Father", "Mother", "Guardian"
-  is_primary_contact Boolean    @default(true)
-  status             UserStatus @default(active)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-
-  // relations
-  user     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school   School    @relation(fields: [school_id], references: [id])
-  children Student[] @relation("ParentChildren")
-
-  @@index([school_id])
-  @@index([parent_id])
-  @@index([relationship])
-  @@index([is_primary_contact])
-}
-
-model Class {
-  id                  String  @id @default(cuid())
-  classId             Int     @default(autoincrement()) // Auto-incrementing class order (1, 2, 3...)
-  name                String
-  schoolId            String
-  academic_session_id String // Reference to current academic session
-  classTeacherId      String?
-
-  school          School          @relation(fields: [schoolId], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  classTeacher    Teacher?        @relation("ClassTeacher", fields: [classTeacherId], references: [id])
-  students        User[]          @relation("StudentClass")
-  subjects        Subject[]
-
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  payments     Payment[]
-  schedules    TimetableEntry[]
-  performances StudentPerformance[]
-
-  @@unique([schoolId, academic_session_id, classId])
-  @@index([schoolId, academic_session_id])
-  @@index([classId])
-}
-
-model Subject {
-  id                  String  @id @default(cuid())
-  name                String // e.g., "Mathematics"
-  code                String? // e.g., "MATH101"
-  color               String  @default("#3B82F6") // Hex color for UI
-  description         String?
-  thumbnail           Json? // { secure_url: string, public_id: string } for subject thumbnail
-  schoolId            String
-  academic_session_id String // Reference to current academic session
-
-  school           School           @relation(fields: [schoolId], references: [id])
-  academicSession  AcademicSession  @relation(fields: [academic_session_id], references: [id])
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  timetableEntries TimetableEntry[]
-  teacherSubjects  TeacherSubject[]
-  Class            Class?           @relation(fields: [classId], references: [id])
-  classId          String?
-
-  // New relation to topics
-  topics Topic[]
-
-  // CBT Quizzes relation
-  cbtQuizzes CBTQuiz[]
-
-  @@unique([code, schoolId, academic_session_id])
-}
-
-// New Topic model
-model Topic {
-  id                  String   @id @default(cuid())
-  title               String
-  description         String?
-  instructions        String? // Instructions for completing the topic
-  order               Int // For ordering topics within a subject (e.g., Topic 1, Topic 2)
-  subject_id          String
-  school_id           String
-  academic_session_id String
-  is_active           Boolean  @default(true)
-  created_by          String // User ID who created the topic
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  // Relations
-  subject         Subject         @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  createdBy       User            @relation("TopicCreator", fields: [created_by], references: [id])
-
-  // Content relations
-  videoContent     VideoContent[]
-  pdfMaterial      PDFMaterial[]
-  assignments      Assignment[]
-  cbtQuizzes       CBTQuiz[]
-  liveClasses      LiveClass[]
-  libraryResources LibraryResource[]
-
-  // Future: Comments/Discussions
-  // comments       Comment[]
-  // discussions    Discussion[]
-  AssignmentSubmission AssignmentSubmission[]
-
-  @@unique([subject_id, title, academic_session_id])
-  @@index([subject_id, order])
-  @@index([school_id, academic_session_id])
-  @@index([created_by])
-}
-
-model Finance {
-  id               String   @id @default(cuid())
-  school_id        String   @unique
-  total_revenue    Float    @default(0)
-  outstanding_fee  Float    @default(0)
-  amount_withdrawn Float    @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  // relations
-  school   School    @relation(fields: [school_id], references: [id])
-  payments Payment[]
-  Wallet   Wallet[]
-}
-
-model Payment {
-  id                  String          @id @default(cuid())
-  finance_id          String
-  academic_session_id String // Reference to current academic session
-  student_id          String
-  class_id            String
-  payment_for         String // e.g., "Tuition Fee", "Exam Fee", etc.
-  amount              Float
-  payment_type        PaymentType
-  transaction_type    TransactionType
-  payment_date        DateTime        @default(now())
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-
-  // relations
-  finance         Finance         @relation(fields: [finance_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  student         User            @relation("StudentPayment", fields: [student_id], references: [id])
-  class           Class           @relation(fields: [class_id], references: [id])
-}
-
-model TimetableEntry {
-  id                  String    @id @default(cuid())
-  class_id            String
-  subject_id          String
-  teacher_id          String
-  school_id           String
-  academic_session_id String // Reference to current academic session
-  timeSlotId          String
-  day_of_week         DayOfWeek
-  room                String?
-  notes               String?
-  isActive            Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  // relations
-  class           Class           @relation(fields: [class_id], references: [id])
-  subject         Subject         @relation(fields: [subject_id], references: [id])
-  teacher         Teacher         @relation("TeacherSchedule", fields: [teacher_id], references: [id])
-  timeSlot        TimeSlot        @relation(fields: [timeSlotId], references: [id])
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-
-  @@unique([class_id, timeSlotId, day_of_week, academic_session_id])
-  @@index([teacher_id, timeSlotId, day_of_week, academic_session_id])
-  @@index([school_id, day_of_week, timeSlotId, academic_session_id])
-}
-
-model TimeSlot {
-  id        String   @id @default(cuid())
-  startTime String // Format: "HH:mm" (e.g., "08:30", "11:45")
-  endTime   String // Format: "HH:mm" (e.g., "10:30", "13:45")
-  label     String // e.g., "Period 1", "Morning Break", etc.
-  order     Int // For sorting periods in order (school-specific)
-  schoolId  String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  school           School           @relation(fields: [schoolId], references: [id])
-  timetableEntries TimetableEntry[]
-
-  @@unique([startTime, endTime, schoolId])
-  @@index([order])
-  @@index([schoolId, startTime, endTime])
-}
-
-model Wallet {
-  id           String     @id @default(cuid())
-  school_id    String     @unique
-  balance      Float      @default(0)
-  currency     String     @default("NGN")
-  wallet_type  WalletType @default(SCHOOL_WALLET)
-  is_active    Boolean    @default(true)
-  last_updated DateTime   @default(now())
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  // relations
-  school       School              @relation(fields: [school_id], references: [id])
-  transactions WalletTransaction[]
-  finance      Finance?            @relation(fields: [financeId], references: [id])
-  financeId    String?
-
-  @@index([school_id])
-  @@index([wallet_type])
-}
-
-model WalletTransaction {
-  id               String                  @id @default(cuid())
-  wallet_id        String
-  transaction_type WalletTransactionType
-  amount           Float
-  description      String
-  reference        String?                 @unique
-  status           WalletTransactionStatus @default(PENDING)
-  metadata         Json? // Additional transaction data
-  processed_at     DateTime?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-
-  // relations
-  wallet Wallet @relation(fields: [wallet_id], references: [id])
-
-  @@index([wallet_id])
-  @@index([transaction_type])
-  @@index([status])
-  @@index([createdAt])
-  @@index([reference])
-}
-
-model TeacherSubject {
-  id        String @id @default(cuid())
-  teacherId String
-  subjectId String
-
-  teacher Teacher @relation(fields: [teacherId], references: [id])
-  subject Subject @relation(fields: [subjectId], references: [id])
-
-  @@unique([teacherId, subjectId])
-}
-
-model Notification {
-  id                  String           @id @default(cuid())
-  school_id           String
-  academic_session_id String // Reference to current academic session
-  title               String
-  description         String
-  type                NotificationType
-  comingUpOn          DateTime?
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
-
-  // relations
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-}
-
-model DeviceToken {
-  id         String   @id @default(cuid())
-  token      String   @unique // Expo push token
-  deviceType String // "ios" or "android"
-  user_id    String
-  school_id  String
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // relations
-  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school School @relation(fields: [school_id], references: [id])
-
-  @@index([user_id])
-  @@index([school_id])
-  @@index([token])
-  @@index([isActive])
-}
-
-model StudentPerformance {
-  id                  String   @id @default(cuid())
-  student_id          String
-  class_id            String
-  academic_session_id String // Reference to current academic session
-  term                Int // 1, 2, or 3
-  year                Int
-  total_score         Float
-  max_score           Float
-  position            Int?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  // relations
-  student         User            @relation("StudentPerformance", fields: [student_id], references: [id])
-  class           Class           @relation(fields: [class_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-}
-
-model Organisation {
-  id              String            @id @default(cuid())
-  name            String            @unique
-  email           String
-  schools         School[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  videoContent    VideoContent[]
-  pdfMaterial     PDFMaterial[]
-  liveClass       LiveClass[]
-  libraryResource LibraryResource[]
-}
-
-// Content Models
-model VideoContent {
-  id           String  @id @default(cuid())
-  title        String
-  description  String?
-  topic_id     String? // Reference to topic instead of subject
-  url          String
-  schoolId     String? // Optional: assigned to a specific school
-  platformId   String
-  uploadedById String
-  order        Int     @default(0) // Order for reordering within topic
-  duration     String? // Duration in format "15:30" or "1h 25m"
-  thumbnail    Json? // { secure_url: string, public_id: string }
-  size         String? // File size like "45.2 MB"
-  views        Int     @default(0)
-  status       String  @default("published") // published, draft, archived
-
-  platform   Organisation @relation(fields: [platformId], references: [id])
-  school     School?      @relation(fields: [schoolId], references: [id])
-  uploadedBy User         @relation(fields: [uploadedById], references: [id])
-  topic      Topic?       @relation(fields: [topic_id], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([schoolId])
-  @@index([platformId])
-  @@index([topic_id])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model PDFMaterial {
-  id           String  @id @default(cuid())
-  title        String
-  description  String?
-  topic_id     String? // Reference to topic instead of subject
-  url          String
-  schoolId     String? // Optional: assigned to a specific school
-  platformId   String
-  uploadedById String
-  order        Int     @default(1) // Order for reordering within topic
-  size         String? // File size like "2.3 MB"
-  downloads    Int     @default(0)
-  status       String  @default("published") // published, draft, archived
-  fileType     String? // File extension (pdf, doc, docx, ppt, pptx)
-  originalName String? // Original filename
-
-  platform   Organisation @relation(fields: [platformId], references: [id])
-  school     School?      @relation(fields: [schoolId], references: [id])
-  uploadedBy User         @relation(fields: [uploadedById], references: [id])
-  topic      Topic?       @relation(fields: [topic_id], references: [id])
-
-  // AI Chat relations
-  materialProcessings MaterialProcessing[]
-  documentChunks      DocumentChunk[]
-  chatConversations   ChatConversation[]
-  chatMessages        ChatMessage[]
-  chatAnalytics       ChatAnalytics[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([schoolId])
-  @@index([platformId])
-  @@index([topic_id])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model Assignment {
-  id                  String  @id @default(cuid())
-  title               String
-  description         String?
-  instructions        String? // Detailed instructions for students
-  topic_id            String
-  school_id           String
-  academic_session_id String
-  created_by          String // Teacher who created it
-
-  // Assignment Properties
-  due_date              DateTime?
-  max_score             Int       @default(100)
-  time_limit            Int? // Time limit in minutes
-  allow_late_submission Boolean   @default(false)
-  late_penalty          Float? // Penalty percentage for late submissions
-
-  // Assignment Type & Status
-  assignment_type  AssignmentType   @default(HOMEWORK)
-  difficulty_level DifficultyLevel  @default(MEDIUM)
-  status           AssignmentStatus @default(DRAFT)
-
-  // File Attachments
-  attachment_url  String? // Link to assignment file
-  attachment_type String? // pdf, doc, etc.
-
-  // Grading
-  grading_rubric_id String? // Reference to grading rubric
-  auto_grade        Boolean @default(false)
-
-  // Metadata
-  order        Int       @default(1)
-  is_published Boolean   @default(false)
-  published_at DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  topic           Topic           @relation(fields: [topic_id], references: [id])
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  createdBy       User            @relation(fields: [created_by], references: [id])
-  gradingRubric   GradingRubric?  @relation(fields: [grading_rubric_id], references: [id])
-
-  // Submissions and Grades
-  submissions AssignmentSubmission[]
-  grades      AssignmentGrade[]
-
-  @@index([school_id, academic_session_id])
-  @@index([topic_id])
-  @@index([created_by])
-  @@index([due_date])
-  @@index([status])
-  @@index([is_published])
-}
-
-// ========================================
-// CBT QUIZ SYSTEM ENUMS
-// ========================================
-
 enum QuestionType {
-  MULTIPLE_CHOICE_SINGLE // Single correct answer
-  MULTIPLE_CHOICE_MULTIPLE // Multiple correct answers
-  SHORT_ANSWER // Short text answer
-  LONG_ANSWER // Long text/paragraph answer
-  TRUE_FALSE // True/False question
-  FILL_IN_BLANK // Fill in the blank
-  MATCHING // Matching questions
-  ORDERING // Put items in order
-  FILE_UPLOAD // File/image upload
-  NUMERIC // Numeric answer
-  DATE // Date answer
-  RATING_SCALE // Rating scale (1-5, 1-10)
+  MULTIPLE_CHOICE_SINGLE
+  MULTIPLE_CHOICE_MULTIPLE
+  SHORT_ANSWER
+  LONG_ANSWER
+  TRUE_FALSE
+  FILL_IN_BLANK
+  MATCHING
+  ORDERING
+  FILE_UPLOAD
+  NUMERIC
+  DATE
+  RATING_SCALE
 }
 
 enum QuizStatus {
@@ -898,378 +1312,25 @@ enum QuizAttemptStatus {
 }
 
 enum GradingType {
-  AUTOMATIC // Auto-grade based on correct answers
-  MANUAL // Manual grading required
-  MIXED // Some auto, some manual
+  AUTOMATIC
+  MANUAL
+  MIXED
 }
 
 enum AssessmentType {
-  CBT // Computer-Based Test
-  ASSIGNMENT // Assignment-based assessment
-  EXAM // Major examination
-  OTHER // Other types of assessments
-  FORMATIVE // Ongoing assessment for learning
-  SUMMATIVE // Final assessment for grading
-  DIAGNOSTIC // Assessment to identify knowledge gaps
-  BENCHMARK // Standardized assessment for comparison
-  PRACTICE // Practice test without grading
-  MOCK_EXAM // Mock examination
-  QUIZ // Short assessment
-  TEST // Formal test
+  FORMATIVE
+  SUMMATIVE
+  DIAGNOSTIC
+  BENCHMARK
+  PRACTICE
+  MOCK_EXAM
+  QUIZ
+  TEST
+  EXAM
+  ASSIGNMENT
+  CBT
+  OTHER
 }
-
-// ========================================
-// ENHANCED CBT QUIZ SYSTEM
-// ========================================
-
-model CBTQuiz {
-  id           String  @id @default(cuid())
-  title        String
-  description  String?
-  instructions String? // Instructions for students
-
-  // Quiz Configuration
-  subject_id          String
-  topic_id            String? // Optional - for topic-specific quizzes
-  school_id           String
-  academic_session_id String
-  created_by          String
-
-  // Quiz Settings
-  duration      Int? // Duration in minutes
-  max_attempts  Int   @default(1) // Maximum attempts allowed
-  passing_score Float @default(50.0) // Passing percentage
-  total_points  Float @default(100.0) // Total possible points
-
-  // Quiz Behavior
-  shuffle_questions    Boolean @default(false)
-  shuffle_options      Boolean @default(false)
-  show_correct_answers Boolean @default(false) // Show after submission
-  show_feedback        Boolean @default(true)
-  allow_review         Boolean @default(true) // Allow students to review
-
-  // Timing
-  start_date DateTime?
-  end_date   DateTime?
-  time_limit Int? // Time limit in minutes
-
-  // Grading
-  grading_type GradingType @default(AUTOMATIC)
-  auto_submit  Boolean     @default(false) // Auto-submit when time expires
-
-  // Assessment Type
-  assessment_type AssessmentType @default(CBT)
-
-  // Status
-  status       QuizStatus @default(DRAFT)
-  is_published Boolean    @default(false)
-  published_at DateTime?
-
-  // Metadata
-  order Int      @default(0)
-  tags  String[] // Tags for categorization
-
-  // Submission Tracking
-  submissions Json? // { total_submissions: number, recent_submissions: [{ user_id, name, email, submitted_at }] }
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  subject         Subject         @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  topic           Topic?          @relation(fields: [topic_id], references: [id])
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  createdBy       User            @relation(fields: [created_by], references: [id])
-
-  // Quiz Content
-  questions CBTQuestion[]
-  attempts  CBTQuizAttempt[]
-
-  // Analytics
-  analytics CBTQuizAnalytics?
-
-  @@index([school_id, academic_session_id])
-  @@index([topic_id])
-  @@index([created_by])
-  @@index([status])
-  @@index([is_published])
-  @@index([assessment_type])
-  @@index([start_date, end_date])
-}
-
-model CBTQuestion {
-  id            String       @id @default(cuid())
-  quiz_id       String
-  question_text String
-  question_type QuestionType
-  order         Int // Question order in quiz
-
-  // Question Configuration
-  points      Float   @default(1.0) // Points for this question
-  is_required Boolean @default(true)
-  time_limit  Int? // Time limit for this specific question
-
-  // Media Attachments
-  image_url String? // Question image
-  audio_url String? // Question audio
-  video_url String? // Question video
-
-  // Question Settings
-  allow_multiple_attempts Boolean @default(false)
-  show_hint               Boolean @default(false)
-  hint_text               String?
-
-  // Validation
-  min_length Int? // For text answers
-  max_length Int? // For text answers
-  min_value  Float? // For numeric answers
-  max_value  Float? // For numeric answers
-
-  // Metadata
-  explanation      String? // Explanation for correct answer
-  difficulty_level DifficultyLevel @default(MEDIUM)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  quiz            CBTQuiz            @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
-  options         CBTOption[] // For multiple choice questions
-  correct_answers CBTCorrectAnswer[] // Correct answers for auto-grading
-  responses       CBTResponse[] // Student responses
-
-  @@index([quiz_id, order])
-  @@index([question_type])
-}
-
-model CBTOption {
-  id          String  @id @default(cuid())
-  question_id String
-  option_text String
-  order       Int // Option order
-  is_correct  Boolean @default(false) // For multiple choice questions
-
-  // Media
-  image_url String? // Option image
-  audio_url String? // Option audio
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  question  CBTQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  responses CBTResponse[] @relation("ResponseOptions") // Student selections
-
-  @@index([question_id, order])
-}
-
-model CBTCorrectAnswer {
-  id            String    @id @default(cuid())
-  question_id   String
-  answer_text   String? // For text-based answers
-  answer_number Float? // For numeric answers
-  answer_date   DateTime? // For date answers
-  option_ids    String[] // For multiple choice (array of option IDs)
-
-  // For complex answers
-  answer_json Json? // For matching, ordering, etc.
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  question CBTQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
-
-  @@index([question_id])
-}
-
-model CBTQuizAttempt {
-  id                  String @id @default(cuid())
-  quiz_id             String
-  student_id          String
-  school_id           String
-  academic_session_id String
-
-  // Attempt Details
-  attempt_number Int               @default(1) // Which attempt this is
-  status         QuizAttemptStatus @default(NOT_STARTED)
-
-  // Timing
-  started_at   DateTime?
-  submitted_at DateTime?
-  time_spent   Int? // Time spent in seconds
-
-  // Results
-  total_score Float   @default(0)
-  max_score   Float
-  percentage  Float   @default(0)
-  passed      Boolean @default(false)
-
-  // Grading
-  is_graded Boolean   @default(false)
-  graded_at DateTime?
-  graded_by String? // Teacher who graded (for manual grading)
-
-  // Feedback
-  overall_feedback String?
-  grade_letter     String? // A, B, C, D, F
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  quiz            CBTQuiz         @relation(fields: [quiz_id], references: [id])
-  student         User            @relation(fields: [student_id], references: [id])
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  grader          User?           @relation("CBTGrader", fields: [graded_by], references: [id])
-
-  responses CBTResponse[]
-
-  @@unique([quiz_id, student_id, attempt_number])
-  @@index([quiz_id])
-  @@index([student_id])
-  @@index([status])
-  @@index([submitted_at])
-}
-
-model CBTResponse {
-  id          String @id @default(cuid())
-  attempt_id  String
-  question_id String
-  student_id  String
-
-  // Response Content
-  text_answer      String? // For text-based questions
-  numeric_answer   Float? // For numeric questions
-  date_answer      DateTime? // For date questions
-  selected_options String[] // Array of selected option IDs
-  file_urls        String[] // Array of uploaded file URLs
-
-  // Response Metadata
-  is_correct    Boolean? // Whether this response is correct
-  points_earned Float    @default(0)
-  max_points    Float
-
-  // Timing
-  time_spent Int? // Time spent on this question in seconds
-
-  // Feedback
-  feedback  String? // Teacher feedback for this response
-  is_graded Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  attempt         CBTQuizAttempt @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
-  question        CBTQuestion    @relation(fields: [question_id], references: [id])
-  student         User           @relation(fields: [student_id], references: [id])
-  selectedOptions CBTOption[]    @relation("ResponseOptions")
-
-  @@unique([attempt_id, question_id])
-  @@index([attempt_id])
-  @@index([question_id])
-  @@index([student_id])
-}
-
-model CBTQuizAnalytics {
-  id      String @id @default(cuid())
-  quiz_id String @unique
-
-  // Statistics
-  total_attempts Int   @default(0)
-  total_students Int   @default(0)
-  average_score  Float @default(0)
-  average_time   Int   @default(0) // Average time in seconds
-  pass_rate      Float @default(0) // Percentage who passed
-
-  // Question Analytics
-  question_stats Json // Detailed question-by-question stats
-
-  // Time-based Analytics
-  daily_attempts  Json // Daily attempt counts
-  hourly_attempts Json // Hourly attempt counts
-
-  // Performance Metrics
-  completion_rate  Float @default(0) // Percentage who completed
-  abandonment_rate Float @default(0) // Percentage who abandoned
-
-  last_updated DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  quiz CBTQuiz @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
-
-  @@index([quiz_id])
-}
-
-model LiveClass {
-  id              String   @id @default(cuid())
-  title           String
-  description     String?
-  topic_id        String? // Reference to topic instead of subject
-  meetingUrl      String
-  startTime       DateTime
-  endTime         DateTime
-  schoolId        String? // Optional: assigned to a specific school
-  platformId      String
-  createdById     String
-  order           Int      @default(0) // Order for reordering within topic
-  status          String   @default("scheduled") // scheduled, ongoing, completed, cancelled
-  maxParticipants Int? // Maximum number of participants
-
-  platform  Organisation @relation(fields: [platformId], references: [id])
-  school    School?      @relation(fields: [schoolId], references: [id])
-  createdBy User         @relation(fields: [createdById], references: [id])
-  topic     Topic?       @relation(fields: [topic_id], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([schoolId])
-  @@index([platformId])
-  @@index([topic_id])
-  @@index([startTime])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model LibraryResource {
-  id           String  @id @default(cuid())
-  title        String
-  description  String?
-  resourceType String // e.g., "book", "article", "research_paper"
-  url          String?
-  topic_id     String? // Reference to topic instead of subject
-  schoolId     String? // Optional: assigned to a specific school
-  platformId   String
-  uploadedById String
-  order        Int     @default(0) // Order for reordering within topic
-  status       String  @default("available") // available, borrowed, archived
-  format       String? // pdf, epub, docx, etc.
-
-  platform   Organisation @relation(fields: [platformId], references: [id])
-  school     School?      @relation(fields: [schoolId], references: [id])
-  uploadedBy User         @relation(fields: [uploadedById], references: [id])
-  topic      Topic?       @relation(fields: [topic_id], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([schoolId])
-  @@index([platformId])
-  @@index([resourceType])
-  @@index([topic_id])
-  @@index([status])
-  @@index([createdAt])
-}
-
-// ========================================
-// GRADING SYSTEM ENUMS
-// ========================================
 
 enum AssignmentType {
   HOMEWORK
@@ -1316,358 +1377,4 @@ enum RubricScale {
   PERCENTAGE
   LETTER_GRADE
   CUSTOM
-}
-
-// ========================================
-// GRADING SYSTEM MODELS
-// ========================================
-
-model GradingRubric {
-  id                  String  @id @default(cuid())
-  name                String
-  description         String?
-  school_id           String
-  academic_session_id String
-  created_by          String
-
-  // Rubric Structure
-  criteria     Json // Array of criteria with weights
-  total_points Float // Total possible points
-  scale_type   RubricScale @default(POINTS)
-
-  // Usage
-  is_template Boolean @default(false)
-  is_active   Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-  createdBy       User            @relation(fields: [created_by], references: [id])
-
-  // Used by assignments
-  assignments Assignment[]
-
-  @@index([school_id, academic_session_id])
-  @@index([created_by])
-  @@index([is_template])
-}
-
-model AssignmentSubmission {
-  id                  String @id @default(cuid())
-  assignment_id       String
-  student_id          String
-  school_id           String
-  academic_session_id String
-
-  // Submission Content
-  content         String? // Text submission
-  attachment_url  String? // File submission URL
-  attachment_type String? // File type
-
-  // Submission Status
-  status          SubmissionStatus @default(SUBMITTED)
-  submitted_at    DateTime         @default(now())
-  late_submission Boolean          @default(false)
-
-  // Metadata
-  word_count Int? // For essays
-  file_size  String? // File size in MB
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  assignment      Assignment      @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
-  student         User            @relation(fields: [student_id], references: [id])
-  school          School          @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession @relation(fields: [academic_session_id], references: [id])
-
-  // Grades
-  grades  AssignmentGrade[]
-  Topic   Topic?            @relation(fields: [topicId], references: [id])
-  topicId String?
-
-  @@unique([assignment_id, student_id])
-  @@index([assignment_id])
-  @@index([student_id])
-  @@index([school_id, academic_session_id])
-  @@index([submitted_at])
-}
-
-model AssignmentGrade {
-  id                  String @id @default(cuid())
-  assignment_id       String
-  submission_id       String
-  student_id          String
-  teacher_id          String // Who graded it
-  school_id           String
-  academic_session_id String
-
-  // Grade Details
-  score        Float // Actual score received
-  max_score    Float // Maximum possible score
-  percentage   Float // Calculated percentage
-  letter_grade String? // A, B, C, D, F
-
-  // Feedback
-  feedback      String? // Teacher feedback
-  comments      String? // Additional comments
-  rubric_scores Json? // Detailed rubric scores
-
-  // Grade Status
-  status      GradeStatus @default(PENDING)
-  graded_at   DateTime?
-  returned_at DateTime?
-
-  // Metadata
-  grading_time Int? // Time taken to grade in minutes
-  is_final     Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  assignment      Assignment           @relation(fields: [assignment_id], references: [id])
-  submission      AssignmentSubmission @relation(fields: [submission_id], references: [id])
-  student         User                 @relation(fields: [student_id], references: [id])
-  teacher         User                 @relation("AssignmentGradeGiver", fields: [teacher_id], references: [id])
-  school          School               @relation(fields: [school_id], references: [id])
-  academicSession AcademicSession      @relation(fields: [academic_session_id], references: [id])
-
-  @@unique([submission_id])
-  @@index([assignment_id])
-  @@index([student_id])
-  @@index([teacher_id])
-  @@index([school_id, academic_session_id])
-  @@index([graded_at])
-}
-
-// ========================================
-// AI CHAT WITH PDF SYSTEM MODELS
-// ========================================
-
-model MaterialProcessing {
-  id          String                   @id @default(cuid())
-  material_id String // Reference to PDFMaterial
-  school_id   String
-  status      MaterialProcessingStatus @default(PENDING)
-
-  // Processing Details
-  total_chunks     Int @default(0)
-  processed_chunks Int @default(0)
-  failed_chunks    Int @default(0)
-
-  // Processing Metadata
-  processing_started_at   DateTime?
-  processing_completed_at DateTime?
-  error_message           String?
-  retry_count             Int       @default(0)
-
-  // Vector Database Info
-  vector_database_id String? // External vector DB reference
-  embedding_model    String? // e.g., "text-embedding-3-small"
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  material PDFMaterial     @relation(fields: [material_id], references: [id], onDelete: Cascade)
-  school   School          @relation(fields: [school_id], references: [id])
-  chunks   DocumentChunk[]
-
-  @@unique([material_id])
-  @@index([school_id])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model DocumentChunk {
-  id                     String @id @default(cuid())
-  material_processing_id String
-  material_id            String
-  school_id              String
-
-  // Chunk Content
-  content       String
-  chunk_type    ChunkType @default(TEXT)
-  page_number   Int?
-  section_title String?
-
-  // Vector Embedding
-  embedding       Unsupported("vector(1536)") // Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
-  embedding_model String // e.g., "text-embedding-3-small"
-
-  // Chunk Metadata
-  token_count Int @default(0)
-  word_count  Int @default(0)
-  order_index Int // Order within the document
-
-  // Search Metadata
-  keywords String[] // Extracted keywords for hybrid search
-  summary  String? // Brief summary of chunk content
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  materialProcessing MaterialProcessing @relation(fields: [material_processing_id], references: [id], onDelete: Cascade)
-  material           PDFMaterial        @relation(fields: [material_id], references: [id], onDelete: Cascade)
-  school             School             @relation(fields: [school_id], references: [id])
-
-  // Chat context references
-  chatContexts ChatContext[]
-
-  @@index([material_id])
-  @@index([school_id])
-  @@index([chunk_type])
-  @@index([page_number])
-  @@index([order_index])
-  @@index([createdAt])
-}
-
-model ChatConversation {
-  id          String  @id @default(cuid())
-  user_id     String
-  school_id   String
-  material_id String? // Optional - for material-specific chats
-
-  // Conversation Details
-  title  String?
-  status ConversationStatus @default(ACTIVE)
-
-  // Context and Memory
-  system_prompt   String? // Custom system prompt for this conversation
-  context_summary String? // Summary of older conversation for memory
-
-  // Conversation Metadata
-  total_messages Int      @default(0)
-  last_activity  DateTime @default(now())
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  user     User          @relation(fields: [user_id], references: [id])
-  school   School        @relation(fields: [school_id], references: [id])
-  material PDFMaterial?  @relation(fields: [material_id], references: [id])
-  messages ChatMessage[]
-  contexts ChatContext[]
-
-  @@index([user_id])
-  @@index([school_id])
-  @@index([material_id])
-  @@index([status])
-  @@index([last_activity])
-}
-
-model ChatMessage {
-  id              String  @id @default(cuid())
-  conversation_id String
-  user_id         String
-  school_id       String
-  material_id     String? // Optional - for material-specific messages
-
-  // Message Content
-  role         MessageRole @default(USER)
-  content      String
-  message_type String      @default("TEXT")
-
-  // AI Response Details (for assistant messages)
-  model_used       String? // e.g., "gpt-4o-mini", "claude-haiku"
-  tokens_used      Int? // Token count for cost tracking
-  response_time_ms Int? // Response time in milliseconds
-
-  // Context and Memory
-  context_chunks  String[] // IDs of document chunks used as context
-  context_summary String? // Summary of context used
-
-  // Message Metadata
-  is_edited         Boolean   @default(false)
-  edited_at         DateTime?
-  parent_message_id String? // For threaded conversations
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  conversation ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  user         User             @relation(fields: [user_id], references: [id])
-  school       School           @relation(fields: [school_id], references: [id])
-  material     PDFMaterial?     @relation(fields: [material_id], references: [id])
-  contexts     ChatContext[]
-
-  @@index([conversation_id])
-  @@index([user_id])
-  @@index([school_id])
-  @@index([material_id])
-  @@index([role])
-  @@index([createdAt])
-}
-
-model ChatContext {
-  id              String @id @default(cuid())
-  conversation_id String
-  message_id      String
-  chunk_id        String
-  school_id       String
-
-  // Context Details
-  relevance_score     Float // How relevant this chunk is to the message
-  context_type        String @default("semantic") // semantic, keyword, hybrid
-  position_in_context Int // Order of this chunk in the context
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  conversation ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  message      ChatMessage      @relation(fields: [message_id], references: [id], onDelete: Cascade)
-  chunk        DocumentChunk    @relation(fields: [chunk_id], references: [id], onDelete: Cascade)
-  school       School           @relation(fields: [school_id], references: [id])
-
-  @@unique([message_id, chunk_id])
-  @@index([conversation_id])
-  @@index([message_id])
-  @@index([chunk_id])
-  @@index([school_id])
-  @@index([relevance_score])
-}
-
-model ChatAnalytics {
-  id          String  @id @default(cuid())
-  school_id   String
-  material_id String?
-  user_id     String?
-
-  // Usage Statistics
-  total_conversations      Int @default(0)
-  total_messages           Int @default(0)
-  total_tokens_used        Int @default(0)
-  average_response_time_ms Int @default(0)
-
-  // Performance Metrics
-  average_relevance_score Float    @default(0)
-  most_used_chunks        String[] // Chunk IDs most frequently used
-  popular_questions       String[] // Most common question patterns
-
-  // Time-based Analytics
-  date          DateTime @default(now())
-  daily_usage   Int      @default(0)
-  weekly_usage  Int      @default(0)
-  monthly_usage Int      @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  school   School       @relation(fields: [school_id], references: [id])
-  material PDFMaterial? @relation(fields: [material_id], references: [id])
-  user     User?        @relation(fields: [user_id], references: [id])
-
-  @@index([school_id])
-  @@index([material_id])
-  @@index([user_id])
-  @@index([date])
 }
