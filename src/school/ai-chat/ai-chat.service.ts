@@ -89,7 +89,6 @@ export class AiChatService {
       
       // Stage 1: Validation (0-10%)
       this.uploadProgressService.updateProgress(sessionId, 'validating', 0, 'Validating file...');
-      this.logger.log(colors.blue(`🔍 Validating file: ${documentFile.originalname}`));
       
       const validationResult = FileValidationHelper.validateMaterialFile(documentFile);
       if (!validationResult.isValid) {
@@ -103,10 +102,8 @@ export class AiChatService {
 
       // Stage 2: Upload to S3 (10-80%)
       this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.1, 'Uploading to cloud storage...');
-      this.logger.log(colors.blue(`📤 Starting S3 upload...`));
 
       // Get user's school ID and ID
-      this.logger.log(colors.blue(`👤 Looking up user: ${(user as any).sub}`));
       const existingUser = await this.prisma.user.findUnique({
         where: { id: (user as any).sub },
         select: { id: true, school_id: true }
@@ -134,8 +131,6 @@ export class AiChatService {
         s3Path += `/topics/${uploadDto.topic_id}`;
       }
       s3Path += '/materials';
-
-      this.logger.log(colors.blue(`📤 Uploading to S3: ${s3Path}`));
       
       let documentUploadResult;
       try {
@@ -145,7 +140,7 @@ export class AiChatService {
           `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
         );
 
-        this.logger.log(colors.green(`✅ S3 upload completed: ${documentUploadResult.url}`));
+        this.logger.log(colors.green(`✅ S3 upload completed`));
         this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.8, 'Upload completed');
       } catch (s3Error) {
         this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
@@ -155,8 +150,6 @@ export class AiChatService {
 
       // Stage 3: Processing (80-90%)
       this.uploadProgressService.updateProgress(sessionId, 'processing', documentFile.size * 0.8, 'Processing document for AI chat...');
-      
-      this.logger.log(colors.blue(`🔍 Starting database operations...`));
 
       // Validate subject and topic if provided
       let subject: any = null;
@@ -195,7 +188,6 @@ export class AiChatService {
       const documentSize = FileValidationHelper.formatFileSize(documentFile.size);
 
       // Get or create default AI Chat platform
-      this.logger.log(colors.blue(`🏢 Creating/updating AI Chat platform...`));
       let aiChatPlatform;
       try {
         aiChatPlatform = await this.prisma.organisation.upsert({
@@ -206,14 +198,13 @@ export class AiChatService {
             email: 'ai-chat@platform.com'
           }
         });
-        this.logger.log(colors.green(`✅ AI Chat platform ready: ${aiChatPlatform.id}`));
+        this.logger.log(colors.green(`✅ AI Chat platform ready`));
       } catch (platformError) {
         this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
         this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Platform creation failed', platformError.message);
         return;
       }
 
-      this.logger.log(colors.blue(`📄 Creating material record...`));
       let material;
       try {
         material = await this.prisma.pDFMaterial.create({
@@ -232,14 +223,13 @@ export class AiChatService {
             originalName: documentFile.originalname,
           },
         });
-        this.logger.log(colors.green(`✅ Material record created: ${material.id}`));
+        this.logger.log(colors.green(`✅ Material record created`));
       } catch (materialError) {
         this.logger.error(colors.red(`❌ Material creation failed: ${materialError.message}`));
         this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Material creation failed', materialError.message);
         return;
       }
 
-      this.logger.log(colors.blue(`⚙️ Creating material processing record...`));
       let materialProcessing;
       try {
         materialProcessing = await this.prisma.materialProcessing.create({
@@ -253,7 +243,7 @@ export class AiChatService {
             embedding_model: 'text-embedding-3-small',
           },
         });
-        this.logger.log(colors.green(`✅ Material processing record created: ${materialProcessing.id}`));
+        this.logger.log(colors.green(`✅ Material processing record created`));
       } catch (processingError) {
         this.logger.error(colors.red(`❌ Material processing creation failed: ${processingError.message}`));
         this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Material processing creation failed', processingError.message);

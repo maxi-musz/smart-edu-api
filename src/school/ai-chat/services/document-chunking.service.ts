@@ -28,10 +28,10 @@ export class DocumentChunkingService {
   private readonly logger = new Logger(DocumentChunkingService.name);
   
   // Chunking configuration
-  private readonly CHUNK_SIZE = 800; // Target tokens per chunk
-  private readonly CHUNK_OVERLAP = 100; // Overlap tokens between chunks
+  private readonly CHUNK_SIZE = 600; // Target tokens per chunk (reduced for better quality)
+  private readonly CHUNK_OVERLAP = 80; // Overlap tokens between chunks
   private readonly MIN_CHUNK_SIZE = 50; // Minimum tokens per chunk
-  private readonly MAX_CHUNK_SIZE = 1200; // Maximum tokens per chunk
+  private readonly MAX_CHUNK_SIZE = 1000; // Maximum tokens per chunk (reduced for better quality)
 
   /**
    * Chunk document text into smaller sections
@@ -136,8 +136,8 @@ export class DocumentChunkingService {
       currentChunk.push(sentence);
       currentTokens += sentenceTokens;
       
-      // If chunk is large enough, finalize it
-      if (currentTokens >= this.CHUNK_SIZE) {
+      // If chunk is large enough OR exceeds max size, finalize it
+      if (currentTokens >= this.CHUNK_SIZE || currentTokens > this.MAX_CHUNK_SIZE) {
         chunks.push(this.createChunkFromSentences(currentChunk, materialId, chunkIndex, metadata));
         chunkIndex++;
         
@@ -176,8 +176,28 @@ export class DocumentChunkingService {
     chunkIndex: number,
     metadata?: { pageCount?: number; originalName?: string }
   ): DocumentChunk {
-    const content = sentences.join(' ');
-    const tokenCount = this.estimateTokenCount(content);
+    let content = sentences.join(' ');
+    let tokenCount = this.estimateTokenCount(content);
+    
+    // If chunk is still too large, truncate it
+    if (tokenCount > this.MAX_CHUNK_SIZE) {
+      const words = content.split(' ');
+      let truncatedWords: string[] = [];
+      let truncatedTokens = 0;
+      
+      for (const word of words) {
+        const wordTokens = this.estimateTokenCount(word);
+        if (truncatedTokens + wordTokens > this.MAX_CHUNK_SIZE) {
+          break;
+        }
+        truncatedWords.push(word);
+        truncatedTokens += wordTokens;
+      }
+      
+      content = truncatedWords.join(' ');
+      tokenCount = truncatedTokens;
+    }
+    
     const charCount = content.length;
     
     // Determine chunk type based on content
