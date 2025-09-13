@@ -55,10 +55,11 @@ export class DocumentProcessingService {
         material.fileType || 'pdf'
       );
 
-      // Validate extraction
+      // Validate extraction (warnings only, don't fail on encoding issues)
       const extractionValidation = this.textExtractionService.validateExtraction(extractedText);
       if (!extractionValidation.isValid) {
-        throw new Error(`Text extraction validation failed: ${extractionValidation.issues.join(', ')}`);
+        this.logger.warn(colors.yellow(`⚠️ Text extraction validation issues: ${extractionValidation.issues.join(', ')}`));
+        this.logger.warn(colors.yellow(`⚠️ Continuing with processing despite warnings...`));
       }
 
       // Step 4: Chunk the document

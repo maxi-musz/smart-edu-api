@@ -260,6 +260,11 @@ export class AiChatService {
         return;
       }
 
+      // Auto-start processing in background
+      this.logger.log(colors.blue(`🔄 Starting document processing in background...`));
+      this.documentProcessingService.processDocument(material.id);
+      this.logger.log(colors.green(`✅ Document processing started`));
+
       // Stage 5: Completed
       this.uploadProgressService.updateProgress(
         sessionId, 

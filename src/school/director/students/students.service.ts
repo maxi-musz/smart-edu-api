@@ -936,7 +936,7 @@ export class StudentsService {
           let updatedStudent = existingStudent;
           if (Object.keys(studentUpdateData).length > 0) {
             updatedStudent = await this.prisma.student.update({
-              where: { id: studentId },
+              where: { id: existingStudent.id },
               data: studentUpdateData,
               include: {
                 user: {
