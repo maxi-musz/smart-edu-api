@@ -53,6 +53,11 @@ export class PineconeService {
     });
 
     this.logger.log(colors.green(`✅ Pinecone service initialized`));
+    
+    // Initialize index on startup
+    this.initializeIndex().catch(error => {
+      this.logger.error(colors.red(`❌ Failed to initialize Pinecone index: ${error.message}`));
+    });
   }
 
   /**

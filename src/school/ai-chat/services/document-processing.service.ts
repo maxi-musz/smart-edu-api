@@ -87,6 +87,13 @@ export class DocumentProcessingService {
 
       // Step 6: Save chunks and embeddings to Pinecone
       this.logger.log(colors.blue(`💾 Saving chunks and embeddings to Pinecone...`));
+      
+      // Check if we have valid embeddings before saving
+      if (embeddingResult.successCount === 0) {
+        this.logger.error(colors.red('No valid embeddings generated - cannot save to Pinecone'));
+        throw new Error('No valid embeddings generated - cannot save to Pinecone');
+      }
+      
       await this.saveChunksAndEmbeddings(materialId, chunkingResult.chunks, embeddingResult.embeddings, material.schoolId || '');
 
       // Step 7: Update material processing status
