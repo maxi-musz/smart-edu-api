@@ -26,7 +26,7 @@ export class JwtStrategy extends PassportStrategy(
             throw new UnauthorizedException('Invalid token');
         }
 
-        if (!payload.sub || !payload.email) {
+        if (!payload.sub || !payload.email || !payload.school_id) {
             console.log(colors.red('JWT Strategy - Invalid payload structure'));
             throw new UnauthorizedException('Invalid token structure');
         }

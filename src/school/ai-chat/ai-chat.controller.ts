@@ -10,6 +10,7 @@ import { User } from '@prisma/client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto, UploadProgressDto } from './dto';
 import { SendMessageDto, ChatMessageResponseDto, CreateConversationDto, ConversationResponseDto, GetChatHistoryDto } from './dto/chat.dto';
+import { InitiateAiChatDto, InitiateAiChatResponseDto } from './dto/initiate-ai-chat.dto';
 import { UploadDocumentDocs, StartUploadDocs, UploadProgressDocs, UploadStatusDocs } from './api-docs';
 import { Observable } from 'rxjs';
 import * as colors from 'colors';
@@ -44,14 +45,7 @@ export class AiChatController {
     @UploadedFiles() files: { document?: Express.Multer.File[] },
     @GetUser() user: User
   ) {
-    const documentFile = files.document?.[0];
-
-    if (!documentFile) {
-      this.logger.error(colors.red(`❌ Document file is required`));
-      throw new BadRequestException('Document file is required');
-    }
-
-    return this.aiChatService.uploadDocument(uploadDto, documentFile, user);
+    return this.aiChatService.uploadDocument(uploadDto, files, user);
   }
 
   @Post('start-upload')
@@ -471,6 +465,41 @@ export class AiChatController {
     } catch (error) {
       this.logger.error(colors.red(`❌ Error sending message: ${error.message}`));
       throw new BadRequestException(`Failed to send message: ${error.message}`);
+    }
+  }
+
+  @Post('initiate-ai-chat')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Initiate AI chat session',
+    description: 'Initialize AI chat based on user role and return available materials for teachers'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'AI chat session initiated successfully',
+    type: InitiateAiChatResponseDto
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - invalid user role or missing data'
+  })
+  async initiateAiChat(
+    @Body() initiateDto: InitiateAiChatDto,
+    @GetUser() user: User
+  ): Promise<InitiateAiChatResponseDto> {
+    try {
+      const response = await this.aiChatService.initiateAiChat(user, initiateDto);
+      
+      return {
+        success: true,
+        message: 'AI chat session initiated successfully',
+        data: response,
+        statusCode: 200
+      };
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error initiating AI chat: ${error.message}`));
+      throw new BadRequestException(`Failed to initiate AI chat: ${error.message}`);
     }
   }
 

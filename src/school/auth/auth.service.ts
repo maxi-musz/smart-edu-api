@@ -293,7 +293,7 @@ export class AuthService {
     
             console.log(colors.magenta("Email address successfully verified"));
 
-            const { access_token, refresh_token } = await this.signToken(updatedUser.id, updatedUser.email)
+            const { access_token, refresh_token } = await this.signToken(updatedUser.id, updatedUser.email, updatedUser.school_id)
 
             const formatted_response = {
                 user: {
@@ -334,13 +334,15 @@ export class AuthService {
 
     async signToken(
         userId: string,
-        email: string
+        email: string,
+        schoolId: string
     ): Promise<{access_token: string, refresh_token: string}> {
-        // console.log(colors.cyan('Signing token for:'), { userId, email });
+        // console.log(colors.cyan('Signing token for:'), { userId, email, schoolId });
         
         const payload = {
             sub: userId,
-            email
+            email,
+            school_id: schoolId
         };
 
         const secret = this.config.get('JWT_SECRET');
@@ -453,7 +455,7 @@ export class AuthService {
 
             // if password matches and all checks pass, return success response with tokens
             console.log(colors.green("User signed in successfully!"));
-            const { access_token, refresh_token } = await this.signToken(existing_user.id, existing_user.email);
+            const { access_token, refresh_token } = await this.signToken(existing_user.id, existing_user.email, existing_user.school_id);
             
             return ResponseHelper.success(
                 "User signed in successfully",
@@ -2011,7 +2013,7 @@ export class AuthService {
             }
 
             // Generate new tokens
-            const { access_token, refresh_token } = await this.signToken(user.id, user.email);
+            const { access_token, refresh_token } = await this.signToken(user.id, user.email, user.school_id);
 
             this.logger.log(colors.green('Access token refreshed successfully'));
 
