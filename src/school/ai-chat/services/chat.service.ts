@@ -31,6 +31,33 @@ export class ChatService {
   }
 
   /**
+   * Extract user ID and fetch school ID from database
+   */
+  private async extractUserData(user: any): Promise<{ userId: string; schoolId: string }> {
+    const userId = user.id || user.sub;
+    
+    if (!userId) {
+      throw new Error('User ID not found in token');
+    }
+    
+    // Fetch user data from database to get school_id
+    const userData = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { school_id: true }
+    });
+    
+    if (!userData) {
+      throw new Error('User not found in database');
+    }
+    
+    if (!userData.school_id) {
+      throw new Error('User school_id is missing from database');
+    }
+    
+    return { userId, schoolId: userData.school_id };
+  }
+
+  /**
    * Create a new conversation
    */
   async createConversation(
@@ -38,12 +65,14 @@ export class ChatService {
     createConversationDto: CreateConversationDto
   ): Promise<ConversationResponseDto> {
     try {
-      this.logger.log(colors.blue(`💬 Creating new conversation for user: ${user.id}`));
+      const { userId, schoolId } = await this.extractUserData(user);
+      
+      this.logger.log(colors.blue(`💬 Creating new conversation for user: ${userId}`));
 
       const conversation = await this.prisma.chatConversation.create({
         data: {
-          user_id: user.id,
-          school_id: user.school_id,
+          user_id: userId,
+          school_id: schoolId,
           material_id: createConversationDto.materialId || null,
           title: createConversationDto.title || 'New Conversation',
           system_prompt: createConversationDto.systemPrompt || 'You are a helpful AI assistant.',
@@ -80,7 +109,10 @@ export class ChatService {
     const startTime = Date.now();
     
     try {
-      this.logger.log(colors.blue(`💬 Processing message from user: ${user.id}`));
+      const { userId, schoolId } = await this.extractUserData(user);
+      
+      this.logger.log(colors.blue(`💬 Processing message from user: ${userId}`));
+      // this.logger.log(colors.blue(`💬 User object: ${JSON.stringify(user, null, 2)}`));
 
       // Get or create conversation
       let conversation = await this.getOrCreateConversation(
@@ -93,8 +125,8 @@ export class ChatService {
       const userMessage = await this.prisma.chatMessage.create({
         data: {
           conversation_id: conversation.id,
-          user_id: user.id,
-          school_id: user.school_id,
+          user_id: userId,
+          school_id: schoolId,
           material_id: sendMessageDto.materialId || null,
           role: 'USER',
           content: sendMessageDto.message,
@@ -124,8 +156,8 @@ export class ChatService {
       const aiMessage = await this.prisma.chatMessage.create({
         data: {
           conversation_id: conversation.id,
-          user_id: user.id,
-          school_id: user.school_id,
+          user_id: userId,
+          school_id: schoolId,
           material_id: sendMessageDto.materialId || null,
           role: 'ASSISTANT',
           content: aiResponse.content,
@@ -143,14 +175,14 @@ export class ChatService {
       await this.prisma.chatConversation.update({
         where: { id: conversation.id },
         data: {
-          total_messages: (conversation as any).total_messages + 2, // User + AI message
+          total_messages: ((conversation as any).total_messages || 0) + 2, // User + AI message
           last_activity: new Date(),
         },
       });
 
       // Save context relationships
       if (contextChunks.length > 0) {
-        await this.saveContextRelationships(aiMessage.id, contextChunks, conversation.id);
+        await this.saveContextRelationships(aiMessage.id, contextChunks, conversation.id, schoolId);
       }
 
       const responseTime = Date.now() - startTime;
@@ -188,10 +220,12 @@ export class ChatService {
     getChatHistoryDto: GetChatHistoryDto
   ): Promise<ChatMessageResponseDto[]> {
     try {
+      const { userId } = await this.extractUserData(user);
+      
       const messages = await this.prisma.chatMessage.findMany({
         where: {
           conversation_id: conversationId,
-          user_id: user.id,
+          user_id: userId,
         },
         orderBy: { createdAt: 'asc' },
         take: getChatHistoryDto.limit,
@@ -220,9 +254,11 @@ export class ChatService {
    */
   async getUserConversations(user: User): Promise<ConversationResponseDto[]> {
     try {
+      const { userId } = await this.extractUserData(user);
+      
       const conversations = await this.prisma.chatConversation.findMany({
         where: {
-          user_id: user.id,
+          user_id: userId,
         },
         orderBy: { last_activity: 'desc' },
         take: 50,
@@ -253,11 +289,13 @@ export class ChatService {
     conversationId?: string,
     materialId?: string
   ) {
+    const { userId, schoolId } = await this.extractUserData(user);
+    
     if (conversationId) {
       const conversation = await this.prisma.chatConversation.findFirst({
         where: {
           id: conversationId,
-          user_id: user.id,
+          user_id: userId,
         },
       });
 
@@ -295,11 +333,27 @@ export class ChatService {
         `${msg.role}: ${msg.content}`
       ).join('\n');
 
+      // Log conversation history being sent to ChatGPT
+      this.logger.log(colors.cyan(`📚 Conversation history (${conversationHistory.length} messages):`));
+      if (conversationHistory.length > 0) {
+        conversationHistory.forEach((msg, index) => {
+          this.logger.log(colors.cyan(`   ${index + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`));
+        });
+      } else {
+        this.logger.log(colors.cyan(`   No previous conversation history`));
+      }
+
       const messages = [
         { role: 'system', content: systemPrompt + context },
         ...(history ? [{ role: 'user', content: `Previous conversation:\n${history}` }] : []),
         { role: 'user', content: userMessage },
       ];
+
+      // Log the complete prompt being sent to ChatGPT
+      this.logger.log(colors.cyan(`🤖 Full prompt being sent to ChatGPT:`));
+      messages.forEach((msg, index) => {
+        this.logger.log(colors.cyan(`   ${index + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`));
+      });
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -343,14 +397,15 @@ export class ChatService {
   private async saveContextRelationships(
     messageId: string,
     contextChunks: any[],
-    conversationId: string
+    conversationId: string,
+    schoolId: string
   ) {
     try {
       const contextData = contextChunks.map((chunk, index) => ({
         conversation_id: conversationId,
         message_id: messageId,
         chunk_id: chunk.id,
-        school_id: contextChunks[0]?.school_id || '',
+        school_id: schoolId,
         relevance_score: chunk.similarity,
         context_type: 'semantic',
         position_in_context: index,

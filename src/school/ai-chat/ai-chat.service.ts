@@ -21,6 +21,35 @@ export class AiChatService {
   ) {}
 
   ////////////////////////////////////////////////////////////////////////// HELPER METHODS
+  
+  /**
+   * Process document directly from uploaded file (more efficient than S3 download)
+   */
+  private async processDocumentFromFile(
+    materialId: string, 
+    documentFile: Express.Multer.File, 
+    fileType: string
+  ): Promise<void> {
+    try {
+      this.logger.log(colors.cyan(`🔄 Processing document directly from uploaded file: ${documentFile.originalname}`));
+      
+      // Process the file buffer directly instead of downloading from S3
+      const result = await this.documentProcessingService.processDocumentFromBuffer(
+        materialId,
+        documentFile.buffer,
+        fileType
+      );
+      
+      if (result.success) {
+        this.logger.log(colors.green(`✅ Document processed successfully: ${materialId}`));
+      } else {
+        this.logger.error(colors.red(`❌ Document processing failed: ${result.error}`));
+      }
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error processing document from file: ${error.message}`));
+    }
+  }
+
   private generateTitleFromFilename(filename: string): string {
     // Remove file extension
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
@@ -250,9 +279,9 @@ export class AiChatService {
         return;
       }
 
-      // Auto-start processing in background
-      this.logger.log(colors.blue(`🔄 Starting document processing in background...`));
-      this.documentProcessingService.processDocument(material.id);
+      // Process document directly from uploaded file (more efficient)
+      this.logger.log(colors.blue(`🔄 Starting document processing directly from uploaded file...`));
+      this.processDocumentFromFile(material.id, documentFile, validationResult.fileType || 'pdf');
       this.logger.log(colors.green(`✅ Document processing started`));
 
       // Stage 5: Completed

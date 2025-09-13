@@ -16,7 +16,6 @@ export class SendMessageDto {
   })
   @IsString()
   @IsOptional()
-  @IsUUID()
   materialId?: string;
 
   @ApiPropertyOptional({
@@ -25,7 +24,6 @@ export class SendMessageDto {
   })
   @IsString()
   @IsOptional()
-  @IsUUID()
   conversationId?: string;
 }
 
@@ -78,7 +76,6 @@ export class CreateConversationDto {
   })
   @IsString()
   @IsOptional()
-  @IsUUID()
   materialId?: string;
 
   @ApiPropertyOptional({
