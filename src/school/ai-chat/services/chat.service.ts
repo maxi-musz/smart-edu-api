@@ -30,14 +30,23 @@ export class ChatService {
     });
   }
 
-  private readonly DEFAULT_SYSTEM_PROMPT = `
+  private readonly MATERIAL_SYSTEM_PROMPT = `
   You are a helpful AI assistant.
   You are to help school owners, teachers and students on any material they want to chat with.
   You are an expert in the subject of the material uploaded.
   Answer them with 100% assurance like you are tutoring them, they are looking up to you for answers.
   You are to use the material uploaded to answer their questions.
   Do not answer a question that is in no way relating to the material uploaded (imagine someone asking how can I become rich when chatting with a mathematics material).
-  This is Important -- Keep your nswer as brief as possible without unnecessary story, unless the user is asking for a specif amount or number of things, give them complete
+  This is Important -- Keep your answer as brief as possible without unnecessary story, unless the user is asking for a specific amount or number of things, give them complete
+`;
+
+  private readonly GENERAL_SYSTEM_PROMPT = `
+  You are a helpful AI assistant for educational purposes.
+  You help school owners, teachers, and students with general questions and educational topics.
+  Answer questions clearly and provide helpful explanations.
+  Be encouraging and supportive in your responses.
+  Keep your answers concise but complete when the user asks for specific amounts or detailed information.
+  Note: If asked about very recent events (after October 2023), mention that your knowledge may be limited and suggest checking the latest sources.
 `;
 
   /**
@@ -85,9 +94,9 @@ export class ChatService {
         data: {
           user_id: userId,
           school_id: schoolId,
-          material_id: createConversationDto.materialId || null,
+          material_id: createConversationDto.materialId ?? null,
           title: createConversationDto.title || 'New Conversation',
-          system_prompt: this.DEFAULT_SYSTEM_PROMPT,
+          system_prompt: createConversationDto.materialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
           status: 'ACTIVE',
           total_messages: 0,
         },
@@ -98,6 +107,7 @@ export class ChatService {
       return {
         id: conversation.id,
         title: conversation.title || 'New Conversation',
+        chatTitle: conversation.title || 'New Conversation',
         status: conversation.status,
         materialId: conversation.material_id,
         totalMessages: conversation.total_messages,
@@ -124,7 +134,8 @@ export class ChatService {
       const { userId, schoolId } = await this.extractUserData(user);
       
       this.logger.log(colors.blue(`💬 Processing message from user: ${userId}`));
-      // this.logger.log(colors.blue(`💬 User object: ${JSON.stringify(user, null, 2)}`));
+      
+      this.logger.log(colors.blue(`💬 Send Message Dto: ${JSON.stringify(sendMessageDto, null, 2)}`));
 
       // Get or create conversation
       let conversation = await this.getOrCreateConversation(
@@ -157,12 +168,35 @@ export class ChatService {
       }
 
       // Generate AI response
+      const systemPrompt = (conversation as any).material_id ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT;
       const aiResponse = await this.generateAIResponse(
         sendMessageDto.message,
         contextChunks,
-        this.DEFAULT_SYSTEM_PROMPT,
+        systemPrompt,
         (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 20) : []
       );
+
+      // Generate chat title for new conversations (first message)
+      let chatTitle: string | null = null;
+      this.logger.log(colors.cyan(`📝 Checking if should generate title. Total messages: ${(conversation as any).total_messages}`));
+      
+      // Check if this is a new conversation (total_messages is 0 or undefined, and no existing title)
+      const isNewConversation = ((conversation as any).total_messages === 0 || (conversation as any).total_messages === undefined) && 
+                                (!conversation.title || conversation.title === 'New Conversation' || conversation.title === 'General Chat');
+      
+      if (isNewConversation) {
+        this.logger.log(colors.cyan(`📝 Generating chat title for first message: "${sendMessageDto.message}"`));
+        chatTitle = await this.generateChatTitle(sendMessageDto.message);
+        
+        // Update conversation with the generated title
+        await this.prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: { title: chatTitle }
+        });
+        this.logger.log(colors.green(`✅ Updated conversation title to: "${chatTitle}"`));
+      } else {
+        this.logger.log(colors.cyan(`📝 Skipping title generation - not first message`));
+      }
 
       // Save AI message
       const aiMessage = await this.prisma.chatMessage.create({
@@ -206,6 +240,7 @@ export class ChatService {
         role: aiMessage.role,
         conversationId: aiMessage.conversation_id,
         materialId: aiMessage.material_id,
+        chatTitle: chatTitle, // Include generated title
         contextChunks: contextChunks.map((chunk: any) => ({
           id: chunk.id,
           content: chunk.content.substring(0, 200) + '...', // Truncate for response
@@ -279,6 +314,7 @@ export class ChatService {
       return conversations.map(conversation => ({
         id: conversation.id,
         title: conversation.title,
+        chatTitle: conversation.title, // Alias for clarity
         status: conversation.status,
         materialId: conversation.material_id,
         totalMessages: conversation.total_messages,
@@ -321,6 +357,37 @@ export class ChatService {
       materialId,
       title: materialId ? 'Document Chat' : 'General Chat',
     });
+  }
+
+  /**
+   * Generate chat title based on first message
+   */
+  private async generateChatTitle(firstMessage: string): Promise<string> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Generate a short, descriptive title (max 5 words) for this conversation based on the user\'s first message. Return only the title, nothing else.'
+          },
+          {
+            role: 'user',
+            content: firstMessage
+          }
+        ],
+        max_tokens: 20,
+        temperature: 0.3,
+      });
+
+      const title = response.choices[0].message.content?.trim() || 'New Chat';
+      this.logger.log(colors.cyan(`📝 Generated chat title: "${title}"`));
+      return title;
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error generating chat title: ${error.message}`));
+      return 'New Chat';
+    }
   }
 
   /**

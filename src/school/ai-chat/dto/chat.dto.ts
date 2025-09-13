@@ -44,6 +44,9 @@ export class ChatMessageResponseDto {
   materialId?: string | null;
 
   @ApiProperty({ required: false })
+  chatTitle?: string | null;
+
+  @ApiProperty({ required: false })
   contextChunks?: Array<{
     id: string;
     content: string;
@@ -93,6 +96,9 @@ export class ConversationResponseDto {
 
   @ApiProperty()
   title: string | null;
+
+  @ApiProperty()
+  chatTitle: string | null;
 
   @ApiProperty()
   status: 'ACTIVE' | 'PAUSED' | 'ENDED' | 'ARCHIVED';
