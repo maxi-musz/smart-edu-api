@@ -136,3 +136,11 @@ export class GetChatHistoryDto {
   @IsOptional()
   offset?: number = 0;
 }
+
+export class ChatHistoryResponseDto {
+  @ApiProperty()
+  conversationHistory: ChatMessageResponseDto[];
+
+  @ApiProperty()
+  usageLimits: any;
+}

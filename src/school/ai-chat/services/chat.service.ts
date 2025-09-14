@@ -265,10 +265,14 @@ export class ChatService {
     user: User,
     conversationId: string,
     getChatHistoryDto: GetChatHistoryDto
-  ): Promise<ChatMessageResponseDto[]> {
+  ): Promise<{ conversationHistory: ChatMessageResponseDto[]; usageLimits: any }> {
+
+    this.logger.log(colors.blue(`💬 Getting chat history for conversation: ${conversationId}`));
+
     try {
       const { userId } = await this.extractUserData(user);
       
+      // Get conversation history
       const messages = await this.prisma.chatMessage.findMany({
         where: {
           conversation_id: conversationId,
@@ -279,7 +283,7 @@ export class ChatService {
         skip: parseInt((getChatHistoryDto.offset || 0).toString()),
       });
 
-      return messages.map(message => ({
+      const conversationHistory = messages.map(message => ({
         id: message.id,
         content: message.content,
         role: message.role,
@@ -290,9 +294,73 @@ export class ChatService {
         createdAt: message.createdAt.toISOString(),
       }));
 
+      // Get usage limits
+      const usageLimits = await this.getUserUsageLimits(userId);
+
+      return {
+        conversationHistory,
+        usageLimits
+      };
+
     } catch (error) {
       this.logger.error(colors.red(`❌ Error getting chat history: ${error.message}`));
       throw new Error(`Failed to get chat history: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get user's usage limits
+   */
+  private async getUserUsageLimits(userId: string): Promise<any> {
+    try {
+      this.logger.log(colors.blue(`📊 Fetching usage limits for user: ${userId}`));
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          filesUploadedThisMonth: true,
+          totalFilesUploadedAllTime: true,
+          totalStorageUsedMB: true,
+          maxFilesPerMonth: true,
+          maxFileSizeMB: true,
+          maxStorageMB: true,
+          tokensUsedThisWeek: true,
+          tokensUsedThisDay: true,
+          tokensUsedAllTime: true,
+          maxTokensPerWeek: true,
+          maxTokensPerDay: true,
+          lastFileResetDate: true,
+          lastTokenResetDateAllTime: true,
+        }
+      });
+
+      if (!user) {
+        this.logger.error(colors.red(`❌ User not found: ${userId}`));
+        throw new Error('User not found');
+      }
+
+      const usageLimits = {
+        filesUploadedThisMonth: user.filesUploadedThisMonth,
+        totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
+        totalStorageUsedMB: user.totalStorageUsedMB,
+        maxFilesPerMonth: user.maxFilesPerMonth,
+        maxFileSizeMB: user.maxFileSizeMB,
+        maxStorageMB: user.maxStorageMB,
+        tokensUsedThisWeek: user.tokensUsedThisWeek,
+        tokensUsedThisDay: user.tokensUsedThisDay,
+        tokensUsedAllTime: user.tokensUsedAllTime,
+        maxTokensPerWeek: user.maxTokensPerWeek,
+        maxTokensPerDay: user.maxTokensPerDay,
+        lastFileResetDate: user.lastFileResetDate.toISOString(),
+        lastTokenResetDate: user.lastTokenResetDateAllTime.toISOString(),
+      };
+
+      this.logger.log(colors.green(`✅ Retrieved usage limits for user`));
+      return usageLimits;
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching usage limits: ${error.message}`));
+      throw new Error(`Failed to fetch usage limits: ${error.message}`);
     }
   }
 

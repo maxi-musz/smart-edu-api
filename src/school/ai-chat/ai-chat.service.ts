@@ -523,6 +523,7 @@ export class AiChatService {
     supportedDocumentTypes: SupportedDocumentTypeDto[];
     uploadedDocuments: TeacherMaterialDto[];
     conversations: any[];
+    usageLimits: any;
   }> {
     try {
       this.logger.log(colors.cyan(`🤖 Initiating AI chat for user role: ${initiateDto.userRole}`));
@@ -547,26 +548,31 @@ export class AiChatService {
       // Get user's conversations
       const conversations = await this.getUserConversations(userId);
 
+      // Get user's usage limits
+      const usageLimits = await this.getUserUsageLimits(userId);
+
       // Handle different user roles
       switch (initiateDto.userRole) {
         case 'teacher':
           const teacherData = await this.getTeacherMaterials(userId, schoolId);
           return {
             userRole: 'teacher',
+            usageLimits,
             documentCount: teacherData.documentCount,
             supportedDocumentTypes,
             uploadedDocuments: teacherData.uploadedDocuments,
-            conversations
+            conversations,
           };
         
         case 'student':
           // For now, return empty for students
           return {
             userRole: 'student',
+            usageLimits,
             documentCount: 0,
             supportedDocumentTypes,
             uploadedDocuments: [],
-            conversations
+            conversations,
           };
         
         case 'school_director':
@@ -574,10 +580,11 @@ export class AiChatService {
           // For now, return empty for admins
           return {
             userRole: initiateDto.userRole,
+            usageLimits,
             documentCount: 0,
             supportedDocumentTypes,
             uploadedDocuments: [],
-            conversations
+            conversations,
           };
         
         default:
@@ -588,6 +595,66 @@ export class AiChatService {
     } catch (error) {
       this.logger.error(colors.red(`❌ Error initiating AI chat: ${error.message}`));
       throw new Error(`Failed to initiate AI chat: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get user's usage limits
+   */
+  private async getUserUsageLimits(userId: string): Promise<any> {
+    try {
+      this.logger.log(colors.blue(`📊 Fetching usage limits for user: ${userId}`));
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          filesUploadedThisMonth: true,
+          totalFilesUploadedAllTime: true,
+          totalStorageUsedMB: true,
+          maxFilesPerMonth: true,
+          maxFileSizeMB: true,
+          maxStorageMB: true,
+          tokensUsedThisWeek: true,
+          tokensUsedThisDay: true,
+          tokensUsedAllTime: true,
+          // messagesSentThisWeek: true,
+          maxTokensPerWeek: true,
+          // maxMessagesPerWeek: true,
+          maxTokensPerDay: true,
+          lastFileResetDate: true,
+          lastTokenResetDateAllTime: true,
+        }
+      });
+
+      if (!user) {
+        this.logger.error(colors.red(`❌ User not found: ${userId}`));
+        throw new Error('User not found');
+      }
+
+      const usageLimits = {
+        filesUploadedThisMonth: user.filesUploadedThisMonth,
+        totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
+        totalStorageUsedMB: user.totalStorageUsedMB,
+        maxFilesPerMonth: user.maxFilesPerMonth,
+        maxFileSizeMB: user.maxFileSizeMB,
+        maxStorageMB: user.maxStorageMB,
+        tokensUsedThisWeek: user.tokensUsedThisWeek,
+        tokensUsedThisDay: user.tokensUsedThisDay,
+        tokensUsedAllTime: user.tokensUsedAllTime,
+        // messagesSentThisWeek: user.messagesSentThisWeek,
+        maxTokensPerWeek: user.maxTokensPerWeek,
+        // maxMessagesPerWeek: user.maxMessagesPerWeek,
+        maxTokensPerDay: user.maxTokensPerDay,
+        lastFileResetDate: user.lastFileResetDate.toISOString(),
+        lastTokenResetDate: user.lastTokenResetDateAllTime.toISOString(),
+      };
+
+      this.logger.log(colors.green(`✅ Retrieved usage limits for user`));
+      return usageLimits;
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching usage limits: ${error.message}`));
+      throw new Error(`Failed to fetch usage limits: ${error.message}`);
     }
   }
 

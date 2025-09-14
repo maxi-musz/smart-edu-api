@@ -68,6 +68,50 @@ export class SupportedDocumentTypeDto {
   description: string;
 }
 
+export class UsageLimitsDto {
+  @ApiProperty()
+  filesUploadedThisMonth: number;
+
+  @ApiProperty()
+  totalFilesUploadedAllTime: number;
+
+  @ApiProperty()
+  totalStorageUsedMB: number;
+
+  @ApiProperty()
+  maxFilesPerMonth: number;
+
+  @ApiProperty()
+  maxFileSizeMB: number;
+
+  @ApiProperty()
+  maxStorageMB: number;
+
+  @ApiProperty()
+  tokensUsedThisWeek: number;
+
+  @ApiProperty()
+  tokensUsedAllTime: number;
+
+  @ApiProperty()
+  messagesSentThisWeek: number;
+
+  @ApiProperty()
+  maxTokensPerWeek: number;
+
+  @ApiProperty()
+  maxMessagesPerWeek: number;
+
+  @ApiProperty()
+  maxTokensPerMessage: number;
+
+  @ApiProperty()
+  lastFileResetDate: string;
+
+  @ApiProperty()
+  lastTokenResetDate: string;
+}
+
 export class InitiateAiChatResponseDto {
   @ApiProperty()
   success: boolean;
@@ -81,6 +125,8 @@ export class InitiateAiChatResponseDto {
     documentCount: number;
     supportedDocumentTypes: SupportedDocumentTypeDto[];
     uploadedDocuments: TeacherMaterialDto[];
+    conversations: any[];
+    usageLimits: UsageLimitsDto;
   };
 
   @ApiProperty()
