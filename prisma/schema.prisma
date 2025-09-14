@@ -104,21 +104,44 @@ model Document {
 }
 
 model User {
-  id                       String                 @id @default(cuid())
-  school_id                String
-  email                    String                 @unique
-  password                 String
-  first_name               String
-  last_name                String
-  phone_number             String
-  display_picture          Json?
-  gender                   Gender                 @default(other)
-  otp                      String?                @default("")
-  otp_expires_at           DateTime?
-  is_email_verified        Boolean?               @default(false)
-  is_otp_verified          Boolean?               @default(false)
-  role                     Roles                  @default(student)
-  status                   UserStatus             @default(active)
+  id                String     @id @default(cuid())
+  school_id         String
+  email             String     @unique
+  password          String
+  first_name        String
+  last_name         String
+  phone_number      String
+  display_picture   Json?
+  gender            Gender     @default(other)
+  otp               String?    @default("")
+  otp_expires_at    DateTime?
+  is_email_verified Boolean?   @default(false)
+  is_otp_verified   Boolean?   @default(false)
+  role              Roles      @default(student)
+  status            UserStatus @default(active)
+
+  // AI Chat Usage Limits
+  // File upload limits
+  filesUploadedThisMonth    Int @default(0)
+  totalFilesUploadedAllTime Int @default(0)
+  totalStorageUsedMB        Int @default(0)
+  maxFilesPerMonth          Int @default(10)
+  maxFileSizeMB             Int @default(100)
+  maxStorageMB              Int @default(500)
+
+  // Token and message limits
+  tokensUsedThisWeek   Int @default(0)
+  tokensUsedAllTime    Int @default(0)
+  messagesSentThisWeek Int @default(0)
+  maxTokensPerDay     Int @default(50000)
+  tokensUsedThisDay   Int @default(0)
+  maxTokensPerWeek     Int @default(50000)
+  maxMessagesPerWeek   Int @default(100)
+
+  // Reset dates for limits
+  lastFileResetDate         DateTime @default(now())
+  lastTokenResetDateAllTime DateTime @default(now())
+
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   assignmentsCreated       Assignment[]

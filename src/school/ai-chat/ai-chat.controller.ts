@@ -488,19 +488,14 @@ export class AiChatController {
     @Body() initiateDto: InitiateAiChatDto,
     @GetUser() user: User
   ): Promise<InitiateAiChatResponseDto> {
-    try {
-      const response = await this.aiChatService.initiateAiChat(user, initiateDto);
-      
-      return {
-        success: true,
-        message: 'AI chat session initiated successfully',
-        data: response,
-        statusCode: 200
-      };
-    } catch (error) {
-      this.logger.error(colors.red(`❌ Error initiating AI chat: ${error.message}`));
-      throw new BadRequestException(`Failed to initiate AI chat: ${error.message}`);
-    }
+    const response = await this.aiChatService.initiateAiChat(user, initiateDto);
+    
+    return {
+      success: true,
+      message: 'AI chat session initiated successfully',
+      data: response,
+      statusCode: 200
+    };
   }
 
   @Get('conversations')
@@ -594,18 +589,13 @@ export class AiChatController {
     @Query() getChatHistoryDto: GetChatHistoryDto,
     @GetUser() user: User
   ) {
-    try {
-      const messages = await this.chatService.getChatHistory(user, conversationId, getChatHistoryDto);
-      
-      return {
-        success: true,
-        message: 'Chat history retrieved successfully',
-        data: messages,
-        statusCode: 200
-      };
-    } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting chat history: ${error.message}`));
-      throw new BadRequestException(`Failed to get chat history: ${error.message}`);
-    }
+    const response = await this.chatService.getChatHistory(user, conversationId, getChatHistoryDto);
+    
+    return {
+      success: true,
+      message: 'Chat history retrieved successfully',
+      data: response,
+      statusCode: 200
+    };
   }
 }
