@@ -382,7 +382,6 @@ export class DocumentProcessingService {
       // Save basic chunk info to database
       this.logger.log(colors.blue(`💾 Saving ${chunkData.length} chunks to database...`));
       for (const chunk of chunkData) {
-        this.logger.log(colors.blue(`   - Chunk: ${chunk.id}, Material Processing ID: ${chunk.material_processing_id}`));
         await this.prisma.$executeRaw`
           INSERT INTO "DocumentChunk" (
             id, material_processing_id, material_id, school_id, content, chunk_type, 

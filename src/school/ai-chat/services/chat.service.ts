@@ -173,7 +173,7 @@ export class ChatService {
         sendMessageDto.message,
         contextChunks,
         systemPrompt,
-        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 20) : []
+        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 50) : []
       );
 
       // Generate chat title for new conversations (first message)
@@ -225,6 +225,9 @@ export class ChatService {
           last_activity: new Date(),
         },
       });
+
+      // Update user token usage
+      await this.updateUserTokenUsage(userId, aiResponse.tokensUsed);
 
       // Save context relationships
       if (contextChunks.length > 0) {
@@ -483,9 +486,9 @@ export class ChatService {
       // Log conversation history being sent to ChatGPT
       this.logger.log(colors.cyan(`📚 Conversation history (${conversationHistory.length} messages):`));
       if (conversationHistory.length > 0) {
-        conversationHistory.forEach((msg, index) => {
-          this.logger.log(colors.cyan(`   ${index + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`));
-        });
+        // conversationHistory.forEach((msg, index) => {
+        //   this.logger.log(colors.cyan(`   ${index + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`));
+        // });
       } else {
         this.logger.log(colors.cyan(`   No previous conversation history`));
       }
@@ -536,6 +539,64 @@ export class ChatService {
     });
 
     return messages.reverse(); // Return in chronological order
+  }
+
+  /**
+   * Update user token usage counters
+   */
+  private async updateUserTokenUsage(userId: string, tokensUsed: number) {
+    try {
+      this.logger.log(colors.blue(`📊 Updating token usage for user: ${userId}, tokens: ${tokensUsed}`));
+
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+
+      // Get current user data
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          tokensUsedThisDay: true,
+          tokensUsedThisWeek: true,
+          tokensUsedAllTime: true,
+          lastTokenResetDateAllTime: true,
+        }
+      });
+
+      if (!user) {
+        console.log('User not found for token update: ', userId);
+        this.logger.error(colors.red(`❌ User not found for token update: ${userId}`));
+        return;
+      }
+
+      // Check if we need to reset daily/weekly counters
+      const shouldResetDaily = user.lastTokenResetDateAllTime < startOfDay;
+      const shouldResetWeekly = user.lastTokenResetDateAllTime < startOfWeek;
+
+      // Calculate new values
+      const newDailyTokens = shouldResetDaily ? tokensUsed : (user.tokensUsedThisDay || 0) + tokensUsed;
+      const newWeeklyTokens = shouldResetWeekly ? tokensUsed : (user.tokensUsedThisWeek || 0) + tokensUsed;
+      const newAllTimeTokens = (user.tokensUsedAllTime || 0) + tokensUsed;
+      // Update user token usage
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          tokensUsedThisDay: newDailyTokens,
+          tokensUsedThisWeek: newWeeklyTokens,
+          tokensUsedAllTime: newAllTimeTokens,
+          lastTokenResetDateAllTime: today,
+        }
+      });
+
+      // log previous values
+      this.logger.log(colors.cyan(`📊 Previous token usage - Daily: ${user.tokensUsedThisDay}, Weekly: ${user.tokensUsedThisWeek}, All-time: ${user.tokensUsedAllTime}`));
+
+      this.logger.log(colors.green(`✅ Updated token usage - Daily: ${newDailyTokens}, Weekly: ${newWeeklyTokens}, All-time: ${newAllTimeTokens}`));
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error updating token usage: ${error.message}`));
+    }
   }
 
   /**
