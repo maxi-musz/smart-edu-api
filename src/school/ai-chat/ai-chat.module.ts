@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AiChatController } from './ai-chat.controller';
-import { AiChatService } from './ai-chat.service';
+import { AiChatService, AiChatDeletionService } from './ai-chat.service';
 import { UploadProgressService } from './upload-progress.service';
 import { 
   TextExtractionService, 
@@ -18,6 +18,7 @@ import { S3Module } from '../../shared/services/s3.module';
   controllers: [AiChatController],
   providers: [
     AiChatService, 
+    AiChatDeletionService,
     UploadProgressService,
     TextExtractionService,
     DocumentChunkingService,
@@ -28,6 +29,7 @@ import { S3Module } from '../../shared/services/s3.module';
   ],
   exports: [
     AiChatService, 
+    AiChatDeletionService,
     UploadProgressService,
     DocumentProcessingService,
   ]

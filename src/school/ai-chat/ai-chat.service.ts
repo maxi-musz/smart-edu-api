@@ -9,6 +9,7 @@ import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto } from '
 import { InitiateAiChatDto, TeacherMaterialDto, SupportedDocumentTypeDto } from './dto/initiate-ai-chat.dto';
 import { UploadProgressService } from './upload-progress.service';
 import { DocumentProcessingService } from './services';
+import { PineconeService } from './services/pinecone.service';
 
 @Injectable()
 export class AiChatService {
@@ -19,6 +20,7 @@ export class AiChatService {
     private readonly s3Service: S3Service,
     private readonly uploadProgressService: UploadProgressService,
     private readonly documentProcessingService: DocumentProcessingService,
+    private readonly pineconeService: PineconeService,
   ) {}
 
   ////////////////////////////////////////////////////////////////////////// HELPER METHODS
@@ -833,5 +835,75 @@ export class AiChatService {
         description: 'Rich Text Format documents'
       }
     ];
+  }
+}
+
+// ==================== DELETE HELPERS AND ENDPOINT SERVICE ====================
+
+@Injectable()
+export class AiChatDeletionService {
+  private readonly logger = new Logger(AiChatDeletionService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3Service: S3Service,
+    private readonly pineconeService: PineconeService,
+  ) {}
+
+  async deleteConversation(
+    user: any,
+    params: { conversationId: string; materialId?: string; alsoDeleteDocument?: boolean }
+  ): Promise<ApiResponse<null>> {
+    const { conversationId, materialId, alsoDeleteDocument } = params;
+
+    // 1) Delete conversation messages and contexts
+    await this.prisma.$transaction(async (tx) => {
+      const messages = await tx.chatMessage.findMany({
+        where: { conversation_id: conversationId, user_id: user.id },
+        select: { id: true },
+      });
+      const messageIds = messages.map(m => m.id);
+
+      if (messageIds.length > 0) {
+        await tx.chatContext.deleteMany({ where: { message_id: { in: messageIds } } });
+      }
+      await tx.chatMessage.deleteMany({ where: { conversation_id: conversationId, user_id: user.id } });
+      await tx.chatConversation.deleteMany({ where: { id: conversationId, user_id: user.id } });
+    });
+
+    // 2) Optionally delete the document and its vectors
+    if (alsoDeleteDocument && materialId) {
+      const material = await this.prisma.pDFMaterial.findUnique({
+        where: { id: materialId },
+        select: { id: true, url: true, uploadedById: true, schoolId: true },
+      });
+
+      if (!material || material.uploadedById !== user.id || material.schoolId !== user.school_id) {
+        throw new BadRequestException('Material not found or not owned by user');
+      }
+
+      // a) Delete Pinecone vectors
+      await this.pineconeService.deleteChunksByMaterial(materialId);
+
+      // b) Delete DB chunks and processing rows
+      await this.prisma.$transaction(async (tx) => {
+        await tx.documentChunk.deleteMany({ where: { material_id: materialId } });
+        await tx.materialProcessing.deleteMany({ where: { material_id: materialId } });
+      });
+
+      // c) Delete S3 object
+      try {
+        const url = new URL(material.url);
+        const key = url.pathname.slice(1);
+        await this.s3Service.deleteFile(key);
+      } catch (e) {
+        this.logger.warn(`S3 delete warning: ${e.message}`);
+      }
+
+      // d) Delete material record
+      await this.prisma.pDFMaterial.delete({ where: { id: materialId } });
+    }
+
+    return new ApiResponse(true, 'Conversation deleted successfully', null);
   }
 }

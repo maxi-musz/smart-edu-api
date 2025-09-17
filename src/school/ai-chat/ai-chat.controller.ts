@@ -1,7 +1,7 @@
-import { Controller, Post, Get, UseGuards, HttpCode, HttpStatus, Body, UseInterceptors, UploadedFiles, BadRequestException, Param, Sse, Logger, Query } from '@nestjs/common';
+import { Controller, Post, Get, UseGuards, HttpCode, HttpStatus, Body, UseInterceptors, UploadedFiles, BadRequestException, Param, Sse, Logger, Query, Delete } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { AiChatService } from './ai-chat.service';
+import { AiChatService, AiChatDeletionService } from './ai-chat.service';
 import { UploadProgressService } from './upload-progress.service';
 import { DocumentProcessingService, ChatService } from './services';
 import { JwtGuard } from '../auth/guard';
@@ -25,7 +25,8 @@ export class AiChatController {
     private readonly aiChatService: AiChatService,
     private readonly uploadProgressService: UploadProgressService,
     private readonly documentProcessingService: DocumentProcessingService,
-    private readonly chatService: ChatService
+    private readonly chatService: ChatService,
+    private readonly aiChatDeletionService: AiChatDeletionService,
   ) {}
 
   @Post('upload-document')
@@ -597,5 +598,49 @@ export class AiChatController {
       data: response,
       statusCode: 200
     };
+  }
+
+  @Delete('conversations/:conversationId')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Delete a conversation',
+    description: 'Deletes a conversation and optionally deletes the associated document and its vectors'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Conversation deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Conversation deleted successfully' },
+        data: { type: 'null', example: null },
+        statusCode: { type: 'number', example: 200 }
+      }
+    }
+  })
+  async deleteConversation(
+    @Param('conversationId') conversationId: string,
+    @Body() body: { materialId?: string; alsoDeleteDocument?: boolean },
+    @GetUser() user: User
+  ) {
+    try {
+      const result = await this.aiChatDeletionService.deleteConversation(user, {
+        conversationId,
+        materialId: body?.materialId,
+        alsoDeleteDocument: !!body?.alsoDeleteDocument,
+      });
+
+      return {
+        success: result.success,
+        message: result.message,
+        data: result.data,
+        statusCode: 200
+      };
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error deleting conversation: ${error.message}`));
+      throw new BadRequestException(`Failed to delete conversation: ${error.message}`);
+    }
   }
 }
