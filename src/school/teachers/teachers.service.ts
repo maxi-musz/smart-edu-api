@@ -243,6 +243,11 @@ export class TeachersService {
     return daySchedule;
   }
 
+  // Deduplicate an array of objects by id while keeping last occurrence
+  private uniqueById<T extends { id: string }>(items: T[]): T[] {
+    return Array.from(new Map(items.map(item => [item.id, item])).values());
+  }
+
 
 
   ////////////////////////////////////////////////////////////////////////// GET TEACHER DASHBOARD
@@ -1026,11 +1031,13 @@ export class TeachersService {
       let filteredSubjects = await Promise.all(teacher.subjectsTeaching.map(async (teacherSubject) => {
         const subject = teacherSubject.subject;
         
-        // Get classes taking this subject
-        const classesTakingSubject = subject.timetableEntries.map(entry => ({
-          id: entry.class.id,
-          name: entry.class.name
-        }));
+        // Get classes taking this subject (deduplicated by class id)
+        const classesTakingSubject = this.uniqueById(
+          subject.timetableEntries.map(entry => ({
+            id: entry.class.id,
+            name: entry.class.name
+          }))
+        );
 
         // Get timetable entries for this subject
         const timetableEntries = subject.timetableEntries.map(entry => ({
@@ -1112,6 +1119,9 @@ export class TeachersService {
         );
       }
 
+      // 7b. Ensure unique subjects by id to avoid frontend duplicate keys
+      filteredSubjects = this.uniqueById(filteredSubjects);
+
       // 8. Apply academic session filter
       if (query.academic_session_id) {
         // Filter subjects that have timetable entries in the specified academic session
@@ -1190,13 +1200,13 @@ export class TeachersService {
         classId: cls.classId
       }));
 
-      const teachingSubjects = teacher.subjectsTeaching.map(ts => ({
+      const teachingSubjects = this.uniqueById(teacher.subjectsTeaching.map(ts => ({
         id: ts.subject.id,
         name: ts.subject.name,
         code: ts.subject.code,
         color: ts.subject.color,
         description: ts.subject.description
-      }));
+      })));
 
       const responseData = {
         pagination,
