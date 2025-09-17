@@ -87,7 +87,6 @@ export class ChatService {
       const { userId, schoolId } = await this.extractUserData(user);
       
       this.logger.log(colors.blue(`💬 Creating new conversation for user: ${userId}`));
-
       
 
       const conversation = await this.prisma.chatConversation.create({
