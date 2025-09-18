@@ -9,6 +9,7 @@ import { UploadVideoLessonDto, VideoLessonResponseDto, UploadProgressDto } from 
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 
 import { S3Service } from '../../../shared/services/s3.service';
+import { UploadProgressService } from '../../ai-chat/upload-progress.service';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { formatDate } from 'src/shared/helper-functions/formatter';
@@ -22,6 +23,7 @@ export class TopicsService {
     private readonly prisma: PrismaService,
     private readonly academicSessionService: AcademicSessionService,
     private readonly s3Service: S3Service,
+    private readonly uploadProgressService: UploadProgressService,
   ) {}
 
   async createTopic(createTopicRequestDto: CreateTopicRequestDto, user: any) {
@@ -1128,6 +1130,199 @@ export class TopicsService {
   }
 
   /**
+   * Same as uploadVideoLesson but emits progress via UploadProgressService
+   */
+  async uploadVideoLessonWithProgress(
+    uploadDto: UploadVideoLessonDto,
+    videoFile: Express.Multer.File,
+    thumbnailFile: Express.Multer.File | undefined,
+    user: any,
+    sessionId: string
+  ): Promise<VideoLessonResponseDto> {
+    const maxVideoSize = 100 * 1024 * 1024; // 100MB per user request
+    if (videoFile.size > maxVideoSize) {
+      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Video exceeds 100MB limit');
+      throw new BadRequestException('Video file size exceeds 100MB limit');
+    }
+
+    try {
+      this.uploadProgressService.updateProgress(sessionId, 'validating', 0);
+
+      // Fetch user
+      const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { id: true, school_id: true } });
+      if (!dbUser) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'User not found');
+        throw new NotFoundException('User not found');
+      }
+      const schoolId = dbUser.school_id;
+      const userId = dbUser.id;
+
+      // Validate subject and topic
+      const subject = await this.prisma.subject.findFirst({ where: { id: uploadDto.subject_id, schoolId } });
+      if (!subject) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Subject not found');
+        throw new NotFoundException('Subject not found or does not belong to this school');
+      }
+      const topic = await this.prisma.topic.findFirst({ where: { id: uploadDto.topic_id, subject_id: uploadDto.subject_id, school_id: schoolId, is_active: true } });
+      if (!topic) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Topic not found');
+        throw new NotFoundException('Topic not found or does not belong to this subject');
+      }
+
+      // Upload video to S3 with progress callback (smooth, monotonic, combined with thumb later)
+      const totalBytes = videoFile.size + (thumbnailFile?.size || 0);
+      let lastPercent = -1;
+      // Smoothing state
+      let lastKnownLoaded = 0; // bytes acknowledged from S3 callbacks
+      let emittedLoaded = 0;   // bytes we have emitted to clients
+      const onePercent = Math.max(1, Math.floor(totalBytes / 100));
+      const tickMs = 300;
+      this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
+      const smoother = setInterval(() => {
+        if (emittedLoaded < lastKnownLoaded) {
+          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
+          emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
+          const percent = Math.floor((emittedLoaded / totalBytes) * 100);
+          if (percent > lastPercent) {
+            lastPercent = percent;
+            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
+          }
+        }
+      }, tickMs);
+      const videoUploadResult = await this.s3Service.uploadFile(
+        videoFile,
+        `lecture-videos/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
+        (loaded) => {
+          lastKnownLoaded = Math.min(loaded, videoFile.size);
+        }
+      );
+
+      // Optional thumbnail
+      let thumbnailResult: any = null;
+      if (thumbnailFile) {
+        const thumbRes = await this.s3Service.uploadFile(
+          thumbnailFile,
+          `thumbnails/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+          `${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
+          (loaded) => {
+            lastKnownLoaded = Math.min(videoFile.size + loaded, totalBytes);
+          }
+        );
+        thumbnailResult = { secure_url: thumbRes.url, public_id: thumbRes.key };
+      }
+
+      this.uploadProgressService.updateProgress(sessionId, 'processing');
+      const videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
+      const videoDuration = await this.extractVideoDuration(videoFile);
+
+      this.uploadProgressService.updateProgress(sessionId, 'saving');
+
+      // Next order
+      const lastVideo = await this.prisma.videoContent.findFirst({
+        where: { topic_id: uploadDto.topic_id, schoolId },
+        orderBy: { order: 'desc' },
+        select: { order: true }
+      });
+      const nextOrder = (lastVideo?.order || 0) + 1;
+
+      const videoContent = await this.prisma.videoContent.create({
+        data: {
+          title: uploadDto.title.toLowerCase(),
+          description: uploadDto.description?.toLowerCase(),
+          topic_id: uploadDto.topic_id,
+          schoolId,
+          platformId: 's3-platform-001',
+          uploadedById: userId,
+          order: nextOrder,
+          url: videoUploadResult.url,
+          duration: videoDuration,
+          size: videoSize,
+          thumbnail: thumbnailResult ? {
+            secure_url: thumbnailResult.secure_url,
+            public_id: thumbnailResult.public_id
+          } : undefined,
+          status: 'published',
+          views: 0
+        },
+        include: {
+          topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
+        }
+      });
+
+      // Ensure final state is 100%
+      lastKnownLoaded = totalBytes;
+      emittedLoaded = totalBytes;
+      this.uploadProgressService.updateProgress(sessionId, 'processing', emittedLoaded);
+      this.uploadProgressService.updateProgress(sessionId, 'saving', emittedLoaded);
+      clearInterval(smoother);
+      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, videoContent.id);
+
+      return {
+        id: videoContent.id,
+        title: videoContent.title,
+        description: videoContent.description || undefined,
+        url: videoContent.url,
+        thumbnail: videoContent.thumbnail || undefined,
+        size: videoContent.size || '0 MB',
+        duration: videoContent.duration || '00:00:00',
+        status: videoContent.status || 'published',
+        subject_id: uploadDto.subject_id,
+        topic_id: uploadDto.topic_id,
+        uploaded_by: userId,
+        createdAt: videoContent.createdAt,
+        updatedAt: videoContent.updatedAt
+      };
+    } catch (error) {
+      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Start a video upload session and return sessionId (async upload)
+   */
+  async startVideoUploadSession(
+    uploadDto: UploadVideoLessonDto,
+    videoFile: Express.Multer.File,
+    thumbnailFile: Express.Multer.File | undefined,
+    user: any
+  ) {
+    if (!videoFile) {
+      throw new BadRequestException('Video file is required');
+    }
+
+    const totalBytes = videoFile.size + (thumbnailFile?.size || 0);
+    const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.school_id, totalBytes);
+
+    this.uploadVideoLessonWithProgress(uploadDto, videoFile, thumbnailFile, user, sessionId)
+      .catch(err => this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message));
+
+    return {
+      success: true,
+      message: 'Upload started',
+      data: { sessionId },
+      statusCode: 202
+    };
+  }
+
+  /**
+   * Get current video upload status for polling
+   */
+  async getVideoUploadStatus(sessionId: string) {
+    const progress = this.uploadProgressService.getCurrentProgress(sessionId);
+    if (!progress) {
+      throw new BadRequestException('Upload session not found');
+    }
+    return {
+      success: true,
+      message: 'Upload status retrieved',
+      data: progress,
+      statusCode: 200
+    };
+  }
+
+  /**
    * Extract video duration from uploaded file
    * Note: This is a simplified implementation. For production, you might want to use ffmpeg or similar
    */
@@ -1138,17 +1333,12 @@ export class TopicsService {
   }
 
   /**
-   * Get upload progress for a specific upload
-   * This can be used with WebSockets or Server-Sent Events for real-time progress
+   * Get upload progress for a specific upload (legacy placeholder)
    */
   async getUploadProgress(uploadId: string): Promise<UploadProgressDto> {
-    // This is a placeholder for progress tracking
-    // In production, you'd implement actual progress tracking
-    return {
-      progress: 100,
-      status: 'completed',
-      message: 'Upload completed successfully'
-    };
+    this.logger.log(colors.cyan(`🔍 Getting upload progress for uploadId: ${uploadId}`));
+    const progress = this.uploadProgressService.getCurrentProgress(uploadId);
+    return progress as any;
   }
 
   /**
@@ -1345,6 +1535,165 @@ export class TopicsService {
       }
       
       throw new Error(`Failed to upload material: ${error.message}`);
+    }
+  }
+
+  /**
+   * Start material upload with progress (returns sessionId immediately)
+   */
+  async startMaterialUploadSession(
+    uploadDto: any,
+    materialFile: Express.Multer.File,
+    user: any
+  ) {
+    if (!materialFile) {
+      throw new BadRequestException('Material file is required');
+    }
+
+    const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.school_id, materialFile.size);
+
+    this.uploadMaterialWithProgress(uploadDto, materialFile, user, sessionId)
+      .catch(err => this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message));
+
+    return {
+      success: true,
+      message: 'Upload started',
+      data: { sessionId },
+      statusCode: 202
+    };
+  }
+
+  /**
+   * Upload material with progress updates and DB save
+   */
+  async uploadMaterialWithProgress(
+    uploadDto: any,
+    materialFile: Express.Multer.File,
+    user: any,
+    sessionId: string
+  ) {
+    this.logger.log(colors.cyan(`📚 Starting material upload with progress: "${uploadDto.title}"`));
+    try {
+      // Validate file type/size using existing helper
+      const validationResult = FileValidationHelper.validateMaterialFile(materialFile);
+      if (!validationResult.isValid) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, validationResult.error);
+        throw new BadRequestException(validationResult.error);
+      }
+
+      // Fetch user
+      const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { id: true, school_id: true } });
+      if (!dbUser) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'User not found');
+        throw new NotFoundException('User not found');
+      }
+      const schoolId = dbUser.school_id;
+      const userId = dbUser.id;
+
+      // Validate subject & topic
+      const subject = await this.prisma.subject.findFirst({ where: { id: uploadDto.subject_id, schoolId } });
+      if (!subject) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Subject not found');
+        throw new NotFoundException('Subject not found or does not belong to this school');
+      }
+      const topic = await this.prisma.topic.findFirst({ where: { id: uploadDto.topic_id, subject_id: uploadDto.subject_id, school_id: schoolId, is_active: true } });
+      if (!topic) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Topic not found');
+        throw new NotFoundException('Topic not found or does not belong to this subject');
+      }
+
+      // Smooth progress for single file
+      const totalBytes = materialFile.size;
+      let lastPercent = -1;
+      let lastKnownLoaded = 0;
+      let emittedLoaded = 0;
+      const onePercent = Math.max(1, Math.floor(totalBytes / 100));
+      const tickMs = 250;
+      this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
+      const smoother = setInterval(() => {
+        if (emittedLoaded < lastKnownLoaded) {
+          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
+          emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
+          const percent = Math.floor((emittedLoaded / totalBytes) * 100);
+          if (percent > lastPercent) {
+            lastPercent = percent;
+            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
+          }
+        }
+      }, tickMs);
+
+      // Upload to S3 with progress callback
+      const materialUploadResult = await this.s3Service.uploadFile(
+        materialFile,
+        `materials/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`,
+        (loaded) => {
+          lastKnownLoaded = Math.min(loaded, totalBytes);
+        }
+      );
+
+      // Processing/saving
+      this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
+
+      // Next order
+      const lastMaterial = await this.prisma.pDFMaterial.findFirst({
+        where: { topic_id: uploadDto.topic_id, schoolId },
+        orderBy: { order: 'desc' },
+        select: { order: true }
+      });
+      const nextOrder = (lastMaterial?.order || 0) + 1;
+
+      this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
+
+      const material = await this.prisma.pDFMaterial.create({
+        data: {
+          title: uploadDto.title.toLowerCase(),
+          description: uploadDto.description?.toLowerCase(),
+          topic_id: uploadDto.topic_id,
+          schoolId,
+          platformId: 's3-platform-001',
+          uploadedById: userId,
+          order: nextOrder,
+          url: materialUploadResult.url,
+          size: FileValidationHelper.formatFileSize(materialFile.size),
+          fileType: validationResult.fileType,
+          originalName: materialFile.originalname,
+          status: 'published',
+          downloads: 0
+        },
+        include: {
+          topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
+        }
+      });
+
+      clearInterval(smoother);
+      // finalize
+      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, material.id);
+
+      return ResponseHelper.created(
+        'Material uploaded successfully',
+        {
+          id: material.id,
+          title: material.title,
+          description: material.description || undefined,
+          url: material.url,
+          thumbnail: undefined,
+          size: material.size || '0 Bytes',
+          fileType: material.fileType || 'unknown',
+          originalName: material.originalName || '',
+          downloads: material.downloads || 0,
+          status: material.status || 'published',
+          order: material.order || 1,
+          subject_id: uploadDto.subject_id,
+          topic_id: uploadDto.topic_id,
+          uploaded_by: userId,
+          createdAt: material.createdAt,
+          updatedAt: material.updatedAt
+        }
+      );
+    } catch (error) {
+      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
+      throw error;
     }
   }
 }
