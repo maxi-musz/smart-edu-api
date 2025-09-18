@@ -14,6 +14,11 @@ import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { formatDate } from 'src/shared/helper-functions/formatter';
 import { FileValidationHelper } from 'src/shared/helper-functions/file-validation.helper';
+import * as child_process from 'child_process';
+import * as util from 'util';
+import * as path from 'path';
+import * as fs from 'fs';
+const exec = util.promisify(child_process.exec);
 
 @Injectable()
 export class TopicsService {
@@ -1213,6 +1218,9 @@ export class TopicsService {
       }
 
       this.uploadProgressService.updateProgress(sessionId, 'processing');
+      // Remux/transcode to MP4 if needed, then replace URL
+      const processed = await this.ensureMp4FromUrl(videoUploadResult.url, uploadDto.title);
+      const finalVideoUrl = processed?.url || videoUploadResult.url;
       const videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
       const videoDuration = await this.extractVideoDuration(videoFile);
 
@@ -1235,7 +1243,7 @@ export class TopicsService {
           platformId: 's3-platform-001',
           uploadedById: userId,
           order: nextOrder,
-          url: videoUploadResult.url,
+          url: finalVideoUrl,
           duration: videoDuration,
           size: videoSize,
           thumbnail: thumbnailResult ? {
@@ -1330,6 +1338,45 @@ export class TopicsService {
     // This is a placeholder. In production, you'd use ffmpeg or a video processing library
     // For now, we'll return a default duration
     return '00:00:00';
+  }
+
+  /**
+   * Ensure we have an MP4 copy of the uploaded video URL.
+   * If source is already MP4, returns undefined. Otherwise downloads, remuxes/transcodes, uploads MP4 and returns new URL.
+   */
+  private async ensureMp4FromUrl(sourceUrl: string, baseTitle: string): Promise<{ url: string } | undefined> {
+    try {
+      if (sourceUrl.toLowerCase().endsWith('.mp4')) return undefined;
+
+      // Derive S3 key from URL
+      const s3Key = sourceUrl.split('.amazonaws.com/')[1];
+      if (!s3Key) return undefined;
+
+      // Download to temp
+      const { filePath } = await this.s3Service.downloadToTempFile(s3Key);
+
+      // Try remux first (copy codecs)
+      const mp4Temp = filePath.replace(/\.[^/.]+$/, '') + '_remux.mp4';
+      try {
+        await exec(`ffmpeg -y -i ${JSON.stringify(filePath)} -c copy -movflags +faststart ${JSON.stringify(mp4Temp)}`);
+      } catch {
+        // Fallback: visually lossless transcode
+        await exec(`ffmpeg -y -i ${JSON.stringify(filePath)} -c:v libx264 -preset veryslow -crf 18 -c:a aac -b:a 192k -movflags +faststart ${JSON.stringify(mp4Temp)}`);
+      }
+
+      // Upload MP4 next to original
+      const folder = s3Key.substring(0, s3Key.lastIndexOf('/'));
+      const fileName = `${baseTitle.replace(/\s+/g, '_')}_${Date.now()}.mp4`;
+      const uploaded = await this.s3Service.uploadLocalFile(mp4Temp, folder, fileName, 'video/mp4');
+
+      // Cleanup temp files
+      try { fs.unlinkSync(filePath); } catch {}
+      try { fs.unlinkSync(mp4Temp); } catch {}
+
+      return { url: uploaded.url };
+    } catch {
+      return undefined;
+    }
   }
 
   /**
