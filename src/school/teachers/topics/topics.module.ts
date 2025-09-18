@@ -5,9 +5,10 @@ import { PrismaModule } from '../../../prisma/prisma.module';
 import { AcademicSessionModule } from '../../../academic-session/academic-session.module';
 
 import { S3Module } from '../../../shared/services/s3.module';
+import { AiChatModule } from '../../ai-chat/ai-chat.module';
 
 @Module({
-  imports: [PrismaModule, AcademicSessionModule, S3Module],
+  imports: [PrismaModule, AcademicSessionModule, S3Module, AiChatModule],
   controllers: [TopicsController],
   providers: [TopicsService],
   exports: [TopicsService]

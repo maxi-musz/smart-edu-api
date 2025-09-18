@@ -96,14 +96,13 @@ export class UploadProgressService {
 
     // Notify subscribers
     this.notifySubscribers(sessionId, progressDto);
-    
-    this.logger.log(colors.blue(`📈 Progress update: ${sessionId} - ${progress}% (${stage})`));
   }
 
   /**
    * Subscribe to progress updates
    */
   subscribeToProgress(sessionId: string, callback: (progress: UploadProgressDto) => void): () => void {
+    this.logger.log(colors.yellow(`📡 Subscribing to progress for session: ${sessionId}`));
     if (!this.progressSubscribers.has(sessionId)) {
       this.progressSubscribers.set(sessionId, new Set());
     }

@@ -13,9 +13,12 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  Sse,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { TopicsService } from './topics.service';
+import { UploadProgressService } from '../../ai-chat/upload-progress.service';
+import { Observable } from 'rxjs';
 import { CreateTopicRequestDto } from './dto/create-topic-request.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import { TopicResponseDto } from './dto/topic-response.dto';
@@ -32,7 +35,10 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 @UseGuards(JwtGuard)
 @Controller('teachers/topics')
 export class TopicsController {
-  constructor(private readonly topicsService: TopicsService) {}
+  constructor(
+    private readonly topicsService: TopicsService,
+    private readonly uploadProgressService: UploadProgressService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new topic' })
@@ -261,6 +267,53 @@ export class TopicsController {
     );
   }
 
+  // Start upload with progress tracking (returns sessionId immediately)
+  @Post('upload-video/start')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'video', maxCount: 1 },
+      { name: 'thumbnail', maxCount: 1 }
+    ])
+  )
+  @ApiOperation({ summary: 'Start video upload with progress tracking (returns sessionId)' })
+  @ApiConsumes('multipart/form-data')
+  async startVideoUpload(
+    @Body() uploadDto: UploadVideoLessonDto,
+    @UploadedFiles() files: { video?: Express.Multer.File[], thumbnail?: Express.Multer.File[] },
+    @GetUser() user: any,
+  ) {
+    const videoFile = files.video?.[0];
+    const thumbnailFile = files.thumbnail?.[0];
+    return this.topicsService.startVideoUploadSession(uploadDto, videoFile!, thumbnailFile, user);
+  }
+
+  // SSE progress stream (same pattern as ai-chat)
+  @Get('upload-progress/:sessionId')
+  @Sse('upload-progress/:sessionId')
+  @ApiOperation({ summary: 'Stream video upload progress via SSE' })
+  getVideoUploadProgress(@Param('sessionId') sessionId: string): Observable<MessageEvent> {
+    return new Observable(observer => {
+      const current = this.uploadProgressService.getCurrentProgress(sessionId);
+      if (current) {
+        observer.next({ data: JSON.stringify(current) } as MessageEvent);
+      }
+      const unsubscribe = this.uploadProgressService.subscribeToProgress(sessionId, (progress) => {
+        observer.next({ data: JSON.stringify(progress) } as MessageEvent);
+        if (progress.stage === 'completed' || progress.stage === 'error') {
+          observer.complete();
+        }
+      });
+      return () => unsubscribe();
+    });
+  }
+
+  // Polling-friendly progress (for Postman)
+  @Get('video-upload-progress/:sessionId')
+  @ApiOperation({ summary: 'Get current upload progress (polling)' })
+  async getVideoUploadStatus(@Param('sessionId') sessionId: string) {
+    return this.topicsService.getVideoUploadStatus(sessionId);
+  }
+
   @Post('upload-material')
   @UseInterceptors(
     FileFieldsInterceptor([
@@ -305,6 +358,24 @@ export class TopicsController {
       materialFile,
       user
     );
+  }
+
+  // Start material upload with progress tracking
+  @Post('upload-material/start')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'material', maxCount: 1 }
+    ])
+  )
+  @ApiOperation({ summary: 'Start material upload with progress (returns sessionId)' })
+  @ApiConsumes('multipart/form-data')
+  async startMaterialUpload(
+    @Body() uploadDto: UploadMaterialDto,
+    @UploadedFiles() files: { material?: Express.Multer.File[] },
+    @GetUser() user: any,
+  ) {
+    const materialFile = files.material?.[0];
+    return this.topicsService.startMaterialUploadSession(uploadDto, materialFile!, user);
   }
 
 }

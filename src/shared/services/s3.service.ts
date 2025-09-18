@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as colors from 'colors';
 
@@ -48,33 +49,48 @@ export class S3Service {
   async uploadFile(
     file: Express.Multer.File,
     folder: string,
-    fileName?: string
+    fileName?: string,
+    onProgress?: (loadedBytes: number, totalBytes?: number) => void
   ): Promise<S3UploadResult> {
     const key = fileName || `${folder}/${Date.now()}_${file.originalname}`;
     
     this.logger.log(colors.cyan(`🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`));
     
     try {
-      const command = new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: key,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        ACL: 'public-read', // Make file publicly readable
-        Metadata: {
-          originalName: file.originalname,
-          size: file.size.toString(),
-          uploadedAt: new Date().toISOString(),
+      const upload = new Upload({
+        client: this.s3Client,
+        params: {
+          Bucket: this.bucketName,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+          ACL: 'public-read',
+          Metadata: {
+            originalName: file.originalname,
+            size: file.size.toString(),
+            uploadedAt: new Date().toISOString(),
+          },
         },
+        queueSize: 4,
+        partSize: 5 * 1024 * 1024,
+        leavePartsOnError: false,
       });
 
-      const result = await this.s3Client.send(command);
+      if (onProgress) {
+        upload.on('httpUploadProgress', (evt: any) => {
+          if (typeof evt?.loaded === 'number') {
+            onProgress(evt.loaded, evt.total);
+          }
+        });
+      }
+
+      const result: any = await upload.done();
       
       const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
       
       this.logger.log(colors.green(`✅ S3 upload successful: ${file.originalname}`));
       this.logger.log(colors.blue(`   - URL: ${url}`));
-      this.logger.log(colors.blue(`   - ETag: ${result.ETag}`));
+      this.logger.log(colors.blue(`   - ETag: ${result.ETag || result.ETag?.toString?.() || ''}`));
       
       return {
         url,
