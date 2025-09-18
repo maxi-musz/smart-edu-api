@@ -4,6 +4,9 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as colors from 'colors';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 interface S3UploadResult {
   url: string;
@@ -53,6 +56,7 @@ export class S3Service {
     onProgress?: (loadedBytes: number, totalBytes?: number) => void
   ): Promise<S3UploadResult> {
     const key = fileName || `${folder}/${Date.now()}_${file.originalname}`;
+    const resolvedContentType = this.resolveContentType(file);
     
     this.logger.log(colors.cyan(`🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`));
     
@@ -63,7 +67,8 @@ export class S3Service {
           Bucket: this.bucketName,
           Key: key,
           Body: file.buffer,
-          ContentType: file.mimetype,
+          ContentType: resolvedContentType,
+          ContentDisposition: 'inline',
           ACL: 'public-read',
           Metadata: {
             originalName: file.originalname,
@@ -102,6 +107,82 @@ export class S3Service {
       this.logger.error(colors.red(`❌ S3 upload failed: ${error.message}`));
       throw new Error(`S3 upload failed: ${error.message}`);
     }
+  }
+
+  /**
+   * Download an S3 object to a temporary file and return its path and contentType
+   */
+  async downloadToTempFile(key: string): Promise<{ filePath: string; contentType?: string }> {
+    try {
+      const command = new GetObjectCommand({ Bucket: this.bucketName, Key: key });
+      const res: any = await this.s3Client.send(command);
+      const tmpPath = path.join(os.tmpdir(), `s3_${Date.now()}_${path.basename(key)}`);
+      await new Promise<void>((resolve, reject) => {
+        const write = fs.createWriteStream(tmpPath);
+        res.Body.pipe(write);
+        res.Body.on('error', reject);
+        write.on('finish', () => resolve());
+        write.on('error', reject);
+      });
+      return { filePath: tmpPath, contentType: res.ContentType };
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Failed to download S3 object ${key}: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Upload a local file stream to S3 with explicit content type
+   */
+  async uploadLocalFile(
+    localFilePath: string,
+    folder: string,
+    fileName: string,
+    contentType: string
+  ): Promise<S3UploadResult> {
+    const key = `${folder}/${fileName}`;
+    try {
+      const upload = new Upload({
+        client: this.s3Client,
+        params: {
+          Bucket: this.bucketName,
+          Key: key,
+          Body: fs.createReadStream(localFilePath),
+          ContentType: contentType,
+          ContentDisposition: 'inline',
+          ACL: 'public-read',
+          Metadata: { uploadedAt: new Date().toISOString() },
+        },
+        queueSize: 4,
+        partSize: 5 * 1024 * 1024,
+      });
+      const result: any = await upload.done();
+      const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+      return { url, key, bucket: this.bucketName, etag: result.ETag || '' };
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Failed to upload local file ${localFilePath}: ${error.message}`));
+      throw error;
+    }
+  }
+
+  // Infer a better Content-Type when multer supplies generic application/octet-stream
+  private resolveContentType(file: Express.Multer.File): string {
+    const fallback = 'application/octet-stream';
+    if (file.mimetype && file.mimetype !== fallback) return file.mimetype;
+    const name = file.originalname?.toLowerCase() || '';
+    if (name.endsWith('.mp4')) return 'video/mp4';
+    if (name.endsWith('.mkv')) return 'video/x-matroska';
+    if (name.endsWith('.mov')) return 'video/quicktime';
+    if (name.endsWith('.webm')) return 'video/webm';
+    if (name.endsWith('.m4v')) return 'video/x-m4v';
+    if (name.endsWith('.mp3')) return 'audio/mpeg';
+    if (name.endsWith('.aac')) return 'audio/aac';
+    if (name.endsWith('.wav')) return 'audio/wav';
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.gif')) return 'image/gif';
+    return fallback;
   }
 
   /**
