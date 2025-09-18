@@ -42,6 +42,9 @@ export class DocumentProcessingService {
     this.logger.log(colors.cyan(`🔄 Starting direct document processing for material: ${materialId}`));
 
     try {
+      // Ensure a processing record exists (so polling doesn't 404)
+      await this.ensureProcessingRecord(materialId);
+
       // Step 1: Get material from database
       const material = await this.getMaterial(materialId);
       if (!material) {
@@ -141,6 +144,9 @@ export class DocumentProcessingService {
     this.logger.log(colors.cyan(`🔄 Starting document processing for material: ${materialId}`));
 
     try {
+      // Ensure a processing record exists (so polling doesn't 404)
+      await this.ensureProcessingRecord(materialId);
+
       // Step 1: Get material from database
       const material = await this.getMaterial(materialId);
       if (!material) {
@@ -433,6 +439,38 @@ export class DocumentProcessingService {
       this.logger.log(colors.blue(`📊 Updated processing status to: ${status}`));
     } catch (error) {
       this.logger.error(colors.red(`❌ Error updating processing status: ${error.message}`));
+    }
+  }
+
+  /**
+   * Ensure a MaterialProcessing row exists; create if missing
+   */
+  private async ensureProcessingRecord(materialId: string): Promise<void> {
+    try {
+      const existing = await this.prisma.materialProcessing.findFirst({ where: { material_id: materialId } });
+      if (existing) {
+        // If it exists but is terminal FAILED/COMPLETED, set to PROCESSING when re-triggered
+        if (existing.status !== 'PROCESSING') {
+          await this.updateProcessingStatus(materialId, 'PROCESSING');
+        }
+        return;
+      }
+      // Need school_id for creation
+      const material = await this.prisma.pDFMaterial.findUnique({ where: { id: materialId }, select: { schoolId: true } });
+      await this.prisma.materialProcessing.create({
+        data: {
+          material_id: materialId,
+          school_id: material?.schoolId || '',
+          status: 'PROCESSING',
+          total_chunks: 0,
+          processed_chunks: 0,
+          failed_chunks: 0,
+        }
+      });
+      this.logger.log(colors.blue(`📝 Created processing status row (PROCESSING) for: ${materialId}`));
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Failed to ensure processing record: ${error.message}`));
+      // do not throw; processing can continue, status updates may fail silently
     }
   }
 

@@ -133,8 +133,8 @@ model User {
   tokensUsedThisWeek   Int @default(0)
   tokensUsedAllTime    Int @default(0)
   messagesSentThisWeek Int @default(0)
-  maxTokensPerDay     Int @default(50000)
-  tokensUsedThisDay   Int @default(0)
+  maxTokensPerDay      Int @default(50000)
+  tokensUsedThisDay    Int @default(0)
   maxTokensPerWeek     Int @default(50000)
   maxMessagesPerWeek   Int @default(100)
 
@@ -573,6 +573,7 @@ model VideoContent {
 
 model PDFMaterial {
   id                  String              @id @default(cuid())
+  materialId          String?             @unique @default(uuid())
   title               String
   description         String?
   url                 String

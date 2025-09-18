@@ -10,6 +10,7 @@ import { ResponseHelper } from '../../../shared/helper-functions/response.helper
 
 import { S3Service } from '../../../shared/services/s3.service';
 import { UploadProgressService } from '../../ai-chat/upload-progress.service';
+import { DocumentProcessingService } from '../../ai-chat/services';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { formatDate } from 'src/shared/helper-functions/formatter';
@@ -29,6 +30,7 @@ export class TopicsService {
     private readonly academicSessionService: AcademicSessionService,
     private readonly s3Service: S3Service,
     private readonly uploadProgressService: UploadProgressService,
+    private readonly documentProcessingService: DocumentProcessingService,
   ) {}
 
   async createTopic(createTopicRequestDto: CreateTopicRequestDto, user: any) {
@@ -1544,6 +1546,19 @@ export class TopicsService {
       });
 
       this.logger.log(colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully!`));
+      try {
+        this.logger.log(colors.blue(`🧠 Starting AI processing for material: ${material.id}`));
+        this.documentProcessingService.processDocument(material.id);
+      } catch (e) {
+        this.logger.error(colors.red(`❌ Failed to start AI processing for material ${material.id}: ${e.message}`));
+      }
+      // Kick off background processing for AI chat (chunking + embeddings)
+      try {
+        this.logger.log(colors.blue(`🧠 Starting AI processing for material: ${material.id}`));
+        this.documentProcessingService.processDocument(material.id);
+      } catch (e) {
+        this.logger.error(colors.red(`❌ Failed to start AI processing for material ${material.id}: ${e.message}`));
+      }
       this.logger.log(colors.blue(`📊 Material Details:`));
       this.logger.log(colors.blue(`   - Size: ${materialSize}`));
       this.logger.log(colors.blue(`   - Type: ${validationResult.fileType}`));
@@ -1742,5 +1757,94 @@ export class TopicsService {
       this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Process a material for AI chat (chunking + embeddings) if not already processed
+   */
+  async processMaterialForChat(id: string, user?: any) {
+    this.logger.log(colors.cyan(`🔄 Requested AI processing for material: ${id}`));
+    // Validate material exists
+    const material = await this.prisma.pDFMaterial.findUnique({
+      where: { id: id },
+      select: { id: true }
+    });
+    if (!material) {
+      this.logger.error(colors.red(`❌ Material not found: ${id}`));
+      throw new NotFoundException('Material not found');
+    }
+
+    // If user provided, check if there is an existing conversation for this user & material
+    if (user?.id || user?.sub) {
+      const userId = user.id || user.sub;
+      // Find the most recent conversation tied to this material and user
+      const conversation = await this.prisma.chatConversation.findFirst({
+        where: {
+          user_id: userId,
+          material_id: id,
+        },
+        orderBy: { last_activity: 'desc' }
+      });
+
+      if (conversation) {
+        // Fetch last N messages for quick resume
+        const messages = await this.prisma.chatMessage.findMany({
+          where: {
+            conversation_id: conversation.id,
+            user_id: userId,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 25,
+        });
+
+        return ResponseHelper.success('Existing conversation found for this material', {
+          materialId: id,
+          conversationId: conversation.id,
+          title: conversation.title,
+          totalMessages: conversation.total_messages,
+          lastActivity: conversation.last_activity?.toISOString?.() || conversation.last_activity,
+          messages: messages.reverse().map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            createdAt: m.createdAt.toISOString(),
+          })),
+        });
+      }
+    } else {
+      this.logger.error(colors.red(`❌ User not found: ${user?.id || user?.sub}`));
+      throw new NotFoundException('User not found');
+    }
+
+    // Check processing status via existing AI service
+    let status: any | null = null;
+    try {
+      status = await this.documentProcessingService.getProcessingStatus(id);
+    } catch {}
+
+    // If already processed, return success
+    if (status && (status.total_chunks > 0 || status.status === 'COMPLETED')) {
+      this.logger.log(colors.green(`✅ Document successfully processed for chat: ${id}`));
+      return ResponseHelper.success('Document successfully processed for chat', {
+        materialId: id,
+        status: status.status,
+        totalChunks: status.total_chunks,
+        processedChunks: status.processed_chunks,
+        failedChunks: status.failed_chunks,
+      });
+    }
+
+    // Not yet processed → ensure processing is running, and inform client it's not ready
+    if (!status || status.status !== 'PROCESSING') {
+      this.logger.log(colors.blue(`🧠 Starting AI processing for document: ${id}`));
+      this.documentProcessingService.processDocument(id);
+    } else {
+      this.logger.log(colors.yellow(`⏳ Document is currently processing: ${id}`));
+    }
+
+    return new ApiResponse(false, 'Document not yet processed for AI chat', {
+      materialId: id,
+      status: 'PROCESSING'
+    });
   }
 }
