@@ -31,13 +31,30 @@ export class ChatService {
   }
 
   private readonly MATERIAL_SYSTEM_PROMPT = `
-  You are a helpful AI assistant.
-  You are to help school owners, teachers and students on any material they want to chat with.
-  You are an expert in the subject of the material uploaded.
-  Answer them with 100% assurance like you are tutoring them, they are looking up to you for answers.
-  You are to use the material uploaded to answer their questions.
-  Do not answer a question that is in no way relating to the material uploaded (imagine someone asking how can I become rich when chatting with a mathematics material).
-  This is Important -- Keep your answer as brief as possible without unnecessary story, unless the user is asking for a specific amount or number of things, give them complete
+  You are a professional teacher and subject‑matter expert.
+  Your job is to teach with confidence using the uploaded material as your primary source. For questions about the material's content, use it directly. For improvement suggestions, analysis, or general guidance, provide helpful professional advice.
+
+  Communication style:
+  - Be direct, confident, and authoritative. Avoid hedging and filler.
+  - Do NOT use weak phrases: "appears", "seems", "might", "I think", "I believe", "likely".
+  - Prefer imperative teacher language: "Do X", "Recall that…", "Use method Y because…".
+  - Keep answers concise but complete. Use bullets or short steps when helpful.
+  - When a calculation or method is requested, show the minimal steps needed, then the result.
+
+  Grounding rules:
+  - For content questions: Use facts, definitions, notation, and examples from the material first.
+  - For improvement/analysis questions: Provide professional guidance based on the material's structure and content, even if not explicitly stated.
+  - For completely unrelated topics: Say "This question is outside the scope of this material" and redirect to the material.
+
+  Behavior:
+  - Act as a mentor guiding a student. Offer quick checks, common pitfalls, and next steps when appropriate.
+  - If the student's question is vague, ask one concise clarifying question before proceeding.
+  - Keep responses within 3–8 sentences unless the user explicitly requests more detail or steps.
+
+  Tone examples:
+  - Good: "This is a Level 1 workbook on number sense and basic algebra. Start with page 12: practice counting in tens; then attempt Exercise B. Use a number line to visualize jumps of ten."
+  - Good: "To improve this form, add clear instructions, use consistent formatting, and include examples for each section."
+  - Avoid: "This document appears to be… It might be about…"
 `;
 
   private readonly GENERAL_SYSTEM_PROMPT = `
@@ -172,7 +189,8 @@ export class ChatService {
         sendMessageDto.message,
         contextChunks,
         systemPrompt,
-        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 50) : []
+        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 50, userId) : [],
+        Boolean((conversation as any).material_id)
       );
 
       // Generate chat title for new conversations (first message)
@@ -198,6 +216,8 @@ export class ChatService {
       }
 
       // Save AI message
+      const refinedContent = this.refineTone(aiResponse.content);
+
       const aiMessage = await this.prisma.chatMessage.create({
         data: {
           conversation_id: conversation.id,
@@ -205,7 +225,7 @@ export class ChatService {
           school_id: schoolId,
           material_id: sendMessageDto.materialId || null,
           role: 'ASSISTANT',
-          content: aiResponse.content,
+          content: refinedContent,
           message_type: 'TEXT',
           model_used: 'gpt-4o-mini',
           tokens_used: aiResponse.tokensUsed,
@@ -467,7 +487,8 @@ export class ChatService {
     userMessage: string,
     contextChunks: any[],
     systemPrompt: string,
-    conversationHistory: any[]
+    conversationHistory: any[],
+    isMaterialChat: boolean
   ): Promise<{ content: string; tokensUsed: number }> {
     try {
       // Build context from chunks
@@ -508,7 +529,7 @@ export class ChatService {
         model: 'gpt-4o-mini',
         messages: messages as any,
         max_tokens: 4000,
-        temperature: 0.7,
+        temperature: isMaterialChat ? 0.25 : 0.7,
       });
 
       return {
@@ -525,9 +546,12 @@ export class ChatService {
   /**
    * Get conversation history for context
    */
-  private async getConversationHistory(conversationId: string, limit: number) {
+  private async getConversationHistory(conversationId: string, limit: number, userId?: string) {
     const messages = await this.prisma.chatMessage.findMany({
-      where: { conversation_id: conversationId },
+      where: { 
+        conversation_id: conversationId,
+        ...(userId && { user_id: userId })
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -596,6 +620,31 @@ export class ChatService {
     } catch (error) {
       this.logger.error(colors.red(`❌ Error updating token usage: ${error.message}`));
     }
+  }
+
+  /**
+   * Refine tone to remove hedging and start decisively
+   */
+  private refineTone(text: string): string {
+    if (!text) return text;
+
+    // Remove common hedging phrases
+    const hedges = [
+      /\bthis (document|workbook) (appears to|seems to|might)\b/gi,
+      /\b(it|this) (appears|seems|might|likely)\b/gi,
+      /\bI (think|believe)\b/gi,
+      /\bprobably\b/gi,
+    ];
+    let refined = text;
+    for (const h of hedges) {
+      refined = refined.replace(h, (match) => match.replace(/(appears to|seems to|might|likely|I think|I believe|probably)/gi, 'is'));
+    }
+
+    // Ensure opening doesn’t start with weak framing
+    refined = refined.replace(/^\s*the document you provided\s+is/iu, 'This material is');
+    refined = refined.replace(/^\s*the document you provided\s+appears\s+to\s+be/iu, 'This material is');
+
+    return refined.trim();
   }
 
   /**

@@ -39,6 +39,13 @@ export class TopicsController {
     private readonly topicsService: TopicsService,
     private readonly uploadProgressService: UploadProgressService,
   ) {}
+  @Post('process-for-chat/:materialId')
+  @ApiOperation({ summary: 'Process a material for AI chat (chunk + embed) if not already processed' })
+  @ApiParam({ name: 'materialId', description: 'PDF material ID' })
+  @ApiResponse({ status: 202, description: 'Processing started or already processed' })
+  async processMaterialForChat(@Param('materialId') materialId: string, @GetUser() user: any) {
+    return this.topicsService.processMaterialForChat(materialId, user);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new topic' })
