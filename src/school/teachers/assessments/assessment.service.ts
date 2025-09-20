@@ -98,7 +98,7 @@ export class AssessmentService {
         show_feedback: createQuizDto.show_feedback !== false, // default true
         allow_review: createQuizDto.allow_review !== false, // default true
         start_date: createQuizDto.start_date ? new Date(createQuizDto.start_date) : null,
-        end_date: createQuizDto.end_date ? new Date(createQuizDto.end_date) : null,
+        end_date: createQuizDto.end_date ? new Date(createQuizDto.end_date) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // Default: 2 days from now
         time_limit: createQuizDto.time_limit,
         grading_type: createQuizDto.grading_type || 'AUTOMATIC',
         auto_submit: createQuizDto.auto_submit || false,

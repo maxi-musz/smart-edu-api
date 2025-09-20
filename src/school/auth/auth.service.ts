@@ -426,7 +426,7 @@ export class AuthService {
             }
 
             // Define roles that require OTP verification
-            const rolesRequiringOtp = ['admin', 'school_director', 'teacher'];
+            const rolesRequiringOtp = ['admin', 'school_director'];
             
             // Check if user role requires OTP verification
             if (rolesRequiringOtp.includes(existing_user.role.toLowerCase()) && (existing_user.email !== "bernardmayowaa@gmail.com")) {
