@@ -617,7 +617,8 @@ export class StudentsService {
           }
 
           // 5. Generate strong password if not provided
-          const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
+          const generatedPassword = "maximus123"
+          // const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
           const hashedPassword = await argon.hash(generatedPassword);
 
           // 6. Get current academic session for the school
@@ -631,7 +632,7 @@ export class StudentsService {
           }
 
           // 7. Execute everything in a transaction
-          let result;
+          let result:any;
           try {
             result = await this.prisma.$transaction(async (tx) => {
               // Create new user

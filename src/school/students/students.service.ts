@@ -60,7 +60,7 @@ export class StudentsService {
       return new ApiResponse(false, 'User not found', null);
     }
 
-    this.logger.log(colors.green(`Full user: ${JSON.stringify(full_user)}`));
+    // this.logger.log(colors.green(`Full user: ${JSON.stringify(full_user)}`));
 
     // Check if user has student role
     if (full_user.role !== 'student') {
