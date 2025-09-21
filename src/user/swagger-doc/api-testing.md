@@ -147,7 +147,7 @@ describe('UserService', () => {
             subject: {
               findMany: jest.fn(),
             },
-            cBTQuizAttempt: {
+            assessmentAttempt: {
               findMany: jest.fn(),
             },
             student: {
@@ -217,7 +217,7 @@ describe('UserService', () => {
       jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(mockUser as any);
       jest.spyOn(prismaService.class, 'findUnique').mockResolvedValue(mockClass as any);
       jest.spyOn(prismaService.subject, 'findMany').mockResolvedValue(mockSubjects as any);
-      jest.spyOn(prismaService.cBTQuizAttempt, 'findMany').mockResolvedValue(mockAttempts as any);
+      jest.spyOn(prismaService.assessmentAttempt, 'findMany').mockResolvedValue(mockAttempts as any);
       jest.spyOn(prismaService.student, 'count').mockResolvedValue(45);
       jest.spyOn(prismaService.academicSession, 'findFirst').mockResolvedValue({
         id: 'session_123',

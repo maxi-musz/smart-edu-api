@@ -827,7 +827,7 @@ export class TopicsService {
         }),
 
         // CBT Quizzes
-        this.prisma.cBTQuiz.findMany({
+        this.prisma.assessment.findMany({
           where: {
             topic_id: topicId,
             school_id: schoolId,

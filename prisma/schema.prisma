@@ -2,6 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator seed {
+  provider = "ts-node prisma/seed-comprehensive.ts"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -24,8 +28,9 @@ model AcademicSession {
   assignments           Assignment[]
   assignmentGrades      AssignmentGrade[]
   assignmentSubmissions AssignmentSubmission[]
-  cbtQuizzes            CBTQuiz[]
-  cbtQuizAttempts       CBTQuizAttempt[]
+  assessments           Assessment[]
+  assessmentAttempts    AssessmentAttempt[]
+  assessmentSubmissions AssessmentSubmission[]
   classes               Class[]
   gradingRubrics        GradingRubric[]
   notifications         Notification[]
@@ -62,8 +67,9 @@ model School {
   assignments           Assignment[]
   assignmentGrades      AssignmentGrade[]
   assignmentSubmissions AssignmentSubmission[]
-  cbtQuizzes            CBTQuiz[]
-  cbtQuizAttempts       CBTQuizAttempt[]
+  assessments           Assessment[]
+  assessmentAttempts    AssessmentAttempt[]
+  assessmentSubmissions AssessmentSubmission[]
   chatAnalytics         ChatAnalytics[]
   chatContexts          ChatContext[]
   chatConversations     ChatConversation[]
@@ -148,10 +154,12 @@ model User {
   assignmentGradesReceived AssignmentGrade[]
   assignmentGradesGiven    AssignmentGrade[]      @relation("AssignmentGradeGiver")
   assignmentSubmissions    AssignmentSubmission[]
-  cbtQuizzesCreated        CBTQuiz[]
-  cbtGradesGiven           CBTQuizAttempt[]       @relation("CBTGrader")
-  cbtQuizAttempts          CBTQuizAttempt[]
-  cbtResponses             CBTResponse[]
+  assessmentsCreated       Assessment[]
+  assessmentGradesGiven    AssessmentSubmission[] @relation("AssessmentGrader")
+  assessmentAttemptsGraded AssessmentAttempt[]    @relation("AssessmentGrader")
+  assessmentSubmissions    AssessmentSubmission[]
+  assessmentAttempts       AssessmentAttempt[]
+  assessmentResponses      AssessmentResponse[]
   chatAnalytics            ChatAnalytics[]
   chatConversations        ChatConversation[]
   chatMessages             ChatMessage[]
@@ -168,7 +176,6 @@ model User {
   topicsCreated            Topic[]                @relation("TopicCreator")
   school                   School                 @relation(fields: [school_id], references: [id])
   videoContent             VideoContent[]
-  classesEnrolled          Class[]                @relation("StudentClass")
 }
 
 model Teacher {
@@ -221,6 +228,7 @@ model Student {
   date_of_birth       DateTime?
   admission_date      DateTime        @default(now())
   current_class_id    String?
+  current_class       Class?          @relation(fields: [current_class_id], references: [id])
   guardian_name       String?
   guardian_phone      String?
   guardian_email      String?
@@ -293,7 +301,7 @@ model Class {
   performances        StudentPerformance[]
   subjects            Subject[]
   schedules           TimetableEntry[]
-  students            User[]               @relation("StudentClass")
+  students            Student[]
 
   @@unique([schoolId, academic_session_id, classId])
   @@index([schoolId, academic_session_id])
@@ -312,7 +320,7 @@ model Subject {
   updatedAt           DateTime         @updatedAt
   classId             String?
   thumbnail           Json?
-  cbtQuizzes          CBTQuiz[]
+  assessments         Assessment[]
   academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
   Class               Class?           @relation(fields: [classId], references: [id])
   school              School           @relation(fields: [schoolId], references: [id])
@@ -338,7 +346,7 @@ model Topic {
   instructions         String?
   assignments          Assignment[]
   AssignmentSubmission AssignmentSubmission[]
-  cbtQuizzes           CBTQuiz[]
+  assessments          Assessment[]
   libraryResources     LibraryResource[]
   liveClasses          LiveClass[]
   pdfMaterial          PDFMaterial[]
@@ -648,47 +656,48 @@ model Assignment {
   @@index([is_published])
 }
 
-model CBTQuiz {
-  id                   String            @id @default(cuid())
-  title                String
-  description          String?
-  duration             Int?
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
-  topic_id             String?
-  order                Int               @default(0)
-  academic_session_id  String
-  allow_review         Boolean           @default(true)
-  auto_submit          Boolean           @default(false)
-  created_by           String
-  end_date             DateTime?
-  grading_type         GradingType       @default(AUTOMATIC)
-  instructions         String?
-  is_published         Boolean           @default(false)
-  max_attempts         Int               @default(1)
-  passing_score        Float             @default(50.0)
-  published_at         DateTime?
-  school_id            String
-  show_correct_answers Boolean           @default(false)
-  show_feedback        Boolean           @default(true)
-  shuffle_options      Boolean           @default(false)
-  shuffle_questions    Boolean           @default(false)
-  start_date           DateTime?
-  tags                 String[]
-  time_limit           Int?
-  total_points         Float             @default(100.0)
-  status               QuizStatus        @default(DRAFT)
-  subject_id           String
-  assessment_type      AssessmentType    @default(CBT)
-  submissions          Json?
-  questions            CBTQuestion[]
-  academicSession      AcademicSession   @relation(fields: [academic_session_id], references: [id])
-  createdBy            User              @relation(fields: [created_by], references: [id])
-  school               School            @relation(fields: [school_id], references: [id])
-  subject              Subject           @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  topic                Topic?            @relation(fields: [topic_id], references: [id])
-  analytics            CBTQuizAnalytics?
-  attempts             CBTQuizAttempt[]
+model Assessment {
+  id                    String                 @id @default(cuid())
+  title                 String
+  description           String?
+  duration              Int?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  topic_id              String?
+  order                 Int                    @default(0)
+  academic_session_id   String
+  allow_review          Boolean                @default(true)
+  auto_submit           Boolean                @default(false)
+  created_by            String
+  end_date              DateTime?
+  grading_type          GradingType            @default(AUTOMATIC)
+  instructions          String?
+  is_published          Boolean                @default(false)
+  max_attempts          Int                    @default(1)
+  passing_score         Float                  @default(50.0)
+  published_at          DateTime?
+  school_id             String
+  show_correct_answers  Boolean                @default(false)
+  show_feedback         Boolean                @default(true)
+  shuffle_options       Boolean                @default(false)
+  shuffle_questions     Boolean                @default(false)
+  start_date            DateTime?
+  tags                  String[]
+  time_limit            Int?
+  total_points          Float                  @default(100.0)
+  status                QuizStatus             @default(DRAFT)
+  subject_id            String
+  assessment_type       AssessmentType         @default(CBT)
+  submissions           Json?
+  questions             AssessmentQuestion[]
+  academicSession       AcademicSession        @relation(fields: [academic_session_id], references: [id])
+  createdBy             User                   @relation(fields: [created_by], references: [id])
+  school                School                 @relation(fields: [school_id], references: [id])
+  subject               Subject                @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic                 Topic?                 @relation(fields: [topic_id], references: [id])
+  analytics             AssessmentAnalytics?
+  attempts              AssessmentAttempt[]
+  assessmentSubmissions AssessmentSubmission[]
 
   @@index([school_id, academic_session_id])
   @@index([topic_id])
@@ -699,107 +708,147 @@ model CBTQuiz {
   @@index([start_date, end_date])
 }
 
-model CBTQuestion {
-  id                      String             @id @default(cuid())
-  quiz_id                 String
+model AssessmentQuestion {
+  id                      String                    @id @default(cuid())
+  assessment_id           String
   question_text           String
   question_type           QuestionType
   order                   Int
-  points                  Float              @default(1.0)
-  is_required             Boolean            @default(true)
+  points                  Float                     @default(1.0)
+  is_required             Boolean                   @default(true)
   time_limit              Int?
   image_url               String?
   audio_url               String?
   video_url               String?
-  allow_multiple_attempts Boolean            @default(false)
-  show_hint               Boolean            @default(false)
+  allow_multiple_attempts Boolean                   @default(false)
+  show_hint               Boolean                   @default(false)
   hint_text               String?
   min_length              Int?
   max_length              Int?
   min_value               Float?
   max_value               Float?
   explanation             String?
-  difficulty_level        DifficultyLevel    @default(MEDIUM)
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
-  correct_answers         CBTCorrectAnswer[]
-  options                 CBTOption[]
-  quiz                    CBTQuiz            @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
-  responses               CBTResponse[]
+  difficulty_level        DifficultyLevel           @default(MEDIUM)
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  correct_answers         AssessmentCorrectAnswer[]
+  options                 AssessmentOption[]
+  assessment              Assessment                @relation(fields: [assessment_id], references: [id], onDelete: Cascade)
+  responses               AssessmentResponse[]
 
-  @@index([quiz_id, order])
+  @@index([assessment_id, order])
   @@index([question_type])
 }
 
-model CBTOption {
-  id          String        @id @default(cuid())
+model AssessmentOption {
+  id          String               @id @default(cuid())
   question_id String
   option_text String
   order       Int
-  is_correct  Boolean       @default(false)
+  is_correct  Boolean              @default(false)
   image_url   String?
   audio_url   String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  question    CBTQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  responses   CBTResponse[] @relation("ResponseOptions")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  question    AssessmentQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  responses   AssessmentResponse[] @relation("ResponseOptions")
 
   @@index([question_id, order])
 }
 
-model CBTCorrectAnswer {
-  id            String      @id @default(cuid())
+model AssessmentCorrectAnswer {
+  id            String             @id @default(cuid())
   question_id   String
   answer_text   String?
   answer_number Float?
   answer_date   DateTime?
   option_ids    String[]
   answer_json   Json?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  question      CBTQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  question      AssessmentQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
 
   @@index([question_id])
 }
 
-model CBTQuizAttempt {
-  id                  String            @id @default(cuid())
-  quiz_id             String
+model AssessmentAttempt {
+  id                  String               @id @default(cuid())
+  assessment_id       String
   student_id          String
   school_id           String
   academic_session_id String
-  attempt_number      Int               @default(1)
-  status              QuizAttemptStatus @default(NOT_STARTED)
+  attempt_number      Int                  @default(1)
+  status              QuizAttemptStatus    @default(NOT_STARTED)
   started_at          DateTime?
   submitted_at        DateTime?
   time_spent          Int?
-  total_score         Float             @default(0)
+  total_score         Float                @default(0)
   max_score           Float
-  percentage          Float             @default(0)
-  passed              Boolean           @default(false)
-  is_graded           Boolean           @default(false)
+  percentage          Float                @default(0)
+  passed              Boolean              @default(false)
+  is_graded           Boolean              @default(false)
   graded_at           DateTime?
   graded_by           String?
   overall_feedback    String?
   grade_letter        String?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  academicSession     AcademicSession   @relation(fields: [academic_session_id], references: [id])
-  grader              User?             @relation("CBTGrader", fields: [graded_by], references: [id])
-  quiz                CBTQuiz           @relation(fields: [quiz_id], references: [id])
-  school              School            @relation(fields: [school_id], references: [id])
-  student             User              @relation(fields: [student_id], references: [id])
-  responses           CBTResponse[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  grader              User?                @relation("AssessmentGrader", fields: [graded_by], references: [id])
+  assessment          Assessment           @relation(fields: [assessment_id], references: [id])
+  school              School               @relation(fields: [school_id], references: [id])
+  student             User                 @relation(fields: [student_id], references: [id])
+  responses           AssessmentResponse[]
 
-  @@unique([quiz_id, student_id, attempt_number])
-  @@index([quiz_id])
+  @@unique([assessment_id, student_id, attempt_number])
+  @@index([assessment_id])
   @@index([student_id])
   @@index([status])
   @@index([submitted_at])
 }
 
-model CBTResponse {
-  id               String         @id @default(cuid())
+model AssessmentSubmission {
+  id                  String           @id @default(cuid())
+  assessment_id       String
+  student_id          String
+  school_id           String
+  academic_session_id String
+  submission_type     AssessmentType   @default(CBT)
+  content             String?
+  attachment_url      String?
+  attachment_type     String?
+  status              SubmissionStatus @default(SUBMITTED)
+  submitted_at        DateTime         @default(now())
+  late_submission     Boolean          @default(false)
+  word_count          Int?
+  file_size           String?
+  total_score         Float?
+  max_score           Float?
+  percentage          Float?
+  passed              Boolean          @default(false)
+  is_graded           Boolean          @default(false)
+  graded_at           DateTime?
+  graded_by           String?
+  feedback            String?
+  grade_letter        String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
+  assessment          Assessment       @relation(fields: [assessment_id], references: [id], onDelete: Cascade)
+  grader              User?            @relation("AssessmentGrader", fields: [graded_by], references: [id])
+  school              School           @relation(fields: [school_id], references: [id])
+  student             User             @relation(fields: [student_id], references: [id])
+
+  @@unique([assessment_id, student_id])
+  @@index([assessment_id])
+  @@index([student_id])
+  @@index([school_id, academic_session_id])
+  @@index([submitted_at])
+  @@index([status])
+}
+
+model AssessmentResponse {
+  id               String             @id @default(cuid())
   attempt_id       String
   question_id      String
   student_id       String
@@ -809,17 +858,17 @@ model CBTResponse {
   selected_options String[]
   file_urls        String[]
   is_correct       Boolean?
-  points_earned    Float          @default(0)
+  points_earned    Float              @default(0)
   max_points       Float
   time_spent       Int?
   feedback         String?
-  is_graded        Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  attempt          CBTQuizAttempt @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
-  question         CBTQuestion    @relation(fields: [question_id], references: [id])
-  student          User           @relation(fields: [student_id], references: [id])
-  selectedOptions  CBTOption[]    @relation("ResponseOptions")
+  is_graded        Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  attempt          AssessmentAttempt  @relation(fields: [attempt_id], references: [id], onDelete: Cascade)
+  question         AssessmentQuestion @relation(fields: [question_id], references: [id])
+  student          User               @relation(fields: [student_id], references: [id])
+  selectedOptions  AssessmentOption[] @relation("ResponseOptions")
 
   @@unique([attempt_id, question_id])
   @@index([attempt_id])
@@ -827,25 +876,25 @@ model CBTResponse {
   @@index([student_id])
 }
 
-model CBTQuizAnalytics {
-  id               String   @id @default(cuid())
-  quiz_id          String   @unique
-  total_attempts   Int      @default(0)
-  total_students   Int      @default(0)
-  average_score    Float    @default(0)
-  average_time     Int      @default(0)
-  pass_rate        Float    @default(0)
+model AssessmentAnalytics {
+  id               String     @id @default(cuid())
+  assessment_id    String     @unique
+  total_attempts   Int        @default(0)
+  total_students   Int        @default(0)
+  average_score    Float      @default(0)
+  average_time     Int        @default(0)
+  pass_rate        Float      @default(0)
   question_stats   Json
   daily_attempts   Json
   hourly_attempts  Json
-  completion_rate  Float    @default(0)
-  abandonment_rate Float    @default(0)
-  last_updated     DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  quiz             CBTQuiz  @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  completion_rate  Float      @default(0)
+  abandonment_rate Float      @default(0)
+  last_updated     DateTime   @default(now())
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  assessment       Assessment @relation(fields: [assessment_id], references: [id], onDelete: Cascade)
 
-  @@index([quiz_id])
+  @@index([assessment_id])
 }
 
 model LiveClass {

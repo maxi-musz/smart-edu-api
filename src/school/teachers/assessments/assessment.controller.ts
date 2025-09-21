@@ -23,7 +23,7 @@ import {
 import { AssessmentService } from './assessment.service';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
-import { CreateCBTQuizDto, UpdateCBTQuizDto, CreateCBTQuestionDto, UpdateCBTQuestionDto } from './cbt-dto';
+import { CreateAssessmentDto, UpdateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentQuestionDto } from './cbt-dto';
 
 @ApiTags('Teachers - Assessments')
 @ApiBearerAuth()
@@ -33,21 +33,21 @@ export class AssessmentController {
   constructor(private readonly assessmentService: AssessmentService) {}
 
   @Post('')
-  @ApiOperation({ summary: 'Create a new CBT quiz' })
+  @ApiOperation({ summary: 'Create a new Assessment' })
   @ApiResponse({ status: 201, description: 'Quiz created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
   @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to topic' })
   @ApiResponse({ status: 404, description: 'Not found - Topic not found' })
-  @ApiBody({ type: CreateCBTQuizDto })
+  @ApiBody({ type: CreateAssessmentDto })
   async createQuiz(
-    @Body() createQuizDto: CreateCBTQuizDto,
+    @Body() createQuizDto: CreateAssessmentDto,
     @GetUser() user: any
   ) {
     return this.assessmentService.createQuiz(createQuizDto, user);
   }
 
   @Get('')
-  @ApiOperation({ summary: 'Get all CBT quizzes created by teacher' })
+  @ApiOperation({ summary: 'Get all Assessmentzes created by teacher' })
   @ApiQuery({ name: 'subject_id', required: true, description: 'ID of the subject' })
   @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PUBLISHED', 'ACTIVE', 'CLOSED', 'ARCHIVED'] })
   @ApiQuery({ name: 'topic_id', required: false })
@@ -113,14 +113,14 @@ export class AssessmentController {
   @Post(':id/questions')
   @ApiOperation({ summary: 'Add a new question to an assessment' })
   @ApiParam({ name: 'id', description: 'ID of the assessment' })
-  @ApiBody({ type: CreateCBTQuestionDto })
+  @ApiBody({ type: CreateAssessmentQuestionDto })
   @ApiResponse({ status: 201, description: 'Question created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid question data' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
   @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
   async createQuestion(
     @Param('id') assessmentId: string,
-    @Body() createQuestionDto: CreateCBTQuestionDto,
+    @Body() createQuestionDto: CreateAssessmentQuestionDto,
     @GetUser() user: any
   ) {
     return this.assessmentService.createQuestion(assessmentId, createQuestionDto, user.sub);
@@ -130,7 +130,7 @@ export class AssessmentController {
   @ApiOperation({ summary: 'Update a specific question in an assessment' })
   @ApiParam({ name: 'assessmentId', description: 'ID of the assessment' })
   @ApiParam({ name: 'questionId', description: 'ID of the question' })
-  @ApiBody({ type: UpdateCBTQuestionDto })
+  @ApiBody({ type: UpdateAssessmentQuestionDto })
   @ApiResponse({ status: 200, description: 'Question updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid question data' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment or question not found or access denied' })
@@ -138,7 +138,7 @@ export class AssessmentController {
   async updateQuestion(
     @Param('assessmentId') assessmentId: string,
     @Param('questionId') questionId: string,
-    @Body() updateQuestionDto: UpdateCBTQuestionDto,
+    @Body() updateQuestionDto: UpdateAssessmentQuestionDto,
     @GetUser() user: any
   ) {
     return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user.sub);
@@ -168,10 +168,10 @@ export class AssessmentController {
   @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
   @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
-  @ApiBody({ type: UpdateCBTQuizDto })
+  @ApiBody({ type: UpdateAssessmentDto })
   async updateAssessment(
     @Param('id') assessmentId: string,
-    @Body() updateAssessmentDto: UpdateCBTQuizDto,
+    @Body() updateAssessmentDto: UpdateAssessmentDto,
     @GetUser() user: any
   ) {
     return this.assessmentService.updateQuiz(assessmentId, updateAssessmentDto, user.sub);

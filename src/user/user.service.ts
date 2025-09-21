@@ -58,13 +58,13 @@ export class UserService {
       });
 
       // Get student's assessment attempts for performance calculation
-      const assessmentAttempts = await this.prisma.cBTQuizAttempt.findMany({
+      const assessmentAttempts = await this.prisma.assessmentAttempt.findMany({
         where: {
           student_id: user.sub,
           academic_session_id: currentSession?.id
         },
         include: {
-          quiz: {
+          assessment: {
             select: {
               id: true,
               title: true,

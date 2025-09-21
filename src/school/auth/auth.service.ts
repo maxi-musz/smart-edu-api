@@ -938,12 +938,10 @@ export class AuthService {
                             c.name === studentData.default_class.toLowerCase().replace(/\s+/g, '')
                         )?.id;
                         if (classId) {
-                            await this.prisma.user.update({
-                                where: { id: student.id },
+                            await this.prisma.student.update({
+                                where: { user_id: student.id },
                                 data: {
-                                    classesEnrolled: {
-                                        connect: { id: classId }
-                                    }
+                                    current_class_id: classId
                                 }
                             });
                         }
@@ -1395,12 +1393,10 @@ export class AuthService {
                                     c.name === studentData.default_class.toLowerCase().replace(/\s+/g, '')
                                 )?.id;
                                 if (classId) {
-                                    await prisma.user.update({
-                                        where: { id: student.id },
+                                    await prisma.student.update({
+                                        where: { user_id: student.id },
                                         data: {
-                                            classesEnrolled: {
-                                                connect: { id: classId }
-                                            }
+                                            current_class_id: classId
                                         }
                                     });
                                 }
@@ -1756,12 +1752,10 @@ export class AuthService {
                             // Enroll student in class
                             const classId = schoolClasses.find(c => c.name === student['Class'])?.id;
                             if (classId) {
-                                await prisma.user.update({
-                                    where: { id: createdStudent.id },
+                                await prisma.student.update({
+                                    where: { user_id: createdStudent.id },
                                     data: {
-                                        classesEnrolled: {
-                                            connect: { id: classId }
-                                        }
+                                        current_class_id: classId
                                     }
                                 });
                             }

@@ -122,7 +122,7 @@ export class CreateCBTCorrectAnswerDto {
   answer_json?: any;
 }
 
-export class CreateCBTQuestionDto {
+export class CreateAssessmentQuestionDto {
   @ApiProperty({
     description: 'Question text',
     example: 'What is the capital of France?'

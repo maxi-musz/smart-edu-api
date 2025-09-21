@@ -3,7 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import { Logger } from '@nestjs/common';
 import * as colors from 'colors';
-import { CreateCBTQuizDto, CreateCBTQuestionDto, UpdateCBTQuizDto, UpdateCBTQuestionDto } from './cbt-dto';
+import { CreateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentDto, UpdateAssessmentQuestionDto } from './cbt-dto';
 
 @Injectable()
 export class AssessmentService {
@@ -47,7 +47,7 @@ export class AssessmentService {
    * @param academicSessionId - ID of the academic session
    */
   async createQuiz(
-    createQuizDto: CreateCBTQuizDto,
+    createQuizDto: CreateAssessmentDto,
     user: any
   ) {
     try {
@@ -114,7 +114,7 @@ export class AssessmentService {
       }
   
       // Create the quiz
-      const quiz = await this.prisma.cBTQuiz.create({
+      const quiz = await this.prisma.assessment.create({
         data: createData,
         include: {
           subject: {
@@ -238,7 +238,7 @@ export class AssessmentService {
 
       // Get all assessments grouped by type
       const [allAssessments, assessmentTypeCounts] = await Promise.all([
-        this.prisma.cBTQuiz.findMany({
+        this.prisma.assessment.findMany({
           where: baseWhere,
           include: {
             subject: {
@@ -266,7 +266,7 @@ export class AssessmentService {
           }
         }),
         // Get counts for each assessment type
-        this.prisma.cBTQuiz.groupBy({
+        this.prisma.assessment.groupBy({
           by: ['assessment_type'],
           where: baseWhere,
           _count: {
@@ -340,7 +340,7 @@ export class AssessmentService {
       this.logger.log(colors.cyan(`Getting questions for assessment: ${assessmentId} by user: ${userId}`));
 
       // First verify the assessment exists and the teacher has access to it
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           created_by: userId
@@ -367,9 +367,9 @@ export class AssessmentService {
       }
 
       // Get all questions for this assessment with their options and correct answers
-      const questions = await this.prisma.cBTQuestion.findMany({
+      const questions = await this.prisma.assessmentQuestion.findMany({
         where: {
-          quiz_id: assessmentId
+          assessment_id: assessmentId
         },
         include: {
           options: {
@@ -462,12 +462,12 @@ export class AssessmentService {
    * @param createQuestionDto - Question data
    * @param userId - ID of the teacher
    */
-  async createQuestion(assessmentId: string, createQuestionDto: CreateCBTQuestionDto, userId: string) {
+  async createQuestion(assessmentId: string, createQuestionDto: CreateAssessmentQuestionDto, userId: string) {
     try {
       this.logger.log(colors.cyan(`Creating question for assessment: ${assessmentId} by user: ${userId}`));
 
       // First verify the assessment exists and the teacher has access to it
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           created_by: userId
@@ -488,24 +488,24 @@ export class AssessmentService {
       
       if (!questionOrder) {
         // If no order provided, get the highest order and add 1
-        const lastQuestion = await this.prisma.cBTQuestion.findFirst({
-          where: { quiz_id: assessmentId },
+        const lastQuestion = await this.prisma.assessmentQuestion.findFirst({
+          where: { assessment_id: assessmentId },
           orderBy: { order: 'desc' }
         });
         questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
       } else {
         // If order is provided, check if it already exists
-        const existingQuestion = await this.prisma.cBTQuestion.findFirst({
+        const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
           where: {
-            quiz_id: assessmentId,
+            assessment_id: assessmentId,
             order: questionOrder
           }
         });
 
         if (existingQuestion) {
           // If the provided order exists, find the next available order
-          const lastQuestion = await this.prisma.cBTQuestion.findFirst({
-            where: { quiz_id: assessmentId },
+          const lastQuestion = await this.prisma.assessmentQuestion.findFirst({
+            where: { assessment_id: assessmentId },
             orderBy: { order: 'desc' }
           });
           questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
@@ -516,9 +516,9 @@ export class AssessmentService {
       // Create the question with options and correct answers in a transaction
       const result = await this.prisma.$transaction(async (prisma) => {
         // Create the question
-        const question = await prisma.cBTQuestion.create({
+        const question = await prisma.assessmentQuestion.create({
           data: {
-            quiz_id: assessmentId,
+            assessment_id: assessmentId,
             question_text: createQuestionDto.question_text,
             question_type: createQuestionDto.question_type,
             order: questionOrder,
@@ -545,7 +545,7 @@ export class AssessmentService {
         if (createQuestionDto.options && createQuestionDto.options.length > 0) {
           options = await Promise.all(
             createQuestionDto.options.map(async (optionData: any) => {
-              return await prisma.cBTOption.create({
+              return await prisma.assessmentOption.create({
                 data: {
                   question_id: question.id,
                   option_text: optionData.option_text,
@@ -564,7 +564,7 @@ export class AssessmentService {
         if (createQuestionDto.correct_answers && createQuestionDto.correct_answers.length > 0) {
           correctAnswers = await Promise.all(
             createQuestionDto.correct_answers.map(async (answerData: any) => {
-              return await prisma.cBTCorrectAnswer.create({
+              return await prisma.assessmentCorrectAnswer.create({
                 data: {
                   question_id: question.id,
                   answer_text: answerData.answer_text,
@@ -582,14 +582,14 @@ export class AssessmentService {
       });
 
       // Update the assessment's total points
-      const totalPoints = await this.prisma.cBTQuestion.aggregate({
-        where: { quiz_id: assessmentId },
+      const totalPoints = await this.prisma.assessmentQuestion.aggregate({
+        where: { assessment_id: assessmentId },
         _sum: { points: true }
       });
 
-      await this.prisma.cBTQuiz.update({
+      await this.prisma.assessment.update({
         where: { id: assessmentId },
-        data: { total_points: totalPoints._sum.points || 0 }
+        data: { total_points: totalPoints._sum?.points || 0 }
       });
 
       this.logger.log(colors.green(`Question created successfully with ID: ${result.question.id}`));
@@ -639,7 +639,7 @@ export class AssessmentService {
           assessment: {
             id: assessment.id,
             title: assessment.title,
-            total_points: totalPoints._sum.points || 0
+            total_points: totalPoints._sum?.points || 0
           }
         },
         201
@@ -663,7 +663,7 @@ export class AssessmentService {
       this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
 
       // First verify the assessment exists and the teacher has access to it
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           created_by: userId
@@ -680,10 +680,10 @@ export class AssessmentService {
       }
 
       // Verify the question exists and belongs to this assessment
-      const existingQuestion = await this.prisma.cBTQuestion.findFirst({
+      const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
         where: {
           id: questionId,
-          quiz_id: assessmentId
+          assessment_id: assessmentId
         }
       });
 
@@ -693,9 +693,9 @@ export class AssessmentService {
 
       // If order is being changed, check for conflicts
       if (updateQuestionDto.order && updateQuestionDto.order !== existingQuestion.order) {
-        const conflictingQuestion = await this.prisma.cBTQuestion.findFirst({
+        const conflictingQuestion = await this.prisma.assessmentQuestion.findFirst({
           where: {
-            quiz_id: assessmentId,
+            assessment_id: assessmentId,
             order: updateQuestionDto.order,
             id: { not: questionId }
           }
@@ -709,7 +709,7 @@ export class AssessmentService {
       // Update the question with options and correct answers in a transaction
       const result = await this.prisma.$transaction(async (prisma) => {
         // Update the question
-        const updatedQuestion = await prisma.cBTQuestion.update({
+        const updatedQuestion = await prisma.assessmentQuestion.update({
           where: { id: questionId },
           data: {
             question_text: updateQuestionDto.question_text,
@@ -737,7 +737,7 @@ export class AssessmentService {
         let options: any[] = [];
         if (updateQuestionDto.options !== undefined) {
           // Delete existing options
-          await prisma.cBTOption.deleteMany({
+          await prisma.assessmentOption.deleteMany({
             where: { question_id: questionId }
           });
 
@@ -745,7 +745,7 @@ export class AssessmentService {
           if (updateQuestionDto.options.length > 0) {
             options = await Promise.all(
               updateQuestionDto.options.map(async (optionData: any) => {
-                return await prisma.cBTOption.create({
+                return await prisma.assessmentOption.create({
                   data: {
                     question_id: questionId,
                     option_text: optionData.option_text,
@@ -760,7 +760,7 @@ export class AssessmentService {
           }
         } else {
           // Keep existing options
-          options = await prisma.cBTOption.findMany({
+          options = await prisma.assessmentOption.findMany({
             where: { question_id: questionId },
             orderBy: { order: 'asc' }
           });
@@ -770,7 +770,7 @@ export class AssessmentService {
         let correctAnswers: any[] = [];
         if (updateQuestionDto.correct_answers !== undefined) {
           // Delete existing correct answers
-          await prisma.cBTCorrectAnswer.deleteMany({
+          await prisma.assessmentCorrectAnswer.deleteMany({
             where: { question_id: questionId }
           });
 
@@ -778,7 +778,7 @@ export class AssessmentService {
           if (updateQuestionDto.correct_answers.length > 0) {
             correctAnswers = await Promise.all(
               updateQuestionDto.correct_answers.map(async (answerData: any) => {
-                return await prisma.cBTCorrectAnswer.create({
+                return await prisma.assessmentCorrectAnswer.create({
                   data: {
                     question_id: questionId,
                     answer_text: answerData.answer_text,
@@ -793,7 +793,7 @@ export class AssessmentService {
           }
         } else {
           // Keep existing correct answers
-          correctAnswers = await prisma.cBTCorrectAnswer.findMany({
+          correctAnswers = await prisma.assessmentCorrectAnswer.findMany({
             where: { question_id: questionId }
           });
         }
@@ -802,14 +802,14 @@ export class AssessmentService {
       });
 
       // Update the assessment's total points
-      const totalPoints = await this.prisma.cBTQuestion.aggregate({
-        where: { quiz_id: assessmentId },
+      const totalPoints = await this.prisma.assessmentQuestion.aggregate({
+        where: { assessment_id: assessmentId },
         _sum: { points: true }
       });
 
-      await this.prisma.cBTQuiz.update({
+      await this.prisma.assessment.update({
         where: { id: assessmentId },
-        data: { total_points: totalPoints._sum.points || 0 }
+        data: { total_points: totalPoints._sum?.points || 0 }
       });
 
       this.logger.log(colors.green(`Question updated successfully: ${questionId}`));
@@ -859,7 +859,7 @@ export class AssessmentService {
           assessment: {
             id: assessment.id,
             title: assessment.title,
-            total_points: totalPoints._sum.points || 0
+            total_points: totalPoints._sum?.points || 0
           }
         }
       );
@@ -881,7 +881,7 @@ export class AssessmentService {
       this.logger.log(colors.cyan(`Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`));
 
       // First verify the assessment exists and the teacher has access to it
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           created_by: userId
@@ -898,10 +898,10 @@ export class AssessmentService {
       }
 
       // Verify the question exists and belongs to this assessment
-      const existingQuestion = await this.prisma.cBTQuestion.findFirst({
+      const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
         where: {
           id: questionId,
-          quiz_id: assessmentId
+          assessment_id: assessmentId
         },
         include: {
           _count: {
@@ -924,30 +924,30 @@ export class AssessmentService {
       // Delete the question and all related data in a transaction
       await this.prisma.$transaction(async (prisma) => {
         // Delete correct answers first (due to foreign key constraints)
-        await prisma.cBTCorrectAnswer.deleteMany({
+        await prisma.assessmentCorrectAnswer.deleteMany({
           where: { question_id: questionId }
         });
 
         // Delete options
-        await prisma.cBTOption.deleteMany({
+        await prisma.assessmentOption.deleteMany({
           where: { question_id: questionId }
         });
 
         // Delete the question
-        await prisma.cBTQuestion.delete({
+        await prisma.assessmentQuestion.delete({
           where: { id: questionId }
         });
       });
 
       // Update the assessment's total points
-      const totalPoints = await this.prisma.cBTQuestion.aggregate({
-        where: { quiz_id: assessmentId },
+      const totalPoints = await this.prisma.assessmentQuestion.aggregate({
+        where: { assessment_id: assessmentId },
         _sum: { points: true }
       });
 
-      await this.prisma.cBTQuiz.update({
+      await this.prisma.assessment.update({
         where: { id: assessmentId },
-        data: { total_points: totalPoints._sum.points || 0 }
+        data: { total_points: totalPoints._sum?.points || 0 }
       });
 
       this.logger.log(colors.green(`Question deleted successfully: ${questionId}`));
@@ -964,7 +964,7 @@ export class AssessmentService {
           assessment: {
             id: assessment.id,
             title: assessment.title,
-            total_points: totalPoints._sum.points || 0
+            total_points: totalPoints._sum?.points || 0
           }
         }
       );
@@ -994,7 +994,7 @@ export class AssessmentService {
       // Verify teacher has access to the topic
       await this.verifyTeacherTopicAccess(topicId, teacher.id, schoolId);
 
-      const quizzes = await this.prisma.cBTQuiz.findMany({
+      const quizzes = await this.prisma.assessment.findMany({
         where: {
           topic_id: topicId,
           school_id: schoolId,
@@ -1053,7 +1053,7 @@ export class AssessmentService {
         throw new NotFoundException('Teacher not found');
       }
 
-      const quiz = await this.prisma.cBTQuiz.findFirst({
+      const quiz = await this.prisma.assessment.findFirst({
         where: {
           id: quizId,
           created_by: userId
@@ -1120,7 +1120,7 @@ export class AssessmentService {
    */
   async updateQuiz(
     quizId: string,
-    updateQuizDto: UpdateCBTQuizDto,
+    updateQuizDto: UpdateAssessmentDto,
     userId: string
   ) {
     try {
@@ -1135,7 +1135,7 @@ export class AssessmentService {
       }
 
       // Verify quiz exists and teacher has access
-      const existingQuiz = await this.prisma.cBTQuiz.findFirst({
+      const existingQuiz = await this.prisma.assessment.findFirst({
         where: {
           id: quizId,
           school_id: teacher.school_id,
@@ -1160,8 +1160,8 @@ export class AssessmentService {
 
       // Check if quiz has attempts and is being changed to a state that would affect students
       if (updateQuizDto.status && ['CLOSED', 'ARCHIVED'].includes(updateQuizDto.status)) {
-        const attemptCount = await this.prisma.cBTQuizAttempt.count({
-          where: { quiz_id: quizId }
+        const attemptCount = await this.prisma.assessmentAttempt.count({
+          where: { assessment_id: quizId }
         });
 
         if (attemptCount > 0) {
@@ -1185,7 +1185,7 @@ export class AssessmentService {
         updateData.published_at = new Date();
       }
 
-      const quiz = await this.prisma.cBTQuiz.update({
+      const quiz = await this.prisma.assessment.update({
         where: { id: quizId },
         data: updateData,
         include: {
@@ -1243,7 +1243,7 @@ export class AssessmentService {
       }
 
       // Verify quiz exists and teacher has access
-      const existingQuiz = await this.prisma.cBTQuiz.findFirst({
+      const existingQuiz = await this.prisma.assessment.findFirst({
         where: {
           id: quizId,
           school_id: schoolId,
@@ -1256,15 +1256,15 @@ export class AssessmentService {
       }
 
       // Check if quiz has attempts (prevent deletion if students have taken it)
-      const attemptCount = await this.prisma.cBTQuizAttempt.count({
-        where: { quiz_id: quizId }
+      const attemptCount = await this.prisma.assessmentAttempt.count({
+        where: { assessment_id: quizId }
       });
 
       if (attemptCount > 0) {
         throw new BadRequestException('Cannot delete assessment that has student attempts. Consider archiving instead.');
       }
 
-      await this.prisma.cBTQuiz.delete({
+      await this.prisma.assessment.delete({
         where: { id: quizId }
       });
 
@@ -1293,7 +1293,7 @@ export class AssessmentService {
       }
 
       // Verify quiz exists and teacher has access
-      const existingQuiz = await this.prisma.cBTQuiz.findFirst({
+      const existingQuiz = await this.prisma.assessment.findFirst({
         where: {
           id: quizId,
           school_id: schoolId,
@@ -1315,7 +1315,7 @@ export class AssessmentService {
         throw new BadRequestException('Cannot publish quiz without questions');
       }
 
-      const quiz = await this.prisma.cBTQuiz.update({
+      const quiz = await this.prisma.assessment.update({
         where: { id: quizId },
         data: {
           status: 'ACTIVE',

@@ -96,7 +96,7 @@ export class AssignmentDto {
   updatedAt: Date;
 }
 
-export class CBTQuizDto {
+export class AssessmentDto {
   @ApiProperty()
   id: string;
 
@@ -234,8 +234,8 @@ export class TopicContentResponseDto {
   @ApiProperty({ type: [AssignmentDto] })
   assignments: AssignmentDto[];
 
-  @ApiProperty({ type: [CBTQuizDto] })
-  quizzes: CBTQuizDto[];
+  @ApiProperty({ type: [AssessmentDto] })
+  assessments: AssessmentDto[];
 
   @ApiProperty({ type: [LiveClassDto] })
   liveClasses: LiveClassDto[];
