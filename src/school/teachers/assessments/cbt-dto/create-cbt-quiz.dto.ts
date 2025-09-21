@@ -21,9 +21,9 @@ export enum GradingType {
   MIXED = 'MIXED'
 }
 
-export class CreateCBTQuizDto {
+export class CreateAssessmentDto {
   @ApiProperty({
-    description: 'Title of the CBT quiz',
+    description: 'Title of the Assessment',
     example: 'Mathematics Quiz - Chapter 1'
   })
   @IsString()
@@ -31,7 +31,7 @@ export class CreateCBTQuizDto {
   title: string;
 
   @ApiPropertyOptional({
-    description: 'Description of the CBT quiz',
+    description: 'Description of the Assessment',
     example: 'Test your understanding of basic algebra concepts'
   })
   @IsString()

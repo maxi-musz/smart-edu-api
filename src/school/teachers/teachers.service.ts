@@ -298,9 +298,13 @@ export class TeachersService {
         },
         include: {
           students: {
-            select: {
-              id: true,
-              gender: true
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  gender: true
+                }
+              }
             }
           }
         }
@@ -314,9 +318,9 @@ export class TeachersService {
       this.logger.log(colors.green(`✅ Managed class found: ${managedClass?.name}`));
 
       // Calculate student statistics
-      const totalStudents = managedClass?.students.length;
-      const maleStudents = managedClass?.students.filter(student => student.gender === 'male').length;
-      const femaleStudents = managedClass?.students.filter(student => student.gender === 'female').length;
+      const totalStudents = managedClass?.students.length || 0;
+      const maleStudents = managedClass?.students.filter(student => student.user.gender === 'male').length || 0;
+      const femaleStudents = managedClass?.students.filter(student => student.user.gender === 'female').length || 0;
 
       // Get current day and next two days
       const currentDay = DateHelpers.getCurrentDayOfWeek();
@@ -569,21 +573,11 @@ export class TeachersService {
 
       // Add class filter if specified
       if (class_id && managedClassIds.includes(class_id)) {
-        whereClause.user = {
-          classesEnrolled: {
-            some: { id: class_id }
-          }
-        };
+        whereClause.current_class_id = class_id;
       } else {
         // Filter by managed classes
-        whereClause.user = {
-          classesEnrolled: {
-            some: {
-              id: {
-                in: managedClassIds
-              }
-            }
-          }
+        whereClause.current_class_id = {
+          in: managedClassIds
         };
       }
 

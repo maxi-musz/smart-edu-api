@@ -89,7 +89,7 @@ The API aggregates data from multiple database tables:
 - **Student Table**: Student-specific data
 - **Class Table**: Class and academic level information
 - **Subject Table**: Subject details and teacher assignments
-- **CBTQuizAttempt Table**: Assessment performance data
+- **AssessmentAttempt Table**: Assessment performance data
 - **AcademicSession Table**: Current academic session
 
 ## 🔍 Error Handling

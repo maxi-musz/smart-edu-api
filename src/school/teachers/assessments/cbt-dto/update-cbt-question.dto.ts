@@ -115,7 +115,7 @@ export class UpdateCBTCorrectAnswerDto {
   answer_json?: any;
 }
 
-export class UpdateCBTQuestionDto {
+export class UpdateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Question text',
     example: 'What is the capital of France?'

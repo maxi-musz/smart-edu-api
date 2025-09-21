@@ -81,7 +81,7 @@ The response contains four main sections:
 ## Data Sources
 
 - **User Data**: From `User` and `Student` tables
-- **Academic Data**: From `Class`, `Subject`, `CBTQuizAttempt` tables
+- **Academic Data**: From `Class`, `Subject`, `AssessmentAttempt` tables
 - **Performance Metrics**: Calculated from assessment attempts
 - **Settings**: Default values (can be made configurable)
 

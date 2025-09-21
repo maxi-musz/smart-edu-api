@@ -1,5 +1,5 @@
 import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
-import { CreateCBTQuizDto } from './create-cbt-quiz.dto';
+import { CreateAssessmentDto } from './create-cbt-quiz.dto';
 import { IsEnum, IsOptional } from 'class-validator';
 
 export enum QuizStatus {
@@ -10,7 +10,7 @@ export enum QuizStatus {
   ARCHIVED = 'ARCHIVED'
 }
 
-export class UpdateCBTQuizDto extends PartialType(CreateCBTQuizDto) {
+export class UpdateAssessmentDto extends PartialType(CreateAssessmentDto) {
   @ApiPropertyOptional({
     description: 'Status of the quiz',
     enum: QuizStatus,

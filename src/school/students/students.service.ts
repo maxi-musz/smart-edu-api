@@ -179,7 +179,7 @@ export class StudentsService {
       });
 
       // Get pending assessments (published assessments with attempts remaining)
-      const pendingAssessments = await this.prisma.cBTQuiz.findMany({
+      const pendingAssessments = await this.prisma.assessment.findMany({
         where: {
           school_id: student.school_id,
           academic_session_id: currentSession.id,
@@ -747,7 +747,7 @@ export class StudentsService {
               createdAt: true
             }
           },
-          cbtQuizzes: {
+          assessments: {
             where: {
               status: 'PUBLISHED',
               is_published: true
@@ -816,7 +816,7 @@ export class StudentsService {
         }
       });
 
-      const totalQuizzes = await this.prisma.cBTQuiz.count({
+      const totalQuizzes = await this.prisma.assessment.count({
         where: {
           subject_id: subjectId,
           school_id: student.school_id,
@@ -866,7 +866,7 @@ export class StudentsService {
           status: assignment.status,
           createdAt: assignment.createdAt
         })),
-        quizzes: topic.cbtQuizzes.map(quiz => ({
+        assessments: topic.assessments.map(quiz => ({
           id: quiz.id,
           title: quiz.title,
           description: quiz.description,
@@ -1053,7 +1053,7 @@ export class StudentsService {
         }),
 
         // CBT Quizzes - only published ones for students
-        this.prisma.cBTQuiz.findMany({
+        this.prisma.assessment.findMany({
           where: {
             topic_id: topicId,
             school_id: schoolId,
@@ -1609,10 +1609,10 @@ export class StudentsService {
       const skip = (page - 1) * limit;
 
       // Get total count for pagination
-      const totalAssessments = await this.prisma.cBTQuiz.count({ where });
+      const totalAssessments = await this.prisma.assessment.count({ where });
 
       // Get assessments with pagination
-      const assessments = await this.prisma.cBTQuiz.findMany({
+      const assessments = await this.prisma.assessment.findMany({
         where,
         include: {
           subject: {
@@ -1883,7 +1883,7 @@ export class StudentsService {
       const subjectIds = studentClass.subjects.map(subject => subject.id);
 
       // Get the assessment with all questions and options
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           school_id: student.school_id,
@@ -1956,9 +1956,9 @@ export class StudentsService {
       }
 
       // Check student's attempt count
-      const attemptCount = await this.prisma.cBTQuizAttempt.count({
+      const attemptCount = await this.prisma.assessmentAttempt.count({
         where: {
-          quiz_id: assessmentId,
+          assessment_id: assessmentId,
           student_id: student.id
         }
       });
@@ -2095,7 +2095,7 @@ export class StudentsService {
       }
 
       // Get the assessment
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           school_id: student.school_id,
@@ -2137,9 +2137,9 @@ export class StudentsService {
       }
 
       // Check student's attempt count
-      const attemptCount = await this.prisma.cBTQuizAttempt.count({
+      const attemptCount = await this.prisma.assessmentAttempt.count({
         where: {
-          quiz_id: assessmentId,
+          assessment_id: assessmentId,
           student_id: user.sub 
         }
       });
@@ -2228,9 +2228,9 @@ export class StudentsService {
       // Execute everything in a transaction
       const result = await this.prisma.$transaction(async (tx) => {
         // Create attempt
-        const attempt = await tx.cBTQuizAttempt.create({
+        const attempt = await tx.assessmentAttempt.create({
           data: {
-            quiz_id: assessmentId,
+            assessment_id: assessmentId,
             student_id: user.sub,
             school_id: student.school_id,
             academic_session_id: currentSession.id,
@@ -2244,7 +2244,7 @@ export class StudentsService {
         // Create all student answers
         const studentAnswers = await Promise.all(
           studentAnswersToCreate.map(answerData => 
-            tx.cBTResponse.create({
+            tx.assessmentResponse.create({
               data: {
                 ...answerData,
                 attempt_id: attempt.id
@@ -2256,7 +2256,7 @@ export class StudentsService {
         this.logger.log(colors.green(`✅ All student answers saved: ${studentAnswers.length} answers`));
 
         // Update attempt with final scores
-        const updatedAttempt = await tx.cBTQuizAttempt.update({
+        const updatedAttempt = await tx.assessmentAttempt.update({
           where: { id: attempt.id },
           data: {
             status: 'GRADED',
@@ -2469,7 +2469,7 @@ export class StudentsService {
    */
   async getStudentSubmissionCount(quizId: string, userId: string): Promise<number> {
     try {
-      const quiz = await this.prisma.cBTQuiz.findUnique({
+      const quiz = await this.prisma.assessment.findUnique({
         where: { id: quizId },
         select: { submissions: true }
       });
@@ -2496,7 +2496,7 @@ export class StudentsService {
   private async updateQuizSubmissionsInTransaction(tx: any, quizId: string, userId: string, email: string, firstName: string, lastName: string) {
     try {
       // Get current quiz data
-      const quiz = await tx.cBTQuiz.findUnique({
+      const quiz = await tx.assessment.findUnique({
         where: { id: quizId },
         select: { submissions: true }
       });
@@ -2540,7 +2540,7 @@ export class StudentsService {
       };
 
       // Update quiz with new submissions data
-      await tx.cBTQuiz.update({
+      await tx.assessment.update({
         where: { id: quizId },
         data: {
           submissions: updatedSubmissions
@@ -2564,7 +2564,7 @@ export class StudentsService {
   private async updateQuizSubmissions(quizId: string, userId: string, email: string, firstName: string, lastName: string) {
     try {
       // Get current quiz data
-      const quiz = await this.prisma.cBTQuiz.findUnique({
+      const quiz = await this.prisma.assessment.findUnique({
         where: { id: quizId },
         select: { submissions: true }
       });
@@ -2608,7 +2608,7 @@ export class StudentsService {
       };
 
       // Update quiz with new submissions data
-      await this.prisma.cBTQuiz.update({
+      await this.prisma.assessment.update({
         where: { id: quizId },
         data: {
           submissions: updatedSubmissions
@@ -2697,7 +2697,7 @@ export class StudentsService {
       const subjectIds = studentClass.subjects.map(subject => subject.id);
 
       // Get the assessment with all questions and options
-      const assessment = await this.prisma.cBTQuiz.findFirst({
+      const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
           school_id: student.school_id,
@@ -2759,9 +2759,9 @@ export class StudentsService {
       }
 
       // Get all attempts for this assessment by this student
-      const attempts = await this.prisma.cBTQuizAttempt.findMany({
+      const attempts = await this.prisma.assessmentAttempt.findMany({
         where: {
-          quiz_id: assessmentId,
+          assessment_id: assessmentId,
           student_id: user.sub
         },
         include: {

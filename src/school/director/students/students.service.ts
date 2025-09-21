@@ -191,8 +191,8 @@ export class StudentsService {
                 role: "student",
                 ...(status && { status }),
                 ...(class_id && {
-                    classesEnrolled: {
-                        some: { id: class_id }
+                    student: {
+                        current_class_id: class_id
                     }
                 }),
                 ...(search && {
@@ -204,7 +204,11 @@ export class StudentsService {
                 })
             },
             include: {
-                classesEnrolled: true
+                student: {
+                    include: {
+                        current_class: true
+                    }
+                }
             },
             orderBy: {
                 [sort_by === 'name' ? 'first_name' : sort_by]: sort_order
@@ -215,7 +219,7 @@ export class StudentsService {
 
         // Get next class and performance metrics for each student
         const studentsWithDetails: StudentWithDetails[] = await Promise.all(students.map(async (student) => {
-            const currentClass = student.classesEnrolled[0];
+            const currentClass = student.student?.current_class;
             if (!currentClass) {
                 return {
                     ...student,
@@ -364,14 +368,10 @@ export class StudentsService {
           }
     
           // Check if student is already enrolled in this class
-          const existingEnrollment = await this.prisma.user.findFirst({
+          const existingEnrollment = await this.prisma.student.findFirst({
             where: {
-              id: dto.student_id,
-              classesEnrolled: {
-                some: {
-                  id: dto.class_id
-                }
-              }
+              user_id: dto.student_id,
+              current_class_id: dto.class_id
             }
           });
     
@@ -381,19 +381,15 @@ export class StudentsService {
           }
     
           // Add student to the class
-          const updatedStudent = await this.prisma.user.update({
+          const updatedStudent = await this.prisma.student.update({
             where: {
-              id: dto.student_id
+              user_id: dto.student_id
             },
             data: {
-              classesEnrolled: {
-                connect: {
-                  id: dto.class_id
-                }
-              }
+              current_class_id: dto.class_id
             },
             include: {
-              classesEnrolled: {
+              current_class: {
                 select: {
                   id: true,
                   name: true
@@ -409,15 +405,15 @@ export class StudentsService {
             `Student ${student.first_name} ${student.last_name} added to class ${managedClass.name} successfully`,
             {
               student: {
-                id: updatedStudent.id,
-                name: `${updatedStudent.first_name} ${updatedStudent.last_name}`,
-                email: updatedStudent.email
+                id: updatedStudent.user_id,
+                name: `${student.first_name} ${student.last_name}`,
+                email: student.email
               },
               class: {
                 id: managedClass.id,
                 name: managedClass.name
               },
-              enrolled_classes: updatedStudent.classesEnrolled
+              enrolled_class: updatedStudent.current_class
             }
           );
     
@@ -529,14 +525,10 @@ export class StudentsService {
           }
 
           // Check if student is already enrolled in this class
-          const existingEnrollment = await this.prisma.user.findFirst({
+          const existingEnrollment = await this.prisma.student.findFirst({
             where: {
-              id: dto.student_id,
-              classesEnrolled: {
-                some: {
-                  id: dto.class_id
-                }
-              }
+              user_id: dto.student_id,
+              current_class_id: dto.class_id
             }
           });
 
@@ -546,16 +538,12 @@ export class StudentsService {
           }
 
           // Enroll student to the class
-          const updatedStudent = await this.prisma.user.update({
+          const updatedStudent = await this.prisma.student.update({
             where: {
-              id: dto.student_id
+              user_id: dto.student_id
             },
             data: {
-              classesEnrolled: {
-                connect: {
-                  id: dto.class_id
-                }
-              }
+              current_class_id: dto.class_id
             }
           });
 
@@ -563,8 +551,8 @@ export class StudentsService {
 
           return new ApiResponse(true, 'Student enrolled in class successfully', {
             student: {
-              id: updatedStudent.id,
-              name: `${updatedStudent.first_name} ${updatedStudent.last_name}`,
+              id: updatedStudent.user_id,
+              name: `${student.first_name} ${student.last_name}`,
             }
           });
         } catch (error) {
@@ -699,17 +687,7 @@ export class StudentsService {
                 }
               }
 
-              // Enroll student to the specified class
-              await tx.user.update({
-                where: { id: newUser.id },
-                data: {
-                  classesEnrolled: {
-                    connect: {
-                      id: dto.class_id
-                    }
-                  }
-                }
-              });
+              // Student is already enrolled to the class via current_class_id in student record
 
               return { newUser, student };
             });
@@ -962,27 +940,8 @@ export class StudentsService {
           // 8. Handle class transfer if requested
           let classTransferInfo: { from: string; to: string; transferred: boolean } | null = null;
           if (dto.class_id && dto.class_id !== existingStudent.current_class_id) {
-            // Remove from old class
-            if (existingStudent.current_class_id) {
-              await this.prisma.user.update({
-                where: { id: existingStudent.user.id },
-                data: {
-                  classesEnrolled: {
-                    disconnect: { id: existingStudent.current_class_id }
-                  }
-                }
-              });
-            }
-
-            // Add to new class
-            await this.prisma.user.update({
-              where: { id: existingStudent.user.id },
-              data: {
-                classesEnrolled: {
-                  connect: { id: dto.class_id }
-                }
-              }
-            });
+            // Class transfer is handled by updating the current_class_id in the student record
+            // No need for separate disconnect/connect operations
 
             // Get class information for response
             const newClass = await this.prisma.class.findFirst({
