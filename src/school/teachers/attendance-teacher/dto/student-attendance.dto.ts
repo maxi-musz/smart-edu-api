@@ -65,6 +65,48 @@ export class StudentAttendanceDto {
   records: StudentAttendanceRecordDto[];
 }
 
+export class AcademicSessionDto {
+  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Academic session ID' })
+  id: string;
+
+  @ApiProperty({ example: '2024-2025', description: 'Academic year' })
+  academic_year: string;
+
+  @ApiProperty({ example: 'first', description: 'Academic term', enum: ['first', 'second', 'third'] })
+  term: string;
+
+  @ApiProperty({ example: '2024-09-01T00:00:00Z', description: 'Session start date' })
+  start_date: string;
+
+  @ApiProperty({ example: '2024-12-15T00:00:00Z', description: 'Session end date' })
+  end_date: string;
+
+  @ApiProperty({ example: true, description: 'Whether this is the current session' })
+  is_current: boolean;
+
+  @ApiProperty({ example: 'active', description: 'Session status', enum: ['active', 'inactive', 'completed'] })
+  status: string;
+}
+
+export class StudentAttendanceExtendedDto extends StudentAttendanceDto {
+  @ApiProperty({ type: [AcademicSessionDto], description: 'All available academic sessions' })
+  academic_sessions: AcademicSessionDto[];
+
+  @ApiProperty({ 
+    example: [
+      { id: 'cmft0keqn00avsbkyybjn0ra0', term: 'first', academic_year: '2024-2025' },
+      { id: 'cmft0keqn00avsbkyybjn0ra1', term: 'second', academic_year: '2024-2025' },
+      { id: 'cmft0keqn00avsbkyybjn0ra2', term: 'third', academic_year: '2024-2025' }
+    ], 
+    description: 'Available academic terms with IDs'
+  })
+  available_terms: Array<{
+    id: string;
+    term: string;
+    academic_year: string;
+  }>;
+}
+
 export class StudentAttendanceResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
@@ -74,4 +116,15 @@ export class StudentAttendanceResponseDto {
 
   @ApiProperty({ type: StudentAttendanceDto, description: 'Student attendance data' })
   data: StudentAttendanceDto;
+}
+
+export class StudentAttendanceExtendedResponseDto {
+  @ApiProperty({ example: true, description: 'Success status' })
+  success: boolean;
+
+  @ApiProperty({ example: 'Student attendance retrieved successfully', description: 'Response message' })
+  message: string;
+
+  @ApiProperty({ type: StudentAttendanceExtendedDto, description: 'Student attendance data with sessions and terms' })
+  data: StudentAttendanceExtendedDto;
 }

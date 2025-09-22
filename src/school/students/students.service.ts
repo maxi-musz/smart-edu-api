@@ -4,6 +4,7 @@ import { ApiResponse } from '../../shared/helper-functions/response';
 import { DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
 import { formatDate } from 'src/shared/helper-functions/formatter';
+import { StudentAttendanceDto, StudentAttendanceSummaryDto, StudentAttendanceRecordDto, StudentAttendanceExtendedDto, AcademicSessionDto } from '../teachers/attendance-teacher/dto/student-attendance.dto';
 
 @Injectable()
 export class StudentsService {
@@ -2931,4 +2932,319 @@ export class StudentsService {
       return new ApiResponse(false, 'Failed to fetch assessment with answers', null);
     }
   }
+
+  /**
+   * Get student's own attendance for a specific month
+   * @param user - User object with sub and email
+   * @param year - Year (optional, defaults to current year)
+   * @param month - Month (optional, defaults to current month)
+   */
+  async getStudentAttendance(
+    user: any,
+    year?: number,
+    month?: number
+  ): Promise<ApiResponse<StudentAttendanceExtendedDto | null>> {
+    this.logger.log(colors.cyan(`Fetching attendance for student: ${user.email}`));
+
+    try {
+      // Get full user data with school_id
+      const fullUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { id: true, school_id: true, role: true }
+      });
+
+      if (!fullUser) {
+        this.logger.error(colors.red(`❌ User not found for attendance fetch`));
+        return new ApiResponse<null>(false, 'User not found', null);
+      }
+
+      // Check if user has student role
+      if (fullUser.role !== 'student') {
+        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
+        return new ApiResponse<null>(false, 'Access denied. Student role required.', null);
+      }
+
+      // Default to current month if not provided
+      const currentDate = new Date();
+      const targetYear = year || currentDate.getFullYear();
+      const targetMonth = month || (currentDate.getMonth() + 1);
+
+      // Get student record
+      const student = await this.prisma.student.findFirst({
+        where: {
+          user_id: user.sub,
+          school_id: fullUser.school_id,
+          status: 'active'
+        },
+        include: {
+          current_class: true
+        }
+      });
+
+      if (!student) {
+        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        return new ApiResponse<null>(false, 'Student not found', null);
+      }
+
+      // Get current academic session
+      const currentSession = await this.prisma.academicSession.findFirst({
+        where: {
+          school_id: student.school_id,
+          is_current: true
+        }
+      });
+
+      if (!currentSession) {
+        this.logger.error(colors.red(`No current academic session found for student: ${user.email}`));
+        return new ApiResponse<null>(false, 'No current academic session found', null);
+      }
+
+      // Get all academic sessions for the school (for dropdown)
+      const allAcademicSessions = await this.prisma.academicSession.findMany({
+        where: {
+          school_id: student.school_id
+        },
+        select: {
+          id: true,
+          academic_year: true,
+          term: true,
+          start_date: true,
+          end_date: true,
+          is_current: true,
+          status: true
+        },
+        orderBy: [
+          { academic_year: 'desc' },
+          { term: 'asc' }
+        ]
+      });
+
+      // Format academic sessions
+      const formattedAcademicSessions: AcademicSessionDto[] = allAcademicSessions.map(session => ({
+        id: session.id,
+        academic_year: session.academic_year,
+        term: session.term,
+        start_date: session.start_date.toISOString(),
+        end_date: session.end_date.toISOString(),
+        is_current: session.is_current,
+        status: session.status
+      }));
+
+      // Get available terms with their IDs from academic sessions
+      const availableTerms = allAcademicSessions.map(session => ({
+        id: session.id,
+        term: session.term,
+        academic_year: session.academic_year
+      }));
+
+      this.logger.log(colors.green(`✅ Student found: ${user.email}`));
+      this.logger.log(colors.green(`✅ Student class: ${student.current_class?.name || 'No class assigned'}`));
+
+      // Calculate date range for the month (using UTC to avoid timezone issues)
+      const startDate = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
+      const endDate = new Date(Date.UTC(targetYear, targetMonth, 0)); // Last day of the month
+
+      // Get all attendance records for this student in the specified month
+      const attendanceRecords = await this.prisma.attendanceRecord.findMany({
+        where: {
+          student_id: student.user_id, // Use user_id for foreign key
+          school_id: student.school_id,
+          academic_session_id: currentSession.id,
+          attendanceSession: {
+            date: {
+              gte: startDate,
+              lte: endDate
+            }
+          }
+        },
+        include: {
+          attendanceSession: {
+            select: {
+              date: true,
+              status: true
+            }
+          }
+        },
+        orderBy: {
+          attendanceSession: {
+            date: 'desc'
+          }
+        }
+      });
+
+      // Get all attendance sessions for this class in the month (to calculate total school days)
+      const classAttendanceSessions = await this.prisma.attendanceSession.findMany({
+        where: {
+          class_id: student.current_class_id!,
+          school_id: student.school_id,
+          academic_session_id: currentSession.id,
+          date: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        select: {
+          date: true,
+          status: true
+        },
+        orderBy: {
+          date: 'desc'
+        }
+      });
+
+      // Get term attendance sessions (from start of term to end of month)
+      const termStartDate = new Date(currentSession.start_date);
+      const termAttendanceSessions = await this.prisma.attendanceSession.findMany({
+        where: {
+          class_id: student.current_class_id!,
+          school_id: student.school_id,
+          academic_session_id: currentSession.id,
+          date: {
+            gte: termStartDate,
+            lte: endDate
+          }
+        },
+        select: {
+          date: true,
+          status: true
+        }
+      });
+
+      // Get term attendance records for this student
+      const termAttendanceRecords = await this.prisma.attendanceRecord.findMany({
+        where: {
+          student_id: student.user_id,
+          school_id: student.school_id,
+          academic_session_id: currentSession.id,
+          attendanceSession: {
+            date: {
+              gte: termStartDate,
+              lte: endDate
+            }
+          }
+        },
+        include: {
+          attendanceSession: {
+            select: {
+              date: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      // Calculate statistics
+      const totalSchoolDaysThisMonth = classAttendanceSessions.length;
+      const totalPresentThisMonth = attendanceRecords.filter(record => record.status === 'PRESENT').length;
+      const totalSchoolDaysThisTerm = termAttendanceSessions.length;
+      const totalPresentThisTerm = termAttendanceRecords.filter(record => record.status === 'PRESENT').length;
+
+      // Find last absent date
+      const lastAbsentRecord = attendanceRecords
+        .filter(record => record.status === 'ABSENT')
+        .sort((a, b) => new Date(b.attendanceSession.date).getTime() - new Date(a.attendanceSession.date).getTime())[0];
+      
+      const lastAbsentDate = lastAbsentRecord ? lastAbsentRecord.attendanceSession.date.toISOString().split('T')[0] : null;
+
+      // Create summary
+      const summary: StudentAttendanceSummaryDto = {
+        totalSchoolDaysThisMonth,
+        totalPresentThisMonth,
+        totalSchoolDaysThisTerm,
+        totalPresentThisTerm,
+        lastAbsentDate
+      };
+
+      // Create records array with all days in the month up to today
+      const records: StudentAttendanceRecordDto[] = [];
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0];
+      
+      // Generate all days in the month up to today (or end of month, whichever is earlier)
+      let maxDay = endDate.getDate();
+      
+      // If we're in the same month and year, only go up to today
+      if (today.getFullYear() === targetYear && today.getMonth() + 1 === targetMonth) {
+        maxDay = today.getDate();
+      }
+      
+      for (let day = 1; day <= maxDay; day++) {
+        const currentDate = new Date(Date.UTC(targetYear, targetMonth - 1, day));
+        const dateString = currentDate.toISOString().split('T')[0];
+        
+        // Skip future dates (but include today)
+        if (dateString > todayString) {
+          continue;
+        }
+        
+        // Check if it's weekend
+        const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
+        
+        // Find attendance record for this date
+        const attendanceRecord = attendanceRecords.find(record => 
+          record.attendanceSession.date.toISOString().split('T')[0] === dateString
+        );
+
+        // Find attendance session for this date
+        const attendanceSession = classAttendanceSessions.find(session => 
+          session.date.toISOString().split('T')[0] === dateString
+        );
+
+        let status: string;
+        let isExcused: boolean = false;
+        let reason: string | null = null;
+        let markedAt: string | null = null;
+        let markedBy: string | null = null;
+
+        if (isWeekend) {
+          status = 'WEEKEND';
+        } else if (attendanceRecord) {
+          status = attendanceRecord.status;
+          isExcused = attendanceRecord.is_excused;
+          reason = attendanceRecord.reason;
+          markedAt = attendanceRecord.marked_at?.toISOString() || null;
+          markedBy = attendanceRecord.marked_by;
+        } else if (attendanceSession) {
+          // There was a school day but no record for this student (shouldn't happen normally)
+          status = 'ABSENT';
+        } else {
+          // No school day - this could be a holiday or non-school day
+          status = 'HOLIDAY';
+        }
+
+        records.push({
+          date: dateString,
+          status,
+          isExcused,
+          reason,
+          markedAt,
+          markedBy
+        });
+      }
+
+      // Reverse the records so today appears first
+      const reversedRecords = records.reverse();
+
+      const baseData: StudentAttendanceDto = {
+        summary,
+        records: reversedRecords
+      };
+
+      const extendedData: StudentAttendanceExtendedDto = {
+        academic_sessions: formattedAcademicSessions,
+        available_terms: availableTerms,
+        ...baseData,
+      };
+
+      this.logger.log(colors.green(`✅ Student attendance retrieved successfully for student ${user.email}. Month: ${targetMonth}/${targetYear}, Present: ${totalPresentThisMonth}/${totalSchoolDaysThisMonth}`));
+      this.logger.log(colors.green(`✅ Academic sessions: ${formattedAcademicSessions.length}, Available terms: ${availableTerms.length}`));
+      return new ApiResponse(true, 'Student attendance retrieved successfully', extendedData);
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching student attendance for student ${user.email}: ${error.message}`));
+      return new ApiResponse<null>(false, 'Failed to fetch student attendance', null);
+    }
+  }
+
+  
 }
