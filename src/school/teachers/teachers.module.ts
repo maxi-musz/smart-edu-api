@@ -6,11 +6,12 @@ import { AcademicSessionModule } from '../../academic-session/academic-session.m
 import { SubjectsModule } from './subjects/subjects.module';
 import { TopicsModule } from './topics/topics.module';
 import { AssessmentsModule } from './assessments/assessments.module';
+import { AttendanceTeacherModule } from './attendance-teacher/attendance-teacher.module';
 
 @Module({
-  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule],
+  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule],
   controllers: [TeachersController],
   providers: [TeachersService],
-  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule]
+  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule]
 })
 export class TeachersModule {}

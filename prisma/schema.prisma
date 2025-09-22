@@ -2,13 +2,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
-generator seed {
-  provider = "ts-node prisma/seed-comprehensive.ts"
-}
+// generator seed {
+//   provider = "ts-node prisma/seed-comprehensive.ts"
+//   previewFeatures = ["postgresqlExtensions"]
+// }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url = env("DATABASE_URL")
 }
 
 model AcademicSession {
@@ -25,12 +26,16 @@ model AcademicSession {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   school                School                 @relation(fields: [school_id], references: [id])
-  assignments           Assignment[]
-  assignmentGrades      AssignmentGrade[]
-  assignmentSubmissions AssignmentSubmission[]
   assessments           Assessment[]
   assessmentAttempts    AssessmentAttempt[]
   assessmentSubmissions AssessmentSubmission[]
+  assignments           Assignment[]
+  assignmentGrades      AssignmentGrade[]
+  assignmentSubmissions AssignmentSubmission[]
+  attendanceRecords     AttendanceRecord[]
+  attendanceSessions    AttendanceSession[]
+  attendanceSettings    AttendanceSettings[]
+  attendanceSummaries   AttendanceSummary[]
   classes               Class[]
   gradingRubrics        GradingRubric[]
   notifications         Notification[]
@@ -64,12 +69,16 @@ model School {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   academicSessions      AcademicSession[]
-  assignments           Assignment[]
-  assignmentGrades      AssignmentGrade[]
-  assignmentSubmissions AssignmentSubmission[]
   assessments           Assessment[]
   assessmentAttempts    AssessmentAttempt[]
   assessmentSubmissions AssessmentSubmission[]
+  assignments           Assignment[]
+  assignmentGrades      AssignmentGrade[]
+  assignmentSubmissions AssignmentSubmission[]
+  attendanceRecords     AttendanceRecord[]
+  attendanceSessions    AttendanceSession[]
+  attendanceSettings    AttendanceSettings?
+  attendanceSummaries   AttendanceSummary[]
   chatAnalytics         ChatAnalytics[]
   chatContexts          ChatContext[]
   chatConversations     ChatConversation[]
@@ -110,105 +119,102 @@ model Document {
 }
 
 model User {
-  id                String     @id @default(cuid())
-  school_id         String
-  email             String     @unique
-  password          String
-  first_name        String
-  last_name         String
-  phone_number      String
-  display_picture   Json?
-  gender            Gender     @default(other)
-  otp               String?    @default("")
-  otp_expires_at    DateTime?
-  is_email_verified Boolean?   @default(false)
-  is_otp_verified   Boolean?   @default(false)
-  role              Roles      @default(student)
-  status            UserStatus @default(active)
-
-  // AI Chat Usage Limits
-  // File upload limits
-  filesUploadedThisMonth    Int @default(0)
-  totalFilesUploadedAllTime Int @default(0)
-  totalStorageUsedMB        Int @default(0)
-  maxFilesPerMonth          Int @default(10)
-  maxFileSizeMB             Int @default(100)
-  maxStorageMB              Int @default(500)
-
-  // Token and message limits
-  tokensUsedThisWeek   Int @default(0)
-  tokensUsedAllTime    Int @default(0)
-  messagesSentThisWeek Int @default(0)
-  maxTokensPerDay      Int @default(50000)
-  tokensUsedThisDay    Int @default(0)
-  maxTokensPerWeek     Int @default(50000)
-  maxMessagesPerWeek   Int @default(100)
-
-  // Reset dates for limits
-  lastFileResetDate         DateTime @default(now())
-  lastTokenResetDateAllTime DateTime @default(now())
-
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
-  assignmentsCreated       Assignment[]
-  assignmentGradesReceived AssignmentGrade[]
-  assignmentGradesGiven    AssignmentGrade[]      @relation("AssignmentGradeGiver")
-  assignmentSubmissions    AssignmentSubmission[]
-  assessmentsCreated       Assessment[]
-  assessmentGradesGiven    AssessmentSubmission[] @relation("AssessmentGrader")
-  assessmentAttemptsGraded AssessmentAttempt[]    @relation("AssessmentGrader")
-  assessmentSubmissions    AssessmentSubmission[]
-  assessmentAttempts       AssessmentAttempt[]
-  assessmentResponses      AssessmentResponse[]
-  chatAnalytics            ChatAnalytics[]
-  chatConversations        ChatConversation[]
-  chatMessages             ChatMessage[]
-  deviceTokens             DeviceToken[]
-  gradingRubricsCreated    GradingRubric[]
-  libraryResource          LibraryResource[]
-  liveClass                LiveClass[]
-  pdfMaterial              PDFMaterial[]
-  parent                   Parent?
-  payments                 Payment[]              @relation("StudentPayment")
-  student                  Student?
-  performances             StudentPerformance[]   @relation("StudentPerformance")
-  teacher                  Teacher?
-  topicsCreated            Topic[]                @relation("TopicCreator")
-  school                   School                 @relation(fields: [school_id], references: [id])
-  videoContent             VideoContent[]
+  id                         String                 @id @default(cuid())
+  school_id                  String
+  email                      String                 @unique
+  password                   String
+  first_name                 String
+  last_name                  String
+  phone_number               String
+  display_picture            Json?
+  gender                     Gender                 @default(other)
+  otp                        String?                @default("")
+  otp_expires_at             DateTime?
+  is_email_verified          Boolean?               @default(false)
+  is_otp_verified            Boolean?               @default(false)
+  role                       Roles                  @default(student)
+  status                     UserStatus             @default(active)
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  filesUploadedThisMonth     Int                    @default(0)
+  lastFileResetDate          DateTime               @default(now())
+  lastTokenResetDateAllTime  DateTime               @default(now())
+  maxFileSizeMB              Int                    @default(100)
+  maxFilesPerMonth           Int                    @default(10)
+  maxMessagesPerWeek         Int                    @default(100)
+  maxStorageMB               Int                    @default(500)
+  maxTokensPerDay            Int                    @default(50000)
+  maxTokensPerWeek           Int                    @default(50000)
+  messagesSentThisWeek       Int                    @default(0)
+  tokensUsedAllTime          Int                    @default(0)
+  tokensUsedThisDay          Int                    @default(0)
+  tokensUsedThisWeek         Int                    @default(0)
+  totalFilesUploadedAllTime  Int                    @default(0)
+  totalStorageUsedMB         Int                    @default(0)
+  assessmentsCreated         Assessment[]
+  assessmentAttemptsGraded   AssessmentAttempt[]    @relation("AssessmentGrader")
+  assessmentAttempts         AssessmentAttempt[]
+  assessmentResponses        AssessmentResponse[]
+  assessmentGradesGiven      AssessmentSubmission[] @relation("AssessmentGrader")
+  assessmentSubmissions      AssessmentSubmission[]
+  assignmentsCreated         Assignment[]
+  assignmentGradesReceived   AssignmentGrade[]
+  assignmentGradesGiven      AssignmentGrade[]      @relation("AssignmentGradeGiver")
+  assignmentSubmissions      AssignmentSubmission[]
+  attendanceRecordsMarked    AttendanceRecord[]     @relation("AttendanceMarker")
+  attendanceRecords          AttendanceRecord[]
+  attendanceSessionsApproved AttendanceSession[]    @relation("AttendanceApprover")
+  attendanceSummaries        AttendanceSummary[]
+  chatAnalytics              ChatAnalytics[]
+  chatConversations          ChatConversation[]
+  chatMessages               ChatMessage[]
+  deviceTokens               DeviceToken[]
+  gradingRubricsCreated      GradingRubric[]
+  libraryResource            LibraryResource[]
+  liveClass                  LiveClass[]
+  pdfMaterial                PDFMaterial[]
+  parent                     Parent?
+  payments                   Payment[]              @relation("StudentPayment")
+  student                    Student?
+  performances               StudentPerformance[]   @relation("StudentPerformance")
+  teacher                    Teacher?
+  topicsCreated              Topic[]                @relation("TopicCreator")
+  school                     School                 @relation(fields: [school_id], references: [id])
+  videoContent               VideoContent[]
 }
 
 model Teacher {
-  id                  String           @id @default(cuid())
-  email               String           @unique
+  id                  String              @id @default(cuid())
+  email               String              @unique
   first_name          String
   last_name           String
   phone_number        String
   display_picture     Json?
   school_id           String
-  academic_session_id String           @default("1")
-  user_id             String           @unique
-  gender              Gender           @default(other)
-  role                Roles            @default(teacher)
-  password            String           @default("")
-  teacher_id          String           @unique
-  employee_number     String?          @unique
+  academic_session_id String              @default("1")
+  user_id             String              @unique
+  gender              Gender              @default(other)
+  role                Roles               @default(teacher)
+  password            String              @default("")
+  teacher_id          String              @unique
+  employee_number     String?             @unique
   qualification       String?
   specialization      String?
   years_of_experience Int?
-  hire_date           DateTime         @default(now())
+  hire_date           DateTime            @default(now())
   salary              Float?
   department          String?
-  is_class_teacher    Boolean          @default(false)
-  status              UserStatus       @default(active)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
-  classesManaging     Class[]          @relation("ClassTeacher")
-  academicSession     AcademicSession  @relation(fields: [academic_session_id], references: [id])
-  school              School           @relation(fields: [school_id], references: [id])
-  user                User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  is_class_teacher    Boolean             @default(false)
+  status              UserStatus          @default(active)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  attendanceSessions  AttendanceSession[]
+  classesManaging     Class[]             @relation("ClassTeacher")
+  academicSession     AcademicSession     @relation(fields: [academic_session_id], references: [id])
+  school              School              @relation(fields: [school_id], references: [id])
+  user                User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   subjectsTeaching    TeacherSubject[]
-  schedulesTeaching   TimetableEntry[] @relation("TeacherSchedule")
+  schedulesTeaching   TimetableEntry[]    @relation("TeacherSchedule")
 
   @@index([school_id])
   @@index([academic_session_id])
@@ -228,7 +234,6 @@ model Student {
   date_of_birth       DateTime?
   admission_date      DateTime        @default(now())
   current_class_id    String?
-  current_class       Class?          @relation(fields: [current_class_id], references: [id])
   guardian_name       String?
   guardian_phone      String?
   guardian_email      String?
@@ -248,6 +253,7 @@ model Student {
   postal_code         String?
   state               String?
   academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  current_class       Class?          @relation(fields: [current_class_id], references: [id])
   parent              Parent?         @relation("ParentChildren", fields: [parent_id], references: [id])
   school              School          @relation(fields: [school_id], references: [id])
   user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -294,14 +300,17 @@ model Class {
   classTeacherId      String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  attendanceRecords   AttendanceRecord[]
+  attendanceSessions  AttendanceSession[]
+  attendanceSummaries AttendanceSummary[]
   academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
   classTeacher        Teacher?             @relation("ClassTeacher", fields: [classTeacherId], references: [id])
   school              School               @relation(fields: [schoolId], references: [id])
   payments            Payment[]
+  students            Student[]
   performances        StudentPerformance[]
   subjects            Subject[]
   schedules           TimetableEntry[]
-  students            Student[]
 
   @@unique([schoolId, academic_session_id, classId])
   @@index([schoolId, academic_session_id])
@@ -344,9 +353,9 @@ model Topic {
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   instructions         String?
+  assessments          Assessment[]
   assignments          Assignment[]
   AssignmentSubmission AssignmentSubmission[]
-  assessments          Assessment[]
   libraryResources     LibraryResource[]
   liveClasses          LiveClass[]
   pdfMaterial          PDFMaterial[]
@@ -581,7 +590,6 @@ model VideoContent {
 
 model PDFMaterial {
   id                  String              @id @default(cuid())
-  materialId          String?             @unique @default(uuid())
   title               String
   description         String?
   url                 String
@@ -597,6 +605,7 @@ model PDFMaterial {
   order               Int                 @default(1)
   fileType            String?
   originalName        String?
+  materialId          String?             @unique @default(uuid())
   chatAnalytics       ChatAnalytics[]
   chatConversations   ChatConversation[]
   chatMessages        ChatMessage[]
@@ -689,7 +698,6 @@ model Assessment {
   subject_id            String
   assessment_type       AssessmentType         @default(CBT)
   submissions           Json?
-  questions             AssessmentQuestion[]
   academicSession       AcademicSession        @relation(fields: [academic_session_id], references: [id])
   createdBy             User                   @relation(fields: [created_by], references: [id])
   school                School                 @relation(fields: [school_id], references: [id])
@@ -697,6 +705,7 @@ model Assessment {
   topic                 Topic?                 @relation(fields: [topic_id], references: [id])
   analytics             AssessmentAnalytics?
   attempts              AssessmentAttempt[]
+  questions             AssessmentQuestion[]
   assessmentSubmissions AssessmentSubmission[]
 
   @@index([school_id, academic_session_id])
@@ -794,8 +803,8 @@ model AssessmentAttempt {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
-  grader              User?                @relation("AssessmentGrader", fields: [graded_by], references: [id])
   assessment          Assessment           @relation(fields: [assessment_id], references: [id])
+  grader              User?                @relation("AssessmentGrader", fields: [graded_by], references: [id])
   school              School               @relation(fields: [school_id], references: [id])
   student             User                 @relation(fields: [student_id], references: [id])
   responses           AssessmentResponse[]
@@ -1212,6 +1221,124 @@ model ChatAnalytics {
   @@index([date])
 }
 
+model AttendanceSession {
+  id                  String                @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  class_id            String
+  teacher_id          String
+  date                DateTime
+  session_type        AttendanceSessionType @default(DAILY)
+  status              AttendanceStatus      @default(PENDING)
+  total_students      Int                   @default(0)
+  present_count       Int                   @default(0)
+  absent_count        Int                   @default(0)
+  late_count          Int                   @default(0)
+  excused_count       Int                   @default(0)
+  attendance_rate     Float                 @default(0.0)
+  notes               String?
+  submitted_at        DateTime?
+  approved_at         DateTime?
+  approved_by         String?
+  created_at          DateTime              @default(now())
+  updated_at          DateTime              @updatedAt
+  records             AttendanceRecord[]
+  academicSession     AcademicSession       @relation(fields: [academic_session_id], references: [id])
+  approver            User?                 @relation("AttendanceApprover", fields: [approved_by], references: [id])
+  class               Class                 @relation(fields: [class_id], references: [id])
+  school              School                @relation(fields: [school_id], references: [id])
+  teacher             Teacher               @relation(fields: [teacher_id], references: [id])
+
+  @@unique([class_id, date, session_type])
+  @@index([school_id, academic_session_id])
+  @@index([class_id, date])
+  @@index([teacher_id, date])
+  @@index([status])
+  @@index([date])
+  @@index([attendance_rate])
+}
+
+model AttendanceRecord {
+  id                    String                 @id @default(cuid())
+  attendance_session_id String
+  student_id            String
+  school_id             String
+  academic_session_id   String
+  class_id              String
+  status                AttendanceRecordStatus @default(ABSENT)
+  marked_at             DateTime?
+  marked_by             String?
+  reason                String?
+  is_excused            Boolean                @default(false)
+  excuse_note           String?
+  parent_notified       Boolean                @default(false)
+  parent_notified_at    DateTime?
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @updatedAt
+  academicSession       AcademicSession        @relation(fields: [academic_session_id], references: [id])
+  attendanceSession     AttendanceSession      @relation(fields: [attendance_session_id], references: [id], onDelete: Cascade)
+  class                 Class                  @relation(fields: [class_id], references: [id])
+  marker                User?                  @relation("AttendanceMarker", fields: [marked_by], references: [id])
+  school                School                 @relation(fields: [school_id], references: [id])
+  student               User                   @relation(fields: [student_id], references: [id])
+
+  @@unique([attendance_session_id, student_id])
+  @@index([school_id, academic_session_id])
+  @@index([class_id])
+  @@index([student_id])
+  @@index([status])
+  @@index([marked_at])
+}
+
+model AttendanceSummary {
+  id                  String               @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  class_id            String
+  student_id          String?
+  period_type         AttendancePeriodType
+  period_start        DateTime
+  period_end          DateTime
+  total_days          Int                  @default(0)
+  present_days        Int                  @default(0)
+  absent_days         Int                  @default(0)
+  late_days           Int                  @default(0)
+  excused_days        Int                  @default(0)
+  attendance_rate     Float                @default(0.0)
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  class               Class                @relation(fields: [class_id], references: [id])
+  school              School               @relation(fields: [school_id], references: [id])
+  student             User?                @relation(fields: [student_id], references: [id])
+
+  @@unique([school_id, academic_session_id, class_id, student_id, period_type, period_start])
+  @@index([school_id, academic_session_id])
+  @@index([class_id, period_type])
+  @@index([student_id, period_type])
+  @@index([period_start, period_end])
+  @@index([attendance_rate])
+}
+
+model AttendanceSettings {
+  id                          String          @id @default(cuid())
+  school_id                   String          @unique
+  academic_session_id         String
+  late_threshold_minutes      Int             @default(15)
+  auto_mark_absent_minutes    Int             @default(30)
+  require_excuse_note         Boolean         @default(true)
+  parent_notification_enabled Boolean         @default(true)
+  attendance_tracking_enabled Boolean         @default(true)
+  minimum_attendance_rate     Float           @default(75.0)
+  max_consecutive_absences    Int             @default(5)
+  created_at                  DateTime        @default(now())
+  updated_at                  DateTime        @updatedAt
+  academicSession             AcademicSession @relation(fields: [academic_session_id], references: [id])
+  school                      School          @relation(fields: [school_id], references: [id])
+
+  @@index([school_id, academic_session_id])
+}
+
 enum SchoolType {
   primary
   secondary
@@ -1450,4 +1577,36 @@ enum RubricScale {
   PERCENTAGE
   LETTER_GRADE
   CUSTOM
+}
+
+enum AttendanceSessionType {
+  DAILY
+  MORNING
+  AFTERNOON
+  EVENING
+  SPECIAL
+}
+
+enum AttendanceStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AttendanceRecordStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  PARTIAL
+}
+
+enum AttendancePeriodType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  TERM
+  YEARLY
 }
