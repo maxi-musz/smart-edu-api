@@ -23,6 +23,7 @@ import {
 import { StudentsService } from './students.service';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { GetUser } from '../auth/decorator/get-user-decorator';
+import { StudentAttendanceExtendedResponseDto } from '../teachers/attendance-teacher/dto/student-attendance.dto';
 
 @ApiTags('Students')
 @ApiBearerAuth()
@@ -280,5 +281,27 @@ export class StudentsController {
     @GetUser() user: any
   ) {
     return this.studentsService.getAssessmentWithAnswers(user, assessmentId);
+  }
+
+  /**
+   * Get student's own attendance for a specific month
+   * GET /api/v1/students/attendance
+   */
+  @Get('attendance')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get student attendance for a specific month' })
+  @ApiQuery({ name: 'year', required: false, type: Number, description: 'Year (defaults to current year)', example: 2025 })
+  @ApiQuery({ name: 'month', required: false, type: Number, description: 'Month 1-12 (defaults to current month)', example: 9 })
+  @ApiResponse({ status: 200, description: 'Student attendance retrieved successfully', type: StudentAttendanceExtendedResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Student not found' })
+  getStudentAttendance(
+    @GetUser() user: any,
+    @Query('year') year?: number,
+    @Query('month') month?: number
+  ) {
+    const yearNum = year ? parseInt(year.toString(), 10) : undefined;
+    const monthNum = month ? parseInt(month.toString(), 10) : undefined;
+    return this.studentsService.getStudentAttendance(user, yearNum, monthNum);
   }
 }

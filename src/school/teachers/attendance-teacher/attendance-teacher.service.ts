@@ -19,17 +19,46 @@ export class AttendanceTeacherService {
    * Get session details and classes assigned to teacher
    */
   async getSessionDetailsAndClasses(user: User): Promise<ApiResponse<AttendanceOverviewDto | null>> {
-    this.logger.log(`Fetching session details and classes for teacher: ${user.email}`);
+    let roleRaw: any = (user as any)?.role;
+    let effectiveSchoolId: string | undefined = (user as any)?.school_id;
+    const payloadKeys = Object.keys(user as any || {});
+    this.logger.log(`Fetching session details and classes for user: ${user['email'] || (user as any)?.email}, role: ${roleRaw}, payloadKeys=${JSON.stringify(payloadKeys)}`);
+
+    // If role or school_id isn't present in JWT payload, fetch from DB
+    if (!roleRaw || !effectiveSchoolId) {
+      try {
+        const fullUser = await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { id: (user as any)?.id || (user as any)?.sub || '' },
+              { email: (user as any)?.email || '' }
+            ]
+          },
+          select: { id: true, role: true, school_id: true, email: true }
+        });
+        if (fullUser) {
+          roleRaw = roleRaw || fullUser.role;
+          effectiveSchoolId = effectiveSchoolId || fullUser.school_id;
+          this.logger.log(`Resolved user from DB. email=${fullUser.email}, role=${fullUser.role}, school_id=${fullUser.school_id}`);
+        } else {
+          this.logger.warn(`Unable to resolve full user from DB using sub/id/email. sub=${(user as any)?.sub}, email=${(user as any)?.email}`);
+        }
+      } catch (e) {
+        this.logger.error(`Error resolving full user from DB: ${e.message}`);
+      }
+    }
+
+    const roleNormalized = typeof roleRaw === 'string' ? roleRaw.toLowerCase() : String(roleRaw || '').toLowerCase();
 
     try {
       // Get teacher record
       const teacher = await this.prisma.teacher.findFirst({
         where: {
           OR: [
-            { user_id: user.id },
-            { email: user.email }
+            { user_id: (user as any)?.id || (user as any)?.sub },
+            { email: (user as any)?.email }
           ],
-          school_id: user.school_id
+          school_id: effectiveSchoolId
         },
         include: {
           academicSession: true
@@ -37,7 +66,80 @@ export class AttendanceTeacherService {
       });
 
       if (!teacher) {
-        this.logger.error(`Teacher not found for user: ${user.email}`);
+        // Allow school directors to access this endpoint without a Teacher record
+        const isDirector = ['school_director', 'school-director', 'director', 'schooldirector'].includes(roleNormalized);
+        if (isDirector) {
+          this.logger.warn(`No teacher record for director ${user.email}. Falling back to director view. role=${roleRaw}`);
+
+          // Fetch academic sessions for the director's school
+          const allSessions = await this.prisma.academicSession.findMany({
+            where: { school_id: effectiveSchoolId! },
+            orderBy: [
+              { start_year: 'desc' },
+              { term: 'desc' }
+            ],
+            take: 3
+          });
+
+          if (allSessions.length === 0) {
+            this.logger.error(`No academic sessions found for school: ${effectiveSchoolId}`);
+            return new ApiResponse<null>(false, 'No academic sessions found', null);
+          }
+
+          const currentSession = allSessions.find(session => session.is_current);
+          if (!currentSession) {
+            this.logger.error(`No current academic session found for school: ${effectiveSchoolId}`);
+            return new ApiResponse<null>(false, 'No current academic session found', null);
+          }
+
+          const academicSessions: AcademicSessionInfoDto[] = allSessions.map(session => ({
+            academic_year: session.academic_year,
+            term: session.term,
+            term_start_date: session.start_date.toISOString().split('T')[0],
+            term_end_date: session.end_date.toISOString().split('T')[0],
+            current_date: new Date().toISOString().split('T')[0],
+            is_current: session.is_current
+          }));
+
+          // For directors, return all classes in the school for the current session
+          const classes = await this.prisma.class.findMany({
+            where: {
+              schoolId: effectiveSchoolId!,
+              academic_session_id: currentSession.id
+            },
+            include: {
+              students: {
+                where: { status: 'active' }
+              },
+              classTeacher: true,
+              schedules: {
+                where: { isActive: true },
+                select: { room: true },
+                take: 1
+              }
+            }
+          });
+
+          const classes_managing: ClassInfoDto[] = classes.map(c => ({
+            id: c.id,
+            name: c.name,
+            code: c.name,
+            subject: 'Class Teacher',
+            teacher_name: c.classTeacher ? `${c.classTeacher.first_name} ${c.classTeacher.last_name}` : 'Unassigned',
+            room: c.schedules[0]?.room || 'TBD',
+            total_students: c.students.length
+          }));
+
+          const data: AttendanceOverviewDto = {
+            classes_managing,
+            academic_sessions: academicSessions
+          };
+
+          this.logger.log(`✅ Session details and classes retrieved successfully. Classes: ${classes_managing.length}`);
+          return new ApiResponse(true, 'Session details retrieved successfully', data);
+        }
+
+        this.logger.error(`Teacher not found for userrr: ${user.email}, role=${roleRaw}`);
         return new ApiResponse<null>(false, 'Teacher not found', null);
       }
 
@@ -142,10 +244,12 @@ export class AttendanceTeacherService {
     page: number = 1, 
     limit: number = 10
   ): Promise<ApiResponse<StudentsForClassDto | null>> {
-    this.logger.log(`Fetching students for class ${classId} by teacher: ${user.email} (page: ${page}, limit: ${limit})`);
+    const roleRaw: any = (user as any)?.role;
+    const roleNormalized = typeof roleRaw === 'string' ? roleRaw.toLowerCase() : String(roleRaw || '').toLowerCase();
+    this.logger.log(`Fetching students for class ${classId} by user: ${user.email}, role: ${roleRaw} (page: ${page}, limit: ${limit})`);
 
     try {
-      // Get teacher record
+      // Get teacher record (if applicable)
       const teacher = await this.prisma.teacher.findFirst({
         where: {
           OR: [
@@ -156,21 +260,27 @@ export class AttendanceTeacherService {
         }
       });
 
-      if (!teacher) {
-        this.logger.error(`Teacher not found for user: ${user.email}`);
-        return new ApiResponse<null>(false, 'Teacher not found', null);
+      const isDirector = ['school_director', 'school-director', 'director', 'schooldirector'].includes(roleNormalized);
+      const isAdmin = ['admin', 'school_admin', 'school-admin', 'schooladmin'].includes(roleNormalized);
+      if (!teacher && !(isDirector || isAdmin)) {
+        if ((user as any)?.school_id) {
+          this.logger.warn(`{getattendanceforclass} No teacher record for ${user.email} (role=${roleRaw}). Proceeding with school-level access using school_id=${(user as any).school_id}`);
+        } else {
+          this.logger.error(`{getattendanceforclass} Teacher not found and no school_id context for user: ${user.email}, role=${roleRaw}`);
+          return new ApiResponse<null>(false, 'Teacher not found', null);
+        }
       }
 
       // Get current academic session
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
-          school_id: teacher.school_id,
+          school_id: teacher?.school_id || user.school_id,
           is_current: true
         }
       });
 
       if (!currentSession) {
-        this.logger.error(`No current academic session found for school: ${teacher.school_id}`);
+        this.logger.error(`No current academic session found for school: ${teacher?.school_id || user.school_id}`);
         return new ApiResponse<null>(false, 'No current academic session found', null);
       }
 
@@ -178,9 +288,9 @@ export class AttendanceTeacherService {
       const classInfo = await this.prisma.class.findFirst({
         where: {
           id: classId,
-          schoolId: teacher.school_id,
+          schoolId: teacher?.school_id || user.school_id,
           academic_session_id: currentSession.id,
-          classTeacherId: teacher.id
+          ...(teacher && !isDirector ? { classTeacherId: teacher.id } : {})
         },
         include: {
           students: {
@@ -205,9 +315,10 @@ export class AttendanceTeacherService {
               }
             }
           },
+          classTeacher: true,
           schedules: {
             where: {
-              teacher_id: teacher.id,
+              ...(teacher ? { teacher_id: teacher.id } : {}),
               isActive: true
             },
             select: {
@@ -253,7 +364,7 @@ export class AttendanceTeacherService {
         name: classInfo.name,
         code: classInfo.name,
         subject: 'Class Teacher',
-        teacher_name: `${teacher.first_name} ${teacher.last_name}`,
+        teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : (classInfo as any).classTeacher ? `${(classInfo as any).classTeacher.first_name} ${(classInfo as any).classTeacher.last_name}` : 'Unassigned',
         room: classInfo.schedules[0]?.room || 'TBD'
       };
 
@@ -290,7 +401,36 @@ export class AttendanceTeacherService {
     classId: string, 
     date: string
   ): Promise<ApiResponse<AttendanceForDateDto | null>> {
-    this.logger.log(`Fetching attendance for class ${classId} on date ${date} by teacher: ${user.email}`);
+    let roleRaw: any = (user as any)?.role;
+    let effectiveSchoolId: string | undefined = (user as any)?.school_id;
+    const payloadKeys = Object.keys(user as any || {});
+    this.logger.log(`Fetching attendance for class ${classId} on date ${date} by user: ${(user as any)?.email}, role=${roleRaw}, payloadKeys=${JSON.stringify(payloadKeys)}`);
+
+    if (!roleRaw || !effectiveSchoolId) {
+      try {
+        const fullUser = await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { id: (user as any)?.id || (user as any)?.sub || '' },
+              { email: (user as any)?.email || '' }
+            ]
+          },
+          select: { id: true, role: true, school_id: true, email: true }
+        });
+        if (fullUser) {
+          roleRaw = roleRaw || fullUser.role;
+          effectiveSchoolId = effectiveSchoolId || fullUser.school_id;
+          this.logger.log(`Resolved user from DB for attendance date. email=${fullUser.email}, role=${fullUser.role}, school_id=${fullUser.school_id}`);
+        }
+      } catch (e) {
+        this.logger.error(`Error resolving full user from DB (attendance date): ${e.message}`);
+      }
+    }
+
+    const roleNormalized = typeof roleRaw === 'string' ? roleRaw.toLowerCase() : String(roleRaw || '').toLowerCase();
+    const isDirector = ['school_director', 'school-director', 'director', 'schooldirector'].includes(roleNormalized);
+    const isAdmin = ['admin', 'school_admin', 'school-admin', 'schooladmin'].includes(roleNormalized);
+    this.logger.log(`Role flags for attendance-by-date: isDirector=${isDirector}, isAdmin=${isAdmin}, roleRaw=${roleRaw}`);
 
     try {
       // Validate date format
@@ -304,28 +444,33 @@ export class AttendanceTeacherService {
       const teacher = await this.prisma.teacher.findFirst({
         where: {
           OR: [
-            { user_id: user.id },
-            { email: user.email }
+            { user_id: (user as any)?.id || (user as any)?.sub },
+            { email: (user as any)?.email }
           ],
-          school_id: user.school_id
+          school_id: effectiveSchoolId
         }
       });
 
-      if (!teacher) {
-        this.logger.error(`Teacher not found for user: ${user.email}`);
-        return new ApiResponse<null>(false, 'Teacher not found', null);
+      if (!teacher && !(isDirector || isAdmin)) {
+        // Proceed for non-teachers when role is missing but we have a valid school context
+        if (effectiveSchoolId) {
+          this.logger.warn(`No teacher record and role not privileged for ${((user as any)?.email)}. Proceeding with school-level access using school_id=${effectiveSchoolId}.`);
+        } else {
+          this.logger.error(`Teacher not found and no school_id context for user: ${(user as any)?.email}, role=${roleRaw}`);
+          return new ApiResponse<null>(false, 'Teacher not found', null);
+        }
       }
 
       // Get current academic session
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
-          school_id: teacher.school_id,
+          school_id: teacher?.school_id || effectiveSchoolId!,
           is_current: true
         }
       });
 
       if (!currentSession) {
-        this.logger.error(`No current academic session found for school: ${teacher.school_id}`);
+        this.logger.error(`No current academic session found for school: ${teacher?.school_id || effectiveSchoolId}`);
         return new ApiResponse<null>(false, 'No current academic session found', null);
       }
 
@@ -333,9 +478,9 @@ export class AttendanceTeacherService {
       const classInfo = await this.prisma.class.findFirst({
         where: {
           id: classId,
-          schoolId: teacher.school_id,
+          schoolId: teacher?.school_id || effectiveSchoolId!,
           academic_session_id: currentSession.id,
-          classTeacherId: teacher.id
+          ...(teacher && !(isDirector || isAdmin) ? { classTeacherId: teacher.id } : {})
         },
         include: {
           students: {
@@ -369,7 +514,7 @@ export class AttendanceTeacherService {
         where: {
           class_id: classId,
           date: attendanceDate,
-          school_id: teacher.school_id,
+          school_id: teacher?.school_id || effectiveSchoolId!,
           academic_session_id: currentSession.id
         },
         include: {
@@ -419,7 +564,7 @@ export class AttendanceTeacherService {
             student_id: studentData?.student_id || 'N/A', // Student ID (admission number)
             is_present: record.status === 'PRESENT',
             marked_at: record.marked_at?.toISOString() || null,
-            marked_by: record.marked_by || teacher.id
+            marked_by: record.marked_by || teacher?.id || ''
           };
         });
 
