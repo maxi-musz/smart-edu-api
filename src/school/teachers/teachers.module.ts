@@ -7,11 +7,12 @@ import { SubjectsModule } from './subjects/subjects.module';
 import { TopicsModule } from './topics/topics.module';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { AttendanceTeacherModule } from './attendance-teacher/attendance-teacher.module';
+import { ResultsModule } from './results/results.module';
 
 @Module({
-  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule],
+  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule, ResultsModule],
   controllers: [TeachersController],
   providers: [TeachersService],
-  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule]
+  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule, ResultsModule]
 })
 export class TeachersModule {}

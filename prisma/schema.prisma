@@ -9,7 +9,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model AcademicSession {
@@ -46,6 +46,7 @@ model AcademicSession {
   teachers              Teacher[]
   schedules             TimetableEntry[]
   topics                Topic[]
+  achievements          Achievement[]
 
   @@unique([school_id, academic_year, term])
   @@index([school_id, is_current])
@@ -107,6 +108,9 @@ model School {
   users                 User[]
   videoContent          VideoContent[]
   wallet                Wallet?
+  userSettings          UserSettings[]
+  achievements          Achievement[]
+  supportInfo           SupportInfo?
 }
 
 model Document {
@@ -181,6 +185,8 @@ model User {
   topicsCreated              Topic[]                @relation("TopicCreator")
   school                     School                 @relation(fields: [school_id], references: [id])
   videoContent               VideoContent[]
+  userSettings               UserSettings?
+  studentAchievements        StudentAchievement[]   @relation("StudentAchievements")
 }
 
 model Teacher {
@@ -822,7 +828,7 @@ model AssessmentSubmission {
   student_id          String
   school_id           String
   academic_session_id String
-  submission_type     AssessmentType   @default(CBT)
+  submission_type     AssessmentType   @default(EXAM)
   content             String?
   attachment_url      String?
   attachment_type     String?
@@ -1339,6 +1345,114 @@ model AttendanceSettings {
   @@index([school_id, academic_session_id])
 }
 
+model UserSettings {
+  id        String @id @default(cuid())
+  user_id   String @unique
+  school_id String
+
+  // Notification settings
+  push_notifications         Boolean @default(true)
+  email_notifications        Boolean @default(true)
+  assessment_reminders       Boolean @default(true)
+  grade_notifications        Boolean @default(true)
+  announcement_notifications Boolean @default(false)
+
+  // App preferences
+  dark_mode       Boolean @default(false)
+  sound_effects   Boolean @default(true)
+  haptic_feedback Boolean @default(true)
+  auto_save       Boolean @default(true)
+  offline_mode    Boolean @default(false)
+
+  // Privacy settings
+  profile_visibility     String  @default("classmates") // public, classmates, private
+  show_contact_info      Boolean @default(true)
+  show_academic_progress Boolean @default(true)
+  data_sharing           Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  school School @relation(fields: [school_id], references: [id])
+
+  @@index([user_id])
+  @@index([school_id])
+}
+
+model Achievement {
+  id                  String @id @default(cuid())
+  school_id           String
+  academic_session_id String
+
+  title       String
+  description String
+  type        AchievementType
+  icon_url    String?
+  points      Int             @default(0)
+  is_active   Boolean         @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school              School               @relation(fields: [school_id], references: [id])
+  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  studentAchievements StudentAchievement[]
+
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([type])
+}
+
+model StudentAchievement {
+  id             String   @id @default(cuid())
+  student_id     String
+  achievement_id String
+  earned_date    DateTime @default(now())
+  points_earned  Int      @default(0)
+  is_visible     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student     User        @relation("StudentAchievements", fields: [student_id], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievement_id], references: [id])
+
+  @@unique([student_id, achievement_id])
+  @@index([student_id])
+  @@index([achievement_id])
+}
+
+model SupportInfo {
+  id        String @id @default(cuid())
+  school_id String @unique
+
+  // Help center
+  faq_count       Int       @default(0)
+  last_faq_update DateTime?
+  faq_categories  Json      @default("[]")
+
+  // Contact options
+  email_support       String  @default("support@school.edu")
+  phone_support       String  @default("+1-800-SCHOOL")
+  live_chat_available Boolean @default(false)
+  response_time       String  @default("24 hours")
+
+  // App info
+  app_version             String   @default("1.0.0")
+  build_number            String   @default("100")
+  last_updated            DateTime @default(now())
+  minimum_ios_version     String   @default("13.0")
+  minimum_android_version String   @default("8.0")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [school_id], references: [id])
+
+  @@index([school_id])
+}
+
 enum SchoolType {
   primary
   secondary
@@ -1609,4 +1723,14 @@ enum AttendancePeriodType {
   MONTHLY
   TERM
   YEARLY
+}
+
+enum AchievementType {
+  ACADEMIC
+  ATTENDANCE
+  SPORTS
+  EXTRACURRICULAR
+  BEHAVIOR
+  LEADERSHIP
+  OTHER
 }

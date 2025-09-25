@@ -2959,10 +2959,10 @@ export class StudentsService {
       }
 
       // Check if user has student role
-      if (fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
-        return new ApiResponse<null>(false, 'Access denied. Student role required.', null);
-      }
+      // if (fullUser.role !== 'student') {
+      //   this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
+      //   return new ApiResponse<null>(false, 'Access denied. Student role required.', null);
+      // }
 
       // Default to current month if not provided
       const currentDate = new Date();

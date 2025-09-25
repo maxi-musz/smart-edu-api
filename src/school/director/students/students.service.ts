@@ -101,27 +101,28 @@ export class StudentsService {
         };
     }
 
-    private async calculateClassPosition(classId: string, studentId: string): Promise<number> {
-        const school = await this.prisma.school.findFirst({
-            where: {
-                classes: {
-                    some: { id: classId }
+    private async calculateClassPosition(classId: string, studentId: string, currentSession?: any): Promise<number> {
+        // If no session provided, fetch it (fallback for other calls)
+        if (!currentSession) {
+            const school = await this.prisma.school.findFirst({
+                where: {
+                    classes: {
+                        some: { id: classId }
+                    }
+                },
+                select: {
+                    id: true
                 }
-            },
-            select: {
-                id: true
+            });
+
+            if (!school) return 0;
+
+            const currentSessionResponse = await this.academicSessionService.getCurrentSession(school.id);
+            if (!currentSessionResponse.success) {
+                return 0;
             }
-        });
-
-        if (!school) return 0;
-
-        // Get current academic session for the school
-        const currentSessionResponse = await this.academicSessionService.getCurrentSession(school.id);
-        if (!currentSessionResponse.success) {
-            return 0;
+            currentSession = currentSessionResponse.data;
         }
-
-        const currentSession = currentSessionResponse.data;
         const termNumber = currentSession.term === AcademicTerm.first ? 1 :
                           currentSession.term === AcademicTerm.second ? 2 : 3;
 
@@ -163,8 +164,12 @@ export class StudentsService {
             this.logger.log(colors.green(`Frontend class filter: "${class_id}"`));
         }
         if (!search && !status && !class_id) {
-            this.logger.log(colors.red("Frontend fetching all data - no filters"));
+            this.logger.log(colors.blue("Frontend fetching all data - no filters"));
         }
+
+        // 🚀 FIX: Get current session ONCE and reuse it to prevent N+1 queries
+        const currentSessionResponse = await this.academicSessionService.getCurrentSession(schoolId);
+        const currentSession = currentSessionResponse.success ? currentSessionResponse.data : null;
 
         const skip = (page - 1) * limit;
 
@@ -273,7 +278,7 @@ export class StudentsService {
                 next_class_teacher: nextClass ? `${nextClass.teacher.first_name} ${nextClass.teacher.last_name}` : null,
                 performance: {
                     ...(await this.calculatePerformanceMetrics(student.id, currentClass.id)),
-                    position: await this.calculateClassPosition(currentClass.id, student.id)
+                    position: await this.calculateClassPosition(currentClass.id, student.id, currentSession)
                 }
             };
         }));
