@@ -172,7 +172,7 @@ export class TeachersService {
                 this.logger.log(colors.green(`Frontend class filter: "${class_id}"`));
             }
             if (!search && !status && !gender && !class_id) {
-                this.logger.log(colors.red("Frontend fetching all data - no filters"));
+                this.logger.log(colors.blue("Frontend fetching all data - no filters"));
             }
 
             const where: any = {

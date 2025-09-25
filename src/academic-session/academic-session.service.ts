@@ -402,7 +402,7 @@ export class AcademicSessionService {
         return new ApiResponse(false, 'No current academic session found', null);
       }
 
-      // this.logger.log(colors.green(`✅ Current session: ${currentSession.academic_year} - ${currentSession.term}`));
+      this.logger.log(colors.green(`✅ Current session: ${currentSession.academic_year} - ${currentSession.term}`));
 
       return new ApiResponse(
         true,
