@@ -1107,6 +1107,7 @@ model DocumentChunk {
   material               PDFMaterial           @relation(fields: [material_id], references: [id], onDelete: Cascade)
   materialProcessing     MaterialProcessing    @relation(fields: [material_processing_id], references: [id], onDelete: Cascade)
   school                 School                @relation(fields: [school_id], references: [id])
+  // Note: Vector similarity search is handled by Pinecone, not PostgreSQL indexes
 
   @@index([material_id])
   @@index([school_id])
@@ -1114,7 +1115,6 @@ model DocumentChunk {
   @@index([page_number])
   @@index([order_index])
   @@index([createdAt])
-  @@index([embedding], map: "document_chunk_embedding_cosine_idx")
 }
 
 model ChatConversation {
