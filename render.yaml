@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: smart-edu-backend
+    env: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smart-edu-db
+          property: connectionString
+    healthCheckPath: /health
+    autoDeploy: false
