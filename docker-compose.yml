@@ -1,7 +1,10 @@
+# Legacy docker-compose.yml - Use docker-compose.dev.yml for development
+# This file is kept for backward compatibility
+
 services:
   dev-db:
     image: postgres:15-alpine
-    container_name: smart-edu-dev-db
+    container_name: smart-edu-legacy-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123
