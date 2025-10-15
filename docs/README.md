@@ -10,6 +10,7 @@
 3. **[03-DOCKER_SETUP.md](./03-DOCKER_SETUP.md)** ← Detailed Docker setup
 4. **[04-DOCKER_SUMMARY.md](./04-DOCKER_SUMMARY.md)** ← What was implemented
 5. **[05-PRODUCTION_DEPLOYMENT.md](./05-PRODUCTION_DEPLOYMENT.md)** ← Production deployment
+6. **[06-STAGING_ENVIRONMENT.md](./06-STAGING_ENVIRONMENT.md)** ← Staging environment guide
 
 ---
 
@@ -19,11 +20,21 @@
 # Start development
 make dev
 
+# Start staging (team testing)
+make staging
+
+# Start production
+make prod
+
 # Stop everything
 make dev-stop
+make staging-stop
+make prod-stop
 
 # View logs
 make dev-logs
+make staging-logs
+make prod-logs
 
 # See all commands
 make help

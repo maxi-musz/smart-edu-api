@@ -61,6 +61,7 @@ make clean            # Clean up containers
 
 ### Docker Services
 - **Development**: App, PostgreSQL, Redis, Prisma Studio
+- **Staging**: App, PostgreSQL, Redis, Nginx, Prisma Studio, Backup service
 - **Production**: App, PostgreSQL, Redis, Nginx, Backup service
 
 For detailed Docker setup instructions, see [docs/03-DOCKER_SETUP.md](./docs/03-DOCKER_SETUP.md).
@@ -75,6 +76,7 @@ All documentation is organized in the [`docs/`](./docs/) folder:
 - **[03-DOCKER_SETUP.md](./docs/03-DOCKER_SETUP.md)** - Detailed setup
 - **[04-DOCKER_SUMMARY.md](./docs/04-DOCKER_SUMMARY.md)** - Implementation summary
 - **[05-PRODUCTION_DEPLOYMENT.md](./docs/05-PRODUCTION_DEPLOYMENT.md)** - Production guide
+- **[06-STAGING_ENVIRONMENT.md](./docs/06-STAGING_ENVIRONMENT.md)** - Staging environment guide
 
 ## 📋 Available Scripts
 

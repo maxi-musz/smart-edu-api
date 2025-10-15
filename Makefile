@@ -51,6 +51,30 @@ prod-stop: ## Stop production environment
 prod-restart: ## Restart production environment
 	docker-compose -f docker-compose.prod.yml restart
 
+# Staging commands
+staging: ## Start staging environment
+	docker-compose -f docker-compose.staging.yml --env-file .env.staging up -d
+	@echo "Staging environment started!"
+	@echo "API: http://localhost:2000/api/v1"
+	@echo "API Docs: http://localhost:2000/api/docs"
+	@echo "Prisma Studio: http://localhost:5556"
+	@echo "Nginx: http://localhost:8080"
+
+staging-build: ## Build and start staging environment
+	docker-compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+
+staging-deploy: ## Deploy to staging (full deployment script)
+	./scripts/deploy-staging.sh
+
+staging-logs: ## View staging logs
+	docker-compose -f docker-compose.staging.yml logs -f
+
+staging-stop: ## Stop staging environment
+	docker-compose -f docker-compose.staging.yml down
+
+staging-restart: ## Restart staging environment
+	docker-compose -f docker-compose.staging.yml restart
+
 # Build commands
 build: ## Build production image
 	docker-compose -f docker-compose.prod.yml build
@@ -68,11 +92,17 @@ db-migrate: ## Run database migrations
 db-migrate-prod: ## Run database migrations in production
 	docker-compose -f docker-compose.prod.yml exec app npm run prisma:migrate
 
+db-migrate-staging: ## Run database migrations in staging
+	docker-compose -f docker-compose.staging.yml exec app npm run prisma:migrate
+
 db-seed: ## Seed database with sample data
 	docker-compose -f docker-compose.dev.yml exec app npm run prisma:seed
 
 db-seed-prod: ## Seed production database (use with caution!)
 	docker-compose -f docker-compose.prod.yml exec app npm run prisma:seed
+
+db-seed-staging: ## Seed staging database with sample data
+	docker-compose -f docker-compose.staging.yml exec app npm run prisma:seed
 
 db-reset: ## Reset database (development only)
 	docker-compose -f docker-compose.dev.yml exec app npm run prisma:migrate reset
@@ -81,6 +111,10 @@ db-studio: ## Open Prisma Studio
 	@echo "Opening Prisma Studio at http://localhost:5555"
 	docker-compose -f docker-compose.dev.yml exec app npx prisma studio --hostname 0.0.0.0 --port 5555
 
+db-studio-staging: ## Open Prisma Studio for staging
+	@echo "Opening Prisma Studio for staging at http://localhost:5556"
+	docker-compose -f docker-compose.staging.yml exec prisma-studio npx prisma studio --hostname 0.0.0.0 --port 5556
+
 # Shell access
 shell: ## Access app container shell
 	docker-compose -f docker-compose.dev.yml exec app sh
@@ -88,11 +122,17 @@ shell: ## Access app container shell
 shell-prod: ## Access production app container shell
 	docker-compose -f docker-compose.prod.yml exec app sh
 
+shell-staging: ## Access staging app container shell
+	docker-compose -f docker-compose.staging.yml exec app sh
+
 db-shell: ## Access database shell
 	docker-compose -f docker-compose.dev.yml exec postgres psql -U postgres -d smart-edu-db
 
 db-shell-prod: ## Access production database shell
 	docker-compose -f docker-compose.prod.yml exec postgres psql -U postgres -d smart_edu_prod
+
+db-shell-staging: ## Access staging database shell
+	docker-compose -f docker-compose.staging.yml exec postgres psql -U postgres -d smart_edu_staging
 
 # Backup and restore
 backup: ## Create database backup
@@ -100,6 +140,9 @@ backup: ## Create database backup
 
 backup-dev: ## Create development database backup
 	docker-compose -f docker-compose.dev.yml exec postgres pg_dump -U postgres -d smart-edu-db > backup_$(shell date +%Y%m%d_%H%M%S).sql
+
+backup-staging: ## Create staging database backup
+	docker-compose -f docker-compose.staging.yml exec db-backup /backup.sh staging
 
 # Monitoring and logs
 logs: ## View all logs
@@ -120,6 +163,9 @@ status: ## Show container status
 status-prod: ## Show production container status
 	docker-compose -f docker-compose.prod.yml ps
 
+status-staging: ## Show staging container status
+	docker-compose -f docker-compose.staging.yml ps
+
 # Health checks
 health: ## Check application health
 	@curl -f http://localhost:1000/api/v1/health || echo "Health check failed"
@@ -127,10 +173,14 @@ health: ## Check application health
 health-prod: ## Check production application health
 	@curl -f http://localhost:1000/api/v1/health || echo "Health check failed"
 
+health-staging: ## Check staging application health
+	@curl -f http://localhost:2000/api/v1/health || echo "Health check failed"
+
 # Cleanup commands
 clean: ## Clean up containers and volumes
 	docker-compose -f docker-compose.dev.yml down -v
 	docker-compose -f docker-compose.prod.yml down -v
+	docker-compose -f docker-compose.staging.yml down -v
 
 clean-images: ## Remove unused Docker images
 	docker image prune -f

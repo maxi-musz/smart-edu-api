@@ -36,8 +36,14 @@ curl http://localhost:1000/api/v1/health
 | What you want to do | Command |
 |---------------------|---------|
 | Start development | `make dev` |
-| Stop everything | `make dev-stop` |
+| Start staging (team testing) | `make staging` |
+| Start production | `make prod` |
+| Stop development | `make dev-stop` |
+| Stop staging | `make staging-stop` |
+| Stop production | `make prod-stop` |
 | View logs | `make dev-logs` |
+| View staging logs | `make staging-logs` |
+| View production logs | `make prod-logs` |
 | Restart app | `make dev-restart` |
 | Run database migrations | `make db-migrate` |
 | Access container shell | `make shell` |
@@ -65,15 +71,33 @@ curl http://localhost:1000/api/v1/health
    make dev-restart
    ```
 
-## 🚀 **For Production Deployment**
+## 🚀 **For Staging & Production Deployment**
 
+### **Staging (Team/Client Testing)**
+1. Create staging environment:
+   ```bash
+   cp env.staging.example .env.staging
+   # Edit .env.staging with your values
+   ```
+
+2. Deploy staging:
+   ```bash
+   make staging-deploy
+   ```
+
+3. Access staging:
+   - **API**: http://localhost:2000/api/v1
+   - **API Docs**: http://localhost:2000/api/docs
+   - **Load Balancer**: http://localhost:8080
+
+### **Production (Live Users)**
 1. Create production environment:
    ```bash
    cp env.production.example .env.prod
    # Edit .env.prod with your values
    ```
 
-2. Deploy:
+2. Deploy production:
    ```bash
    make prod-deploy
    ```
@@ -84,7 +108,8 @@ curl http://localhost:1000/api/v1/health
 |------|---------|
 | `.env` | Your development environment variables |
 | `docker-compose.dev.yml` | Development setup |
-| `docker-compose.prod.yml` | Production setup |
+| `docker-compose.staging.yml` | Staging setup (team testing) |
+| `docker-compose.prod.yml` | Production setup (live users) |
 | `Makefile` | All the commands you need |
 | `01-QUICK_START.md` | This file (read this first!) |
 | `02-FILE_STRUCTURE.md` | Overview of all files |

@@ -41,10 +41,28 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+.env.backup
+.env.prod
+.env.staging
 
 # temp directory
 .temp
 .tmp
+
+# Backup files
+backups/
+*.backup
+*.bak
+
+# SSL certificates
+ssl/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Docker volumes
+docker-volumes/
 
 # Runtime data
 pids
