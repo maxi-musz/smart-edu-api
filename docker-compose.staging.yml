@@ -49,7 +49,7 @@ services:
       - .env.staging
     environment:
       # Override specific variables for staging Docker environment
-      NODE_ENV: staging
+      NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-smart_edu_staging}
       REDIS_URL: redis://:${REDIS_PASSWORD:-staging_redis_pass}@redis:6379
     depends_on:

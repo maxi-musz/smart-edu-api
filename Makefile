@@ -144,6 +144,22 @@ backup-dev: ## Create development database backup
 backup-staging: ## Create staging database backup
 	docker-compose -f docker-compose.staging.yml exec db-backup /backup.sh staging
 
+# Data restore commands
+backup-local: ## Backup your local database
+	./scripts/backup-local-db.sh
+
+restore-dev: ## Restore local data to development database
+	./scripts/restore-local-data.sh dev
+
+restore-dev-force: ## Restore local data to development database (force, no confirmation)
+	./scripts/restore-local-data.sh dev --force
+
+restore-staging: ## Restore local data to staging database
+	./scripts/restore-local-data.sh staging
+
+restore-staging-force: ## Restore local data to staging database (force, no confirmation)
+	./scripts/restore-local-data.sh staging --force
+
 # Monitoring and logs
 logs: ## View all logs
 	docker-compose -f docker-compose.dev.yml logs -f
