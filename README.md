@@ -77,6 +77,7 @@ All documentation is organized in the [`docs/`](./docs/) folder:
 - **[04-DOCKER_SUMMARY.md](./docs/04-DOCKER_SUMMARY.md)** - Implementation summary
 - **[05-PRODUCTION_DEPLOYMENT.md](./docs/05-PRODUCTION_DEPLOYMENT.md)** - Production guide
 - **[06-STAGING_ENVIRONMENT.md](./docs/06-STAGING_ENVIRONMENT.md)** - Staging environment guide
+- **[07-SECURITY_GUIDE.md](./docs/07-SECURITY_GUIDE.md)** - Security and secrets management
 
 ## 📋 Available Scripts
 

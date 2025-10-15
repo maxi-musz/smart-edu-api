@@ -11,6 +11,7 @@
 4. **[04-DOCKER_SUMMARY.md](./04-DOCKER_SUMMARY.md)** ← What was implemented
 5. **[05-PRODUCTION_DEPLOYMENT.md](./05-PRODUCTION_DEPLOYMENT.md)** ← Production deployment
 6. **[06-STAGING_ENVIRONMENT.md](./06-STAGING_ENVIRONMENT.md)** ← Staging environment guide
+7. **[07-SECURITY_GUIDE.md](./07-SECURITY_GUIDE.md)** ← Security and secrets management
 
 ---
 
