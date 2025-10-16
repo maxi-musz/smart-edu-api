@@ -38,7 +38,7 @@ export interface SearchResult {
 export class PineconeService {
   private readonly logger = new Logger(PineconeService.name);
   private readonly pinecone: Pinecone;
-  private readonly indexName = 'ai-chat-chunks';
+  private readonly indexName: string;
 
   constructor() {
     const apiKey = process.env.PINECONE_API_KEY;
@@ -48,11 +48,26 @@ export class PineconeService {
       throw new Error('Pinecone API key and environment must be provided');
     }
 
+    // Set index name based on NODE_ENV
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    switch (nodeEnv.toLowerCase()) {
+      case 'production':
+        this.indexName = 'sm-ai-chat-chunks-production';
+        break;
+      case 'staging':
+        this.indexName = 'sm-ai-chat-chunks-staging';
+        break;
+      case 'development':
+      default:
+        this.indexName = 'sm-ai-chat-chunks-development';
+        break;
+    }
+
     this.pinecone = new Pinecone({
       apiKey,
     });
 
-    this.logger.log(colors.green(`✅ Pinecone service initialized`));
+    this.logger.log(colors.green(`✅ Pinecone service initialized with index: ${this.indexName}`));
     
     // Initialize index on startup
     this.initializeIndex().catch(error => {

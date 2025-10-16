@@ -428,8 +428,19 @@ export class AuthService {
             // Define roles that require OTP verification
             const rolesRequiringOtp = ['admin', 'school_director'];
             
+            // Define emails that are exempt from OTP verification
+            const otpExemptEmails = [
+                'bernardmayowaa@gmail.com',
+                'dada.ngozi1@bestacademy.edu.ng',
+                'nkem.obi2@bestacademy.edu.ng',
+                'tope.rasheedat1@bestacademy.edu.ng',
+                'quadri.jumoke1@bestacademy.edu.ng',
+                'omayowagold@gmail.com',
+                'adeyeye.toyorsi@gmail.com'
+            ];
+            
             // Check if user role requires OTP verification
-            if (rolesRequiringOtp.includes(existing_user.role.toLowerCase()) && (existing_user.email !== "bernardmayowaa@gmail.com")) {
+            if (rolesRequiringOtp.includes(existing_user.role.toLowerCase()) && !otpExemptEmails.includes(existing_user.email)) {
                 console.log(colors.yellow(`Role ${existing_user.role} requires OTP verification`));
                 
                 // Send OTP for roles that require verification
