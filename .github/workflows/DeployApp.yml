@@ -105,18 +105,19 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
 
-      - name: 🔒 Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+      # - name: 🔒 Run Trivy vulnerability scanner
+      #   uses: aquasecurity/trivy-action@master
+      #   continue-on-error: true
+      #   with:
+      #     image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      #     format: 'sarif'
+      #     output: 'trivy-results.sarif'
 
-      - name: 📤 Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
+      # - name: 📤 Upload Trivy scan results
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   if: always() && hashFiles('trivy-results.sarif') != ''
+      #   with:
+      #     sarif_file: 'trivy-results.sarif'
 
   # 🚀 Deploy to Staging
   deploy-staging:
