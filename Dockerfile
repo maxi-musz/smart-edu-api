@@ -33,7 +33,7 @@ COPY . .
 # Generate Prisma client
 RUN npm run prisma:generate
 
-# Build the application
+# Build the application (without running migrations)
 RUN npm run build
 
 # Stage 4: Production image

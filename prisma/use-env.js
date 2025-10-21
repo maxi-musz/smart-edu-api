@@ -30,4 +30,24 @@ schema = schema.replace(
 fs.writeFileSync(schemaPath, schema);
 
 console.log(`Using database URL from ${dbUrlEnv} for ${env} environment`);
-console.log('Database URL:', process.env[dbUrlEnv]); 
+console.log('Database URL:', process.env[dbUrlEnv]);
+
+// Check if DATABASE_URL is available
+const dbUrl = process.env[dbUrlEnv];
+if (!dbUrl) {
+  console.log(`Warning: ${dbUrlEnv} is not set. This is expected during build time.`);
+  console.log('Using placeholder DATABASE_URL for schema validation...');
+  
+  // Use a placeholder URL for schema validation during build
+  const placeholderUrl = 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
+  schema = schema.replace(
+    /url\s*=\s*env\(".*"\)/,
+    `url = "${placeholderUrl}"`
+  );
+  
+  // Write the updated schema with placeholder
+  fs.writeFileSync(schemaPath, schema);
+  console.log('Schema updated with placeholder DATABASE_URL for build validation');
+} else {
+  console.log('DATABASE_URL is available, using it for schema configuration');
+} 
