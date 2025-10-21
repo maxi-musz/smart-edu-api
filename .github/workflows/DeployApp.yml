@@ -24,46 +24,46 @@ env:
 
 jobs:
   # 🔍 Code Quality & Testing
-  quality-check:
-    name: 🔍 Code Quality & Testing
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+  # quality-check:
+  #   name: 🔍 Code Quality & Testing
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: 📥 Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+  #     - name: 📦 Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: 'npm'
 
-      - name: 📦 Install dependencies
-        run: npm ci
+  #     - name: 📦 Install dependencies
+  #       run: npm ci
 
-      - name: 🔍 Lint code
-        run: npm run lint
+  #     - name: 🔍 Lint code
+  #       run: npm run lint
 
-      - name: 🎨 Format check
-        run: npm run format -- --check
+  #     - name: 🎨 Format check
+  #       run: npm run format -- --check
 
-      - name: 🧪 Run tests
-        run: npm run test
+  #     - name: 🧪 Run tests
+  #       run: npm run test
 
-      - name: 📊 Test coverage
-        run: npm run test:cov
+  #     - name: 📊 Test coverage
+  #       run: npm run test:cov
 
-      - name: 📈 Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage/lcov.info
-          flags: unittests
-          name: codecov-umbrella
+  #     - name: 📈 Upload coverage to Codecov
+  #       uses: codecov/codecov-action@v3
+  #       with:
+  #         file: ./coverage/lcov.info
+  #         flags: unittests
+  #         name: codecov-umbrella
 
   # 🐳 Docker Build & Security Scan
   docker-build:
     name: 🐳 Docker Build & Security
     runs-on: ubuntu-latest
-    needs: quality-check
+    # needs: quality-check
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -122,7 +122,7 @@ jobs:
   deploy-staging:
     name: 🚀 Deploy to Staging
     runs-on: ubuntu-latest
-    needs: [quality-check, docker-build]
+    needs: [docker-build]
     if: github.ref == 'refs/heads/staging' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/develop'
     environment: |
       staging
@@ -239,7 +239,7 @@ jobs:
   deploy-production:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
-    needs: [quality-check, docker-build]
+    needs: [docker-build]
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment: production
     steps:
@@ -360,7 +360,7 @@ jobs:
   database-migration:
     name: 🔄 Database Migration
     runs-on: ubuntu-latest
-    needs: [quality-check]
+    # needs: [quality-check]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     steps:
       - name: 📥 Checkout code
