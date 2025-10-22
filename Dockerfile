@@ -82,5 +82,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
+# Start the application as root to bind to port 1000
+USER root
 CMD ["npm", "run", "start:prod"]
