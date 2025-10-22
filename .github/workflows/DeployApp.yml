@@ -93,7 +93,31 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: 🐳 Build and push Docker image
+      - name: 🏗️ Build Docker image (AMD64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: 🏗️ Build Docker image (ARM64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/arm64
+
+      - name: 📤 Push Docker images to ECR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -226,15 +250,15 @@ jobs:
             echo "To enable smoke tests, add STAGING_URL secret to your repository"
           fi
 
-      - name: 📊 Notify deployment status
-        uses: 8398a7/action-slack@v3
-        if: always()
-        with:
-          status: ${{ job.status }}
-          channel: '#deployments'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      # - name: 📊 Notify deployment status
+      #   uses: 8398a7/action-slack@v3
+      #   if: always()
+      #   with:
+      #     status: ${{ job.status }}
+      #     channel: '#deployments'
+      #     webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 
   # 🚀 Deploy to Production
   deploy-production:
@@ -258,16 +282,23 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 🐳 Deploy to production
+      - name: 🔍 Verify ECS Resources
         run: |
-          echo "🚀 Deploying to production environment..."
-          # For AWS ECS Fargate
-          if [ -n "${{ secrets.AWS_PRODUCTION_CLUSTER }}" ] && [ -n "${{ secrets.AWS_PRODUCTION_SERVICE }}" ]; then
-            # Update task definition with environment variables
-            echo "📝 Updating ECS task definition with environment variables..."
-            
-            # Get current task definition
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition')
+          echo "🔍 Verifying ECS cluster and service..."
+          aws ecs describe-clusters --clusters "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --query 'clusters[0].status'
+          aws ecs describe-services --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --services "${{ secrets.AWS_PRODUCTION_SERVICE }}" --query 'services[0].status'
+
+      - name: 📋 Get Current Task Definition
+        run: |
+          echo "📋 Retrieving current task definition..."
+          aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition' > current-task-def.json
+          echo "✅ Task definition retrieved"
+
+      - name: 🔄 Update Task Definition
+        run: |
+          echo "🔄 Updating task definition with new environment variables..."
+          # Get current task definition
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition')
             
             # Update task definition with environment variables
             UPDATED_TASK_DEF=$(echo "$TASK_DEFINITION" | jq --arg NODE_ENV "${{ secrets.NODE_ENV_PRODUCTION || 'production' }}" \
@@ -312,11 +343,23 @@ jobs:
                 {"name": "OTP_EXPIRES_AT", "value": $OTP_EXPIRES_AT}
               ]')
             
-            # Register new task definition
-            NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json "$UPDATED_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
-            
-            # Update service with new task definition
-            aws ecs update-service --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --service "${{ secrets.AWS_PRODUCTION_SERVICE }}" --task-definition "$NEW_TASK_DEF" --force-new-deployment
+      - name: 📝 Register New Task Definition
+        run: |
+          echo "📝 Registering new task definition..."
+          NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json "$UPDATED_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "✅ New task definition registered: $NEW_TASK_DEF"
+
+      - name: 🚀 Deploy to ECS Service
+        run: |
+          echo "🚀 Updating ECS service with new task definition..."
+          aws ecs update-service --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --service "${{ secrets.AWS_PRODUCTION_SERVICE }}" --task-definition "$NEW_TASK_DEF" --force-new-deployment
+          echo "✅ Service update initiated"
+
+      - name: ⏳ Wait for Deployment
+        run: |
+          echo "⏳ Waiting for deployment to complete..."
+          aws ecs wait services-stable --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --services "${{ secrets.AWS_PRODUCTION_SERVICE }}"
+          echo "✅ Deployment completed successfully"
           else
             echo "⚠️ AWS production cluster/service secrets not set - skipping AWS deployment"
             echo "To enable AWS deployment, add AWS_PRODUCTION_CLUSTER and AWS_PRODUCTION_SERVICE secrets"
@@ -347,15 +390,15 @@ jobs:
             echo "To enable smoke tests, add PRODUCTION_URL secret to your repository"
           fi
 
-      - name: 📊 Notify deployment status
-        uses: 8398a7/action-slack@v3
-        if: always()
-        with:
-          status: ${{ job.status }}
-          channel: '#deployments'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      # - name: 📊 Notify deployment status
+      #   uses: 8398a7/action-slack@v3
+      #   if: always()
+      #   with:
+      #     status: ${{ job.status }}
+      #     channel: '#deployments'
+      #     webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 
   # 🔄 Database Migration
   database-migration:
