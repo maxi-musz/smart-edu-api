@@ -115,3 +115,14 @@ temp/
 
 # Prisma
 prisma/migrations/
+
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.nyc_output
+coverage
+.nyc_output
+.coverage
