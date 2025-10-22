@@ -152,7 +152,7 @@ jobs:
             echo "📝 Updating ECS task definition with staging environment variables..."
             
             # Get current task definition
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-backend --query 'taskDefinition')
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition')
             
             # Update task definition with staging environment variables
             UPDATED_TASK_DEF=$(echo "$TASK_DEFINITION" | jq --arg NODE_ENV "${{ secrets.NODE_ENV_STAGING || 'staging' }}" \
@@ -267,7 +267,7 @@ jobs:
             echo "📝 Updating ECS task definition with environment variables..."
             
             # Get current task definition
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-backend --query 'taskDefinition')
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition')
             
             # Update task definition with environment variables
             UPDATED_TASK_DEF=$(echo "$TASK_DEFINITION" | jq --arg NODE_ENV "${{ secrets.NODE_ENV_PRODUCTION || 'production' }}" \
