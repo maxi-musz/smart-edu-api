@@ -32,7 +32,7 @@ if (!dbUrl) {
   // Use a placeholder URL for schema validation during build
   const placeholderUrl = 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
   schema = schema.replace(
-    /url\s*=\s*["'].*["']/,
+    /url\s*=\s*env\(".*"\)/,
     `url = "${placeholderUrl}"`
   );
   
