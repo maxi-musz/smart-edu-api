@@ -1,9 +1,10 @@
 # Multi-stage Dockerfile for Smart Edu Backend
 # Stage 1: Base image with Node.js and dependencies
-FROM node:20-alpine AS base
+# Pin to specific version to avoid CVEs
+FROM node:20.18.1-alpine3.20 AS base
 
-# Install system dependencies
-RUN apk add --no-cache \
+# Install system dependencies and update packages
+RUN apk -U upgrade --no-cache && apk add --no-cache \
     openssl \
     ca-certificates \
     dumb-init
@@ -18,7 +19,7 @@ COPY prisma ./prisma/
 # Stage 2: Dependencies installation
 FROM base AS dependencies
 
-# Install all dependencies (including dev dependencies)
+# Install production dependencies only
 RUN npm ci --only=production && npm cache clean --force
 
 # Stage 3: Build stage
@@ -37,10 +38,10 @@ RUN npm run prisma:generate
 RUN npm run build
 
 # Stage 4: Production image
-FROM node:20-alpine AS production
+FROM node:20.18.1-alpine3.20 AS production
 
-# Install system dependencies
-RUN apk add --no-cache \
+# Install system dependencies and update packages
+RUN apk -U upgrade --no-cache && apk add --no-cache \
     openssl \
     ca-certificates \
     dumb-init
@@ -68,9 +69,9 @@ COPY --from=build /app/dist ./dist
 # Copy any additional required files
 COPY --from=build /app/start-db.sh ./start-db.sh
 
-# Set proper permissions
-RUN chown -R nestjs:nodejs /app
-USER nestjs
+# Set proper permissions and remove unnecessary files
+RUN chown -R nestjs:nodejs /app && \
+    rm -rf /tmp/* /var/cache/apk/* /root/.npm
 
 # Expose port
 EXPOSE 1000
