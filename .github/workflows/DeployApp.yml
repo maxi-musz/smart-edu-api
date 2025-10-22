@@ -298,55 +298,57 @@ jobs:
         run: |
           echo "🔄 Updating task definition with new environment variables..."
           # Get current task definition (filter out read-only fields)
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-            
-            # Update task definition with environment variables
-            UPDATED_TASK_DEF=$(echo "$TASK_DEFINITION" | jq --arg NODE_ENV "${{ secrets.NODE_ENV_PRODUCTION || 'production' }}" \
-              --arg DATABASE_URL "${{ secrets.DATABASE_URL_PRODUCTION }}" \
-              --arg JWT_SECRET "${{ secrets.JWT_SECRET }}" \
-              --arg EMAIL_USER "${{ secrets.EMAIL_USER }}" \
-              --arg EMAIL_PASSWORD "${{ secrets.EMAIL_PASSWORD }}" \
-              --arg OPENAI_API_KEY "${{ secrets.OPENAI_API_KEY }}" \
-              --arg AWS_ACCESS_KEY_ID "${{ secrets.AWS_ACCESS_KEY_ID }}" \
-              --arg AWS_SECRET_ACCESS_KEY "${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-              --arg AWS_REGION "${{ secrets.AWS_REGION }}" \
-              --arg AWS_S3_BUCKET "${{ secrets.AWS_S3_BUCKET }}" \
-              --arg PINECONE_API_KEY "${{ secrets.PINECONE_API_KEY }}" \
-              --arg PINECONE_ENVIRONMENT "${{ secrets.PINECONE_ENVIRONMENT }}" \
-              --arg GOOGLE_SMTP_HOST "${{ secrets.GOOGLE_SMTP_HOST }}" \
-              --arg GOOGLE_SMTP_PORT "${{ secrets.GOOGLE_SMTP_PORT }}" \
-              --arg FRONTEND_URL "${{ secrets.FRONTEND_URL }}" \
-              --arg CORS_ORIGINS "${{ secrets.CORS_ORIGINS }}" \
-              --arg APP_NAME "${{ secrets.APP_NAME }}" \
-              --arg BTECH_ADMIN_EMAIL "${{ secrets.BTECH_ADMIN_EMAIL }}" \
-              --arg OTP_EXPIRES_AT "${{ secrets.OTP_EXPIRES_AT }}" \
-              '.containerDefinitions[0].environment = [
-                {"name": "NODE_ENV", "value": $NODE_ENV},
-                {"name": "PORT", "value": "1000"},
-                {"name": "DATABASE_URL", "value": $DATABASE_URL},
-                {"name": "JWT_SECRET", "value": $JWT_SECRET},
-                {"name": "EMAIL_USER", "value": $EMAIL_USER},
-                {"name": "EMAIL_PASSWORD", "value": $EMAIL_PASSWORD},
-                {"name": "OPENAI_API_KEY", "value": $OPENAI_API_KEY},
-                {"name": "AWS_ACCESS_KEY_ID", "value": $AWS_ACCESS_KEY_ID},
-                {"name": "AWS_SECRET_ACCESS_KEY", "value": $AWS_SECRET_ACCESS_KEY},
-                {"name": "AWS_REGION", "value": $AWS_REGION},
-                {"name": "AWS_S3_BUCKET", "value": $AWS_S3_BUCKET},
-                {"name": "PINECONE_API_KEY", "value": $PINECONE_API_KEY},
-                {"name": "PINECONE_ENVIRONMENT", "value": $PINECONE_ENVIRONMENT},
-                {"name": "GOOGLE_SMTP_HOST", "value": $GOOGLE_SMTP_HOST},
-                {"name": "GOOGLE_SMTP_PORT", "value": $GOOGLE_SMTP_PORT},
-                {"name": "FRONTEND_URL", "value": $FRONTEND_URL},
-                {"name": "CORS_ORIGINS", "value": $CORS_ORIGINS},
-                {"name": "APP_NAME", "value": $APP_NAME},
-                {"name": "BTECH_ADMIN_EMAIL", "value": $BTECH_ADMIN_EMAIL},
-                {"name": "OTP_EXPIRES_AT", "value": $OTP_EXPIRES_AT}
-              ]')
+          aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' > task-def.json
+          
+          # Update environment variables
+          jq --arg NODE_ENV "${{ secrets.NODE_ENV_PRODUCTION || 'production' }}" \
+            --arg DATABASE_URL "${{ secrets.DATABASE_URL_PRODUCTION }}" \
+            --arg JWT_SECRET "${{ secrets.JWT_SECRET }}" \
+            --arg EMAIL_USER "${{ secrets.EMAIL_USER }}" \
+            --arg EMAIL_PASSWORD "${{ secrets.EMAIL_PASSWORD }}" \
+            --arg OPENAI_API_KEY "${{ secrets.OPENAI_API_KEY }}" \
+            --arg AWS_ACCESS_KEY_ID "${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --arg AWS_SECRET_ACCESS_KEY "${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --arg AWS_REGION "${{ secrets.AWS_REGION }}" \
+            --arg AWS_S3_BUCKET "${{ secrets.AWS_S3_BUCKET }}" \
+            --arg PINECONE_API_KEY "${{ secrets.PINECONE_API_KEY }}" \
+            --arg PINECONE_ENVIRONMENT "${{ secrets.PINECONE_ENVIRONMENT }}" \
+            --arg GOOGLE_SMTP_HOST "${{ secrets.GOOGLE_SMTP_HOST }}" \
+            --arg GOOGLE_SMTP_PORT "${{ secrets.GOOGLE_SMTP_PORT }}" \
+            --arg FRONTEND_URL "${{ secrets.FRONTEND_URL }}" \
+            --arg CORS_ORIGINS "${{ secrets.CORS_ORIGINS }}" \
+            --arg APP_NAME "${{ secrets.APP_NAME }}" \
+            --arg BTECH_ADMIN_EMAIL "${{ secrets.BTECH_ADMIN_EMAIL }}" \
+            --arg OTP_EXPIRES_AT "${{ secrets.OTP_EXPIRES_AT }}" \
+            '.containerDefinitions[0].environment = [
+              {"name": "NODE_ENV", "value": $NODE_ENV},
+              {"name": "PORT", "value": "1000"},
+              {"name": "DATABASE_URL", "value": $DATABASE_URL},
+              {"name": "JWT_SECRET", "value": $JWT_SECRET},
+              {"name": "EMAIL_USER", "value": $EMAIL_USER},
+              {"name": "EMAIL_PASSWORD", "value": $EMAIL_PASSWORD},
+              {"name": "OPENAI_API_KEY", "value": $OPENAI_API_KEY},
+              {"name": "AWS_ACCESS_KEY_ID", "value": $AWS_ACCESS_KEY_ID},
+              {"name": "AWS_SECRET_ACCESS_KEY", "value": $AWS_SECRET_ACCESS_KEY},
+              {"name": "AWS_REGION", "value": $AWS_REGION},
+              {"name": "AWS_S3_BUCKET", "value": $AWS_S3_BUCKET},
+              {"name": "PINECONE_API_KEY", "value": $PINECONE_API_KEY},
+              {"name": "PINECONE_ENVIRONMENT", "value": $PINECONE_ENVIRONMENT},
+              {"name": "GOOGLE_SMTP_HOST", "value": $GOOGLE_SMTP_HOST},
+              {"name": "GOOGLE_SMTP_PORT", "value": $GOOGLE_SMTP_PORT},
+              {"name": "FRONTEND_URL", "value": $FRONTEND_URL},
+              {"name": "CORS_ORIGINS", "value": $CORS_ORIGINS},
+              {"name": "APP_NAME", "value": $APP_NAME},
+              {"name": "BTECH_ADMIN_EMAIL", "value": $BTECH_ADMIN_EMAIL},
+              {"name": "OTP_EXPIRES_AT", "value": $OTP_EXPIRES_AT}
+            ]' task-def.json > updated-task-def.json
+          
+          echo "✅ Task definition updated successfully"
             
       - name: 📝 Register New Task Definition
         run: |
           echo "📝 Registering new task definition..."
-          NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json "$UPDATED_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://updated-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "✅ New task definition registered: $NEW_TASK_DEF"
 
       - name: 🚀 Deploy to ECS Service
