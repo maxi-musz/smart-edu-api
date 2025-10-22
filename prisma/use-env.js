@@ -20,15 +20,6 @@ console.log('Selected database URL environment variable:', dbUrlEnv);
 const schemaPath = path.join(__dirname, 'schema.prisma');
 let schema = fs.readFileSync(schemaPath, 'utf8');
 
-// Update the database URL in the schema
-schema = schema.replace(
-  /url\s*=\s*env\(".*"\)/,
-  `url = env("${dbUrlEnv}")`
-);
-
-// Write the updated schema back
-fs.writeFileSync(schemaPath, schema);
-
 console.log(`Using database URL from ${dbUrlEnv} for ${env} environment`);
 console.log('Database URL:', process.env[dbUrlEnv]);
 
@@ -41,7 +32,7 @@ if (!dbUrl) {
   // Use a placeholder URL for schema validation during build
   const placeholderUrl = 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
   schema = schema.replace(
-    /url\s*=\s*env\(".*"\)/,
+    /url\s*=\s*["'].*["']/,
     `url = "${placeholderUrl}"`
   );
   
@@ -50,4 +41,14 @@ if (!dbUrl) {
   console.log('Schema updated with placeholder DATABASE_URL for build validation');
 } else {
   console.log('DATABASE_URL is available, using it for schema configuration');
+  
+  // Update the database URL in the schema to use environment variable
+  schema = schema.replace(
+    /url\s*=\s*["'].*["']/,
+    `url = env("${dbUrlEnv}")`
+  );
+  
+  // Write the updated schema back
+  fs.writeFileSync(schemaPath, schema);
+  console.log('Schema updated to use environment variable for database URL');
 } 
