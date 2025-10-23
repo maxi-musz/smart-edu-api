@@ -5,7 +5,10 @@
 
 set -e
 
-echo "🚀 Creating ECS Task Definition for Smart Edu Backend..."
+# Accept environment as parameter (default: staging)
+ENVIRONMENT=${1:-staging}
+
+echo "🚀 Creating ECS Task Definition for Smart Edu Backend ($ENVIRONMENT)..."
 
 # Get AWS Account ID and Region
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -13,24 +16,25 @@ AWS_REGION=${AWS_REGION:-us-east-1}
 
 echo "AWS Account ID: $AWS_ACCOUNT_ID"
 echo "AWS Region: $AWS_REGION"
+echo "Environment: $ENVIRONMENT"
 
 # Create the task definition JSON
 cat > task-definition.json << EOF
 {
-  "family": "smart-edu-backend",
+  "family": "smart-edu-task",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "256",
-  "memory": "512",
+  "cpu": "512",
+  "memory": "1024",
   "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskRole",
   "containerDefinitions": [
     {
-      "name": "smart-edu-backend",
-      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/smart-edu:latest",
+      "name": "smart-edu-app",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/smart-edu:${ENVIRONMENT}",
       "portMappings": [
         {
-          "containerPort": 1000,
+          "containerPort": 3000,
           "protocol": "tcp"
         }
       ],
@@ -38,20 +42,28 @@ cat > task-definition.json << EOF
       "environment": [
         {
           "name": "NODE_ENV",
-          "value": "production"
+          "value": "${ENVIRONMENT}"
         },
         {
           "name": "PORT",
-          "value": "1000"
+          "value": "3000"
         }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
+          "awslogs-create-group": "true",
           "awslogs-group": "/ecs/smart-edu-backend",
           "awslogs-region": "${AWS_REGION}",
           "awslogs-stream-prefix": "ecs"
         }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
       }
     }
   ]

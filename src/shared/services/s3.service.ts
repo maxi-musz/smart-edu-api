@@ -23,10 +23,13 @@ export class S3Service {
   private readonly region: string;
 
   constructor(private config: ConfigService) {
-    const bucketName = this.config.get('AWS_S3_BUCKET');
     const region = this.config.get('AWS_REGION');
     const accessKeyId = this.config.get('AWS_ACCESS_KEY_ID');
     const secretAccessKey = this.config.get('AWS_SECRET_ACCESS_KEY');
+    const nodeEnv = this.config.get('NODE_ENV') || 'development';
+
+    // Dynamically select bucket based on environment
+    const bucketName = this.getBucketNameForEnvironment(nodeEnv);
 
     if (!bucketName || !region || !accessKeyId || !secretAccessKey) {
       throw new Error('Missing required AWS S3 configuration. Please check your .env file.');
@@ -44,6 +47,32 @@ export class S3Service {
     });
 
     this.logger.log(colors.green(`✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`));
+  }
+
+  /**
+   * Get the appropriate S3 bucket name based on the current environment
+   */
+  private getBucketNameForEnvironment(nodeEnv: string): string {
+    switch (nodeEnv.toLowerCase()) {
+      case 'production':
+      case 'prod':
+        return this.config.get('AWS_S3_BUCKET_PROD') || this.config.get('AWS_S3_BUCKET') || '';
+      
+      case 'staging':
+        return this.config.get('AWS_S3_BUCKET_STAGING') || this.config.get('AWS_S3_BUCKET') || '';
+      
+      case 'development':
+      case 'dev':
+      case 'local':
+        return this.config.get('AWS_S3_BUCKET_DEV') || this.config.get('AWS_S3_BUCKET') || '';
+      
+      default:
+        // Fallback to default bucket or environment-specific if available
+        return this.config.get('AWS_S3_BUCKET_DEV') || 
+               this.config.get('AWS_S3_BUCKET_STAGING') || 
+               this.config.get('AWS_S3_BUCKET_PROD') || 
+               this.config.get('AWS_S3_BUCKET') || '';
+    }
   }
 
   /**
