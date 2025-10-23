@@ -44,7 +44,7 @@ services:
     container_name: smart-edu-staging-app
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-2000}:1000"
+      - "${APP_PORT:-2000}:3000"
     env_file:
       - .env.staging
     environment:
@@ -58,7 +58,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:1000/api/v1/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
       interval: 30s
       timeout: 10s
       retries: 3

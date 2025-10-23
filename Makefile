@@ -15,8 +15,8 @@ help: ## Show this help message
 dev: ## Start development environment
 	docker-compose -f docker-compose.dev.yml up -d
 	@echo "Development environment started!"
-	@echo "API: http://localhost:1000/api/v1"
-	@echo "API Docs: http://localhost:1000/api/docs"
+	@echo "API: http://localhost:3000/api/v1"
+	@echo "API Docs: http://localhost:3000/api/docs"
 	@echo "Prisma Studio: http://localhost:5555"
 
 dev-build: ## Build and start development environment
@@ -184,13 +184,13 @@ status-staging: ## Show staging container status
 
 # Health checks
 health: ## Check application health
-	@curl -f http://localhost:1000/api/v1/health || echo "Health check failed"
+	@curl -f http://localhost:3000/health || echo "Health check failed"
 
 health-prod: ## Check production application health
-	@curl -f http://localhost:1000/api/v1/health || echo "Health check failed"
+	@curl -f http://localhost:3000/health || echo "Health check failed"
 
 health-staging: ## Check staging application health
-	@curl -f http://localhost:2000/api/v1/health || echo "Health check failed"
+	@curl -f http://localhost:2000/health || echo "Health check failed"
 
 # Cleanup commands
 clean: ## Clean up containers and volumes
@@ -230,6 +230,6 @@ setup: ## Initial setup (copy env file and start dev environment)
 # Quick development workflow
 dev-full: setup db-migrate db-seed ## Full development setup
 	@echo "Development environment is ready!"
-	@echo "API: http://localhost:1000/api/v1"
-	@echo "API Docs: http://localhost:1000/api/docs"
+	@echo "API: http://localhost:3000/api/v1"
+	@echo "API Docs: http://localhost:3000/api/docs"
 	@echo "Prisma Studio: http://localhost:5555"

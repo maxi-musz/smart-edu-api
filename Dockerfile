@@ -74,15 +74,15 @@ RUN chown -R nestjs:nodejs /app && \
     rm -rf /tmp/* /var/cache/apk/* /root/.npm
 
 # Expose port
-EXPOSE 1000
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:1000/api/v1/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })" || exit 1
+    CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })" || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application as root to bind to port 1000
-USER root
+# Start the application as non-root user
+USER nestjs
 CMD ["npm", "run", "start:prod"]

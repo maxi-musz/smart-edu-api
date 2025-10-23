@@ -32,7 +32,9 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['health', ''],
+  });
   
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
@@ -77,12 +79,12 @@ async function bootstrap() {
     customSiteTitle: 'Smart Edu Hub API Documentation',
   });
 
-  await app.listen(process.env.PORT ?? 1000);
+  await app.listen(process.env.PORT ?? 3000);
 
   console.log(colors.green('🚀 Server successfully started!'));
-  console.log(colors.cyan(`📍 Server running on: http://localhost:${process.env.PORT ?? 1000}`));
-  console.log(colors.yellow(`📝 API Documentation: http://localhost:${process.env.PORT ?? 1000}/api/docs`));
+  console.log(colors.cyan(`📍 Server running on: http://localhost:${process.env.PORT ?? 3000}`));
+  console.log(colors.yellow(`📝 API Documentation: http://localhost:${process.env.PORT ?? 3000}/api/docs`));
   console.log(colors.blue(`💾 Database: ${process.env.DATABASE_URL}`));
-  console.log(colors.magenta(`🔗 API Base URL: http://localhost:${process.env.PORT ?? 1000}/api/v1`));
+  console.log(colors.magenta(`🔗 API Base URL: http://localhost:${process.env.PORT ?? 3000}/api/v1`));
 }
 bootstrap();

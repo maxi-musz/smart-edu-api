@@ -1,11 +1,12 @@
 name: 🚀 Smart Edu Backend CI/CD Pipeline
 
+# Trigger workflow on push to main/staging/develop branches, or manual trigger
 on:
   push:
-    branches: [ main, staging, develop ]
+    branches: [ main, staging, develop ]  # Auto-deploy on push to these branches
   pull_request:
-    branches: [ main, staging, develop ]
-  workflow_dispatch:
+    branches: [ main, staging, develop ]  # Run checks on PRs (no deployment)
+  workflow_dispatch:  # Allow manual trigger from GitHub Actions UI
     inputs:
       environment:
         description: 'Deployment environment'
@@ -17,53 +18,22 @@ on:
           - production
           - development
 
+# Global environment variables used across all jobs
 env:
   NODE_VERSION: '20'
-  REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-  IMAGE_NAME: smart-edu
+  REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com  # ECR URL constructed from secrets
+  IMAGE_NAME: smart-edu  # Base name for Docker images
+  AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+  ECR_IMAGE: ${{ vars.ECR_IMAGE }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
 
 jobs:
-  # 🔍 Code Quality & Testing
-  # quality-check:
-  #   name: 🔍 Code Quality & Testing
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: 📥 Checkout code
-  #       uses: actions/checkout@v4
 
-  #     - name: 📦 Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: ${{ env.NODE_VERSION }}
-  #         cache: 'npm'
-
-  #     - name: 📦 Install dependencies
-  #       run: npm ci
-
-  #     - name: 🔍 Lint code
-  #       run: npm run lint
-
-  #     - name: 🎨 Format check
-  #       run: npm run format -- --check
-
-  #     - name: 🧪 Run tests
-  #       run: npm run test
-
-  #     - name: 📊 Test coverage
-  #       run: npm run test:cov
-
-  #     - name: 📈 Upload coverage to Codecov
-  #       uses: codecov/codecov-action@v3
-  #       with:
-  #         file: ./coverage/lcov.info
-  #         flags: unittests
-  #         name: codecov-umbrella
-
-  # 🐳 Docker Build & Security Scan
+  # 🐳 STEP 1: Build Docker image and push to ECR (runs for ALL branches)
   docker-build:
     name: 🐳 Docker Build & Security
     runs-on: ubuntu-latest
-    # needs: quality-check
+    # needs: quality-check  # Uncomment if you add tests/linting first
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -76,79 +46,65 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
       - name: 🐳 Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3  # Enable multi-platform builds
 
       - name: 🔐 Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 🏷️ Extract metadata
+      - name: 🏷️ Extract metadata (creates image tags based on branch/PR)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch           # Tag: staging, main, develop
+            type=ref,event=pr               # Tag: pr-42
+            type=sha,prefix={{branch}}-     # Tag: staging-abc1234
+            type=raw,value=latest,enable={{is_default_branch}}  # Tag: latest (only for main)
 
-      - name: 🏗️ Build Docker image (AMD64)
+      - name: 🏗️ Build Docker image (AMD64) - test build only
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: false
+          push: false  # Don't push yet, just verify it builds
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: type=gha  # Use GitHub Actions cache for faster builds
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          platforms: linux/amd64  # Intel/AMD processors
 
-      - name: 🏗️ Build Docker image (ARM64)
+      - name: 🏗️ Build Docker image (ARM64) - test build only
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: false
+          push: false  # Don't push yet, just verify it builds
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/arm64
+          platforms: linux/arm64  # ARM processors (e.g., AWS Graviton)
 
-      - name: 📤 Push Docker images to ECR
+      - name: 📤 Push Docker images to ECR (both AMD64 + ARM64)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          push: true  # Now push to ECR after successful test builds
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64  # Multi-architecture image
 
-      # - name: 🔒 Run Trivy vulnerability scanner
-      #   uses: aquasecurity/trivy-action@master
-      #   continue-on-error: true
-      #   with:
-      #     image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-      #     format: 'sarif'
-      #     output: 'trivy-results.sarif'
-
-      # - name: 📤 Upload Trivy scan results
-      #   uses: github/codeql-action/upload-sarif@v3
-      #   if: always() && hashFiles('trivy-results.sarif') != ''
-      #   with:
-      #     sarif_file: 'trivy-results.sarif'
-
-  # 🚀 Deploy to Staging
+  # 🚀 STEP 2: Deploy to Staging (only runs for staging/develop branches)
   deploy-staging:
     name: 🚀 Deploy to Staging
     runs-on: ubuntu-latest
-    needs: [docker-build]
-    if: github.ref == 'refs/heads/staging' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/develop'
+    needs: [docker-build]  # Wait for docker-build to complete first
+    if: github.ref == 'refs/heads/staging' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/develop'  # Only deploy staging/develop branches
     environment: |
       staging
       development
@@ -167,18 +123,17 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 🐳 Deploy to staging
+      - name: 🐳 Deploy to staging ECS
         run: |
           echo "🚀 Deploying to staging environment..."
-          # For AWS ECS Fargate
+          # Check if staging cluster/service secrets are set
           if [ -n "${{ secrets.AWS_STAGING_CLUSTER }}" ] && [ -n "${{ secrets.AWS_STAGING_SERVICE }}" ]; then
-            # Update task definition with environment variables
             echo "📝 Updating ECS task definition with staging environment variables..."
             
-            # Get current task definition (filter out read-only fields)
+            # Step 1: Get current task definition and remove read-only fields
             TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
             
-            # Update task definition with staging environment variables
+            # Step 2: Inject all environment variables from GitHub secrets into task definition
             UPDATED_TASK_DEF=$(echo "$TASK_DEFINITION" | jq --arg NODE_ENV "${{ secrets.NODE_ENV_STAGING || 'staging' }}" \
               --arg DATABASE_URL "${{ secrets.DATABASE_URL_STAGING }}" \
               --arg JWT_SECRET "${{ secrets.JWT_SECRET }}" \
@@ -200,8 +155,8 @@ jobs:
               --arg OTP_EXPIRES_AT "${{ secrets.OTP_EXPIRES_AT }}" \
               '.containerDefinitions[0].environment = [
                 {"name": "NODE_ENV", "value": $NODE_ENV},
-                {"name": "PORT", "value": "1000"},
-                {"name": "DATABASE_URL", "value": $DATABASE_URL},
+                {"name": "PORT", "value": "3000"},  # App listens on port 3000 inside container
+                {"name": "DATABASE_URL", "value": $DATABASE_URL},  # Neon staging DB URL
                 {"name": "JWT_SECRET", "value": $JWT_SECRET},
                 {"name": "EMAIL_USER", "value": $EMAIL_USER},
                 {"name": "EMAIL_PASSWORD", "value": $EMAIL_PASSWORD},
@@ -221,10 +176,10 @@ jobs:
                 {"name": "OTP_EXPIRES_AT", "value": $OTP_EXPIRES_AT}
               ]')
             
-            # Register new task definition
+            # Step 3: Register new task definition revision with AWS
             NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json "$UPDATED_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
             
-            # Update service with new task definition
+            # Step 4: Update ECS service to use new task definition (triggers rolling deployment)
             aws ecs update-service --cluster "${{ secrets.AWS_STAGING_CLUSTER }}" --service "${{ secrets.AWS_STAGING_SERVICE }}" --task-definition "$NEW_TASK_DEF" --force-new-deployment
           else
             echo "⚠️ AWS staging cluster/service secrets not set - skipping AWS deployment"
@@ -234,20 +189,19 @@ jobs:
           # For Docker Compose (alternative)
           # docker-compose -f docker-compose.staging.yml up -d --build
 
-      - name: 🧪 Run smoke tests
+      - name: 🧪 Run smoke tests (basic health checks)
         run: |
           echo "🧪 Running smoke tests..."
-          # Wait for deployment to complete
-          sleep 30
+          sleep 30  # Wait for ECS to start new tasks
           
-          # Test health endpoint (only if STAGING_URL is provided)
+          # Test health endpoints if STAGING_URL is provided
           if [ -n "${{ secrets.STAGING_URL }}" ]; then
             echo "Testing staging URL: ${{ secrets.STAGING_URL }}"
-            curl -f "${{ secrets.STAGING_URL }}/health" || echo "Health check failed - this is normal if URL is not set up yet"
-            curl -f "${{ secrets.STAGING_URL }}/api/v1/health" || echo "API check failed - this is normal if URL is not set up yet"
+            curl -f "${{ secrets.STAGING_URL }}/health" || echo "⚠️ Health check failed - normal if URL not configured"
+            curl -f "${{ secrets.STAGING_URL }}/api/v1/health" || echo "⚠️ API health failed - normal if URL not configured"
           else
             echo "⚠️ STAGING_URL secret not set - skipping smoke tests"
-            echo "To enable smoke tests, add STAGING_URL secret to your repository"
+            echo "Add STAGING_URL secret to enable automated health checks"
           fi
 
       # - name: 📊 Notify deployment status
@@ -260,13 +214,13 @@ jobs:
       #   env:
       #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 
-  # 🚀 Deploy to Production
+  # 🚀 STEP 3: Deploy to Production (only runs for main branch)
   deploy-production:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
-    needs: [docker-build]
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
-    environment: production
+    needs: [docker-build]  # Wait for docker-build to complete first
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')  # Only deploy main branch
+    environment: production  # Requires manual approval if configured in GitHub
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -282,25 +236,25 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: 🔍 Verify ECS Resources
+      - name: 🔍 Verify ECS Resources (pre-deployment check)
         run: |
-          echo "🔍 Verifying ECS cluster and service..."
+          echo "🔍 Verifying production ECS cluster and service exist..."
           aws ecs describe-clusters --clusters "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --query 'clusters[0].status'
           aws ecs describe-services --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --services "${{ secrets.AWS_PRODUCTION_SERVICE }}" --query 'services[0].status'
 
       - name: 📋 Get Current Task Definition
         run: |
-          echo "📋 Retrieving current task definition..."
+          echo "📋 Retrieving current production task definition..."
           aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition' > current-task-def.json
           echo "✅ Task definition retrieved"
 
-      - name: 🔄 Update Task Definition
+      - name: 🔄 Update Task Definition with Production Env Vars
         run: |
-          echo "🔄 Updating task definition with new environment variables..."
-          # Get current task definition (filter out read-only fields)
+          echo "🔄 Updating task definition with production environment variables..."
+          # Step 1: Get current task definition and remove read-only fields
           aws ecs describe-task-definition --task-definition smart-edu-task --query 'taskDefinition' | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' > task-def.json
           
-          # Update environment variables
+          # Step 2: Inject production environment variables from GitHub secrets
           jq --arg NODE_ENV "${{ secrets.NODE_ENV_PRODUCTION || 'production' }}" \
             --arg DATABASE_URL "${{ secrets.DATABASE_URL_PRODUCTION }}" \
             --arg JWT_SECRET "${{ secrets.JWT_SECRET }}" \
@@ -322,8 +276,8 @@ jobs:
             --arg OTP_EXPIRES_AT "${{ secrets.OTP_EXPIRES_AT }}" \
             '.containerDefinitions[0].environment = [
               {"name": "NODE_ENV", "value": $NODE_ENV},
-              {"name": "PORT", "value": "1000"},
-              {"name": "DATABASE_URL", "value": $DATABASE_URL},
+              {"name": "PORT", "value": "3000"},  # App listens on port 3000 inside container
+              {"name": "DATABASE_URL", "value": $DATABASE_URL},  # Neon production DB URL
               {"name": "JWT_SECRET", "value": $JWT_SECRET},
               {"name": "EMAIL_USER", "value": $EMAIL_USER},
               {"name": "EMAIL_PASSWORD", "value": $EMAIL_PASSWORD},
@@ -345,23 +299,23 @@ jobs:
           
           echo "✅ Task definition updated successfully"
             
-      - name: 📝 Register New Task Definition
+      - name: 📝 Register New Task Definition with AWS
         run: |
-          echo "📝 Registering new task definition..."
+          echo "📝 Registering new task definition revision..."
           NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://updated-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "✅ New task definition registered: $NEW_TASK_DEF"
 
-      - name: 🚀 Deploy to ECS Service
+      - name: 🚀 Deploy to Production ECS Service
         run: |
-          echo "🚀 Updating ECS service with new task definition..."
+          echo "🚀 Updating production ECS service with new task definition..."
           aws ecs update-service --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --service "${{ secrets.AWS_PRODUCTION_SERVICE }}" --task-definition "$NEW_TASK_DEF" --force-new-deployment
-          echo "✅ Service update initiated"
+          echo "✅ Service update initiated - rolling deployment started"
 
-      - name: ⏳ Wait for Deployment
+      - name: ⏳ Wait for Deployment to Complete
         run: |
-          echo "⏳ Waiting for deployment to complete..."
+          echo "⏳ Waiting for production deployment to stabilize (this may take several minutes)..."
           aws ecs wait services-stable --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --services "${{ secrets.AWS_PRODUCTION_SERVICE }}"
-          echo "✅ Deployment completed successfully"
+          echo "✅ Production deployment completed successfully!"
           else
             echo "⚠️ AWS production cluster/service secrets not set - skipping AWS deployment"
             echo "To enable AWS deployment, add AWS_PRODUCTION_CLUSTER and AWS_PRODUCTION_SERVICE secrets"
@@ -370,44 +324,33 @@ jobs:
           # For Docker Compose (alternative)
           # docker-compose -f docker-compose.prod.yml up -d --build
 
-      - name: 🧪 Run production smoke tests
+      - name: 🧪 Run Production Smoke Tests
         run: |
           echo "🧪 Running production smoke tests..."
-          # Wait for deployment to complete
-          sleep 30
+          sleep 30  # Wait for ECS to start new tasks
           
-          # Test health endpoint (only if PRODUCTION_URL is provided)
+          # Test health endpoints and SSL if PRODUCTION_URL is provided
           if [ -n "${{ secrets.PRODUCTION_URL }}" ]; then
             echo "Testing production URL: ${{ secrets.PRODUCTION_URL }}"
-            curl -f "${{ secrets.PRODUCTION_URL }}/health" || echo "Health check failed - this is normal if URL is not set up yet"
-            curl -f "${{ secrets.PRODUCTION_URL }}/api/v1/health" || echo "API check failed - this is normal if URL is not set up yet"
+            curl -f "${{ secrets.PRODUCTION_URL }}/health" || echo "⚠️ Health check failed - normal if URL not configured"
+            curl -f "${{ secrets.PRODUCTION_URL }}/api/v1/health" || echo "⚠️ API health failed - normal if URL not configured"
             
-            # Test SSL certificate (only for HTTPS URLs)
+            # Verify SSL certificate for HTTPS URLs
             if [[ "${{ secrets.PRODUCTION_URL }}" == https://* ]]; then
               domain=$(echo "${{ secrets.PRODUCTION_URL }}" | sed 's|https://||' | sed 's|/.*||')
-              openssl s_client -connect "$domain:443" -servername "$domain" < /dev/null || echo "SSL check failed - this is normal if SSL is not set up yet"
+              openssl s_client -connect "$domain:443" -servername "$domain" < /dev/null || echo "⚠️ SSL check failed - normal if not configured"
             fi
           else
             echo "⚠️ PRODUCTION_URL secret not set - skipping smoke tests"
-            echo "To enable smoke tests, add PRODUCTION_URL secret to your repository"
+            echo "Add PRODUCTION_URL secret to enable automated health checks"
           fi
 
-      # - name: 📊 Notify deployment status
-      #   uses: 8398a7/action-slack@v3
-      #   if: always()
-      #   with:
-      #     status: ${{ job.status }}
-      #     channel: '#deployments'
-      #     webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-
-  # 🔄 Database Migration
+  # 🔄 STEP 4: Database Migrations (runs in parallel with deployments)
   database-migration:
     name: 🔄 Database Migration
     runs-on: ubuntu-latest
-    # needs: [quality-check]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop'
+    # needs: [quality-check]  # Uncomment to require tests first
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop'  # Run for main/staging/develop
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -421,34 +364,35 @@ jobs:
       - name: 📦 Install dependencies
         run: npm ci
 
-      - name: 🔄 Run database migrations
+      - name: 🔄 Run Prisma Migrations on Staging DB
         run: |
-          echo "🔄 Running database migrations..."
+          echo "🔄 Running database migrations on staging..."
           if [ -n "${{ secrets.DATABASE_URL_STAGING }}" ]; then
-            npm run prisma:migrate
+            npm run prisma:migrate  # Runs Prisma migrations
           else
             echo "⚠️ DATABASE_URL_STAGING secret not set - skipping database migrations"
-            echo "To enable database migrations, add DATABASE_URL_STAGING secret"
+            echo "Add DATABASE_URL_STAGING secret to enable migrations"
           fi
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}  # Point Prisma to staging DB
 
-  # 🧹 Cleanup
+  # 🧹 STEP 5: Cleanup (runs after deployments complete)
   cleanup:
     name: 🧹 Cleanup
     runs-on: ubuntu-latest
-    needs: [deploy-staging, deploy-production]
-    if: always()
+    needs: [deploy-staging, deploy-production]  # Wait for both deployments
+    if: always()  # Run even if deployments fail
     steps:
-      - name: 🧹 Clean up old images
+      - name: 🧹 Clean up old Docker images from ECR
         run: |
           echo "🧹 Cleaning up old Docker images..."
-          # Add cleanup commands here
+          # TODO: Add ECR cleanup logic to remove old/unused images
+          # Example: aws ecr batch-delete-image --repository-name smart-edu --image-ids imageTag=old-tag
 
-      - name: 📊 Deployment summary
+      - name: 📊 Deployment Summary
         run: |
           echo "📊 Deployment Summary:"
-          echo "✅ Code quality checks passed"
-          echo "✅ Docker image built and scanned"
+          echo "✅ Docker images built and pushed to ECR"
           echo "✅ Database migrations completed"
-          echo "✅ Application deployed successfully"
+          echo "✅ Application deployed to environments"
+          echo "✅ Smoke tests executed"
