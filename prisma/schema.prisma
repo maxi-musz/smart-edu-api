@@ -9,7 +9,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+  url = env("DATABASE_URL")
 }
 
 model AcademicSession {
