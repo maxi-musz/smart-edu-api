@@ -185,8 +185,8 @@ jobs:
             # Step 3: Register new task definition revision with AWS
             NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json "$UPDATED_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
             
-            # Step 4: Update ECS service to use new task definition (triggers rolling deployment)
-            aws ecs update-service --cluster "${{ secrets.AWS_STAGING_CLUSTER }}" --service "${{ secrets.AWS_STAGING_SERVICE }}" --task-definition "$NEW_TASK_DEF" --force-new-deployment
+            # Step 4: Update ECS service to use new task definition and set desired count to 1
+            aws ecs update-service --cluster "${{ secrets.AWS_STAGING_CLUSTER }}" --service "${{ secrets.AWS_STAGING_SERVICE }}" --task-definition "$NEW_TASK_DEF" --desired-count 1 --force-new-deployment
           else
             echo "⚠️ AWS staging cluster/service secrets not set - skipping AWS deployment"
             echo "To enable AWS deployment, add AWS_STAGING_CLUSTER and AWS_STAGING_SERVICE secrets"
@@ -318,7 +318,7 @@ jobs:
       - name: 🚀 Deploy to Production ECS Service
         run: |
           echo "🚀 Updating production ECS service with new task definition..."
-          aws ecs update-service --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --service "${{ secrets.AWS_PRODUCTION_SERVICE }}" --task-definition "$NEW_TASK_DEF" --force-new-deployment
+          aws ecs update-service --cluster "${{ secrets.AWS_PRODUCTION_CLUSTER }}" --service "${{ secrets.AWS_PRODUCTION_SERVICE }}" --task-definition "$NEW_TASK_DEF" --desired-count 1 --force-new-deployment
           echo "✅ Service update initiated - rolling deployment started"
 
       - name: ⏳ Wait for Deployment to Complete
