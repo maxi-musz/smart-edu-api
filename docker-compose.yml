@@ -3,7 +3,7 @@
 
 services:
   dev-db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg17
     container_name: smart-edu-legacy-db
     environment:
       POSTGRES_USER: postgres

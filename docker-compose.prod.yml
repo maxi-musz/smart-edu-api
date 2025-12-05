@@ -1,7 +1,7 @@
 services:
   # PostgreSQL Database
   postgres:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg17
     container_name: smart-edu-prod-db
     restart: unless-stopped
     environment:
@@ -109,7 +109,7 @@ services:
 
   # Database Backup Service
   db-backup:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg17
     container_name: smart-edu-prod-backup
     restart: "no"
     environment:

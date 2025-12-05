@@ -1,0 +1,20 @@
+{
+  // Disable Prisma validation warnings (we're using Prisma 6.8.2, not 7)
+  "prisma.validate": false,
+  "prisma.showPrismaDataPlatformNotification": false,
+  "[prisma]": {
+    "editor.defaultFormatter": "Prisma.prisma"
+  },
+  // Suppress Prisma 7 specific warnings
+  "prisma.prismaFmt": {
+    "path": ""
+  },
+  // Disable schema validation that checks for Prisma 7 syntax
+  "prisma.prismaSchemaValidation": {
+    "enable": false
+  },
+  "files.associations": {
+    "*.prisma": "prisma"
+  }
+}
+

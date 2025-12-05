@@ -24,6 +24,7 @@
     "prisma:studio": "npm run prisma:use-env && prisma studio",
     "prisma:generate": "npm run prisma:use-env && prisma generate",
     "prisma:seed": "npm run prisma:use-env && ts-node prisma/seed-comprehensive.ts",
+    "prisma:reset": "bash scripts/reset-db.sh",
     "postinstall": "npm run prisma:generate"
   },
   "dependencies": {

@@ -132,6 +132,15 @@ This role allows your running application to access AWS services like S3, Secret
 
 ### Step 2.2: Create the Role
 
+**IMPORTANT:** After creating the role, you need to add CloudWatch Logs permissions:
+
+1. **Go to:** IAM → Roles → `ecsTaskExecutionRole`
+2. **Click:** "Add permissions" → "Attach policies"
+3. **Search and select:** `CloudWatchLogsFullAccess`
+4. **Click:** "Add permissions"
+
+This is required for ECS tasks to create log groups for your application logs.
+
 1. **Go to AWS Console → IAM → Roles** (in the left sidebar)
 
 2. **Click "Create role" button**

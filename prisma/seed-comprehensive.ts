@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, SubscriptionPlanType, BillingCycle, SubscriptionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -57,7 +57,8 @@ function getRandomName(ethnicity: 'yoruba' | 'igbo' | 'hausa') {
 
 function generateEmail(firstName: string, lastName: string, role: string, index: number) {
   const baseEmail = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
-  return `${baseEmail}${index}@bestacademy.edu.ng`;
+  // Add role and index to ensure uniqueness
+  return `${baseEmail}.${role}${index}@bestacademy.edu.ng`;
 }
 
 function generatePhoneNumber() {
@@ -75,8 +76,22 @@ function generateTeacherId(index: number) {
   return `TCH${String(index).padStart(3, '0')}`;
 }
 
+function generateParentId(index: number) {
+  return `PAR${String(index).padStart(3, '0')}`;
+}
+
 function generateAdmissionNumber(year: number, index: number) {
   return `BA${year}${String(index).padStart(4, '0')}`;
+}
+
+// Extract class level from class name (e.g., "JSS2A" -> "JSS2", "SS1B" -> "SS1")
+function getClassLevel(className: string): string {
+  if (className.startsWith('JSS')) {
+    return className.substring(0, 4); // JSS1, JSS2, JSS3
+  } else if (className.startsWith('SS')) {
+    return className.substring(0, 3); // SS1, SS2, SS3
+  }
+  return className;
 }
 
 async function main() {
@@ -90,8 +105,240 @@ async function main() {
   }
 
   try {
-    // 1. Create School
+    // 1. Create Subscription Plan Templates (4 default plans)
+    console.log('💳 Creating subscription plan templates...');
+    const planTemplates = [
+      {
+        name: 'Free',
+        plan_type: SubscriptionPlanType.FREE,
+        description: 'Free plan with basic features and limited AI interactions',
+        cost: 0,
+        currency: 'USD',
+        billing_cycle: BillingCycle.MONTHLY,
+        is_active: true,
+        is_template: true,
+        max_allowed_teachers: 30,
+        max_allowed_students: 100,
+        max_allowed_classes: null,
+        max_allowed_subjects: null,
+        allowed_document_types: ['pdf'],
+        max_file_size_mb: 10,
+        max_document_uploads_per_student_per_day: 3,
+        max_document_uploads_per_teacher_per_day: 10,
+        max_storage_mb: 500,
+        max_files_per_month: 10,
+        max_daily_tokens_per_user: 50000,
+        max_weekly_tokens_per_user: null,
+        max_monthly_tokens_per_user: null,
+        max_total_tokens_per_school: null,
+        max_messages_per_week: 100,
+        max_conversations_per_user: null,
+        max_chat_sessions_per_user: null,
+        features: {
+          ai_chat: true,
+          basic_analytics: true,
+          limited_support: true,
+        },
+        status: SubscriptionStatus.ACTIVE,
+        auto_renew: false
+      },
+      {
+        name: 'Basic',
+        plan_type: SubscriptionPlanType.BASIC,
+        description: 'Basic plan with enhanced features and moderate limits',
+        cost: 29.99,
+        currency: 'USD',
+        billing_cycle: BillingCycle.MONTHLY,
+        is_active: true,
+        is_template: true,
+        max_allowed_teachers: 50,
+        max_allowed_students: 250,
+        max_allowed_classes: 20,
+        max_allowed_subjects: 20,
+        allowed_document_types: ['pdf', 'doc', 'docx'],
+        max_file_size_mb: 25,
+        max_document_uploads_per_student_per_day: 5,
+        max_document_uploads_per_teacher_per_day: 25,
+        max_storage_mb: 2000,
+        max_files_per_month: 50,
+        max_daily_tokens_per_user: 100000,
+        max_weekly_tokens_per_user: 500000,
+        max_monthly_tokens_per_user: 2000000,
+        max_total_tokens_per_school: null,
+        max_messages_per_week: 500,
+        max_conversations_per_user: 25,
+        max_chat_sessions_per_user: 10,
+        features: {
+          ai_chat: true,
+          basic_analytics: true,
+          standard_support: true,
+          ai_grading: false,
+          advanced_analytics: false,
+        },
+        status: SubscriptionStatus.ACTIVE,
+        auto_renew: false
+      },
+      {
+        name: 'Premium',
+        plan_type: SubscriptionPlanType.PREMIUM,
+        description: 'Premium plan with advanced AI features and higher limits',
+        cost: 99.99,
+        currency: 'USD',
+        billing_cycle: BillingCycle.MONTHLY,
+        is_active: true,
+        is_template: true,
+        max_allowed_teachers: 100,
+        max_allowed_students: 500,
+        max_allowed_classes: 50,
+        max_allowed_subjects: 50,
+        allowed_document_types: ['pdf', 'doc', 'docx', 'txt', 'csv'],
+        max_file_size_mb: 50,
+        max_document_uploads_per_student_per_day: 10,
+        max_document_uploads_per_teacher_per_day: 50,
+        max_storage_mb: 5000,
+        max_files_per_month: 100,
+        max_daily_tokens_per_user: 200000,
+        max_weekly_tokens_per_user: 1000000,
+        max_monthly_tokens_per_user: 5000000,
+        max_total_tokens_per_school: null,
+        max_messages_per_week: 1000,
+        max_conversations_per_user: 50,
+        max_chat_sessions_per_user: 20,
+        features: {
+          ai_chat: true,
+          advanced_analytics: true,
+          priority_support: true,
+          ai_grading: true,
+          custom_branding: true,
+          api_access: true,
+          bulk_operations: true,
+          export_reports: true,
+        },
+        status: SubscriptionStatus.ACTIVE,
+        auto_renew: false
+      },
+      {
+        name: 'Enterprise',
+        plan_type: SubscriptionPlanType.ENTERPRISE,
+        description: 'Enterprise plan with unlimited features and custom solutions',
+        cost: 299.99,
+        currency: 'USD',
+        billing_cycle: BillingCycle.MONTHLY,
+        is_active: true,
+        is_template: true,
+        max_allowed_teachers: 999999, // Unlimited (using large number)
+        max_allowed_students: 999999, // Unlimited (using large number)
+        max_allowed_classes: null, // Unlimited
+        max_allowed_subjects: null, // Unlimited
+        allowed_document_types: ['pdf', 'doc', 'docx', 'txt', 'csv', 'xlsx', 'pptx'],
+        max_file_size_mb: 100,
+        max_document_uploads_per_student_per_day: 999999, // Unlimited (using large number)
+        max_document_uploads_per_teacher_per_day: 999999, // Unlimited (using large number)
+        max_storage_mb: 999999, // Unlimited (using large number)
+        max_files_per_month: 999999, // Unlimited (using large number)
+        max_daily_tokens_per_user: 500000,
+        max_weekly_tokens_per_user: 2500000,
+        max_monthly_tokens_per_user: 10000000,
+        max_total_tokens_per_school: null, // Unlimited
+        max_messages_per_week: 999999, // Unlimited (using large number)
+        max_conversations_per_user: null, // Unlimited
+        max_chat_sessions_per_user: null, // Unlimited
+        features: {
+          ai_chat: true,
+          advanced_analytics: true,
+          priority_support: true,
+          ai_grading: true,
+          custom_branding: true,
+          api_access: true,
+          bulk_operations: true,
+          export_reports: true,
+          custom_integrations: true,
+          dedicated_account_manager: true,
+          white_label: true,
+          sso: true,
+        },
+        status: SubscriptionStatus.ACTIVE,
+        auto_renew: false
+      }
+    ];
+
+    const createdTemplates = await Promise.all(
+      planTemplates.map(async (template) => {
+        const existing = await prisma.platformSubscriptionPlan.findFirst({
+          where: {
+            plan_type: template.plan_type,
+            school_id: null,
+            is_template: true
+          } as any
+        });
+
+        if (existing) {
+          return prisma.platformSubscriptionPlan.update({
+            where: { id: existing.id },
+            data: {
+              ...template,
+              school_id: null
+            } as any
+          });
+        } else {
+          return prisma.platformSubscriptionPlan.create({
+            data: {
+              ...template,
+              school_id: undefined
+            } as any
+          });
+        }
+      })
+    );
+    console.log(`✅ ${createdTemplates.length} subscription plan templates created`);
+
+    // 2. Create School
     console.log('📚 Creating school...');
+    
+    // Get Free plan template to assign to school
+    const freePlanTemplate = createdTemplates.find(p => p.plan_type === SubscriptionPlanType.FREE);
+    
+    // Create Free plan for the school
+    const schoolFreePlan = await prisma.platformSubscriptionPlan.create({
+      data: {
+        school_id: undefined, // Will be updated after school creation
+        name: 'Free',
+        plan_type: SubscriptionPlanType.FREE,
+        description: freePlanTemplate?.description || 'Free plan with basic features',
+        cost: 0,
+        currency: 'USD',
+        billing_cycle: BillingCycle.MONTHLY,
+        is_active: true,
+        is_template: false,
+        max_allowed_teachers: 30,
+        max_allowed_students: 100,
+        max_allowed_classes: null,
+        max_allowed_subjects: null,
+        allowed_document_types: ['pdf'],
+        max_file_size_mb: 10,
+        max_document_uploads_per_student_per_day: 3,
+        max_document_uploads_per_teacher_per_day: 10,
+        max_storage_mb: 500,
+        max_files_per_month: 10,
+        max_daily_tokens_per_user: 50000,
+        max_weekly_tokens_per_user: null,
+        max_monthly_tokens_per_user: null,
+        max_total_tokens_per_school: null,
+        max_messages_per_week: 100,
+        max_conversations_per_user: null,
+        max_chat_sessions_per_user: null,
+        features: {
+          ai_chat: true,
+          basic_analytics: true,
+          limited_support: true,
+        },
+        start_date: new Date(),
+        end_date: null,
+        status: SubscriptionStatus.ACTIVE,
+        auto_renew: false
+      } as any
+    });
+
     const school = await prisma.school.create({
       data: {
         school_name: 'Best Academy',
@@ -107,9 +354,16 @@ async function main() {
         taxClearanceId: null,
       },
     });
-    console.log(`✅ School created: ${school.school_name}`);
 
-    // 2. Create Academic Sessions
+    // Update school plan with school_id
+    await prisma.platformSubscriptionPlan.update({
+      where: { id: schoolFreePlan.id },
+      data: { school_id: school.id }
+    });
+
+    console.log(`✅ School created: ${school.school_name} with Free subscription plan`);
+
+    // 3. Create Academic Sessions
     console.log('📅 Creating academic sessions...');
     const currentYear = new Date().getFullYear();
     const previousYear = currentYear - 1;
@@ -146,7 +400,7 @@ async function main() {
     const currentSession = academicSessions[1];
     console.log(`✅ Academic sessions created. Current: ${currentSession.academic_year}`);
 
-    // 3. Create Classes (JSS1 to SS3)
+    // 4. Create Classes (JSS1 to SS3)
     console.log('🏫 Creating classes...');
     const classNames = [
       'JSS1A', 'JSS1B', 'JSS2A', 'JSS2B', 'JSS3A', 'JSS3B',
@@ -167,7 +421,7 @@ async function main() {
     );
     console.log(`✅ ${classes.length} classes created`);
 
-    // 4. Create Subjects
+    // 5. Create Subjects (FIXED: One subject per class level, not per individual class)
     console.log('📖 Creating subjects...');
     const subjectsData = [
       // JSS Subjects
@@ -199,53 +453,68 @@ async function main() {
       { name: 'French', code: 'FRE', color: '#E67E22' },
     ];
 
-    // Create subjects and assign them to appropriate classes
+    // Group classes by level
+    const classesByLevel: Record<string, any[]> = {};
+    classes.forEach(classItem => {
+      const level = getClassLevel(classItem.name);
+      if (!classesByLevel[level]) {
+        classesByLevel[level] = [];
+      }
+      classesByLevel[level].push(classItem);
+    });
+
     const subjects: any[] = [];
     
-    // JSS Subjects (for JSS1-JSS3 classes)
-    const jssSubjects = subjectsData.slice(0, 12); // First 12 are JSS subjects
-    const jssClasses = classes.slice(0, 6); // JSS1A, JSS1B, JSS2A, JSS2B, JSS3A, JSS3B
+    // Create JSS subjects (for JSS1, JSS2, JSS3 levels)
+    const jssSubjects = subjectsData.slice(0, 12);
+    const jssLevels = ['JSS1', 'JSS2', 'JSS3'];
     
-    for (const subjectData of jssSubjects) {
-      for (const classItem of jssClasses) {
-        const subject = await prisma.subject.create({
-          data: {
-            name: subjectData.name,
-            code: `${subjectData.code}-${classItem.name}`, // Make code unique per class
-            color: subjectData.color,
-            schoolId: school.id,
-            academic_session_id: currentSession.id,
-            classId: classItem.id,
-            description: `Study of ${subjectData.name} for ${classItem.name} students`,
-          },
-        });
-        subjects.push(subject);
+    for (const level of jssLevels) {
+      if (classesByLevel[level]) {
+        for (const subjectData of jssSubjects) {
+          // Create ONE subject per level (not per class)
+          const subject = await prisma.subject.create({
+            data: {
+              name: subjectData.name,
+              code: `${subjectData.code}-${level}`, // e.g., MATH-JSS1
+              color: subjectData.color,
+              schoolId: school.id,
+              academic_session_id: currentSession.id,
+              classId: null, // No specific class - shared across all classes of this level
+              description: `Study of ${subjectData.name} for ${level} students`,
+            },
+          });
+          subjects.push(subject);
+        }
       }
     }
     
-    // SS Subjects (for SS1-SS3 classes)
-    const ssSubjects = subjectsData.slice(12); // Last 12 are SS subjects
-    const ssClasses = classes.slice(6); // SS1A, SS1B, SS2A, SS2B, SS3A, SS3B
+    // Create SS subjects (for SS1, SS2, SS3 levels)
+    const ssSubjects = subjectsData.slice(12);
+    const ssLevels = ['SS1', 'SS2', 'SS3'];
     
-    for (const subjectData of ssSubjects) {
-      for (const classItem of ssClasses) {
-        const subject = await prisma.subject.create({
-          data: {
-            name: subjectData.name,
-            code: `${subjectData.code}-${classItem.name}`, // Make code unique per class
-            color: subjectData.color,
-            schoolId: school.id,
-            academic_session_id: currentSession.id,
-            classId: classItem.id,
-            description: `Study of ${subjectData.name} for ${classItem.name} students`,
-          },
-        });
-        subjects.push(subject);
+    for (const level of ssLevels) {
+      if (classesByLevel[level]) {
+        for (const subjectData of ssSubjects) {
+          // Create ONE subject per level (not per class)
+          const subject = await prisma.subject.create({
+            data: {
+              name: subjectData.name,
+              code: `${subjectData.code}-${level}`, // e.g., PHY-SS1
+              color: subjectData.color,
+              schoolId: school.id,
+              academic_session_id: currentSession.id,
+              classId: null, // No specific class - shared across all classes of this level
+              description: `Study of ${subjectData.name} for ${level} students`,
+            },
+          });
+          subjects.push(subject);
+        }
       }
     }
-    console.log(`✅ ${subjects.length} subjects created`);
+    console.log(`✅ ${subjects.length} subjects created (shared across class levels)`);
 
-    // 5. Create Time Slots
+    // 6. Create Time Slots
     console.log('⏰ Creating time slots...');
     const timeSlots = [
       { startTime: '08:00', endTime: '08:40', label: 'Period 1' },
@@ -275,7 +544,7 @@ async function main() {
     );
     console.log(`✅ ${createdTimeSlots.length} time slots created`);
 
-    // 6. Create Users (Directors, Teachers, Students) with FIXED password hashing
+    // 7. Create Users (Directors, Teachers, Students, Parents) with FIXED password hashing
     console.log('👥 Creating users...');
     
     // Create Directors (2)
@@ -285,7 +554,6 @@ async function main() {
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'director', i + 1);
       
-      // Hash password for each user individually
       const hashedPassword = await bcrypt.hash('password123', 10);
       
       const user = await prisma.user.create({
@@ -313,7 +581,6 @@ async function main() {
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'teacher', i + 1);
       
-      // Hash password for each user individually
       const hashedPassword = await bcrypt.hash('password123', 10);
       
       const user = await prisma.user.create({
@@ -355,14 +622,57 @@ async function main() {
       teachers.push({ user, teacher });
     }
 
-    // Create Students (90)
+    // Create Parents (45 - roughly 1 parent per 2 students)
+    console.log('👨‍👩‍👧 Creating parents...');
+    const parents: any[] = [];
+    for (let i = 0; i < 45; i++) {
+      const ethnicity = ['yoruba', 'igbo', 'hausa'][i % 3] as 'yoruba' | 'igbo' | 'hausa';
+      const { firstName, lastName } = getRandomName(ethnicity);
+      const email = generateEmail(firstName, lastName, 'parent', i + 1);
+      
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      
+      const user = await prisma.user.create({
+        data: {
+          school_id: school.id,
+          email,
+          password: hashedPassword,
+          first_name: firstName,
+          last_name: lastName,
+          phone_number: generatePhoneNumber(),
+          gender: ['male', 'female'][Math.floor(Math.random() * 2)] as 'male' | 'female',
+          role: 'parent',
+          status: 'active',
+          is_email_verified: true,
+          is_otp_verified: true,
+        },
+      });
+
+      const parent = await prisma.parent.create({
+        data: {
+          school_id: school.id,
+          user_id: user.id,
+          parent_id: generateParentId(i + 1),
+          occupation: ['Engineer', 'Teacher', 'Doctor', 'Business Owner', 'Lawyer', 'Nurse', 'Accountant', 'Farmer'][Math.floor(Math.random() * 8)],
+          employer: `${getRandomName(ethnicity).firstName} ${getRandomName(ethnicity).lastName} Ltd`,
+          address: `${Math.floor(Math.random() * 999) + 1} Street, Lagos, Nigeria`,
+          emergency_contact: generatePhoneNumber(),
+          relationship: ['Father', 'Mother', 'Guardian'][Math.floor(Math.random() * 3)],
+          is_primary_contact: i < 30, // First 30 are primary contacts
+          status: 'active',
+        },
+      });
+      parents.push({ user, parent });
+    }
+    console.log(`✅ ${parents.length} parents created`);
+
+    // Create Students (90) and link to parents
     const students: any[] = [];
     for (let i = 0; i < 90; i++) {
       const ethnicity = ['yoruba', 'igbo', 'hausa'][i % 3] as 'yoruba' | 'igbo' | 'hausa';
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'student', i + 1);
       
-      // Hash password for each user individually
       const hashedPassword = await bcrypt.hash('password123', 10);
       
       const user = await prisma.user.create({
@@ -382,6 +692,10 @@ async function main() {
       });
 
       const classIndex = i % classes.length;
+      // Assign parent (roughly 2 students per parent)
+      const parentIndex = Math.floor(i / 2) % parents.length;
+      const assignedParent = parents[parentIndex];
+
       const student = await prisma.student.create({
         data: {
           school_id: school.id,
@@ -391,22 +705,23 @@ async function main() {
           admission_number: generateAdmissionNumber(currentYear, i + 1),
           current_class_id: classes[classIndex].id,
           date_of_birth: new Date(2000 + Math.floor(Math.random() * 10), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
-          guardian_name: `${getRandomName(ethnicity).firstName} ${getRandomName(ethnicity).lastName}`,
-          guardian_phone: generatePhoneNumber(),
-          guardian_email: generateEmail(getRandomName(ethnicity).firstName, getRandomName(ethnicity).lastName, 'guardian', i + 1),
+          guardian_name: assignedParent.user.first_name + ' ' + assignedParent.user.last_name,
+          guardian_phone: assignedParent.user.phone_number,
+          guardian_email: assignedParent.user.email,
           address: `${Math.floor(Math.random() * 999) + 1} Street, Lagos, Nigeria`,
-          emergency_contact: generatePhoneNumber(),
+          emergency_contact: assignedParent.parent.emergency_contact,
           blood_group: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'][Math.floor(Math.random() * 8)],
           academic_level: classIndex < 6 ? 'JSS' : 'SS',
+          parent_id: assignedParent.parent.id, // Link to parent
           status: 'active',
         },
       });
       students.push({ user, student });
     }
 
-    console.log(`✅ Users created: 2 directors, ${teachers.length} teachers, ${students.length} students`);
+    console.log(`✅ Users created: 2 directors, ${teachers.length} teachers, ${students.length} students, ${parents.length} parents`);
 
-    // 7. Assign Class Teachers
+    // 8. Assign Class Teachers
     console.log('👨‍🏫 Assigning class teachers...');
     for (let i = 0; i < classes.length; i++) {
       const classItem = classes[i];
@@ -422,7 +737,7 @@ async function main() {
       console.log(`   ✅ ${classItem.name} → ${teacher.user.first_name} ${teacher.user.last_name}`);
     }
 
-    // 8. Create Teacher-Subject Relationships
+    // 9. Create Teacher-Subject Relationships
     console.log('👨‍🏫 Creating teacher-subject relationships...');
     const teacherSubjects: any[] = [];
     
@@ -448,10 +763,10 @@ async function main() {
         .slice(0, subjectCount);
       
       for (const subjectName of selectedSubjectNames) {
-        // Get all subjects with this name (for different classes)
+        // Get all subjects with this name (for different levels)
         const subjectsWithName = subjectsByName[subjectName];
         
-        // Assign teacher to all classes for this subject
+        // Assign teacher to all levels for this subject
         for (const subject of subjectsWithName) {
           const teacherSubject = await prisma.teacherSubject.create({
             data: {
@@ -465,18 +780,26 @@ async function main() {
     }
     console.log(`✅ ${teacherSubjects.length} teacher-subject relationships created`);
 
-    // 9. Create Timetable Entries
+    // 10. Create Timetable Entries
     console.log('📋 Creating timetable entries...');
     const daysOfWeek = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'] as const;
     const timetableEntries: any[] = [];
 
+    // Helper function to get subjects for a class based on its level
+    const getSubjectsForClass = (classItem: any) => {
+      const level = getClassLevel(classItem.name);
+      return subjects.filter(s => s.code?.endsWith(level));
+    };
+
     for (const classItem of classes) {
+      const classSubjects = getSubjectsForClass(classItem);
+      
       for (const day of daysOfWeek) {
         for (let period = 0; period < 8; period++) { // Skip break and lunch periods
           if (period === 3 || period === 7) continue; // Skip break and lunch
           
           const timeSlot = createdTimeSlots[period];
-          const subject = subjects[Math.floor(Math.random() * subjects.length)];
+          const subject = classSubjects[Math.floor(Math.random() * classSubjects.length)];
           const teacher = teachers[Math.floor(Math.random() * teachers.length)];
           
           const timetableEntry = await prisma.timetableEntry.create({
@@ -498,7 +821,7 @@ async function main() {
     }
     console.log(`✅ ${timetableEntries.length} timetable entries created`);
 
-    // 10. Create Topics for Subjects
+    // 11. Create Topics for Subjects
     console.log('📚 Creating topics for subjects...');
     const topicTemplates = {
       'Mathematics': [
@@ -560,7 +883,7 @@ async function main() {
     }
     console.log(`✅ ${topics.length} topics created`);
 
-    // 11. Create Finance, Wallet, and Payment Records
+    // 12. Create Finance, Wallet, and Payment Records
     console.log('💰 Creating finance, wallet, and payment records...');
     
     // Create Finance record
@@ -585,14 +908,6 @@ async function main() {
     });
 
     // Create Payment Records for Students
-    const paymentTypes = ['full', 'partial'] as const;
-    const transactionTypes = ['credit', 'debit'] as const;
-    const paymentForOptions = [
-      'School Fees', 'Examination Fees', 'Library Fees', 'Sports Fees', 
-      'Transportation Fees', 'Meal Plan', 'Uniform Fees', 'Technology Fees',
-      'Laboratory Fees', 'Computer Fees', 'Art Supplies', 'Music Fees'
-    ];
-
     const createdPayments: any[] = [];
     let totalRevenue = 0;
     let totalOutstanding = 0;
@@ -653,7 +968,7 @@ async function main() {
     console.log(`   📊 Outstanding Fees: ₦${totalOutstanding.toLocaleString()}`);
     console.log(`   💳 Wallet Balance: ₦${netBalance.toLocaleString()}`);
 
-    // 12. Create some sample notifications
+    // 13. Create some sample notifications
     console.log('🔔 Creating notifications...');
     const notifications = await Promise.all([
       prisma.notification.create({
@@ -682,10 +997,12 @@ async function main() {
     console.log('🎉 Comprehensive database seeding completed successfully!');
     console.log('\n📊 Summary:');
     console.log(`- School: ${school.school_name}`);
+    console.log(`- Subscription Plan: Free (default)`);
+    console.log(`- Subscription Plan Templates: ${createdTemplates.length} (Free, Basic, Premium, Enterprise)`);
     console.log(`- Academic Sessions: ${academicSessions.length}`);
     console.log(`- Classes: ${classes.length}`);
-    console.log(`- Subjects: ${subjects.length}`);
-    console.log(`- Users: ${2 + teachers.length + students.length} (2 directors, ${teachers.length} teachers, ${students.length} students)`);
+    console.log(`- Subjects: ${subjects.length} (shared across class levels)`);
+    console.log(`- Users: ${2 + teachers.length + students.length + parents.length} (2 directors, ${teachers.length} teachers, ${students.length} students, ${parents.length} parents)`);
     console.log(`- Class Teachers: ${classes.length} assigned`);
     console.log(`- Teacher-Subject Relationships: ${teacherSubjects.length}`);
     console.log(`- Timetable Entries: ${timetableEntries.length}`);
@@ -700,6 +1017,7 @@ async function main() {
     console.log(`Director: ${directors[0].email}`);
     console.log(`Teacher: ${teachers[0].user.email}`);
     console.log(`Student: ${students[0].user.email}`);
+    console.log(`Parent: ${parents[0].user.email}`);
 
   } catch (error) {
     console.error('❌ Error seeding database:', error);
