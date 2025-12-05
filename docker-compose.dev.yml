@@ -1,7 +1,7 @@
 services:
   # PostgreSQL Database
   postgres:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg17
     container_name: smart-edu-dev-db
     restart: unless-stopped
     environment:

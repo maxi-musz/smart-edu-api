@@ -5,4 +5,5 @@ export * from './classes';
 export * from './subjects';
 export * from './schedules';
 export * from './finance';
-export * from './dashboard'; 
+export * from './dashboard';
+export * from './profiles'; 

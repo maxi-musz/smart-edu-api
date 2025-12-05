@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg17
     container_name: smart-edu-staging-postgres
     restart: unless-stopped
     environment:
@@ -104,7 +104,7 @@ services:
 
   # Staging-specific backup service
   db-backup:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg17
     container_name: smart-edu-staging-backup
     restart: unless-stopped
     environment:

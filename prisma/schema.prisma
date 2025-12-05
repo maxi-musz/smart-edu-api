@@ -2,14 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// generator seed {
-//   provider = "ts-node prisma/seed-comprehensive.ts"
-//   previewFeatures = ["postgresqlExtensions"]
-// }
-
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  // @ts-ignore - Prisma 6.8.2 syntax (correct for v6, warning is for v7)
+  url      = env("DATABASE_URL")
 }
 
 model AcademicSession {
@@ -26,6 +22,7 @@ model AcademicSession {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   school                School                 @relation(fields: [school_id], references: [id])
+  achievements          Achievement[]
   assessments           Assessment[]
   assessmentAttempts    AssessmentAttempt[]
   assessmentSubmissions AssessmentSubmission[]
@@ -46,7 +43,6 @@ model AcademicSession {
   teachers              Teacher[]
   schedules             TimetableEntry[]
   topics                Topic[]
-  achievements          Achievement[]
 
   @@unique([school_id, academic_year, term])
   @@index([school_id, is_current])
@@ -55,21 +51,22 @@ model AcademicSession {
 }
 
 model School {
-  id                    String                 @id @default(cuid())
+  id                    String                    @id @default(cuid())
   school_name           String
-  school_email          String                 @unique
+  school_email          String                    @unique
   school_phone          String
   school_address        String
   school_type           SchoolType
   school_ownership      SchoolOwnership
-  status                SchoolStatus           @default(pending)
-  cacId                 String?                @unique
-  utilityBillId         String?                @unique
-  taxClearanceId        String?                @unique
+  status                SchoolStatus              @default(pending)
+  cacId                 String?                   @unique
+  utilityBillId         String?                   @unique
+  taxClearanceId        String?                   @unique
   platformId            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
   academicSessions      AcademicSession[]
+  achievements          Achievement[]
   assessments           Assessment[]
   assessmentAttempts    AssessmentAttempt[]
   assessmentSubmissions AssessmentSubmission[]
@@ -95,22 +92,22 @@ model School {
   notifications         Notification[]
   pdfMaterial           PDFMaterial[]
   parents               Parent[]
-  cac                   Document?              @relation("CACDoc", fields: [cacId], references: [id])
-  platform              Organisation?          @relation(fields: [platformId], references: [id])
-  tax_clearance         Document?              @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
-  utility_bill          Document?              @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
+  subscriptionPlan      PlatformSubscriptionPlan?
+  cac                   Document?                 @relation("CACDoc", fields: [cacId], references: [id])
+  platform              Organisation?             @relation(fields: [platformId], references: [id])
+  tax_clearance         Document?                 @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
+  utility_bill          Document?                 @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
   students              Student[]
   subjects              Subject[]
+  supportInfo           SupportInfo?
   teachers              Teacher[]
   timeSlots             TimeSlot[]
   schedules             TimetableEntry[]
   topics                Topic[]
   users                 User[]
+  userSettings          UserSettings[]
   videoContent          VideoContent[]
   wallet                Wallet?
-  userSettings          UserSettings[]
-  achievements          Achievement[]
-  supportInfo           SupportInfo?
 }
 
 model Document {
@@ -180,13 +177,13 @@ model User {
   parent                     Parent?
   payments                   Payment[]              @relation("StudentPayment")
   student                    Student?
+  studentAchievements        StudentAchievement[]   @relation("StudentAchievements")
   performances               StudentPerformance[]   @relation("StudentPerformance")
   teacher                    Teacher?
   topicsCreated              Topic[]                @relation("TopicCreator")
   school                     School                 @relation(fields: [school_id], references: [id])
-  videoContent               VideoContent[]
   userSettings               UserSettings?
-  studentAchievements        StudentAchievement[]   @relation("StudentAchievements")
+  videoContent               VideoContent[]
 }
 
 model Teacher {
@@ -1107,7 +1104,6 @@ model DocumentChunk {
   material               PDFMaterial           @relation(fields: [material_id], references: [id], onDelete: Cascade)
   materialProcessing     MaterialProcessing    @relation(fields: [material_processing_id], references: [id], onDelete: Cascade)
   school                 School                @relation(fields: [school_id], references: [id])
-  // Note: Vector similarity search is handled by Pinecone, not PostgreSQL indexes
 
   @@index([material_id])
   @@index([school_id])
@@ -1346,57 +1342,46 @@ model AttendanceSettings {
 }
 
 model UserSettings {
-  id        String @id @default(cuid())
-  user_id   String @unique
-  school_id String
-
-  // Notification settings
-  push_notifications         Boolean @default(true)
-  email_notifications        Boolean @default(true)
-  assessment_reminders       Boolean @default(true)
-  grade_notifications        Boolean @default(true)
-  announcement_notifications Boolean @default(false)
-
-  // App preferences
-  dark_mode       Boolean @default(false)
-  sound_effects   Boolean @default(true)
-  haptic_feedback Boolean @default(true)
-  auto_save       Boolean @default(true)
-  offline_mode    Boolean @default(false)
-
-  // Privacy settings
-  profile_visibility     String  @default("classmates") // public, classmates, private
-  show_contact_info      Boolean @default(true)
-  show_academic_progress Boolean @default(true)
-  data_sharing           Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  school School @relation(fields: [school_id], references: [id])
+  id                         String   @id @default(cuid())
+  user_id                    String   @unique
+  school_id                  String
+  push_notifications         Boolean  @default(true)
+  email_notifications        Boolean  @default(true)
+  assessment_reminders       Boolean  @default(true)
+  grade_notifications        Boolean  @default(true)
+  announcement_notifications Boolean  @default(false)
+  dark_mode                  Boolean  @default(false)
+  sound_effects              Boolean  @default(true)
+  haptic_feedback            Boolean  @default(true)
+  auto_save                  Boolean  @default(true)
+  offline_mode               Boolean  @default(false)
+  profile_visibility         String   @default("classmates")
+  show_contact_info          Boolean  @default(true)
+  show_academic_progress     Boolean  @default(true)
+  data_sharing               Boolean  @default(false)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  school                     School   @relation(fields: [school_id], references: [id])
+  user                       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([school_id])
 }
 
 model Achievement {
-  id                  String @id @default(cuid())
+  id                  String               @id @default(cuid())
   school_id           String
   academic_session_id String
-
-  title       String
-  description String
-  type        AchievementType
-  icon_url    String?
-  points      Int             @default(0)
-  is_active   Boolean         @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  school              School               @relation(fields: [school_id], references: [id])
+  title               String
+  description         String
+  type                AchievementType
+  icon_url            String?
+  points              Int                  @default(0)
+  is_active           Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  school              School               @relation(fields: [school_id], references: [id])
   studentAchievements StudentAchievement[]
 
   @@index([school_id])
@@ -1405,18 +1390,16 @@ model Achievement {
 }
 
 model StudentAchievement {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   student_id     String
   achievement_id String
-  earned_date    DateTime @default(now())
-  points_earned  Int      @default(0)
-  is_visible     Boolean  @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  student     User        @relation("StudentAchievements", fields: [student_id], references: [id], onDelete: Cascade)
-  achievement Achievement @relation(fields: [achievement_id], references: [id])
+  earned_date    DateTime    @default(now())
+  points_earned  Int         @default(0)
+  is_visible     Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  achievement    Achievement @relation(fields: [achievement_id], references: [id])
+  student        User        @relation("StudentAchievements", fields: [student_id], references: [id], onDelete: Cascade)
 
   @@unique([student_id, achievement_id])
   @@index([student_id])
@@ -1424,33 +1407,69 @@ model StudentAchievement {
 }
 
 model SupportInfo {
-  id        String @id @default(cuid())
-  school_id String @unique
-
-  // Help center
-  faq_count       Int       @default(0)
-  last_faq_update DateTime?
-  faq_categories  Json      @default("[]")
-
-  // Contact options
-  email_support       String  @default("support@school.edu")
-  phone_support       String  @default("+1-800-SCHOOL")
-  live_chat_available Boolean @default(false)
-  response_time       String  @default("24 hours")
-
-  // App info
-  app_version             String   @default("1.0.0")
-  build_number            String   @default("100")
-  last_updated            DateTime @default(now())
-  minimum_ios_version     String   @default("13.0")
-  minimum_android_version String   @default("8.0")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  school School @relation(fields: [school_id], references: [id])
+  id                      String    @id @default(cuid())
+  school_id               String    @unique
+  faq_count               Int       @default(0)
+  last_faq_update         DateTime?
+  faq_categories          Json      @default("[]")
+  email_support           String    @default("support@school.edu")
+  phone_support           String    @default("+1-800-SCHOOL")
+  live_chat_available     Boolean   @default(false)
+  response_time           String    @default("24 hours")
+  app_version             String    @default("1.0.0")
+  build_number            String    @default("100")
+  last_updated            DateTime  @default(now())
+  minimum_ios_version     String    @default("13.0")
+  minimum_android_version String    @default("8.0")
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  school                  School    @relation(fields: [school_id], references: [id])
 
   @@index([school_id])
+}
+
+model PlatformSubscriptionPlan {
+  id                                       String               @id @default(cuid())
+  school_id                                String?              @unique
+  name                                     String               @default("Free")
+  plan_type                                SubscriptionPlanType @default(FREE)
+  description                              String?
+  cost                                     Float                @default(0)
+  currency                                 String               @default("USD")
+  billing_cycle                            BillingCycle         @default(MONTHLY)
+  is_active                                Boolean              @default(true)
+  max_allowed_teachers                     Int                  @default(30)
+  max_allowed_students                     Int                  @default(100)
+  max_allowed_classes                      Int?
+  max_allowed_subjects                     Int?
+  allowed_document_types                   String[]             @default(["pdf"])
+  max_file_size_mb                         Int                  @default(10)
+  max_document_uploads_per_student_per_day Int                  @default(3)
+  max_document_uploads_per_teacher_per_day Int                  @default(10)
+  max_storage_mb                           Int                  @default(500)
+  max_files_per_month                      Int                  @default(10)
+  max_daily_tokens_per_user                Int                  @default(50000)
+  max_weekly_tokens_per_user               Int?
+  max_monthly_tokens_per_user              Int?
+  max_total_tokens_per_school              Int?
+  max_messages_per_week                    Int                  @default(100)
+  max_conversations_per_user               Int?
+  max_chat_sessions_per_user               Int?
+  features                                 Json?
+  start_date                               DateTime?
+  end_date                                 DateTime?
+  status                                   SubscriptionStatus   @default(ACTIVE)
+  auto_renew                               Boolean              @default(false)
+  created_at                               DateTime             @default(now())
+  updated_at                               DateTime             @updatedAt
+  is_template                              Boolean              @default(false)
+  school                                   School?              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([plan_type])
+  @@index([status])
+  @@index([is_active])
+  @@index([is_template])
 }
 
 enum SchoolType {
@@ -1733,4 +1752,28 @@ enum AchievementType {
   BEHAVIOR
   LEADERSHIP
   OTHER
+}
+
+enum SubscriptionPlanType {
+  FREE
+  BASIC
+  PREMIUM
+  ENTERPRISE
+  CUSTOM
+}
+
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ONE_TIME
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  TRIAL
 }

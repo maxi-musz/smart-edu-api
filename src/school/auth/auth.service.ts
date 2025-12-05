@@ -3,7 +3,7 @@ import * as colors from 'colors';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { SchoolOwnership, SchoolType } from '@prisma/client';
+import { SchoolOwnership, SchoolType, SubscriptionPlanType, BillingCycle, SubscriptionStatus } from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
 import { OnboardDataDto, OnboardSchoolDto, RequestLoginOtpDTO, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyEmailOTPDto, VerifyresetOtp } from 'src/school/director/students/dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
@@ -99,6 +99,109 @@ export class AuthService {
                     status: 'pending'
                 }
             });
+
+            // Automatically create a Free subscription plan for the new school
+            // Find the Free template plan first, or create from template
+            const freeTemplatePlan = await this.prisma.platformSubscriptionPlan.findFirst({
+                where: {
+                    plan_type: SubscriptionPlanType.FREE,
+                    school_id: null,
+                    is_template: true,
+                    is_active: true
+                } as any
+            });
+
+            if (freeTemplatePlan) {
+                // Create plan from template
+                await this.prisma.platformSubscriptionPlan.create({
+                    data: {
+                        school_id: school.id,
+                        name: freeTemplatePlan.name,
+                        plan_type: freeTemplatePlan.plan_type,
+                        description: freeTemplatePlan.description,
+                        cost: freeTemplatePlan.cost,
+                        currency: freeTemplatePlan.currency,
+                        billing_cycle: freeTemplatePlan.billing_cycle,
+                        is_active: true,
+                        // Basic Limits
+                        max_allowed_teachers: freeTemplatePlan.max_allowed_teachers,
+                        max_allowed_students: freeTemplatePlan.max_allowed_students,
+                        max_allowed_classes: freeTemplatePlan.max_allowed_classes,
+                        max_allowed_subjects: freeTemplatePlan.max_allowed_subjects,
+                        // AI Interactions & Document Management
+                        allowed_document_types: freeTemplatePlan.allowed_document_types,
+                        max_file_size_mb: freeTemplatePlan.max_file_size_mb,
+                        max_document_uploads_per_student_per_day: freeTemplatePlan.max_document_uploads_per_student_per_day,
+                        max_document_uploads_per_teacher_per_day: freeTemplatePlan.max_document_uploads_per_teacher_per_day,
+                        max_storage_mb: freeTemplatePlan.max_storage_mb,
+                        max_files_per_month: freeTemplatePlan.max_files_per_month,
+                        // Token Usage Limits
+                        max_daily_tokens_per_user: freeTemplatePlan.max_daily_tokens_per_user,
+                        max_weekly_tokens_per_user: freeTemplatePlan.max_weekly_tokens_per_user,
+                        max_monthly_tokens_per_user: freeTemplatePlan.max_monthly_tokens_per_user,
+                        max_total_tokens_per_school: freeTemplatePlan.max_total_tokens_per_school,
+                        // Chat & Messaging Limits
+                        max_messages_per_week: freeTemplatePlan.max_messages_per_week,
+                        max_conversations_per_user: freeTemplatePlan.max_conversations_per_user,
+                        max_chat_sessions_per_user: freeTemplatePlan.max_chat_sessions_per_user,
+                        // Additional Features
+                        features: freeTemplatePlan.features as any,
+                        // Subscription Management
+                        start_date: new Date(),
+                        end_date: null,
+                        status: SubscriptionStatus.ACTIVE,
+                        auto_renew: false
+                    }
+                });
+            } else {
+                // Fallback: Create plan with default values if template doesn't exist
+                await this.prisma.platformSubscriptionPlan.create({
+                    data: {
+                        school_id: school.id,
+                        name: 'Free',
+                        plan_type: SubscriptionPlanType.FREE,
+                        description: 'Free plan with basic features and limited AI interactions',
+                        cost: 0,
+                        currency: 'USD',
+                        billing_cycle: BillingCycle.MONTHLY,
+                        is_active: true,
+                        // Basic Limits
+                        max_allowed_teachers: 30,
+                        max_allowed_students: 100,
+                        max_allowed_classes: null,
+                        max_allowed_subjects: null,
+                        // AI Interactions & Document Management
+                        allowed_document_types: ['pdf'],
+                        max_file_size_mb: 10,
+                        max_document_uploads_per_student_per_day: 3,
+                        max_document_uploads_per_teacher_per_day: 10,
+                        max_storage_mb: 500,
+                        max_files_per_month: 10,
+                        // Token Usage Limits
+                        max_daily_tokens_per_user: 50000,
+                        max_weekly_tokens_per_user: null,
+                        max_monthly_tokens_per_user: null,
+                        max_total_tokens_per_school: null,
+                        // Chat & Messaging Limits
+                        max_messages_per_week: 100,
+                        max_conversations_per_user: null,
+                        max_chat_sessions_per_user: null,
+                        // Additional Features
+                        features: {
+                            ai_chat: true,
+                            basic_analytics: true,
+                            limited_support: true,
+                        },
+                        // Subscription Management
+                        start_date: new Date(),
+                        end_date: null,
+                        status: SubscriptionStatus.ACTIVE,
+                        auto_renew: false
+                    }
+                });
+            }
+
+            console.log(colors.green(`✅ Free subscription plan created for school: ${school.school_name}`));
 
             // Create the initial academic session for the school
             const academicYearParts = dto.academic_year.split(/[\/\-]/);
@@ -431,7 +534,7 @@ export class AuthService {
             // Define emails that are exempt from OTP verification
             const otpExemptEmails = [
                 'bernardmayowaa@gmail.com',
-                'dada.ngozi1@bestacademy.edu.ng',
+                'lola.mariam.director1@bestacademy.edu.ng',
                 'nkem.obi2@bestacademy.edu.ng',
                 'tope.rasheedat1@bestacademy.edu.ng',
                 'quadri.jumoke1@bestacademy.edu.ng',
