@@ -4,6 +4,8 @@ import { ResponseHelper } from '../../../shared/helper-functions/response.helper
 import { Logger } from '@nestjs/common';
 import * as colors from 'colors';
 import { CreateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentDto, UpdateAssessmentQuestionDto } from './cbt-dto';
+import { StorageService } from '../../../shared/services/providers/storage.service';
+import { AssessmentNotificationsService } from '../../../push-notifications/assessment/assessment-notifications.service';
 
 @Injectable()
 export class AssessmentService {
@@ -11,6 +13,8 @@ export class AssessmentService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly storageService: StorageService,
+    private readonly assessmentNotificationsService: AssessmentNotificationsService,
   ) {}
 
   // ========================================
@@ -46,7 +50,7 @@ export class AssessmentService {
    * @param schoolId - ID of the school
    * @param academicSessionId - ID of the academic session
    */
-  async createQuiz(
+  async createAssessment(
     createQuizDto: CreateAssessmentDto,
     user: any
   ) {
@@ -457,9 +461,76 @@ export class AssessmentService {
   }
 
   /**
+   * Upload an image for a question (separate endpoint)
+   * @param assessmentId - ID of the assessment
+   * @param imageFile - Image file to upload
+   * @param userId - ID of the teacher
+   */
+  async uploadQuestionImage(assessmentId: string, imageFile: Express.Multer.File, userId: string) {
+    try {
+      this.logger.log(colors.cyan(`Uploading question image for assessment: ${assessmentId} by user: ${userId}`));
+
+      // Verify the assessment exists and the teacher has access to it
+      const assessment = await this.prisma.assessment.findFirst({
+        where: {
+          id: assessmentId,
+          created_by: userId
+        },
+        include: {
+          school: {
+            select: {
+              id: true
+            }
+          }
+        }
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Validate image file type
+      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedMimeTypes.includes(imageFile.mimetype)) {
+        throw new BadRequestException('Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP');
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (imageFile.size > maxSize) {
+        throw new BadRequestException('Image file size exceeds 5MB limit');
+      }
+
+      // Upload to S3
+      const s3Folder = `assessment-images/schools/${assessment.school.id}/assessments/${assessmentId}`;
+      const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      
+      try {
+        const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+        this.logger.log(colors.green(`✅ Image uploaded to S3: ${uploadResult.key}`));
+
+        return ResponseHelper.success(
+          'Image uploaded successfully',
+          {
+            image_url: uploadResult.url,
+            image_s3_key: uploadResult.key
+          },
+          201
+        );
+      } catch (s3Error) {
+        this.logger.error(colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`));
+        throw new BadRequestException(`Failed to upload image: ${s3Error.message}`);
+      }
+    } catch (error) {
+      this.logger.error(colors.red(`Error uploading question image: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
    * Create a new question for an assessment
    * @param assessmentId - ID of the assessment
-   * @param createQuestionDto - Question data
+   * @param createQuestionDto - Question data (includes image_url if image was uploaded separately)
    * @param userId - ID of the teacher
    */
   async createQuestion(assessmentId: string, createQuestionDto: CreateAssessmentQuestionDto, userId: string) {
@@ -471,6 +542,13 @@ export class AssessmentService {
         where: {
           id: assessmentId,
           created_by: userId
+        },
+        include: {
+          school: {
+            select: {
+              id: true
+            }
+          }
         }
       });
 
@@ -481,6 +559,20 @@ export class AssessmentService {
       // Check if the assessment is in a state that allows adding questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
         throw new BadRequestException('Cannot add questions to a closed or archived assessment');
+      }
+
+      // Extract image_url and image_s3_key from DTO if provided
+      let imageUrl: string | undefined = createQuestionDto.image_url;
+      let imageS3Key: string | undefined = createQuestionDto.image_s3_key;
+
+      // If image_s3_key not provided but image_url is, try to extract it from the URL
+      if (imageUrl && !imageS3Key) {
+        // Extract S3 key from URL if it's an S3 URL
+        // Format: https://bucket.s3.region.amazonaws.com/key
+        const s3UrlMatch = imageUrl.match(/https:\/\/[^/]+\.s3\.[^/]+\/(.+)$/);
+        if (s3UrlMatch) {
+          imageS3Key = s3UrlMatch[1];
+        }
       }
 
       // Auto-calculate the next available order if not provided or if the provided order already exists
@@ -525,7 +617,8 @@ export class AssessmentService {
             points: createQuestionDto.points || 1.0,
             is_required: createQuestionDto.is_required !== undefined ? createQuestionDto.is_required : true,
             time_limit: createQuestionDto.time_limit,
-            image_url: createQuestionDto.image_url,
+            image_url: imageUrl ?? undefined,
+            image_s3_key: imageS3Key ?? undefined,
             audio_url: createQuestionDto.audio_url,
             video_url: createQuestionDto.video_url,
             allow_multiple_attempts: createQuestionDto.allow_multiple_attempts || false,
@@ -657,8 +750,9 @@ export class AssessmentService {
    * @param questionId - ID of the question
    * @param updateQuestionDto - Updated question data
    * @param userId - ID of the teacher
+   * @param imageFile - Optional image file to upload (replaces existing image)
    */
-  async updateQuestion(assessmentId: string, questionId: string, updateQuestionDto: any, userId: string) {
+  async updateQuestion(assessmentId: string, questionId: string, updateQuestionDto: any, userId: string, imageFile?: Express.Multer.File) {
     try {
       this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
 
@@ -667,6 +761,13 @@ export class AssessmentService {
         where: {
           id: assessmentId,
           created_by: userId
+        },
+        include: {
+          school: {
+            select: {
+              id: true
+            }
+          }
         }
       });
 
@@ -691,6 +792,44 @@ export class AssessmentService {
         throw new NotFoundException('Question not found in this assessment');
       }
 
+      // Handle image upload/replacement if new image file is provided
+      let imageUrl: string | undefined = updateQuestionDto.image_url;
+      let imageS3Key: string | undefined = existingQuestion.image_s3_key ?? undefined;
+      let oldImageS3Key: string | undefined = existingQuestion.image_s3_key ?? undefined;
+
+      if (imageFile) {
+        // Validate image file type
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedMimeTypes.includes(imageFile.mimetype)) {
+          throw new BadRequestException('Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP');
+        }
+
+        // Validate file size (max 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (imageFile.size > maxSize) {
+          throw new BadRequestException('Image file size exceeds 5MB limit');
+        }
+
+        // Upload new image to S3
+        const s3Folder = `assessment-images/schools/${assessment.school.id}/assessments/${assessmentId}`;
+        const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        
+        try {
+          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+          imageUrl = uploadResult.url;
+          imageS3Key = uploadResult.key;
+          this.logger.log(colors.green(`✅ New image uploaded to S3: ${imageS3Key}`));
+        } catch (s3Error) {
+          this.logger.error(colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`));
+          throw new BadRequestException(`Failed to upload image: ${s3Error.message}`);
+        }
+      } else if (updateQuestionDto.image_url === null || updateQuestionDto.image_url === '') {
+        // If image_url is explicitly set to null/empty, remove the image
+        imageUrl = undefined;
+        imageS3Key = undefined;
+        oldImageS3Key = existingQuestion.image_s3_key ?? undefined;
+      }
+
       // If order is being changed, check for conflicts
       if (updateQuestionDto.order && updateQuestionDto.order !== existingQuestion.order) {
         const conflictingQuestion = await this.prisma.assessmentQuestion.findFirst({
@@ -708,29 +847,39 @@ export class AssessmentService {
 
       // Update the question with options and correct answers in a transaction
       const result = await this.prisma.$transaction(async (prisma) => {
+        // Prepare update data
+        const updateData: any = {
+          question_text: updateQuestionDto.question_text,
+          question_type: updateQuestionDto.question_type,
+          order: updateQuestionDto.order,
+          points: updateQuestionDto.points,
+          is_required: updateQuestionDto.is_required,
+          time_limit: updateQuestionDto.time_limit,
+          audio_url: updateQuestionDto.audio_url,
+          video_url: updateQuestionDto.video_url,
+          allow_multiple_attempts: updateQuestionDto.allow_multiple_attempts,
+          show_hint: updateQuestionDto.show_hint,
+          hint_text: updateQuestionDto.hint_text,
+          min_length: updateQuestionDto.min_length,
+          max_length: updateQuestionDto.max_length,
+          min_value: updateQuestionDto.min_value,
+          max_value: updateQuestionDto.max_value,
+          explanation: updateQuestionDto.explanation,
+          difficulty_level: updateQuestionDto.difficulty_level
+        };
+
+        // Only update image fields if they've changed
+        if (imageFile || updateQuestionDto.image_url === null || updateQuestionDto.image_url === '') {
+          updateData.image_url = imageUrl;
+          updateData.image_s3_key = imageS3Key;
+        } else if (updateQuestionDto.image_url !== undefined) {
+          updateData.image_url = updateQuestionDto.image_url;
+        }
+
         // Update the question
         const updatedQuestion = await prisma.assessmentQuestion.update({
           where: { id: questionId },
-          data: {
-            question_text: updateQuestionDto.question_text,
-            question_type: updateQuestionDto.question_type,
-            order: updateQuestionDto.order,
-            points: updateQuestionDto.points,
-            is_required: updateQuestionDto.is_required,
-            time_limit: updateQuestionDto.time_limit,
-            image_url: updateQuestionDto.image_url,
-            audio_url: updateQuestionDto.audio_url,
-            video_url: updateQuestionDto.video_url,
-            allow_multiple_attempts: updateQuestionDto.allow_multiple_attempts,
-            show_hint: updateQuestionDto.show_hint,
-            hint_text: updateQuestionDto.hint_text,
-            min_length: updateQuestionDto.min_length,
-            max_length: updateQuestionDto.max_length,
-            min_value: updateQuestionDto.min_value,
-            max_value: updateQuestionDto.max_value,
-            explanation: updateQuestionDto.explanation,
-            difficulty_level: updateQuestionDto.difficulty_level
-          }
+          data: updateData
         });
 
         // Handle options update if provided
@@ -800,6 +949,17 @@ export class AssessmentService {
 
         return { question: updatedQuestion, options, correctAnswers };
       });
+
+      // Delete old image from S3 if it was replaced
+      if (oldImageS3Key && imageS3Key !== oldImageS3Key) {
+        try {
+          await this.storageService.deleteFile(oldImageS3Key);
+          this.logger.log(colors.green(`🗑️ Old image deleted from S3: ${oldImageS3Key}`));
+        } catch (deleteError) {
+          // Log error but don't fail the update
+          this.logger.error(colors.yellow(`⚠️ Failed to delete old image from S3: ${deleteError.message}`));
+        }
+      }
 
       // Update the assessment's total points
       const totalPoints = await this.prisma.assessmentQuestion.aggregate({
@@ -871,6 +1031,92 @@ export class AssessmentService {
   }
 
   /**
+   * Delete the image for a specific question
+   * @param assessmentId - ID of the assessment
+   * @param questionId - ID of the question
+   * @param userId - ID of the teacher
+   */
+  async deleteQuestionImage(assessmentId: string, questionId: string, userId: string) {
+    try {
+      this.logger.log(colors.cyan(`Deleting image for question: ${questionId}`));
+
+      // First verify the assessment exists and the teacher has access to it
+      const assessment = await this.prisma.assessment.findFirst({
+        where: {
+          id: assessmentId,
+          created_by: userId
+        }
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Check if the assessment is in a state that allows editing questions
+      if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
+        throw new BadRequestException('Cannot edit questions in a closed or archived assessment');
+      }
+
+      // Verify the question exists and belongs to this assessment
+      const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
+        where: {
+          id: questionId,
+          assessment_id: assessmentId
+        },
+        select: {
+          id: true,
+          image_s3_key: true,
+          image_url: true
+        }
+      });
+
+      if (!existingQuestion) {
+        throw new NotFoundException('Question not found in this assessment');
+      }
+
+      // Check if the question has an image
+      if (!existingQuestion.image_s3_key && !existingQuestion.image_url) {
+        throw new BadRequestException('Question does not have an image to delete');
+      }
+
+      // Delete the image from S3 if S3 key exists
+      if (existingQuestion.image_s3_key) {
+        try {
+          await this.storageService.deleteFile(existingQuestion.image_s3_key);
+          this.logger.log(colors.green(`✅ Image deleted from S3: ${existingQuestion.image_s3_key}`));
+        } catch (s3Error) {
+          // Log error but don't fail - the image might already be deleted
+          this.logger.warn(colors.yellow(`⚠️ Failed to delete image from S3 (may already be deleted): ${s3Error.message}`));
+        }
+      }
+
+      // Update the question to remove image_url and image_s3_key
+      await this.prisma.assessmentQuestion.update({
+        where: { id: questionId },
+        data: {
+          image_url: null,
+          image_s3_key: null
+        }
+      });
+
+      this.logger.log(colors.green(`Image deleted successfully for question: ${questionId}`));
+
+      return ResponseHelper.success(
+        'Question image deleted successfully',
+        {
+          question_id: questionId,
+          image_deleted: true
+        },
+        200
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`Error deleting question image: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
    * Delete a specific question from an assessment
    * @param assessmentId - ID of the assessment
    * @param questionId - ID of the question
@@ -903,7 +1149,12 @@ export class AssessmentService {
           id: questionId,
           assessment_id: assessmentId
         },
-        include: {
+        select: {
+          id: true,
+          question_text: true,
+          order: true,
+          points: true,
+          image_s3_key: true,
           _count: {
             select: {
               responses: true
@@ -920,6 +1171,9 @@ export class AssessmentService {
       if (existingQuestion._count.responses > 0) {
         throw new BadRequestException('Cannot delete question that has student responses. Consider archiving the assessment instead.');
       }
+
+      // Store S3 key for deletion after question is deleted
+      const imageS3Key = existingQuestion.image_s3_key;
 
       // Delete the question and all related data in a transaction
       await this.prisma.$transaction(async (prisma) => {
@@ -949,6 +1203,17 @@ export class AssessmentService {
         where: { id: assessmentId },
         data: { total_points: totalPoints._sum?.points || 0 }
       });
+
+      // Delete associated image from S3 if it exists
+      if (imageS3Key) {
+        try {
+          await this.storageService.deleteFile(imageS3Key);
+          this.logger.log(colors.green(`🗑️ Image deleted from S3: ${imageS3Key}`));
+        } catch (deleteError) {
+          // Log error but don't fail the deletion
+          this.logger.error(colors.yellow(`⚠️ Failed to delete image from S3: ${deleteError.message}`));
+        }
+      }
 
       this.logger.log(colors.green(`Question deleted successfully: ${questionId}`));
 
@@ -1179,10 +1444,23 @@ export class AssessmentService {
         updateData.end_date = new Date(updateQuizDto.end_date);
       }
 
-      // If status is being changed to PUBLISHED, set published_at
-      if (updateQuizDto.status === 'PUBLISHED' && existingQuiz.status !== 'PUBLISHED') {
+      // Track status changes for notifications
+      const wasPublished = existingQuiz.status === 'ACTIVE' || existingQuiz.status === 'PUBLISHED' || existingQuiz.is_published;
+      const isBeingUnpublished = updateQuizDto.status === 'DRAFT' && wasPublished;
+      const isBeingPublished = (updateQuizDto.status === 'PUBLISHED' || updateQuizDto.status === 'ACTIVE') && !wasPublished;
+
+      // If status is being changed to PUBLISHED/ACTIVE, set published_at
+      if (isBeingPublished) {
         updateData.is_published = true;
         updateData.published_at = new Date();
+        if (!updateData.status) {
+          updateData.status = 'ACTIVE';
+        }
+      }
+
+      // If status is being changed to DRAFT, set is_published to false
+      if (isBeingUnpublished) {
+        updateData.is_published = false;
       }
 
       const quiz = await this.prisma.assessment.update({
@@ -1199,7 +1477,13 @@ export class AssessmentService {
           topic: {
             select: {
               id: true,
-              title: true
+              title: true,
+              subject: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
             }
           },
           createdBy: {
@@ -1219,6 +1503,22 @@ export class AssessmentService {
       });
 
       this.logger.log(colors.green(`Assessment updated successfully: ${quiz.title}`));
+
+      // Send notifications if status changed
+      if (isBeingPublished) {
+        try {
+          await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, teacher.school_id);
+        } catch (notificationError) {
+          this.logger.error(colors.yellow(`⚠️ Failed to send published notifications: ${notificationError.message}`));
+        }
+      } else if (isBeingUnpublished) {
+        try {
+          await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, teacher.school_id);
+        } catch (notificationError) {
+          this.logger.error(colors.yellow(`⚠️ Failed to send unpublished notifications: ${notificationError.message}`));
+        }
+      }
+
       return ResponseHelper.success('Assessment updated successfully', quiz);
     } catch (error) {
       this.logger.error(colors.red(`Error updating assessment: ${error.message}`));
@@ -1323,6 +1623,13 @@ export class AssessmentService {
           published_at: new Date()
         },
         include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
           topic: {
             select: {
               id: true,
@@ -1339,9 +1646,82 @@ export class AssessmentService {
       });
 
       this.logger.log(colors.green(`Quiz published successfully: ${quiz.title}`));
+
+      // Send push notifications and emails to students enrolled in classes with this subject
+      try {
+        await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, schoolId);
+      } catch (notificationError) {
+        // Log error but don't fail the publish operation
+        this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
+      }
+
       return ResponseHelper.success('Quiz published successfully', quiz);
     } catch (error) {
       this.logger.error(colors.red(`Error publishing quiz: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Unpublish a quiz (make it unavailable to students)
+   * @param quizId - ID of the quiz
+   * @param userId - ID of the user (teacher)
+   * @param schoolId - ID of the school
+   */
+  async unpublishQuiz(quizId: string, userId: string, schoolId: string) {
+    try {
+      this.logger.log(colors.cyan(`Unpublishing quiz: ${quizId}`));
+
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
+
+      // Verify quiz exists and teacher has access
+      const existingQuiz = await this.prisma.assessment.findFirst({
+        where: {
+          id: quizId,
+          school_id: schoolId,
+          created_by: userId
+        }
+      });
+
+      if (!existingQuiz) {
+        this.logger.error(colors.red(`Quiz not found or access denied: ${quizId}`));
+        throw new NotFoundException('Quiz not found or access denied');
+      }
+
+      const quiz = await this.prisma.assessment.update({
+        where: { id: quizId },
+        data: {
+          status: 'DRAFT',
+          is_published: false
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          }
+        }
+      });
+
+      this.logger.log(colors.green(`Quiz unpublished successfully: ${quiz.title}`));
+
+      // Send push notifications and emails to students enrolled in classes with this subject
+      try {
+        await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, schoolId);
+      } catch (notificationError) {
+        // Log error but don't fail the unpublish operation
+        this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
+      }
+
+      return ResponseHelper.success('Quiz unpublished successfully', quiz);
+    } catch (error) {
+      this.logger.error(colors.red(`Error unpublishing quiz: ${error.message}`));
       throw error;
     }
   }

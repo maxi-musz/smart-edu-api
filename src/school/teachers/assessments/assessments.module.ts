@@ -6,10 +6,14 @@ import { LiveClassesModule } from './live-classes/live-classes.module';
 import { ExamsModule } from './exams/exams.module';
 import { GradingModule } from './grading/grading.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
+import { StorageModule } from '../../../shared/services/providers/storage.module';
+import { PushNotificationsModule } from '../../../push-notifications/push-notifications.module';
 
 @Module({
   imports: [
     PrismaModule,
+    StorageModule,
+    PushNotificationsModule,
     AssignmentsModule,
     LiveClassesModule,
     ExamsModule,

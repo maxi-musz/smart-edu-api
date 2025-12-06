@@ -8,7 +8,7 @@ import { formatDate } from 'src/shared/helper-functions/formatter';
 import { OnboardDataDto, OnboardSchoolDto, RequestLoginOtpDTO, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyEmailOTPDto, VerifyresetOtp } from 'src/school/director/students/dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { CloudinaryService } from 'src/shared/services/cloudinary.service';
+import { CloudinaryService } from 'src/shared/services/providers/cloudinary-provider/cloudinary.service';
 import { sendOnboardingMailToSchoolOwner, sendOnboardingMailToBTechAdmin, sendPasswordResetOtp, sendLoginOtpByMail } from 'src/common/mailer/send-mail';
 import { sendEmailVerificationOTP } from 'src/common/mailer/send-email-verification-otp';
 import { sendTeacherOnboardEmail, sendStudentOnboardEmail, sendDirectorOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
@@ -19,6 +19,8 @@ import { generateOTP } from 'src/shared/helper-functions/otp-generator';
 import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
 import { ExcelProcessorService } from 'src/shared/services/excel-processor.service';
 import { AcademicSessionService } from '../../academic-session/academic-session.service';
+import { PushNotificationsService } from 'src/push-notifications/push-notifications.service';
+import { DeviceType } from 'src/push-notifications/dto/register-device.dto';
 
 interface CloudinaryUploadResult {
     secure_url: string;
@@ -36,7 +38,8 @@ export class AuthService {
         private config: ConfigService,
         private readonly cloudinaryService: CloudinaryService,
         private readonly excelProcessorService: ExcelProcessorService,
-        private readonly academicSessionService: AcademicSessionService
+        private readonly academicSessionService: AcademicSessionService,
+        private readonly pushNotificationsService: PushNotificationsService
     ) {}
     
     // Onboard new school
@@ -480,7 +483,7 @@ export class AuthService {
     }
 
     async signIn(payload: SignInDto) {
-        console.log(colors.blue("Signing in user..."));
+        this.logger.log(colors.cyan("Signing in user with email: " + payload.email));
 
         try {
             // find the user by email
@@ -570,6 +573,26 @@ export class AuthService {
             // if password matches and all checks pass, return success response with tokens
             console.log(colors.green("User signed in successfully!"));
             const { access_token, refresh_token } = await this.signToken(existing_user.id, existing_user.email, existing_user.school_id);
+            
+            // Automatically register device token if provided during login
+            if (payload.deviceToken && payload.deviceType) {
+                try {
+                    const userPayload = {
+                        id: existing_user.id,
+                        sub: existing_user.id,
+                        email: existing_user.email,
+                        school_id: existing_user.school_id
+                    } as any;
+                    
+                    await this.pushNotificationsService.registerDevice(userPayload, {
+                        token: payload.deviceToken,
+                        deviceType: payload.deviceType as DeviceType
+                    });
+                } catch (deviceError) {
+                    // Log error but don't fail the login
+                    this.logger.warn(colors.yellow(`Failed to register device during login: ${deviceError.message}`));
+                }
+            }
             
             return ResponseHelper.success(
                 "User signed in successfully",
@@ -852,6 +875,21 @@ export class AuthService {
                 });
             }
 
+            // Get current academic session
+            const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+            if (!currentSessionResponse.success || !currentSessionResponse.data) {
+                throw new BadRequestException({
+                    success: false,
+                    message: "No current academic session found for the school",
+                    error: null,
+                    statusCode: 400
+                });
+            }
+            const currentSession = currentSessionResponse.data;
+
+            // Import teacher ID generator
+            const { generateUniqueTeacherId } = await import('src/school/director/teachers/helper-functions/teacher-id-generator');
+
             // Generate strong passwords for each teacher
             const teachersWithPasswords = await Promise.all(
                 dto.teachers.map(async (teacher) => {
@@ -867,32 +905,56 @@ export class AuthService {
                 })
             );
 
-            // Create the teachers
-            const createdTeachers = await this.prisma.user.createMany({
-                data: teachersWithPasswords.map(teacher => ({
-                    email: teacher.email.toLowerCase(),
-                    password: teacher.password,
-                    role: "teacher",
-                    school_id: existingSchool.id,
-                    first_name: teacher.first_name.toLowerCase(),
-                    last_name: teacher.last_name.toLowerCase(),
-                    phone_number: teacher.phone_number
-                }))
-            });
+            // Create users and teacher records (each in its own transaction for data integrity)
+            const teachers = await Promise.all(
+                teachersWithPasswords.map(async (teacherData) => {
+                    return await this.prisma.$transaction(async (tx) => {
+                        // Create user
+                        const user = await tx.user.create({
+                            data: {
+                                email: teacherData.email.toLowerCase(),
+                                password: teacherData.password,
+                                role: "teacher",
+                                school_id: existingSchool.id,
+                                first_name: teacherData.first_name.toLowerCase(),
+                                last_name: teacherData.last_name.toLowerCase(),
+                                phone_number: teacherData.phone_number
+                            }
+                        });
 
-            // Fetch the created teachers
-            const teachers = await this.prisma.user.findMany({
-                where: {
-                    email: {
-                        in: dto.teachers.map(teacher => teacher.email.toLowerCase())
-                    }
-                }
-            });
+                        // Generate unique teacher ID
+                        const teacherId = await generateUniqueTeacherId(this.prisma);
+
+                        // Create teacher record
+                        const teacher = await tx.teacher.create({
+                            data: {
+                                email: user.email,
+                                first_name: user.first_name,
+                                last_name: user.last_name,
+                                phone_number: user.phone_number,
+                                school_id: existingSchool.id,
+                                academic_session_id: currentSession.id,
+                                user_id: user.id,
+                                teacher_id: teacherId,
+                                role: "teacher",
+                                password: teacherData.password,
+                                gender: "other", // Default gender
+                                hire_date: new Date(),
+                                status: "active"
+                            }
+                        });
+
+                        console.log(colors.green(`✅ Created teacher record for ${user.email} with ID: ${teacher.id}`));
+
+                        return { user, teacher };
+                    });
+                })
+            );
 
             console.log(colors.green("Teachers created successfully!"));
 
             // Send congratulatory emails to all teachers
-            const emailPromises = teachers.map(async (teacher) => {
+            const emailPromises = teachers.map(async ({ user: teacher }) => {
                 try {
                     await sendTeacherOnboardEmail({
                         firstName: teacher.first_name,
@@ -909,16 +971,16 @@ export class AuthService {
             // Wait for all emails to be sent (but don't fail if some emails fail)
             await Promise.allSettled(emailPromises);
 
-            const formatted_response = teachers.map(teacher => ({
-                id: teacher.id,
-                first_name: teacher.first_name,
-                last_name: teacher.last_name,
-                email: teacher.email,
-                phone_number: teacher.phone_number,
-                role: teacher.role,
-                school_id: teacher.school_id,
-                created_at: formatDate(teacher.createdAt),
-                updated_at: formatDate(teacher.updatedAt)
+            const formatted_response = teachers.map(({ user }) => ({
+                id: user.id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                phone_number: user.phone_number,
+                role: user.role,
+                school_id: user.school_id,
+                created_at: formatDate(user.createdAt),
+                updated_at: formatDate(user.updatedAt)
             }));
 
             return ResponseHelper.success(
@@ -1019,54 +1081,70 @@ export class AuthService {
                 })
             );
 
-            // Create the students
-            const createdStudents = await this.prisma.user.createMany({
-                data: studentsWithPasswords.map(student => ({
-                    email: student.email.toLowerCase(),
-                    password: student.password,
-                    role: "student",
-                    school_id: existingSchool.id,
-                    first_name: student.first_name.toLowerCase(),
-                    last_name: student.last_name.toLowerCase(),
-                    phone_number: student.phone_number
-                }))
-            });
+            // Get current academic session
+            const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+            if (!currentSessionResponse.success || !currentSessionResponse.data) {
+                throw new BadRequestException({
+                    success: false,
+                    message: "No current academic session found for the school",
+                    error: null,
+                    statusCode: 400
+                });
+            }
+            const currentSession = currentSessionResponse.data;
 
-            // Fetch the created students
-            const students = await this.prisma.user.findMany({
-                where: {
-                    email: {
-                        in: dto.students.map(student => student.email.toLowerCase())
-                    }
-                }
-            });
+            // Import student ID generator
+            const { generateUniqueStudentId } = await import('src/school/director/students/helper-functions/student-id-generator');
 
-            // Enroll students in their default classes
-            await Promise.all(
-                students.map(async (student) => {
-                    const studentData = dto.students.find(s => 
-                        s.email.toLowerCase() === student.email.toLowerCase()
-                    );
-                    if (studentData) {
+            // Create users and student records (each in its own transaction for data integrity)
+            const students = await Promise.all(
+                studentsWithPasswords.map(async (studentData) => {
+                    return await this.prisma.$transaction(async (tx) => {
+                        // Create user
+                        const user = await tx.user.create({
+                            data: {
+                                email: studentData.email.toLowerCase(),
+                                password: studentData.password,
+                                role: "student",
+                                school_id: existingSchool.id,
+                                first_name: studentData.first_name.toLowerCase(),
+                                last_name: studentData.last_name.toLowerCase(),
+                                phone_number: studentData.phone_number
+                            }
+                        });
+
+                        // Find the class ID
                         const classId = schoolClasses.find(c => 
                             c.name === studentData.default_class.toLowerCase().replace(/\s+/g, '')
                         )?.id;
-                        if (classId) {
-                            await this.prisma.student.update({
-                                where: { user_id: student.id },
-                                data: {
-                                    current_class_id: classId
-                                }
-                            });
-                        }
-                    }
+
+                        // Generate unique student ID
+                        const studentId = await generateUniqueStudentId(this.prisma);
+
+                        // Create student record
+                        const student = await tx.student.create({
+                            data: {
+                                school_id: existingSchool.id,
+                                academic_session_id: currentSession.id,
+                                user_id: user.id,
+                                student_id: studentId,
+                                current_class_id: classId || null,
+                                admission_date: new Date(),
+                                status: "active"
+                            }
+                        });
+
+                        console.log(colors.green(`✅ Created student record for ${user.email} with ID: ${student.id}`));
+
+                        return { user, student };
+                    });
                 })
             );
 
             console.log(colors.green("Students created and enrolled successfully!"));
 
             // Send congratulatory emails to all students
-            const emailPromises = students.map(async (student) => {
+            const emailPromises = students.map(async ({ user: student }) => {
                 try {
                     const studentData = dto.students.find(s => 
                         s.email.toLowerCase() === student.email.toLowerCase()
@@ -1089,16 +1167,16 @@ export class AuthService {
             // Wait for all emails to be sent (but don't fail if some emails fail)
             await Promise.allSettled(emailPromises);
 
-            const formatted_response = students.map(student => ({
-                id: student.id,
-                first_name: student.first_name,
-                last_name: student.last_name,
-                email: student.email,
-                phone_number: student.phone_number,
-                role: student.role,
-                school_id: student.school_id,
-                created_at: formatDate(student.createdAt),
-                updated_at: formatDate(student.updatedAt)
+            const formatted_response = students.map(({ user }) => ({
+                id: user.id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                phone_number: user.phone_number,
+                role: user.role,
+                school_id: user.school_id,
+                created_at: formatDate(user.createdAt),
+                updated_at: formatDate(user.updatedAt)
             }));
 
             return ResponseHelper.success(
