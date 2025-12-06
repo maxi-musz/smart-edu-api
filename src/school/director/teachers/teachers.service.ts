@@ -361,6 +361,7 @@ export class TeachersService {
 
         // 1. Validate required fields
         if (!first_name || !last_name || !email || !phone_number) {
+            this.logger.error(colors.red("Missing required fields"));
             return ResponseHelper.error('Missing required fields', 400);
         }
         
@@ -370,12 +371,12 @@ export class TeachersService {
         }
 
         //Fetch full user data from database
-        const fullUser = await this.prisma.user.findFirst({
+        const loggedInUser = await this.prisma.user.findFirst({
             where: { id: user.sub },
             select: { id: true, school_id: true, email: true, first_name: true, last_name: true }
         });
 
-        if (!fullUser || !fullUser.school_id) {
+        if (!loggedInUser || !loggedInUser.school_id) {
             this.logger.error(colors.red("User not found or missing school_id"));
             return ResponseHelper.error('User not found or invalid school data', 400);
         }
@@ -397,15 +398,15 @@ export class TeachersService {
         const hashedPassword = await argon.hash(generatedPassword);
 
         // 5. Get school name for email
-        this.logger.log(colors.cyan(`Enrolling new teacher for school_id: ${fullUser.school_id}`));
+        this.logger.log(colors.cyan(`Enrolling new teacher for school_id: ${loggedInUser.school_id}`));
         
         const school = await this.prisma.school.findFirst({
-            where: { id: fullUser.school_id },
+            where: { id: loggedInUser.school_id },
             select: { school_name: true, id: true }
         });
 
         // 6. Get current academic session
-        const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
+        const currentSessionResponse = await this.academicSessionService.getCurrentSession(loggedInUser.school_id);
         if (!currentSessionResponse.success) {
             return ResponseHelper.error('No current academic session found for the school', 400);
         }
@@ -425,7 +426,7 @@ export class TeachersService {
                         status: (status as UserStatus) || UserStatus.active,
                         role: 'teacher',
                         password: hashedPassword,
-                        school_id: fullUser.school_id
+                        school_id: loggedInUser.school_id
                     }
                 });
 
@@ -438,7 +439,7 @@ export class TeachersService {
                         phone_number,
                         display_picture,
                         teacher_id: await generateUniqueTeacherId(this.prisma),
-                        school_id: fullUser.school_id,
+                        school_id: loggedInUser.school_id,
                         academic_session_id: currentSession.id,
                         user_id: newUser.id,
                         role: 'teacher',
@@ -499,7 +500,7 @@ export class TeachersService {
             // 9. Send assignment notifications if subjects or classes are assigned (outside transaction)
             try {
                 const teacherName = `${first_name} ${last_name}`;
-                const assignedBy = `${fullUser.first_name} ${fullUser.last_name}` || 'School Administrator';
+                const assignedBy = `${loggedInUser.first_name} ${loggedInUser.last_name}` || 'School Administrator';
                 
                 // Get subject names for notification
                 const subjectNames: string[] = [];
@@ -540,7 +541,7 @@ export class TeachersService {
                 try {
                     await sendDirectorNotifications(
                         this.prisma,
-                        fullUser.school_id,
+                        loggedInUser.school_id,
                         school?.school_name || 'Your School',
                         result.teacher.id,
                         teacherName,
@@ -571,7 +572,7 @@ export class TeachersService {
                 title: 'Welcome to SmartEdu!',
                 body: `Welcome ${first_name} ${last_name}! You have been successfully enrolled as a teacher.`,
                 recipients: [result.newUser.id],
-                schoolId: fullUser.school_id,
+                schoolId: loggedInUser.school_id,
                 data: {
                   type: 'teacher_enrollment',
                   teacherId: result.teacher.id,

@@ -116,6 +116,25 @@ export class SignInDto {
     @IsNotEmpty()
     @IsString()
     password: string;
+
+    @ApiProperty({
+        description: 'Expo push notification token (optional)',
+        example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]',
+        required: false
+    })
+    @IsOptional()
+    @IsString()
+    deviceToken?: string;
+
+    @ApiProperty({
+        description: 'Device type (optional)',
+        enum: ['ios', 'android'],
+        example: 'ios',
+        required: false
+    })
+    @IsOptional()
+    @IsString()
+    deviceType?: 'ios' | 'android';
 }
 
 export class RequestPasswordResetDTO {

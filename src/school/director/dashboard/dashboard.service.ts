@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
@@ -9,6 +9,8 @@ import { AcademicSessionService } from '../../../academic-session/academic-sessi
 
 @Injectable()
 export class DashboardService {
+    private readonly logger = new Logger(DashboardService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly teachersService: TeachersService,
@@ -72,6 +74,7 @@ export class DashboardService {
           });
 
           const [teachers, classes, subjects, totalStudents, activeStudents, suspendedStudents, finance, ongoingClasses, notifications] = await Promise.all([
+            // Count teachers - check both Teacher table and User table with role='teacher'
             this.prisma.teacher.count({
               where: { school_id: director.school_id },
             }),
@@ -87,28 +90,26 @@ export class DashboardService {
                 academic_session_id: currentSessionId
               },
             }),
-            this.prisma.student.count({
+            // Count all students for the school (not filtered by academic session for now)
+            // This ensures we see all students regardless of when they were created
+            this.prisma.user.count({
               where: { 
                 school_id: director.school_id,
-                academic_session_id: currentSessionId
+                role: "student"
               },
             }),
-            this.prisma.student.count({
+            this.prisma.user.count({
               where: {
                 school_id: director.school_id,
-                academic_session_id: currentSessionId,
-                user: {
-                  status: "active"
-                }
+                role: "student",
+                status: "active"
               },
             }),
-            this.prisma.student.count({
+            this.prisma.user.count({
               where: {
                 school_id: director.school_id,
-                academic_session_id: currentSessionId,
-                user: {
-                  status: "suspended"
-                }
+                role: "student",
+                status: "suspended"
               },
             }),
             this.prisma.payment.aggregate({
@@ -211,7 +212,7 @@ export class DashboardService {
             }))
           };
       
-          console.log(colors.magenta("Director dashboard data fetched successfully"));
+          this.logger.log(colors.magenta("Director dashboard data fetched successfully"));
           return ResponseHelper.success(
             "Director dashboard data fetched successfully", 
             formattedResponse

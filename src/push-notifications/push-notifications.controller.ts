@@ -1,4 +1,4 @@
-import { Controller, Post, Delete, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Delete, Body, UseGuards, Req, Logger } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtGuard } from 'src/school/auth/guard/jwt.guard';
 import { PushNotificationsService } from './push-notifications.service';
@@ -7,12 +7,15 @@ import { UnregisterDeviceDto } from './dto/unregister-device.dto';
 import { SendPushDto } from './dto/send-push.dto';
 import { DeviceTokenResponseDto } from './dto/device-token-response.dto';
 import { PushNotificationsDocs } from './utils/api-docs/push-notifications.docs';
+import * as colors from 'colors';
 
 @ApiTags('Push Notifications')
 @ApiBearerAuth()
 @UseGuards(JwtGuard)
 @Controller('push-notifications')
 export class PushNotificationsController {
+  private readonly logger = new Logger(PushNotificationsController.name);
+
   constructor(private readonly pushNotificationsService: PushNotificationsService) {}
 
   @Post('register-device')

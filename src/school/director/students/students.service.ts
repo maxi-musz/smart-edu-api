@@ -142,7 +142,7 @@ export class StudentsService {
     }
 
     async fetchStudentsDashboard(schoolId: string, dto: FetchStudentsDashboardDto = {}) {
-        // this.logger.log(colors.yellow("Fetching students dashboard data"));
+        this.logger.log(colors.cyan("Fetching students dashboard data"));
         const {
             page = 1,
             limit = 10,
@@ -181,11 +181,13 @@ export class StudentsService {
             }
         });
 
+        this.logger.log(colors.blue(`Total students: ${totalStudents}`));
+
         const activeStudents = await this.prisma.user.count({
             where: {
                 school_id: schoolId,
                 role: "student",
-                status: UserStatus.active
+                status: "active"
             }
         });
 
@@ -307,7 +309,7 @@ export class StudentsService {
             orderBy: { name: 'asc' }
         });
 
-        this.logger.log(colors.green("Students dashboard data fetched successfully"));
+        this.logger.log(colors.blue("Students dashboard data fetched successfully"));
         return ResponseHelper.success(
             "Students dashboard data fetched successfully",
             {
@@ -596,21 +598,27 @@ export class StudentsService {
             return new ApiResponse(false, 'A student with this email already exists', 409);
           }
 
-          // 4. Verify class exists and belongs to the school
-          const classExists = await this.prisma.class.findFirst({
-            where: {
-              id: dto.class_id,
-              // schoolId: fullUser.school_id,
-            },
-          });
+          // 4. Verify class exists and belongs to the school (only if class_id is provided)
+          let classExists: any = null;
+          if (dto.class_id) {
+            classExists = await this.prisma.class.findFirst({
+              where: {
+                id: dto.class_id,
+                schoolId: fullUser.school_id,
+              },
+            });
 
-          if (!classExists) {
-            this.logger.log(colors.red(`Specified class not found`));
-            return new ApiResponse(false, 'Specified class not found', null);
+            if (!classExists) {
+              this.logger.log(colors.red(`Specified class not found or doesn't belong to school`));
+              return new ApiResponse(false, 'Specified class not found or access denied', 404);
+            }
+            this.logger.log(colors.green(`✅ Class verified: ${classExists.name}`));
+          } else {
+            this.logger.log(colors.yellow(`⚠️ No class specified - student will be enrolled without a class`));
           }
 
           // 5. Generate strong password if not provided
-          const generatedPassword = "maximus123"
+          const generatedPassword = "Maximus123"
           // const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
           const hashedPassword = await argon.hash(generatedPassword);
 
@@ -709,8 +717,8 @@ export class StudentsService {
               select: { school_name: true }
             });
 
-            // Get class teacher information
-            const classTeacher = classExists.classTeacherId ? await this.prisma.teacher.findFirst({
+            // Get class teacher information (only if class exists)
+            const classTeacher = classExists?.classTeacherId ? await this.prisma.teacher.findFirst({
               where: { id: classExists.classTeacherId },
               select: { first_name: true, last_name: true, email: true }
             }) : null;
@@ -721,7 +729,7 @@ export class StudentsService {
               studentEmail: dto.email,
               schoolName: school?.school_name || 'Your School',
               studentId: result.student.student_id,
-              className: classExists.name,
+              className: classExists?.name || 'No Class Assigned',
               studentDetails: {
                 guardianName: dto.guardian_name,
                 guardianPhone: dto.guardian_phone,
@@ -738,7 +746,7 @@ export class StudentsService {
               studentEmail: dto.email,
               schoolName: school?.school_name || 'Your School',
               studentId: result.student.student_id,
-              className: classExists.name,
+              className: classExists?.name || 'No Class Assigned',
               classTeacher: classTeacher ? `${classTeacher.first_name} ${classTeacher.last_name}` : undefined,
               loginCredentials: {
                 email: dto.email,
@@ -746,8 +754,8 @@ export class StudentsService {
               }
             });
 
-            // Send notification to class teacher (if class has a teacher)
-            if (classTeacher) {
+            // Send notification to class teacher (if class exists and has a teacher)
+            if (classExists && classTeacher) {
               await sendClassTeacherNotification({
                 teacherEmail: classTeacher.email,
                 teacherName: `${classTeacher.first_name} ${classTeacher.last_name}`,
@@ -781,7 +789,7 @@ export class StudentsService {
               student_id: result.student.student_id,
               name: `${dto.first_name} ${dto.last_name}`,
               email: dto.email,
-              class: classExists.name,
+              class: classExists?.name || null,
               generatedPassword: !dto.password ? generatedPassword : undefined // Only return if auto-generated
             }
           });
@@ -793,26 +801,87 @@ export class StudentsService {
       }
 
       // Update student information
-      async updateStudent(studentId: string, dto: UpdateStudentDto, user: User) {
-        this.logger.log(colors.cyan(`Updating student with ID: ${studentId}`));
+      async updateStudent(studentId: string, dto: UpdateStudentDto, user: any) {
+        // JWT payload has 'sub' as the user ID, not 'id'
+        const userId = (user as any).sub || user.id;
+        this.logger.log(colors.cyan(`Updating student with ID: ${studentId} by user: ${userId}`));
 
         try {
           // 1. Get full user data with school_id
-          const fullUser = await this.prisma.user.findFirst({
-            where: { id: user.id },
+          const schoolAdmin = await this.prisma.user.findFirst({
+            where: { id: userId },
             select: { id: true, school_id: true, first_name: true, last_name: true }
           });
 
-          if (!fullUser || !fullUser.school_id) {
+          this.logger.log(colors.cyan(`school admin user data: ${JSON.stringify(schoolAdmin)}`));
+
+          if (!schoolAdmin || !schoolAdmin.school_id) {
             this.logger.error(colors.red("User not found or missing school_id"));
             return new ApiResponse(false, 'User not found or invalid school data', 400);
           }
 
-          // 2. Check if student exists and belongs to the same school
-          const existingStudent = await this.prisma.student.findFirst({
+          // 2. Debug: Check if studentId is actually a student record ID or user_id
+          // Try finding by student record ID first
+          let studentWithoutSchoolFilter = await this.prisma.student.findUnique({
+            where: { id: studentId },
+            select: {
+              id: true,
+              school_id: true,
+              user_id: true,
+              student_id: true
+            }
+          });
+
+          this.logger.log(colors.yellow(`🔍 Debug - Student lookup by ID (${studentId}): ${JSON.stringify(studentWithoutSchoolFilter)}`));
+
+          // If not found by ID, try finding by user_id (maybe frontend is passing user_id instead)
+          if (!studentWithoutSchoolFilter) {
+            this.logger.log(colors.yellow(`🔍 Debug - Student not found by ID, trying user_id lookup...`));
+            studentWithoutSchoolFilter = await this.prisma.student.findUnique({
+              where: { user_id: studentId },
+              select: {
+                id: true,
+                school_id: true,
+                user_id: true,
+                student_id: true
+              }
+            });
+            this.logger.log(colors.yellow(`🔍 Debug - Student lookup by user_id (${studentId}): ${JSON.stringify(studentWithoutSchoolFilter)}`));
+          }
+
+          if (!studentWithoutSchoolFilter) {
+            this.logger.error(colors.red(`Student with ID/user_id ${studentId} does not exist in database`));
+            return new ApiResponse(false, 'Student not found', 404);
+          }
+
+          // Check the student's user record to verify school_id (user record is source of truth)
+          const studentUser = await this.prisma.user.findUnique({
+            where: { id: studentWithoutSchoolFilter.user_id },
+            select: { id: true, school_id: true }
+          });
+
+          this.logger.log(colors.yellow(`🔍 Debug - Student's user record: ${JSON.stringify(studentUser)}`));
+          this.logger.log(colors.yellow(`🔍 Debug - Student record school_id: ${studentWithoutSchoolFilter.school_id}, Student user school_id: ${studentUser?.school_id}, Admin school_id: ${schoolAdmin.school_id}`));
+
+          // Verify school access - check both student record and user record school_id
+          const studentSchoolId = studentUser?.school_id || studentWithoutSchoolFilter.school_id;
+          
+          if (studentSchoolId !== schoolAdmin.school_id) {
+            this.logger.error(colors.red(`Student belongs to different school. Student school: ${studentSchoolId}, Admin school: ${schoolAdmin.school_id}`));
+            return new ApiResponse(false, 'Student does not belong to your school', 403);
+          }
+
+          // If student record has wrong school_id, log a warning (data inconsistency)
+          if (studentWithoutSchoolFilter.school_id !== schoolAdmin.school_id && studentUser?.school_id === schoolAdmin.school_id) {
+            this.logger.warn(colors.yellow(`⚠️ Data inconsistency: Student record has school_id ${studentWithoutSchoolFilter.school_id} but user has school_id ${studentUser.school_id}. Using user's school_id.`));
+          }
+
+          // 3. Now get full student data with includes (use the actual student record ID)
+          // We've already verified school access above, so just fetch by ID
+          const actualStudentId = studentWithoutSchoolFilter.id;
+          const existingStudent = await this.prisma.student.findUnique({
             where: { 
-              user_id: studentId,
-              school_id: fullUser.school_id
+              id: actualStudentId
             },
             include: {
               user: {
@@ -824,7 +893,8 @@ export class StudentsService {
                   phone_number: true,
                   display_picture: true,
                   gender: true,
-                  status: true
+                  status: true,
+                  school_id: true
                 }
               },
               school: {
@@ -834,11 +904,17 @@ export class StudentsService {
           });
 
           if (!existingStudent) {
-            this.logger.error(colors.red(`Student not found or doesn't belong to school: ${fullUser.school_id}`));
-            return new ApiResponse(false, 'Student not found or access denied', 404);
+            this.logger.error(colors.red(`Student record not found: ${actualStudentId}`));
+            return new ApiResponse(false, 'Student not found', 404);
           }
 
-          // 3. Check if email is being updated and if it's already taken
+          // Double-check: Verify the user's school_id matches (final verification)
+          if (existingStudent.user.school_id !== schoolAdmin.school_id) {
+            this.logger.error(colors.red(`Access denied: Student user belongs to different school. Student user school: ${existingStudent.user.school_id}, Admin school: ${schoolAdmin.school_id}`));
+            return new ApiResponse(false, 'Student does not belong to your school', 403);
+          }
+
+          // 4. Check if email is being updated and if it's already taken
           if (dto.email && dto.email !== existingStudent.user.email) {
             const emailExists = await this.prisma.user.findFirst({
               where: { 
@@ -853,12 +929,12 @@ export class StudentsService {
             }
           }
 
-          // 4. Check if class transfer is requested and validate the new class
+          // 5. Check if class transfer is requested and validate the new class
           if (dto.class_id && dto.class_id !== existingStudent.current_class_id) {
             const newClass = await this.prisma.class.findFirst({
               where: {
                 id: dto.class_id,
-                schoolId: fullUser.school_id
+                schoolId: schoolAdmin.school_id
               }
             });
 
@@ -911,7 +987,8 @@ export class StudentsService {
                 phone_number: true,
                 display_picture: true,
                 gender: true,
-                status: true
+                status: true,
+                school_id: true
               }
             });
           }
@@ -932,7 +1009,8 @@ export class StudentsService {
                     phone_number: true,
                     display_picture: true,
                     gender: true,
-                    status: true
+                    status: true,
+                    school_id: true
                   }
                 },
                 school: {

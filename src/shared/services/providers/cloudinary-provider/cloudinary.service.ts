@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import * as colors from "colors"
-import { ResponseHelper } from '../helper-functions/response.helpers';
+import { ResponseHelper } from '../../../helper-functions/response.helpers';
 
 interface CloudinaryUploadResult {
     secure_url: string;

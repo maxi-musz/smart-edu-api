@@ -730,6 +730,7 @@ model AssessmentQuestion {
   is_required             Boolean                   @default(true)
   time_limit              Int?
   image_url               String?
+  image_s3_key            String?
   audio_url               String?
   video_url               String?
   allow_multiple_attempts Boolean                   @default(false)

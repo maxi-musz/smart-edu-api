@@ -10,6 +10,8 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -18,8 +20,10 @@ import {
   ApiBearerAuth, 
   ApiParam,
   ApiQuery,
-  ApiBody
+  ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AssessmentService } from './assessment.service';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
@@ -39,11 +43,11 @@ export class AssessmentController {
   @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to topic' })
   @ApiResponse({ status: 404, description: 'Not found - Topic not found' })
   @ApiBody({ type: CreateAssessmentDto })
-  async createQuiz(
+  async createAssessment(
     @Body() createQuizDto: CreateAssessmentDto,
     @GetUser() user: any
   ) {
-    return this.assessmentService.createQuiz(createQuizDto, user);
+    return this.assessmentService.createAssessment(createQuizDto, user);
   }
 
   @Get('')
@@ -110,10 +114,44 @@ export class AssessmentController {
     return this.assessmentService.getAssessmentQuestions(assessmentId, user.sub);
   }
 
+  @Post(':id/questions/upload-image')
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiOperation({ summary: 'Upload an image for a question (use this before creating the question)' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ 
+    description: 'Image file to upload',
+    schema: {
+      type: 'object',
+      properties: {
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Image file (JPEG, PNG, GIF, WEBP, max 5MB)'
+        }
+      },
+      required: ['image']
+    }
+  })
+  @ApiResponse({ status: 201, description: 'Image uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid image file' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async uploadQuestionImage(
+    @Param('id') assessmentId: string,
+    @UploadedFile() imageFile: Express.Multer.File,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.uploadQuestionImage(assessmentId, imageFile, user.sub);
+  }
+
   @Post(':id/questions')
   @ApiOperation({ summary: 'Add a new question to an assessment' })
   @ApiParam({ name: 'id', description: 'ID of the assessment' })
-  @ApiBody({ type: CreateAssessmentQuestionDto })
+  @ApiBody({ 
+    type: CreateAssessmentQuestionDto,
+    description: 'Question data. If you have an image, upload it first using /upload-image endpoint and use the returned image_url here.'
+  })
   @ApiResponse({ status: 201, description: 'Question created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid question data' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
@@ -127,10 +165,15 @@ export class AssessmentController {
   }
 
   @Patch(':assessmentId/questions/:questionId')
+  @UseInterceptors(FileInterceptor('image'))
   @ApiOperation({ summary: 'Update a specific question in an assessment' })
   @ApiParam({ name: 'assessmentId', description: 'ID of the assessment' })
   @ApiParam({ name: 'questionId', description: 'ID of the question' })
-  @ApiBody({ type: UpdateAssessmentQuestionDto })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ 
+    type: UpdateAssessmentQuestionDto,
+    description: 'Updated question data with optional image file'
+  })
   @ApiResponse({ status: 200, description: 'Question updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid question data' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment or question not found or access denied' })
@@ -139,9 +182,27 @@ export class AssessmentController {
     @Param('assessmentId') assessmentId: string,
     @Param('questionId') questionId: string,
     @Body() updateQuestionDto: UpdateAssessmentQuestionDto,
+    @UploadedFile() imageFile: Express.Multer.File,
     @GetUser() user: any
   ) {
-    return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user.sub);
+    return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user.sub, imageFile);
+  }
+
+  @Delete(':assessmentId/questions/:questionId/image')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete the image for a specific question' })
+  @ApiParam({ name: 'assessmentId', description: 'ID of the assessment' })
+  @ApiParam({ name: 'questionId', description: 'ID of the question' })
+  @ApiResponse({ status: 200, description: 'Question image deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Question does not have an image or assessment is closed' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment or question not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async deleteQuestionImage(
+    @Param('assessmentId') assessmentId: string,
+    @Param('questionId') questionId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.deleteQuestionImage(assessmentId, questionId, user.sub);
   }
 
   @Delete(':assessmentId/questions/:questionId')
@@ -203,5 +264,18 @@ export class AssessmentController {
     @GetUser() user: any
   ) {
     return this.assessmentService.publishQuiz(assessmentId, user.sub, user.school_id);
+  }
+
+  @Post(':id/unpublish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unpublish an assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment unpublished successfully' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  async unpublishAssessment(
+    @Param('id') assessmentId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.unpublishQuiz(assessmentId, user.sub, user.school_id);
   }
 }

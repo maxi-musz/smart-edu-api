@@ -123,48 +123,53 @@ export class StudentsService {
         return new ApiResponse(false, 'No current academic session found', null);
       }
 
-      // Get student's class information
-      const studentClass = await this.prisma.class.findUnique({
-        where: { id: student.current_class_id || undefined },
-        include: {
-          classTeacher: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              display_picture: true
-            }
-          },
-          subjects: {
-            where: {
-              academic_session_id: currentSession.id
+      // Get student's class information (if enrolled)
+      let studentClass: any = null;
+      if (student.current_class_id) {
+        studentClass = await this.prisma.class.findUnique({
+          where: { id: student.current_class_id },
+          include: {
+            classTeacher: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                display_picture: true
+              }
             },
-            include: {
-              teacherSubjects: {
-                include: {
-                  teacher: {
-                    select: {
-                      id: true,
-                      first_name: true,
-                      last_name: true,
-                      display_picture: true
+            subjects: {
+              where: {
+                academic_session_id: currentSession.id
+              },
+              include: {
+                teacherSubjects: {
+                  include: {
+                    teacher: {
+                      select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        display_picture: true
+                      }
                     }
                   }
                 }
               }
             }
           }
-        }
-      });
+        });
 
-      if (!studentClass) {
-        return new ApiResponse(false, 'Student class not found', null);
+        if (studentClass) {
+          this.logger.log(colors.green(`✅ Class found: ${studentClass.name}`));
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ Class ID exists but class not found: ${student.current_class_id}`));
+        }
+      } else {
+        this.logger.warn(colors.yellow(`⚠️ Student not enrolled in any class yet`));
       }
 
-      this.logger.log(colors.green(`✅ Class found: ${studentClass.name}`));
-
       // Get subjects enrolled with teacher info
-      const subjectsEnrolled = studentClass.subjects.map(subject => {
+      const subjectsEnrolled = studentClass?.subjects?.map(subject => {
         const teacherSubject = subject.teacherSubjects[0];
         return {
           id: subject.id,
@@ -177,7 +182,7 @@ export class StudentsService {
             display_picture: teacherSubject.teacher.display_picture
           } : null
         };
-      });
+      }) || [];
 
       // Get pending assessments (published assessments with attempts remaining)
       const pendingAssessments = await this.prisma.assessment.findMany({
@@ -231,10 +236,10 @@ export class StudentsService {
       const nextDay = this.getNextDay(currentDay);
       const dayAfterNext = this.getDayAfterNext(currentDay);
 
-      // Get class schedule for next 3 days
-      const classSchedule = await this.prisma.timetableEntry.findMany({
+      // Get class schedule for next 3 days (only if student is enrolled in a class)
+      const classSchedule = student.current_class_id ? await this.prisma.timetableEntry.findMany({
         where: {
-          class_id: student.current_class_id || undefined,
+          class_id: student.current_class_id,
           day_of_week: {
             in: [currentDay, nextDay, dayAfterNext]
           },
@@ -271,7 +276,7 @@ export class StudentsService {
           { day_of_week: 'asc' },
           { timeSlot: { order: 'asc' } }
         ]
-      });
+      }) : [];
 
       // Format schedule by day
       const formatDaySchedule = (day: DayOfWeek) => {
@@ -333,16 +338,16 @@ export class StudentsService {
             start_date: currentSession.start_date,
             end_date: currentSession.end_date
           },
-          student_class: {
+          student_class: studentClass ? {
             id: studentClass.id,
             name: studentClass.name
-          },
-          class_teacher: {
+          } : null,
+          class_teacher: studentClass ? {
             id: studentClass.classTeacher?.id,
             name: studentClass.classTeacher ? 
               `${studentClass.classTeacher.first_name} ${studentClass.classTeacher.last_name}` : null,
             display_picture: studentClass.classTeacher?.display_picture
-          },
+          } : null,
           student: {
             id: student.user.id,
             name: `${student.user.first_name} ${student.user.last_name}`,

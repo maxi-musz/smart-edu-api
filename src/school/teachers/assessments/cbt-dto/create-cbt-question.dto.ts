@@ -180,12 +180,20 @@ export class CreateAssessmentQuestionDto {
   time_limit?: number;
 
   @ApiPropertyOptional({
-    description: 'Image URL for the question',
+    description: 'Image URL for the question (returned from upload-image endpoint)',
     example: 'https://example.com/france-map.jpg'
   })
   @IsString()
   @IsOptional()
   image_url?: string;
+
+  @ApiPropertyOptional({
+    description: 'S3 key for the image (returned from upload-image endpoint, optional - will be extracted from URL if not provided)',
+    example: 'assessment-images/schools/123/assessments/456/question_1234567890_image.jpg'
+  })
+  @IsString()
+  @IsOptional()
+  image_s3_key?: string;
 
   @ApiPropertyOptional({
     description: 'Audio URL for the question',
