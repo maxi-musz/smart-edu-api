@@ -555,34 +555,35 @@ model StudentPerformance {
 }
 
 model Result {
-  id                  String          @id @default(cuid())
-  school_id           String
-  academic_session_id String
-  student_id          String
-  class_id            String?
+  id                       String          @id @default(cuid())
+  school_id                String
+  academic_session_id      String
+  student_id               String
+  class_id                 String?
   // Subject-wise results stored as JSON for flexibility
   // Structure: [{ subject_id, subject_code, subject_name, ca_score, exam_score, total_score, total_max_score, percentage, grade }]
-  subject_results     Json
+  subject_results          Json
   // Overall statistics
-  total_ca_score      Float           @default(0)
-  total_exam_score    Float           @default(0)
-  total_score         Float           @default(0)
-  total_max_score     Float           @default(0)
-  overall_percentage  Float           @default(0)
-  overall_grade       String?
-  class_position      Int?
-  total_students      Int?
+  total_ca_score           Float           @default(0)
+  total_exam_score         Float           @default(0)
+  total_score              Float           @default(0)
+  total_max_score          Float           @default(0)
+  overall_percentage       Float           @default(0)
+  overall_grade            String?
+  class_position           Int?
+  total_students           Int?
   // Metadata
-  released_by         String? // User ID who released the results
-  released_at         DateTime        @default(now())
-  is_final            Boolean         @default(true)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
-  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
-  school              School          @relation(fields: [school_id], references: [id])
-  student             Student         @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  class               Class?          @relation(fields: [class_id], references: [id])
-  releasedBy          User?           @relation("ResultReleasedBy", fields: [released_by], references: [id])
+  released_by              String? // User ID who released the results
+  released_at              DateTime        @default(now())
+  is_final                 Boolean         @default(true)
+  released_by_school_admin Boolean         @default(false) // True if released by school director/admin
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  academicSession          AcademicSession @relation(fields: [academic_session_id], references: [id])
+  school                   School          @relation(fields: [school_id], references: [id])
+  student                  Student         @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  class                    Class?          @relation(fields: [class_id], references: [id])
+  releasedBy               User?           @relation("ResultReleasedBy", fields: [released_by], references: [id])
 
   @@unique([academic_session_id, student_id])
   @@index([school_id, academic_session_id])

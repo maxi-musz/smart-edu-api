@@ -2540,13 +2540,12 @@ export class StudentsService {
 
       this.logger.log(colors.green(`✅ Using session: ${academicSession.academic_year} - ${academicSession.term}`));
 
-      // Query the Result model - results must be released by director first
-      const result = await this.prisma.result.findUnique({
+      // Query the Result model - results must be released by school admin/director
+      const result = await this.prisma.result.findFirst({
         where: {
-          academic_session_id_student_id: {
-            academic_session_id: academicSession.id,
-            student_id: student.id
-          }
+          academic_session_id: academicSession.id,
+          student_id: student.id,
+          released_by_school_admin: true // Only show results released by school admin
         },
         include: {
           academicSession: {
