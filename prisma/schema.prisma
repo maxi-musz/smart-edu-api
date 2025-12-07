@@ -685,9 +685,11 @@ model Assessment {
   grading_type          GradingType            @default(AUTOMATIC)
   instructions          String?
   is_published          Boolean                @default(false)
+  is_result_released    Boolean                @default(false)
   max_attempts          Int                    @default(1)
   passing_score         Float                  @default(50.0)
   published_at          DateTime?
+  result_released_at    DateTime?
   school_id             String
   show_correct_answers  Boolean                @default(false)
   show_feedback         Boolean                @default(true)

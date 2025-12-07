@@ -304,4 +304,24 @@ export class StudentsController {
     const monthNum = month ? parseInt(month.toString(), 10) : undefined;
     return this.studentsService.getStudentAttendance(user, yearNum, monthNum);
   }
+
+  /**
+   * Get student results for current or specified session/term
+   * GET /api/v1/students/results
+   */
+  @Get('results')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get student results for current or specified session/term' })
+  @ApiQuery({ name: 'session_id', required: false, type: String, description: 'Academic session ID (defaults to current session)' })
+  @ApiQuery({ name: 'term_id', required: false, type: String, description: 'Term ID (not used, term is part of session)' })
+  @ApiResponse({ status: 200, description: 'Student results retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Student not found' })
+  getStudentResults(
+    @GetUser() user: any,
+    @Query('session_id') sessionId?: string,
+    @Query('term_id') termId?: string
+  ) {
+    return this.studentsService.getStudentResults(user, sessionId, termId);
+  }
 }
