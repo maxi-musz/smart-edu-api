@@ -88,3 +88,48 @@ export const assessmentUnpublishedTemplate = (payload: {
   `;
 };
 
+export const assessmentResultReleasedTemplate = (payload: {
+  studentName: string;
+  assessmentTitle: string;
+  subjectName: string;
+  schoolName: string;
+  releasedDate: string;
+}): string => {
+  return `
+    <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; color: #333;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
+        <div style="padding: 20px; border-bottom: 1px solid #eee; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
+          <h2>🎉 Assessment Results Released!</h2>
+          <p style="margin: 0; opacity: 0.9;">Smart Edu Hub - Results Notification</p>
+        </div>
+        <div style="padding: 20px;">
+          <p>Hello <strong>${payload.studentName}</strong>,</p>
+          
+          <p>Great news! Your assessment results have been released at <strong>${payload.schoolName}</strong>:</p>
+          
+          <div style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <h3 style="margin: 0 0 10px 0; color: #065f46;">📊 Assessment Details</h3>
+            <div style="color: #065f46;">
+              <p style="margin: 5px 0;"><strong>Title:</strong> ${payload.assessmentTitle}</p>
+              <p style="margin: 5px 0;"><strong>Subject:</strong> ${payload.subjectName}</p>
+              <p style="margin: 5px 0;"><strong>Results Released:</strong> ${payload.releasedDate}</p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="#" style="display: inline-block; padding: 12px 30px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">View Results</a>
+          </div>
+          
+          <p style="color: #666; font-size: 14px; margin-top: 30px;">
+            Please log in to your Smart Edu Hub account to view your detailed results and feedback.
+          </p>
+        </div>
+        <div style="padding: 20px; background-color: #f9fafb; border-top: 1px solid #eee; text-align: center; color: #6b7280; font-size: 12px;">
+          <p style="margin: 0;">This is an automated notification from Smart Edu Hub</p>
+          <p style="margin: 5px 0 0 0;">© ${new Date().getFullYear()} Smart Edu Hub. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+  `;
+};
+

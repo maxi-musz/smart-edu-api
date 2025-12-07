@@ -89,16 +89,32 @@ export class AssessmentController {
     return this.assessmentService.getTopicQuizzes(topicId, user.sub, user.school_id);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get a specific assessment by ID' })
+  @Get(':id/attempts')
+  @ApiOperation({ summary: 'Get all students and their attempts for an assessment' })
   @ApiParam({ name: 'id', description: 'ID of the assessment' })
-  @ApiResponse({ status: 200, description: 'Assessment retrieved successfully' })
+  @ApiResponse({ status: 200, description: 'Student attempts retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
-  async getAssessmentById(
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async getAssessmentAttempts(
     @Param('id') assessmentId: string,
     @GetUser() user: any
   ) {
-    return this.assessmentService.getQuizById(assessmentId, user.sub);
+    return this.assessmentService.getAssessmentAttempts(assessmentId, user.sub, user.school_id);
+  }
+
+  @Get(':id/attempts/:studentId')
+  @ApiOperation({ summary: 'Get a specific student\'s submission for an assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiParam({ name: 'studentId', description: 'ID of the student record (Student.id)' })
+  @ApiResponse({ status: 200, description: 'Student submission retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment or student not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async getStudentSubmission(
+    @Param('id') assessmentId: string,
+    @Param('studentId') studentId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.getStudentSubmission(assessmentId, studentId, user.sub, user.school_id);
   }
 
   @Get(':id/questions')
@@ -277,5 +293,31 @@ export class AssessmentController {
     @GetUser() user: any
   ) {
     return this.assessmentService.unpublishQuiz(assessmentId, user.sub, user.school_id);
+  }
+
+  @Post(':id/release-results')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Release assessment results and close the assessment' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment results released successfully' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Teacher does not have access to this assessment' })
+  async releaseResults(
+    @Param('id') assessmentId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.releaseAssessmentResults(assessmentId, user.sub, user.school_id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a specific assessment by ID' })
+  @ApiParam({ name: 'id', description: 'ID of the assessment' })
+  @ApiResponse({ status: 200, description: 'Assessment retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment not found or access denied' })
+  async getAssessmentById(
+    @Param('id') assessmentId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.getQuizById(assessmentId, user.sub);
   }
 }

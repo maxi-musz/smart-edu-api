@@ -1726,6 +1726,620 @@ export class AssessmentService {
     }
   }
 
+  /**
+   * Release assessment results and close the assessment
+   * @param quizId - ID of the quiz
+   * @param userId - ID of the user (teacher)
+   * @param schoolId - ID of the school
+   */
+  async releaseAssessmentResults(quizId: string, userId: string, schoolId: string) {
+    try {
+      this.logger.log(colors.cyan(`Releasing results for assessment: ${quizId}`));
+
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
+
+      // Verify quiz exists and teacher has access
+      const existingQuiz = await this.prisma.assessment.findFirst({
+        where: {
+          id: quizId,
+          school_id: schoolId,
+          created_by: userId
+        }
+      });
+
+      if (!existingQuiz) {
+        this.logger.error(colors.red(`Quiz not found or access denied: ${quizId}`));
+        throw new NotFoundException('Quiz not found or access denied');
+      }
+
+      // Check if results are already released
+      if (existingQuiz.is_result_released) {
+        this.logger.warn(colors.yellow(`Results already released for assessment: ${quizId}`));
+        return ResponseHelper.success('Results already released', existingQuiz);
+      }
+
+      // Update assessment: release results and close it
+      const quiz = await this.prisma.assessment.update({
+        where: { id: quizId },
+        data: {
+          is_result_released: true,
+          result_released_at: new Date(),
+          status: 'CLOSED'
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          topic: {
+            select: {
+              id: true,
+              title: true
+            }
+          }
+        }
+      });
+
+      this.logger.log(colors.green(`✅ Results released and assessment closed: ${quiz.title}`));
+
+      // Send push notifications and emails to students enrolled in classes with this subject
+      try {
+        await this.assessmentNotificationsService.sendAssessmentResultReleasedNotifications(quiz, schoolId);
+      } catch (notificationError) {
+        // Log error but don't fail the release operation
+        this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
+      }
+
+      return ResponseHelper.success('Assessment results released successfully. Assessment has been closed.', quiz);
+    } catch (error) {
+      this.logger.error(colors.red(`Error releasing assessment results: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Get all students and their attempts for an assessment
+   * @param assessmentId - ID of the assessment
+   * @param userId - ID of the teacher
+   * @param schoolId - ID of the school
+   */
+  async getAssessmentAttempts(assessmentId: string, userId: string, schoolId: string) {
+    try {
+      this.logger.log(colors.cyan(`Getting assessment attempts for: ${assessmentId}`));
+
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
+
+      // Verify assessment exists and teacher has access
+      const assessment = await this.prisma.assessment.findFirst({
+        where: {
+          id: assessmentId,
+          school_id: schoolId,
+          created_by: userId
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          topic: {
+            select: {
+              id: true,
+              title: true
+            }
+          }
+        }
+      });
+
+      if (!assessment) {
+        this.logger.error(colors.red(`Assessment not found or access denied: ${assessmentId}`));
+        throw new NotFoundException('Assessment not found or access denied');
+      }
+
+      // Get current academic session
+      const currentSession = await this.prisma.academicSession.findFirst({
+        where: {
+          school_id: schoolId,
+          is_current: true
+        }
+      });
+
+      if (!currentSession) {
+        throw new NotFoundException('Current academic session not found');
+      }
+
+      // Find all classes that have this subject
+      const classesWithSubject = await this.prisma.class.findMany({
+        where: {
+          schoolId: schoolId,
+          academic_session_id: currentSession.id,
+          subjects: {
+            some: {
+              id: assessment.subject_id,
+              academic_session_id: currentSession.id
+            }
+          }
+        },
+        select: {
+          id: true,
+          name: true
+        }
+      });
+
+      if (classesWithSubject.length === 0) {
+        return ResponseHelper.success('Assessment attempts retrieved successfully', {
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            subject: assessment.subject,
+            topic: assessment.topic
+          },
+          totalStudents: 0,
+          studentsAttempted: 0,
+          studentsNotAttempted: 0,
+          classes: [],
+          students: []
+        });
+      }
+
+      const classIds = classesWithSubject.map(cls => cls.id);
+
+      // Get all active students in these classes
+      const allStudents = await this.prisma.student.findMany({
+        where: {
+          school_id: schoolId,
+          academic_session_id: currentSession.id,
+          current_class_id: { in: classIds },
+          status: 'active'
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true,
+              display_picture: true
+            }
+          },
+          current_class: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        },
+        orderBy: {
+          user: {
+            last_name: 'asc'
+          }
+        }
+      });
+
+      // Get all attempts for this assessment
+      const attempts = await this.prisma.assessmentAttempt.findMany({
+        where: {
+          assessment_id: assessmentId,
+          school_id: schoolId,
+          academic_session_id: currentSession.id
+        },
+        select: {
+          id: true,
+          student_id: true,
+          attempt_number: true,
+          status: true,
+          started_at: true,
+          submitted_at: true,
+          time_spent: true,
+          total_score: true,
+          max_score: true,
+          percentage: true,
+          passed: true,
+          is_graded: true,
+          graded_at: true,
+          grade_letter: true,
+          overall_feedback: true,
+          createdAt: true
+        },
+        orderBy: {
+          submitted_at: 'desc'
+        }
+      });
+
+      // Create a map of student_id to attempts
+      const attemptsByStudent = new Map<string, typeof attempts>();
+      attempts.forEach(attempt => {
+        if (!attemptsByStudent.has(attempt.student_id)) {
+          attemptsByStudent.set(attempt.student_id, []);
+        }
+        attemptsByStudent.get(attempt.student_id)!.push(attempt);
+      });
+
+      // Combine students with their attempts
+      const studentsWithAttempts = allStudents.map(student => {
+        const studentAttempts = attemptsByStudent.get(student.user_id) || [];
+        const latestAttempt = studentAttempts.length > 0 
+          ? studentAttempts[0] // Most recent attempt (already sorted by submitted_at desc)
+          : null;
+
+        return {
+          studentId: student.id,
+          userId: student.user_id,
+          studentNumber: student.student_id,
+          firstName: student.user.first_name,
+          lastName: student.user.last_name,
+          email: student.user.email,
+          displayPicture: student.user.display_picture,
+          className: student.current_class?.name || 'Unknown',
+          classId: student.current_class_id,
+          hasAttempted: studentAttempts.length > 0,
+          attemptCount: studentAttempts.length,
+          latestAttempt: latestAttempt ? {
+            id: latestAttempt.id,
+            attemptNumber: latestAttempt.attempt_number,
+            status: latestAttempt.status,
+            startedAt: latestAttempt.started_at,
+            submittedAt: latestAttempt.submitted_at,
+            timeSpent: latestAttempt.time_spent,
+            totalScore: latestAttempt.total_score,
+            maxScore: latestAttempt.max_score,
+            percentage: latestAttempt.percentage,
+            passed: latestAttempt.passed,
+            isGraded: latestAttempt.is_graded,
+            gradedAt: latestAttempt.graded_at,
+            gradeLetter: latestAttempt.grade_letter,
+            overallFeedback: latestAttempt.overall_feedback,
+            createdAt: latestAttempt.createdAt
+          } : null,
+          allAttempts: studentAttempts.map(attempt => ({
+            id: attempt.id,
+            attemptNumber: attempt.attempt_number,
+            status: attempt.status,
+            startedAt: attempt.started_at,
+            submittedAt: attempt.submitted_at,
+            timeSpent: attempt.time_spent,
+            totalScore: attempt.total_score,
+            maxScore: attempt.max_score,
+            percentage: attempt.percentage,
+            passed: attempt.passed,
+            isGraded: attempt.is_graded,
+            gradedAt: attempt.graded_at,
+            gradeLetter: attempt.grade_letter,
+            overallFeedback: attempt.overall_feedback,
+            createdAt: attempt.createdAt
+          }))
+        };
+      });
+
+      // Calculate statistics
+      const studentsAttempted = studentsWithAttempts.filter(s => s.hasAttempted).length;
+      const studentsNotAttempted = allStudents.length - studentsAttempted;
+      const totalAttempts = attempts.length;
+
+      // Calculate average score
+      const completedAttempts = attempts.filter(a => a.submitted_at && a.status === 'SUBMITTED');
+      const averageScore = completedAttempts.length > 0
+        ? completedAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / completedAttempts.length
+        : 0;
+
+      // Group by class
+      const studentsByClass = studentsWithAttempts.reduce((acc, student) => {
+        const className = student.className;
+        if (!acc[className]) {
+          acc[className] = [];
+        }
+        acc[className].push(student);
+        return acc;
+      }, {} as Record<string, typeof studentsWithAttempts>);
+
+      const classesData = Object.entries(studentsByClass).map(([className, students]) => ({
+        className,
+        totalStudents: students.length,
+        studentsAttempted: students.filter(s => s.hasAttempted).length,
+        studentsNotAttempted: students.filter(s => !s.hasAttempted).length
+      }));
+
+      this.logger.log(colors.green(`✅ Retrieved attempts for ${allStudents.length} students, ${studentsAttempted} have attempted`));
+
+      return ResponseHelper.success('Assessment attempts retrieved successfully', {
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          subject: assessment.subject,
+          topic: assessment.topic,
+          totalPoints: assessment.total_points,
+          passingScore: assessment.passing_score
+        },
+        statistics: {
+          totalStudents: allStudents.length,
+          studentsAttempted,
+          studentsNotAttempted,
+          totalAttempts,
+          averageScore: Math.round(averageScore * 100) / 100,
+          completionRate: allStudents.length > 0 
+            ? Math.round((studentsAttempted / allStudents.length) * 100 * 100) / 100 
+            : 0
+        },
+        classes: classesData,
+        students: studentsWithAttempts
+      });
+    } catch (error) {
+      this.logger.error(colors.red(`Error getting assessment attempts: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific student's submission for an assessment
+   * @param assessmentId - ID of the assessment
+   * @param studentId - ID of the student (user_id)
+   * @param userId - ID of the teacher
+   * @param schoolId - ID of the school
+   */
+  async getStudentSubmission(assessmentId: string, studentId: string, userId: string, schoolId: string) {
+    try {
+      this.logger.log(colors.cyan(`Getting student submission for assessment: ${assessmentId}, student: ${studentId}`));
+
+      // Get teacher record
+      const teacher = await this.getTeacherByUserId(userId);
+      if (!teacher) {
+        throw new NotFoundException('Teacher not found');
+      }
+
+      // Verify assessment exists and teacher has access
+      const assessment = await this.prisma.assessment.findFirst({
+        where: {
+          id: assessmentId,
+          school_id: schoolId,
+          created_by: userId
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          topic: {
+            select: {
+              id: true,
+              title: true
+            }
+          }
+        }
+      });
+
+      if (!assessment) {
+        this.logger.error(colors.red(`Assessment not found or access denied: ${assessmentId}`));
+        throw new NotFoundException('Assessment not found or access denied');
+      }
+
+      this.logger.log(colors.green(`Assessment found`));
+
+      // Verify student exists and belongs to the school
+      // studentId is the Student record id, not the user_id
+      this.logger.log(colors.cyan(`Looking for student with id: ${studentId}`));
+      const student = await this.prisma.student.findFirst({
+        where: {
+          id: studentId,
+          school_id: schoolId
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true,
+              display_picture: true
+            }
+          },
+          current_class: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      if (!student) {
+        this.logger.error(colors.red(`Student not found with id: ${studentId}`));
+        throw new NotFoundException('Student not found');
+      }
+
+      this.logger.log(colors.green(`Student found: ${student.user.first_name} ${student.user.last_name} (user_id: ${student.user_id})`));
+
+      // Get current academic session
+      this.logger.log(colors.cyan(`Getting current academic session for school: ${schoolId}`));
+      const currentSession = await this.prisma.academicSession.findFirst({
+        where: {
+          school_id: schoolId,
+          is_current: true
+        }
+      });
+
+      if (!currentSession) {
+        throw new NotFoundException('Current academic session not found');
+      }
+
+      this.logger.log(colors.green(`Current session found: ${currentSession.id}`));
+
+      // Get all attempts for this student and assessment
+      // Note: AssessmentAttempt.student_id is the User.id (user_id), not the Student record id
+      this.logger.log(colors.cyan(`Fetching attempts for assessment: ${assessmentId}, user_id: ${student.user_id}`));
+      const attempts = await this.prisma.assessmentAttempt.findMany({
+        where: {
+          assessment_id: assessmentId,
+          student_id: student.user_id,
+          school_id: schoolId,
+          academic_session_id: currentSession.id
+        },
+        include: {
+          responses: {
+            include: {
+              question: {
+                select: {
+                  id: true,
+                  question_text: true,
+                  question_type: true,
+                  points: true,
+                  order: true,
+                  image_url: true,
+                  options: {
+                    select: {
+                      id: true,
+                      option_text: true,
+                      is_correct: true,
+                      order: true
+                    },
+                    orderBy: {
+                      order: 'asc'
+                    }
+                  }
+                }
+              },
+              selectedOptions: {
+                select: {
+                  id: true,
+                  option_text: true,
+                  is_correct: true,
+                  order: true
+                },
+                orderBy: {
+                  order: 'asc'
+                }
+              }
+            },
+            orderBy: {
+              question: {
+                order: 'asc'
+              }
+            }
+          }
+        },
+        orderBy: {
+          submitted_at: 'desc'
+        }
+      });
+
+      if (attempts.length === 0) {
+        return ResponseHelper.success('Student submission retrieved successfully', {
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            subject: assessment.subject,
+            topic: assessment.topic,
+            totalPoints: assessment.total_points,
+            passingScore: assessment.passing_score
+          },
+          student: {
+            id: student.id,
+            userId: student.user_id,
+            studentNumber: student.student_id,
+            firstName: student.user.first_name,
+            lastName: student.user.last_name,
+            email: student.user.email,
+            displayPicture: student.user.display_picture,
+            className: student.current_class?.name || 'Unknown',
+            classId: student.current_class_id
+          },
+          attempts: [],
+          hasAttempted: false
+        });
+      }
+
+      // Format attempts with responses
+      const formattedAttempts = attempts.map(attempt => ({
+        id: attempt.id,
+        attemptNumber: attempt.attempt_number,
+        status: attempt.status,
+        startedAt: attempt.started_at,
+        submittedAt: attempt.submitted_at,
+        timeSpent: attempt.time_spent,
+        totalScore: attempt.total_score,
+        maxScore: attempt.max_score,
+        percentage: attempt.percentage,
+        passed: attempt.passed,
+        isGraded: attempt.is_graded,
+        gradedAt: attempt.graded_at,
+        gradedBy: attempt.graded_by,
+        gradeLetter: attempt.grade_letter,
+        overallFeedback: attempt.overall_feedback,
+        createdAt: attempt.createdAt,
+        responses: attempt.responses.map(response => ({
+          id: response.id,
+          question: {
+            id: response.question.id,
+            questionText: response.question.question_text,
+            questionType: response.question.question_type,
+            points: response.question.points,
+            order: response.question.order,
+            imageUrl: response.question.image_url,
+            options: response.question.options
+          },
+          textAnswer: response.text_answer,
+          numericAnswer: response.numeric_answer,
+          dateAnswer: response.date_answer,
+          selectedOptions: response.selectedOptions,
+          fileUrls: response.file_urls,
+          isCorrect: response.is_correct,
+          pointsEarned: response.points_earned,
+          maxPoints: response.max_points,
+          timeSpent: response.time_spent,
+          feedback: response.feedback,
+          isGraded: response.is_graded,
+          createdAt: response.createdAt
+        }))
+      }));
+
+      this.logger.log(colors.green(`✅ Retrieved ${attempts.length} attempt(s) for student ${student.user.first_name} ${student.user.last_name}`));
+
+      return ResponseHelper.success('Student submission retrieved successfully', {
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          subject: assessment.subject,
+          topic: assessment.topic,
+          totalPoints: assessment.total_points,
+          passingScore: assessment.passing_score
+        },
+        student: {
+          id: student.id,
+          userId: student.user_id,
+          studentNumber: student.student_id,
+          firstName: student.user.first_name,
+          lastName: student.user.last_name,
+          email: student.user.email,
+          displayPicture: student.user.display_picture,
+          className: student.current_class?.name || 'Unknown',
+          classId: student.current_class_id
+        },
+        attempts: formattedAttempts,
+        hasAttempted: true,
+        attemptCount: attempts.length,
+        latestAttempt: formattedAttempts[0] || null
+      });
+    } catch (error) {
+      this.logger.error(colors.red(`Error getting student submission: ${error.message}`));
+      throw error;
+    }
+  }
+
   // ========================================
   // HELPER METHODS
   // ========================================

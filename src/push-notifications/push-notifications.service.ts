@@ -260,6 +260,9 @@ export class PushNotificationsService {
         this.logger.warn(colors.yellow(`   Debug: Found ${allTokens.length} total device tokens (active + inactive) for these users`));
         if (allTokens.length > 0) {
           this.logger.warn(colors.yellow(`   Token details: ${JSON.stringify(allTokens.map(t => ({ user_id: t.user_id, isActive: t.isActive })))}`));
+        } else {
+          this.logger.warn(colors.yellow(`   ⚠️ No device tokens found at all for these user IDs. Students need to register their devices via POST /push-notifications/register-device`));
+          this.logger.warn(colors.yellow(`   User IDs that need device registration: ${JSON.stringify(userIds)}`));
         }
         return { success: false, message: 'No active devices found' };
       }
