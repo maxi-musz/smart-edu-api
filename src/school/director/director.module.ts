@@ -11,8 +11,10 @@ import { ProfilesModule } from './profiles/profiles.module';
 import { ClassesModule } from './classes/classes.module';
 import { SubjectModule } from './subject/subject.module';
 import { UserModule } from './user/user.module';
+import { ResultsModule } from './results/results.module';
+import { AssessmentsModule } from './assessments/assessments.module';
 
 @Module({
-  imports: [DashboardModule, TeachersModule, StudentsModule, FinanceModule, CoursesModule, SchedulesModule, NotificationsModule, SettingsModule, ProfilesModule, ClassesModule, SubjectModule, UserModule]
+  imports: [DashboardModule, TeachersModule, StudentsModule, FinanceModule, CoursesModule, SchedulesModule, NotificationsModule, SettingsModule, ProfilesModule, ClassesModule, SubjectModule, UserModule, ResultsModule, AssessmentsModule]
 })
 export class DirectorModule {}
