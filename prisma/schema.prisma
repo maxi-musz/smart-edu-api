@@ -43,6 +43,7 @@ model AcademicSession {
   teachers              Teacher[]
   schedules             TimetableEntry[]
   topics                Topic[]
+  results               Result[]
 
   @@unique([school_id, academic_year, term])
   @@index([school_id, is_current])
@@ -102,6 +103,7 @@ model School {
   supportInfo           SupportInfo?
   teachers              Teacher[]
   timeSlots             TimeSlot[]
+  results               Result[]
   schedules             TimetableEntry[]
   topics                Topic[]
   users                 User[]
@@ -184,6 +186,7 @@ model User {
   school                     School                 @relation(fields: [school_id], references: [id])
   userSettings               UserSettings?
   videoContent               VideoContent[]
+  resultsReleased            Result[]               @relation("ResultReleasedBy")
 }
 
 model Teacher {
@@ -260,6 +263,7 @@ model Student {
   parent              Parent?         @relation("ParentChildren", fields: [parent_id], references: [id])
   school              School          @relation(fields: [school_id], references: [id])
   user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  results             Result[]
 
   @@index([school_id])
   @@index([academic_session_id])
@@ -314,6 +318,7 @@ model Class {
   performances        StudentPerformance[]
   subjects            Subject[]
   schedules           TimetableEntry[]
+  results             Result[]
 
   @@unique([schoolId, academic_session_id, classId])
   @@index([schoolId, academic_session_id])
@@ -547,6 +552,43 @@ model StudentPerformance {
   academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
   class               Class           @relation(fields: [class_id], references: [id])
   student             User            @relation("StudentPerformance", fields: [student_id], references: [id])
+}
+
+model Result {
+  id                  String          @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  student_id          String
+  class_id            String?
+  // Subject-wise results stored as JSON for flexibility
+  // Structure: [{ subject_id, subject_code, subject_name, ca_score, exam_score, total_score, total_max_score, percentage, grade }]
+  subject_results     Json
+  // Overall statistics
+  total_ca_score      Float           @default(0)
+  total_exam_score    Float           @default(0)
+  total_score         Float           @default(0)
+  total_max_score     Float           @default(0)
+  overall_percentage  Float           @default(0)
+  overall_grade       String?
+  class_position      Int?
+  total_students      Int?
+  // Metadata
+  released_by         String? // User ID who released the results
+  released_at         DateTime        @default(now())
+  is_final            Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
+  school              School          @relation(fields: [school_id], references: [id])
+  student             Student         @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  class               Class?          @relation(fields: [class_id], references: [id])
+  releasedBy          User?           @relation("ResultReleasedBy", fields: [released_by], references: [id])
+
+  @@unique([academic_session_id, student_id])
+  @@index([school_id, academic_session_id])
+  @@index([student_id])
+  @@index([class_id])
+  @@index([released_at])
 }
 
 model Organisation {

@@ -2540,30 +2540,28 @@ export class StudentsService {
 
       this.logger.log(colors.green(`✅ Using session: ${academicSession.academic_year} - ${academicSession.term}`));
 
-      // Step 1: Get all released assessments for this session
-      const releasedAssessments = await this.prisma.assessment.findMany({
+      // Query the Result model - results must be released by director first
+      const result = await this.prisma.result.findUnique({
         where: {
-          school_id: fullUser.school_id,
-          academic_session_id: academicSession.id,
-          is_result_released: true,
-          status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+          academic_session_id_student_id: {
+            academic_session_id: academicSession.id,
+            student_id: student.id
           }
         },
         include: {
-          subject: {
+          academicSession: {
             select: {
               id: true,
-              name: true,
-              code: true
+              academic_year: true,
+              term: true
             }
           }
         }
       });
 
-      if (releasedAssessments.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No released assessments found for this period`));
-        return new ApiResponse(true, 'No results found for this period', {
+      if (!result) {
+        this.logger.warn(colors.yellow(`⚠️ Results not yet released for this session`));
+        return new ApiResponse(false, 'Results not yet released for this session. Please contact your school administrator.', {
           current_session: {
             id: academicSession.id,
             academic_year: academicSession.academic_year,
@@ -2573,211 +2571,15 @@ export class StudentsService {
         });
       }
 
-      this.logger.log(colors.green(`✅ Found ${releasedAssessments.length} released assessments`));
-
-      // Step 2: Get the final result (best submitted attempt) for each released assessment
-      const assessmentResults = await Promise.all(
-        releasedAssessments.map(async (assessment) => {
-          // Get the student's best submitted result for this assessment
-          const studentResult = await this.prisma.assessmentAttempt.findFirst({
-            where: {
-              assessment_id: assessment.id,
-              student_id: user.sub,
-              status: 'SUBMITTED'
-            },
-            orderBy: [
-              { total_score: 'desc' }, // Best score first
-              { submitted_at: 'desc' } // Most recent if tied
-            ]
-          });
-
-          return {
-            assessment: assessment,
-            result: studentResult // This is the final result, not an attempt
-          };
-        })
-      );
-
-      // Filter out assessments where student has no result
-      const validResults = assessmentResults.filter(item => item.result !== null);
-
-      if (validResults.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No results found for student in released assessments`));
-        return new ApiResponse(true, 'No results found for this period', {
-          current_session: {
-            id: academicSession.id,
-            academic_year: academicSession.academic_year,
-            term: academicSession.term
-          },
-          subjects: []
-        });
-      }
-
-      this.logger.log(colors.green(`✅ Found ${validResults.length} assessment results`));
-
-      // Step 3: Group results by subject
-      const subjectMap = new Map<string, {
-        subject_id: string;
-        subject_code: string;
-        subject_name: string;
-        ca_score: number;
-        exam_score: number;
-        ca_max_score: number;
-        exam_max_score: number;
-        total_score: number;
-        total_max_score: number;
-        results: any[];
-      }>();
-
-      for (const { assessment, result } of validResults) {
-        if (!result || !assessment.subject) continue;
-
-        const subjectId = assessment.subject.id;
-        const isExam = assessment.assessment_type === 'EXAM';
-
-        if (!subjectMap.has(subjectId)) {
-          subjectMap.set(subjectId, {
-            subject_id: subjectId,
-            subject_code: assessment.subject.code || '',
-            subject_name: assessment.subject.name,
-            ca_score: 0,
-            exam_score: 0,
-            ca_max_score: 0,
-            exam_max_score: 0,
-            total_score: 0,
-            total_max_score: 0,
-            results: []
-          });
-        }
-
-        const subjectData = subjectMap.get(subjectId)!;
-        subjectData.results.push({ assessment, result });
-
-        if (isExam) {
-          subjectData.exam_score += result.total_score;
-          subjectData.exam_max_score += result.max_score;
-        } else {
-          subjectData.ca_score += result.total_score;
-          subjectData.ca_max_score += result.max_score;
-        }
-
-        subjectData.total_score += result.total_score;
-        subjectData.total_max_score += result.max_score;
-      }
-
-      // Calculate grades and class statistics for each subject
-      const subjectResults = await Promise.all(
-        Array.from(subjectMap.values()).map(async (subjectData) => {
-          const percentage = subjectData.total_max_score > 0
-            ? (subjectData.total_score / subjectData.total_max_score) * 100
-            : 0;
-          const grade = this.calculateGrade(percentage);
-
-          // Get class statistics
-          let totalStudents = 0;
-          let studentPosition = 0;
-
-          if (student.current_class_id) {
-            // Get all students in the same class
-            const classStudents = await this.prisma.student.findMany({
-              where: {
-                current_class_id: student.current_class_id,
-                school_id: fullUser.school_id,
-                academic_session_id: academicSession.id,
-                status: 'active'
-              },
-              select: {
-                user_id: true
-              }
-            });
-
-            totalStudents = classStudents.length;
-
-            // Get all released assessments for this subject
-            const subjectReleasedAssessments = releasedAssessments.filter(
-              a => a.subject_id === subjectData.subject_id
-            );
-
-            if (subjectReleasedAssessments.length === 0) {
-              totalStudents = classStudents.length;
-              studentPosition = 0;
-            } else {
-              const assessmentIds = subjectReleasedAssessments.map(a => a.id);
-
-              // Get final results (best attempt) for each released assessment for all students in class
-              const allClassResults = await Promise.all(
-                classStudents.map(async (classStudent) => {
-                  const studentResults = await Promise.all(
-                    assessmentIds.map(async (assessmentId) => {
-                      const result = await this.prisma.assessmentAttempt.findFirst({
-                        where: {
-                          assessment_id: assessmentId,
-                          student_id: classStudent.user_id,
-                          status: 'SUBMITTED'
-                        },
-                        orderBy: [
-                          { total_score: 'desc' },
-                          { submitted_at: 'desc' }
-                        ],
-                        select: {
-                          total_score: true,
-                          max_score: true
-                        }
-                      });
-                      return result;
-                    })
-                  );
-
-                  // Calculate total for this student
-                  const total = studentResults
-                    .filter(r => r !== null)
-                    .reduce((sum, r) => sum + r!.total_score, 0);
-                  const max = studentResults
-                    .filter(r => r !== null)
-                    .reduce((sum, r) => sum + r!.max_score, 0);
-
-                  return {
-                    student_id: classStudent.user_id,
-                    total_score: total,
-                    max_score: max,
-                    percentage: max > 0 ? (total / max) * 100 : 0
-                  };
-                })
-              );
-
-              totalStudents = allClassResults.length;
-
-              // Sort by percentage to get positions
-              const sortedResults = allClassResults
-                .filter(r => r.max_score > 0) // Only students with results
-                .sort((a, b) => b.percentage - a.percentage);
-
-              // Find student position
-              const position = sortedResults.findIndex(r => r.student_id === user.sub);
-              studentPosition = position >= 0 ? position + 1 : 0;
-            }
-          }
-
-          return {
-            subject_id: subjectData.subject_id,
-            subject_code: subjectData.subject_code,
-            subject_name: subjectData.subject_name,
-            ca_score: subjectData.ca_score || null,
-            exam_score: subjectData.exam_score || null,
-            total_score: subjectData.total_score,
-            total_max_score: subjectData.total_max_score,
-            percentage: Math.round(percentage * 100) / 100,
-            grade: grade,
-            class_analysis: {
-              total_students: totalStudents,
-              student_position: studentPosition
-            }
-          };
-        })
-      );
+      // Parse subject results from JSON
+      const subjectResults = Array.isArray(result.subject_results) 
+        ? result.subject_results 
+        : JSON.parse(result.subject_results as string);
 
       // Sort subjects by name
-      subjectResults.sort((a, b) => a.subject_name.localeCompare(b.subject_name));
+      subjectResults.sort((a: any, b: any) => a.subject_name.localeCompare(b.subject_name));
+
+      this.logger.log(colors.green(`✅ Found released results with ${subjectResults.length} subjects`));
 
       return new ApiResponse(true, 'Student results retrieved successfully', {
         current_session: {
@@ -2785,7 +2587,21 @@ export class StudentsService {
           academic_year: academicSession.academic_year,
           term: academicSession.term
         },
-        subjects: subjectResults
+        subjects: subjectResults.map((subject: any) => ({
+          subject_id: subject.subject_id,
+          subject_code: subject.subject_code,
+          subject_name: subject.subject_name,
+          ca_score: subject.ca_score,
+          exam_score: subject.exam_score,
+          total_score: subject.total_score,
+          total_max_score: subject.total_max_score,
+          percentage: subject.percentage,
+          grade: subject.grade,
+          class_analysis: {
+            total_students: result.total_students || 0,
+            student_position: result.class_position || 0
+          }
+        }))
       });
 
     } catch (error) {
