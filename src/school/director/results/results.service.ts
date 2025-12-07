@@ -413,6 +413,168 @@ export class ResultsService {
   }
 
   /**
+   * Release results for multiple students by their IDs
+   */
+  async releaseResultsForStudents(
+    schoolId: string,
+    userId: string,
+    studentIds: string[],
+    sessionId?: string
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`🎓 Releasing results for ${studentIds.length} students`));
+
+    try {
+      // Get academic session (use provided or current)
+      let currentSession;
+      if (sessionId) {
+        currentSession = await this.prisma.academicSession.findFirst({
+          where: {
+            id: sessionId,
+            school_id: schoolId
+          }
+        });
+      } else {
+        currentSession = await this.prisma.academicSession.findFirst({
+          where: {
+            school_id: schoolId,
+            is_current: true,
+            status: 'active'
+          }
+        });
+      }
+
+      if (!currentSession) {
+        this.logger.error(colors.red(`❌ No academic session found`));
+        return ResponseHelper.error('No academic session found', null, 400);
+      }
+
+      // Get all specified students
+      const students = await this.prisma.student.findMany({
+        where: {
+          id: {
+            in: studentIds
+          },
+          school_id: schoolId,
+          academic_session_id: currentSession.id,
+          status: 'active'
+        },
+        select: {
+          id: true,
+          user_id: true,
+          current_class_id: true
+        }
+      });
+
+      if (students.length === 0) {
+        this.logger.error(colors.red(`❌ No students found`));
+        return ResponseHelper.error('No students found with the provided IDs', null, 404);
+      }
+
+      // Check if some student IDs were not found
+      const foundStudentIds = students.map(s => s.id);
+      const notFoundIds = studentIds.filter(id => !foundStudentIds.includes(id));
+      if (notFoundIds.length > 0) {
+        this.logger.warn(colors.yellow(`⚠️  Some student IDs not found: ${notFoundIds.join(', ')}`));
+      }
+
+      // Get all released assessments for this session
+      const releasedAssessments = await this.prisma.assessment.findMany({
+        where: {
+          school_id: schoolId,
+          academic_session_id: currentSession.id,
+          is_result_released: true,
+          status: {
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+          },
+          assessment_type: {
+            in: ['EXAM', 'CBT']
+          }
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          }
+        }
+      });
+
+      if (releasedAssessments.length === 0) {
+        this.logger.error(colors.red(`❌ No released assessments found`));
+        return ResponseHelper.error('No released assessments found for this session', null, 400);
+      }
+
+      this.logger.log(colors.blue(`📊 Processing ${students.length} students`));
+
+      // Process students in batches
+      const totalBatches = Math.ceil(students.length / this.BATCH_SIZE);
+      let processedCount = 0;
+      let errorCount = 0;
+
+      for (let i = 0; i < students.length; i += this.BATCH_SIZE) {
+        const batch = students.slice(i, i + this.BATCH_SIZE);
+        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
+
+        this.logger.log(colors.cyan(`🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+
+        const batchPromises = batch.map(student =>
+          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
+            .catch(error => {
+              this.logger.error(colors.red(`❌ Error processing student ${student.id}: ${error.message}`));
+              errorCount++;
+              return null;
+            })
+        );
+
+        const batchResults = await Promise.all(batchPromises);
+        processedCount += batchResults.filter(r => r !== null).length;
+
+        if (i + this.BATCH_SIZE < students.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // Recalculate class positions for affected classes
+      const affectedClasses = [...new Set(students.map(s => s.current_class_id).filter(Boolean))];
+      for (const classId of affectedClasses) {
+        if (classId) {
+          await this.calculateClassPositions(schoolId, currentSession.id);
+          break; // Only need to calculate once as it processes all classes
+        }
+      }
+
+      this.logger.log(colors.green(`✅ Results released successfully for students`));
+      this.logger.log(colors.green(`   - Processed: ${processedCount}/${students.length} students`));
+      this.logger.log(colors.green(`   - Errors: ${errorCount}`));
+      if (notFoundIds.length > 0) {
+        this.logger.log(colors.yellow(`   - Not found: ${notFoundIds.length} student IDs`));
+      }
+
+      return ResponseHelper.success(
+        `Results released successfully for ${processedCount} students`,
+        {
+          total_requested: studentIds.length,
+          total_found: students.length,
+          processed: processedCount,
+          errors: errorCount,
+          not_found: notFoundIds.length > 0 ? notFoundIds : undefined,
+          session: {
+            id: currentSession.id,
+            academic_year: currentSession.academic_year,
+            term: currentSession.term
+          }
+        }
+      );
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error releasing results for students: ${error.message}`));
+      return ResponseHelper.error(`Failed to release results: ${error.message}`, null, 500);
+    }
+  }
+
+  /**
    * Process results for a single student
    */
   private async processStudentResults(
@@ -857,6 +1019,24 @@ export class ResultsService {
 
             this.logger.log(colors.cyan(`📊 Released assessments: ${allReleasedAssessments.length}`));
 
+            // Check which students have results released by admin for this session
+            const releasedResults = await this.prisma.result.findMany({
+              where: {
+                school_id: user.school_id,
+                academic_session_id: selectedSessionId,
+                student_id: {
+                  in: allStudentsInClass.map(s => s.id)
+                },
+                released_by_school_admin: true
+              },
+              select: {
+                student_id: true
+              }
+            });
+
+            // Create a map of student IDs that have released results
+            const releasedStudentIds = new Set(releasedResults.map(r => r.student_id));
+
             // Get all assessment attempts for these assessments
             const allAttempts = await this.prisma.assessmentAttempt.findMany({
               where: {
@@ -977,6 +1157,9 @@ export class ResultsService {
 
               const overallPercentage = totalObtainable > 0 ? (totalObtained / totalObtainable) * 100 : 0;
 
+              // Check if results are released for this student
+              const isReleased = releasedStudentIds.has(student.id);
+
               return {
                 student: {
                   id: student.id,
@@ -992,7 +1175,8 @@ export class ResultsService {
                 totalObtainable: totalObtainable,
                 percentage: overallPercentage,
                 grade: calculateGrade(overallPercentage),
-                position: 0 // Will be calculated after sorting
+                position: 0, // Will be calculated after sorting
+                isReleased: isReleased // Indicates if results are released by admin for this term
               };
             });
 

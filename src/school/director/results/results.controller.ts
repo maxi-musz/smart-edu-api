@@ -1,8 +1,9 @@
-import { Controller, Post, Get, UseGuards, HttpCode, HttpStatus, Query, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
+import { Controller, Post, Get, UseGuards, HttpCode, HttpStatus, Query, Param, Body } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 import { ResultsService } from './results.service';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
+import { ReleaseResultsForStudentsDto } from './dto/release-results.dto';
 
 @ApiTags('Director - Results')
 @ApiBearerAuth()
@@ -31,6 +32,7 @@ export class ResultsController {
     summary: 'Release results for a single student',
     description: 'Collates all CA and Exam scores for a specific student and creates/updates their Result record. Only results released by school admin can be viewed by students.'
   })
+  @ApiParam({ name: 'studentId', description: 'Student ID' })
   @ApiQuery({ name: 'session_id', required: false, description: 'Academic session ID (defaults to current active session)' })
   @ApiResponse({ status: 200, description: 'Results released successfully for student' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -38,7 +40,7 @@ export class ResultsController {
   @ApiResponse({ status: 404, description: 'Student not found' })
   async releaseResultsForStudent(
     @GetUser() user: any,
-    @Query('student_id') studentId: string,
+    @Param('studentId') studentId: string,
     @Query('session_id') sessionId?: string
   ) {
     return this.resultsService.releaseResultsForStudent(user.school_id, user.sub, studentId, sessionId);
@@ -57,10 +59,34 @@ export class ResultsController {
   @ApiResponse({ status: 404, description: 'Class or students not found' })
   async releaseResultsForClass(
     @GetUser() user: any,
-    @Query('class_id') classId: string,
+    @Param('classId') classId: string,
     @Query('session_id') sessionId?: string
   ) {
     return this.resultsService.releaseResultsForClass(user.school_id, user.sub, classId, sessionId);
+  }
+
+  @Post('release/students')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Release results for multiple students by their IDs',
+    description: 'Collates all CA and Exam scores for specified students and creates/updates their Result records. Accepts an array of student IDs in the request body. Only results released by school admin can be viewed by students.'
+  })
+  @ApiBody({ type: ReleaseResultsForStudentsDto })
+  @ApiResponse({ status: 200, description: 'Results released successfully for students' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input or no assessments found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Director role required' })
+  @ApiResponse({ status: 404, description: 'No students found with provided IDs' })
+  async releaseResultsForStudents(
+    @GetUser() user: any,
+    @Body() dto: ReleaseResultsForStudentsDto
+  ) {
+    return this.resultsService.releaseResultsForStudents(
+      user.school_id,
+      user.sub,
+      dto.studentIds,
+      dto.sessionId
+    );
   }
 
   @Get('dashboard')
