@@ -2570,7 +2570,7 @@ export class StudentsService {
         });
       }
 
-      this.logger.log(colors.cyan(`   - Result: ${JSON.stringify(result)}`));
+      // this.logger.log(colors.cyan(`   - Result: ${JSON.stringify(result)}`));
 
       // Parse subject results from JSON
       let subjectResults: any[] = [];
@@ -2581,27 +2581,27 @@ export class StudentsService {
             ? result.subject_results 
             : JSON.parse(result.subject_results as string);
         } catch (parseError) {
-          this.logger.error(colors.red(`❌ Error parsing subject_results: ${parseError.message}`));
-          this.logger.error(colors.red(`   Raw subject_results type: ${typeof result.subject_results}`));
-          this.logger.error(colors.red(`   Raw subject_results: ${JSON.stringify(result.subject_results)}`));
+          // this.logger.error(colors.red(`❌ Error parsing subject_results: ${parseError.message}`));
+          // this.logger.error(colors.red(`   Raw subject_results type: ${typeof result.subject_results}`));
+          // this.logger.error(colors.red(`   Raw subject_results: ${JSON.stringify(result.subject_results)}`));
           subjectResults = [];
         }
       }
 
       // Log detailed information for debugging
-      this.logger.log(colors.cyan(`📊 Result found for student ${student.id}`));
-      this.logger.log(colors.cyan(`   - Result ID: ${result.id}`));
-      this.logger.log(colors.cyan(`   - Released by admin: ${result.released_by_school_admin}`));
-      this.logger.log(colors.cyan(`   - Subject results type: ${typeof result.subject_results}`));
-      this.logger.log(colors.cyan(`   - Subject results is array: ${Array.isArray(result.subject_results)}`));
-      this.logger.log(colors.cyan(`   - Parsed subjects count: ${subjectResults.length}`));
+      // this.logger.log(colors.cyan(`📊 Result found for student ${student.id}`));
+      // this.logger.log(colors.cyan(`   - Result ID: ${result.id}`));
+      // this.logger.log(colors.cyan(`   - Released by admin: ${result.released_by_school_admin}`));
+      // this.logger.log(colors.cyan(`   - Subject results type: ${typeof result.subject_results}`));
+      // this.logger.log(colors.cyan(`   - Subject results is array: ${Array.isArray(result.subject_results)}`));
+      // this.logger.log(colors.cyan(`   - Parsed subjects count: ${subjectResults.length}`));
 
-      if (subjectResults.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ Result exists but has no subjects. This may indicate:`));
-        this.logger.warn(colors.yellow(`   1. No assessment attempts were found when results were released`));
-        this.logger.warn(colors.yellow(`   2. Assessment attempts had wrong status (should be 'GRADED' or 'SUBMITTED')`));
-        this.logger.warn(colors.yellow(`   3. Student hasn't taken any assessments yet`));
-      }
+      // if (subjectResults.length === 0) {
+      //   this.logger.warn(colors.yellow(`⚠️ Result exists but has no subjects. This may indicate:`));
+      //   this.logger.warn(colors.yellow(`   1. No assessment attempts were found when results were released`));
+      //   this.logger.warn(colors.yellow(`   2. Assessment attempts had wrong status (should be 'GRADED' or 'SUBMITTED')`));
+      //   this.logger.warn(colors.yellow(`   3. Student hasn't taken any assessments yet`));
+      // }
 
       // Sort subjects by name
       if (subjectResults.length > 0) {
@@ -2628,27 +2628,54 @@ export class StudentsService {
         );
       }
 
+      // Fetch subject colors from database (not stored in subject_results)
+      const subjectIds = subjectResults.map((s: any) => s.subject_id);
+      this.logger.log(colors.cyan(`   - Fetching colors for ${subjectIds.length} subjects: ${subjectIds.join(', ')}`));
+      
+      const subjects = await this.prisma.subject.findMany({
+        where: {
+          id: { in: subjectIds },
+          schoolId: fullUser.school_id,
+          academic_session_id: academicSession.id
+        },
+        select: {
+          id: true,
+          color: true
+        }
+      });
+
+      this.logger.log(colors.cyan(`   - Found ${subjects.length} subjects with colors: ${JSON.stringify(subjects)}`));
+
+      // Create a map of subject_id -> color
+      const subjectColorMap = new Map(subjects.map(s => [s.id, s.color]));
+
+      // Build final response with colors
+      const finalSubjects = subjectResults.map((subject: any) => ({
+        subject_id: subject.subject_id,
+        subject_code: subject.subject_code,
+        subject_color: subjectColorMap.get(subject.subject_id), // Default color if not found
+        subject_name: subject.subject_name,
+        ca_score: subject.ca_score,
+        exam_score: subject.exam_score,
+        total_score: subject.total_score,
+        total_max_score: subject.total_max_score,
+        percentage: subject.percentage,
+        grade: subject.grade,
+        class_analysis: {
+          total_students: result.total_students || 0,
+          student_position: result.class_position || 0
+        }
+      }));
+
+      // this.logger.log(colors.cyan(`   - Final subjects with colors: ${JSON.stringify(finalSubjects)}`));
+      console.log(colors.cyan(`🎓 Student: ${user.email} results retrieved successfully`));
       return new ApiResponse(true, 'Student results retrieved successfully', {
         current_session: {
           id: academicSession.id,
           academic_year: academicSession.academic_year,
           term: academicSession.term
         },
-        subjects: subjectResults.map((subject: any) => ({
-          subject_id: subject.subject_id,
-          subject_code: subject.subject_code,
-          subject_name: subject.subject_name,
-          ca_score: subject.ca_score,
-          exam_score: subject.exam_score,
-          total_score: subject.total_score,
-          total_max_score: subject.total_max_score,
-          percentage: subject.percentage,
-          grade: subject.grade,
-          class_analysis: {
-            total_students: result.total_students || 0,
-            student_position: result.class_position || 0
-          }
-        }))
+        subjects: finalSubjects
       });
 
     } catch (error) {
