@@ -226,7 +226,207 @@ Authorization: Bearer <your-jwt-token>
 
 ---
 
-### 5. Get Results Dashboard
+### 5. Unrelease Results for Whole School
+
+**POST** `/api/v1/director/results/unrelease`
+
+Unrelease results for all students in the current academic session. Sets `released_by_school_admin` to `false`. Results remain in the database but students cannot view them.
+
+**Authentication:** Required (Bearer Token)
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | No | Academic session ID (defaults to current active session) |
+
+**Example Request:**
+```http
+POST /api/v1/director/results/unrelease?session_id=session123
+Authorization: Bearer <your-jwt-token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Results unreleased successfully for X students",
+  "data": {
+    "total_updated": 150,
+    "session": {
+      "id": "session123",
+      "academic_year": "2024/2025",
+      "term": "FIRST_TERM"
+    }
+  },
+  "statusCode": 200
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized
+- `403` - Forbidden - Director role required
+- `404` - No current session found
+
+---
+
+### 6. Unrelease Results for Single Student
+
+**POST** `/api/v1/director/results/unrelease/student/:studentId`
+
+Unrelease results for a specific student. Sets `released_by_school_admin` to `false`.
+
+**Authentication:** Required (Bearer Token)
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `studentId` | string | Yes | Student ID |
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | No | Academic session ID (defaults to current active session) |
+
+**Example Request:**
+```http
+POST /api/v1/director/results/unrelease/student/student123?session_id=session123
+Authorization: Bearer <your-jwt-token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Results unreleased successfully for student",
+  "data": {
+    "student_id": "student123",
+    "session": {
+      "id": "session123",
+      "academic_year": "2024/2025",
+      "term": "FIRST_TERM"
+    }
+  },
+  "statusCode": 200
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized
+- `403` - Forbidden - Director role required
+- `404` - Result not found
+
+---
+
+### 7. Unrelease Results for Multiple Students
+
+**POST** `/api/v1/director/results/unrelease/students`
+
+Unrelease results for multiple students by providing an array of student IDs.
+
+**Authentication:** Required (Bearer Token)
+
+**Request Body:**
+```json
+{
+  "studentIds": ["student123", "student456", "student789"],
+  "sessionId": "session123"
+}
+```
+
+**Body Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `studentIds` | string[] | Yes | Array of student IDs (minimum 1) |
+| `sessionId` | string | No | Academic session ID (defaults to current active session) |
+
+**Example Request:**
+```http
+POST /api/v1/director/results/unrelease/students
+Authorization: Bearer <your-jwt-token>
+Content-Type: application/json
+
+{
+  "studentIds": ["student123", "student456", "student789"],
+  "sessionId": "session123"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Results unreleased successfully for X students",
+  "data": {
+    "total_requested": 3,
+    "total_updated": 3,
+    "session": {
+      "id": "session123",
+      "academic_year": "2024/2025",
+      "term": "FIRST_TERM"
+    }
+  },
+  "statusCode": 200
+}
+```
+
+**Error Responses:**
+- `400` - Bad request - Invalid input
+- `401` - Unauthorized
+- `403` - Forbidden - Director role required
+
+---
+
+### 8. Unrelease Results for Class
+
+**POST** `/api/v1/director/results/unrelease/class/:classId`
+
+Unrelease results for all students in a specific class.
+
+**Authentication:** Required (Bearer Token)
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `classId` | string | Yes | Class ID |
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | No | Academic session ID (defaults to current active session) |
+
+**Example Request:**
+```http
+POST /api/v1/director/results/unrelease/class/class123?session_id=session123
+Authorization: Bearer <your-jwt-token>
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Results unreleased successfully for X students in class",
+  "data": {
+    "class_id": "class123",
+    "total_students": 35,
+    "updated": 35,
+    "session": {
+      "id": "session123",
+      "academic_year": "2024/2025",
+      "term": "FIRST_TERM"
+    }
+  },
+  "statusCode": 200
+}
+```
+
+**Error Responses:**
+- `401` - Unauthorized
+- `403` - Forbidden - Director role required
+- `404` - Class or students not found
+
+---
+
+### 9. Get Results Dashboard
 
 **GET** `/api/v1/director/results/dashboard`
 
@@ -347,7 +547,8 @@ Authorization: Bearer <your-jwt-token>
             "obtained": 85,
             "obtainable": 100,
             "percentage": 85,
-            "grade": "A"
+            "grade": "A",
+            "isAvailable": true
           },
           "subject456": {
             "subjectId": "subject456",
@@ -356,16 +557,18 @@ Authorization: Bearer <your-jwt-token>
             "obtained": 72,
             "obtainable": 100,
             "percentage": 72,
-            "grade": "A"
+            "grade": "A",
+            "isAvailable": true
           },
           "subject789": {
             "subjectId": "subject789",
             "subjectName": "Physics",
             "subjectCode": "PHY101",
-            "obtained": 65,
-            "obtainable": 100,
-            "percentage": 65,
-            "grade": "B"
+            "obtained": null,
+            "obtainable": null,
+            "percentage": null,
+            "grade": null,
+            "isAvailable": false
           }
         },
         "totalObtained": 222,
@@ -393,7 +596,8 @@ Authorization: Bearer <your-jwt-token>
             "obtained": 78,
             "obtainable": 100,
             "percentage": 78,
-            "grade": "A"
+            "grade": "A",
+            "isAvailable": true
           },
           "subject456": {
             "subjectId": "subject456",
@@ -402,7 +606,8 @@ Authorization: Bearer <your-jwt-token>
             "obtained": 68,
             "obtainable": 100,
             "percentage": 68,
-            "grade": "B"
+            "grade": "B",
+            "isAvailable": true
           },
           "subject789": {
             "subjectId": "subject789",
@@ -411,7 +616,8 @@ Authorization: Bearer <your-jwt-token>
             "obtained": 55,
             "obtainable": 100,
             "percentage": 55,
-            "grade": "C"
+            "grade": "C",
+            "isAvailable": true
           }
         },
         "totalObtained": 201,
@@ -439,25 +645,28 @@ Authorization: Bearer <your-jwt-token>
             "obtained": 0,
             "obtainable": 100,
             "percentage": 0,
-            "grade": "F"
+            "grade": "F",
+            "isAvailable": true
           },
           "subject456": {
             "subjectId": "subject456",
             "subjectName": "English Language",
             "subjectCode": "ENG101",
-            "obtained": 0,
-            "obtainable": 100,
-            "percentage": 0,
-            "grade": "F"
+            "obtained": null,
+            "obtainable": null,
+            "percentage": null,
+            "grade": null,
+            "isAvailable": false
           },
           "subject789": {
             "subjectId": "subject789",
             "subjectName": "Physics",
             "subjectCode": "PHY101",
-            "obtained": 0,
-            "obtainable": 100,
-            "percentage": 0,
-            "grade": "F"
+            "obtained": null,
+            "obtainable": null,
+            "percentage": null,
+            "grade": null,
+            "isAvailable": false
           }
         },
         "totalObtained": 0,
@@ -653,10 +862,11 @@ interface StudentResult {
       subjectId: string;
       subjectName: string;
       subjectCode: string | null;
-      obtained: number;
-      obtainable: number;
-      percentage: number;
-      grade: 'A' | 'B' | 'C' | 'D' | 'F';
+      obtained: number | null; // null if no assessments created yet
+      obtainable: number | null; // null if no assessments created yet
+      percentage: number | null; // null if no assessments created yet
+      grade: 'A' | 'B' | 'C' | 'D' | 'F' | null; // null if no assessments created yet
+      isAvailable: boolean; // true if assessments exist, false if no assessments created
     };
   };
   totalObtained: number;
@@ -747,13 +957,20 @@ This applies to both individual subject grades and overall grade.
    - The `subjectScores` object uses subject IDs as keys
    - Iterate through the `subjects` array to maintain column order
    - For each subject, check if it exists in `subjectScores[subject.id]`
-   - If a subject doesn't have a score entry, display "0/0" or "N/A"
+   - **Important**: Check the `isAvailable` flag:
+     - If `isAvailable: false` → Display "---" or "N/A" (no assessments created yet)
+     - If `isAvailable: true` → Display `obtained/obtainable` (e.g., "85/100")
+   - If `obtained` and `obtainable` are both `null`, it means no assessments exist for that subject
 
 7. **Score Display Format**: 
-   - Subject scores: `obtained / obtainable` (e.g., "85/100")
+   - Subject scores: 
+     - If `isAvailable: true` → Display `obtained / obtainable` (e.g., "85/100")
+     - If `isAvailable: false` → Display "---" or "N/A" (assessments not created yet)
    - Total scores: `totalObtained / totalObtainable` (e.g., "222/300")
    - Percentage: Display as percentage with % sign (e.g., "74%")
-   - Grade: Display the letter grade (A, B, C, D, F)
+   - Grade: 
+     - If `isAvailable: true` → Display the letter grade (A, B, C, D, F)
+     - If `isAvailable: false` → Display "---" or "N/A" (don't show "F")
 
 8. **Position**: `position` indicates the student's rank in the class based on total obtained score. Lower number = better rank (1 = first position).
 
@@ -817,7 +1034,8 @@ The frontend should display results in a table format like this:
 - The number of subject columns is dynamic based on how many subjects exist for the class
 - Subject columns should be ordered according to the `subjects` array
 - Each subject column can show: score (obtained/obtainable), percentage, and/or grade
-- If a student hasn't taken assessments for a subject, show 0/obtainable or N/A
+- If a student hasn't taken assessments for a subject but assessments exist, show `0/obtainable` (e.g., "0/100")
+- If no assessments have been created for a subject (`isAvailable: false`), show "---" or "N/A" (not "0/0 F")
 - The `isReleased` field can be used to:
   - Disable checkboxes/selection for students with `isReleased: true`
   - Show visual indicators (badge, icon, or different row styling)
@@ -841,4 +1059,17 @@ The frontend should display results in a table format like this:
    - **Class**: Release results for all students in a specific class
    - **Whole School**: Release results for all students in the current session
 
-6. **Student Visibility**: Students can only view results that have been explicitly released by the school admin/director. Results that haven't been released will not appear in the student's results view.
+6. **Unrelease Functionality**: Directors can also unrelease results (set `released_by_school_admin` to `false`) at the same four levels. When results are unreleased:
+   - The result data remains in the database (not deleted)
+   - Students cannot view the results (`released_by_school_admin: false`)
+   - Directors can re-release them later by calling the release endpoints again
+   - This is useful for schools that want to temporarily hide results (e.g., after 24 hours)
+
+7. **Student Visibility**: Students can only view results where `released_by_school_admin: true`. Results that are unreleased or never released will not appear in the student's results view.
+
+8. **Push Notifications**: 
+   - When results are **released**, push notifications are automatically sent to all affected students
+   - When results are **unreleased**, push notifications are automatically sent to all affected students
+   - Notification title: "📊 Results Released" or "🔒 Results Unreleased"
+   - Notification includes academic year, term, and deep link to results screen
+   - Notifications are sent asynchronously and won't block the release/unrelease operation

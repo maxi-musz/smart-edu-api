@@ -2570,15 +2570,63 @@ export class StudentsService {
         });
       }
 
+      this.logger.log(colors.cyan(`   - Result: ${JSON.stringify(result)}`));
+
       // Parse subject results from JSON
-      const subjectResults = Array.isArray(result.subject_results) 
-        ? result.subject_results 
-        : JSON.parse(result.subject_results as string);
+      let subjectResults: any[] = [];
+      
+      if (result.subject_results) {
+        try {
+          subjectResults = Array.isArray(result.subject_results) 
+            ? result.subject_results 
+            : JSON.parse(result.subject_results as string);
+        } catch (parseError) {
+          this.logger.error(colors.red(`❌ Error parsing subject_results: ${parseError.message}`));
+          this.logger.error(colors.red(`   Raw subject_results type: ${typeof result.subject_results}`));
+          this.logger.error(colors.red(`   Raw subject_results: ${JSON.stringify(result.subject_results)}`));
+          subjectResults = [];
+        }
+      }
+
+      // Log detailed information for debugging
+      this.logger.log(colors.cyan(`📊 Result found for student ${student.id}`));
+      this.logger.log(colors.cyan(`   - Result ID: ${result.id}`));
+      this.logger.log(colors.cyan(`   - Released by admin: ${result.released_by_school_admin}`));
+      this.logger.log(colors.cyan(`   - Subject results type: ${typeof result.subject_results}`));
+      this.logger.log(colors.cyan(`   - Subject results is array: ${Array.isArray(result.subject_results)}`));
+      this.logger.log(colors.cyan(`   - Parsed subjects count: ${subjectResults.length}`));
+
+      if (subjectResults.length === 0) {
+        this.logger.warn(colors.yellow(`⚠️ Result exists but has no subjects. This may indicate:`));
+        this.logger.warn(colors.yellow(`   1. No assessment attempts were found when results were released`));
+        this.logger.warn(colors.yellow(`   2. Assessment attempts had wrong status (should be 'GRADED' or 'SUBMITTED')`));
+        this.logger.warn(colors.yellow(`   3. Student hasn't taken any assessments yet`));
+      }
 
       // Sort subjects by name
-      subjectResults.sort((a: any, b: any) => a.subject_name.localeCompare(b.subject_name));
+      if (subjectResults.length > 0) {
+        subjectResults.sort((a: any, b: any) => a.subject_name.localeCompare(b.subject_name));
+      }
 
       this.logger.log(colors.green(`✅ Found released results with ${subjectResults.length} subjects`));
+
+      // If result exists but has no subjects, return a helpful message
+      if (subjectResults.length === 0) {
+        return new ApiResponse(
+          false, 
+          'Results have been released but no subject data is available. This may occur if no assessment attempts were found. Please contact your school administrator.',
+          {
+            current_session: {
+              id: academicSession.id,
+              academic_year: academicSession.academic_year,
+              term: academicSession.term
+            },
+            subjects: [],
+            result_id: result.id,
+            released_at: result.released_at
+          }
+        );
+      }
 
       return new ApiResponse(true, 'Student results retrieved successfully', {
         current_session: {

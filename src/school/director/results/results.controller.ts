@@ -89,6 +89,87 @@ export class ResultsController {
     );
   }
 
+  @Post('unrelease')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Unrelease results for all students in current session (WHOLE SCHOOL)',
+    description: 'Sets released_by_school_admin to false for all students in the school. Results remain in database but students cannot view them.'
+  })
+  @ApiQuery({ name: 'session_id', required: false, description: 'Academic session ID (defaults to current active session)' })
+  @ApiResponse({ status: 200, description: 'Results unreleased successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Director role required' })
+  @ApiResponse({ status: 404, description: 'No current session found' })
+  async unreleaseResults(
+    @GetUser() user: any,
+    @Query('session_id') sessionId?: string
+  ) {
+    return this.resultsService.unreleaseResults(user.school_id, user.sub, sessionId);
+  }
+
+  @Post('unrelease/student/:studentId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Unrelease results for a single student',
+    description: 'Sets released_by_school_admin to false for a specific student. Result remains in database but student cannot view it.'
+  })
+  @ApiParam({ name: 'studentId', description: 'Student ID' })
+  @ApiQuery({ name: 'session_id', required: false, description: 'Academic session ID (defaults to current active session)' })
+  @ApiResponse({ status: 200, description: 'Results unreleased successfully for student' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Director role required' })
+  @ApiResponse({ status: 404, description: 'Result not found' })
+  async unreleaseResultsForStudent(
+    @GetUser() user: any,
+    @Param('studentId') studentId: string,
+    @Query('session_id') sessionId?: string
+  ) {
+    return this.resultsService.unreleaseResultsForStudent(user.school_id, user.sub, studentId, sessionId);
+  }
+
+  @Post('unrelease/students')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Unrelease results for multiple students by their IDs',
+    description: 'Sets released_by_school_admin to false for specified students. Results remain in database but students cannot view them.'
+  })
+  @ApiBody({ type: ReleaseResultsForStudentsDto })
+  @ApiResponse({ status: 200, description: 'Results unreleased successfully for students' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Director role required' })
+  async unreleaseResultsForStudents(
+    @GetUser() user: any,
+    @Body() dto: ReleaseResultsForStudentsDto
+  ) {
+    return this.resultsService.unreleaseResultsForStudents(
+      user.school_id,
+      user.sub,
+      dto.studentIds,
+      dto.sessionId
+    );
+  }
+
+  @Post('unrelease/class/:classId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Unrelease results for all students in a specific class',
+    description: 'Sets released_by_school_admin to false for all students in a class. Results remain in database but students cannot view them.'
+  })
+  @ApiParam({ name: 'classId', description: 'Class ID' })
+  @ApiQuery({ name: 'session_id', required: false, description: 'Academic session ID (defaults to current active session)' })
+  @ApiResponse({ status: 200, description: 'Results unreleased successfully for class' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Director role required' })
+  @ApiResponse({ status: 404, description: 'Class or students not found' })
+  async unreleaseResultsForClass(
+    @GetUser() user: any,
+    @Param('classId') classId: string,
+    @Query('session_id') sessionId?: string
+  ) {
+    return this.resultsService.unreleaseResultsForClass(user.school_id, user.sub, classId, sessionId);
+  }
+
   @Get('dashboard')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
