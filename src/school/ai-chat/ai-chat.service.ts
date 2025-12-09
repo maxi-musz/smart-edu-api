@@ -544,14 +544,25 @@ export class AiChatService {
         throw new Error('User school_id is missing from token');
       }
 
-      // Get supported document types
-      const supportedDocumentTypes = this.getSupportedDocumentTypes();
+      // Get school's subscription plan
+      const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
+        where: {
+          school_id: schoolId
+        }
+      });
+
+      if (!subscriptionPlan) {
+        this.logger.warn(colors.yellow(`⚠️ No subscription plan found for school: ${schoolId}, using defaults`));
+      }
+
+      // Get supported document types based on plan
+      const supportedDocumentTypes = this.getSupportedDocumentTypes(subscriptionPlan); 
 
       // Get user's conversations
       const conversations = await this.getUserConversations(userId);
 
-      // Get user's usage limits
-      const usageLimits = await this.getUserUsageLimits(userId);
+      // Get user's usage limits (merged with plan limits)
+      const usageLimits = await this.getUserUsageLimits(userId, schoolId, user.role, subscriptionPlan);
 
       // Handle different user roles
       switch (initiateDto.userRole) {
@@ -601,9 +612,14 @@ export class AiChatService {
   }
 
   /**
-   * Get user's usage limits
+   * Get user's usage limits (merged with subscription plan limits)
    */
-  private async getUserUsageLimits(userId: string): Promise<any> {
+  private async getUserUsageLimits(
+    userId: string,
+    schoolId: string,
+    userRole: string,
+    subscriptionPlan: any
+  ): Promise<any> {
     try {
       this.logger.log(colors.blue(`📊 Fetching usage limits for user: ${userId}`));
 
@@ -619,9 +635,7 @@ export class AiChatService {
           tokensUsedThisWeek: true,
           tokensUsedThisDay: true,
           tokensUsedAllTime: true,
-          // messagesSentThisWeek: true,
           maxTokensPerWeek: true,
-          // maxMessagesPerWeek: true,
           maxTokensPerDay: true,
           lastFileResetDate: true,
           lastTokenResetDateAllTime: true,
@@ -633,25 +647,40 @@ export class AiChatService {
         throw new Error('User not found');
       }
 
+      // Determine max document uploads based on role and plan
+      let maxDocumentUploadsPerDay: number;
+      if (subscriptionPlan) {
+        if (userRole === 'student') {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_student_per_day || 3;
+        } else if (userRole === 'teacher') {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+        } else {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+        }
+      } else {
+        // Defaults if no plan
+        maxDocumentUploadsPerDay = userRole === 'student' ? 3 : 10;
+      }
+
+      // Use plan limits where available, fallback to user model defaults
       const usageLimits = {
         filesUploadedThisMonth: user.filesUploadedThisMonth,
         totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
         totalStorageUsedMB: user.totalStorageUsedMB,
-        maxFilesPerMonth: user.maxFilesPerMonth,
-        maxFileSizeMB: user.maxFileSizeMB,
-        maxStorageMB: user.maxStorageMB,
+        maxFilesPerMonth: subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
+        maxFileSizeMB: subscriptionPlan?.max_file_size_mb ?? user.maxFileSizeMB,
+        maxStorageMB: subscriptionPlan?.max_storage_mb ?? user.maxStorageMB,
         tokensUsedThisWeek: user.tokensUsedThisWeek,
         tokensUsedThisDay: user.tokensUsedThisDay,
         tokensUsedAllTime: user.tokensUsedAllTime,
-        // messagesSentThisWeek: user.messagesSentThisWeek,
-        maxTokensPerWeek: user.maxTokensPerWeek,
-        // maxMessagesPerWeek: user.maxMessagesPerWeek,
-        maxTokensPerDay: user.maxTokensPerDay,
+        maxTokensPerWeek: subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
+        maxTokensPerDay: subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
+        maxDocumentUploadsPerDay: maxDocumentUploadsPerDay,
         lastFileResetDate: user.lastFileResetDate.toISOString(),
         lastTokenResetDate: user.lastTokenResetDateAllTime.toISOString(),
       };
 
-      this.logger.log(colors.green(`✅ Retrieved usage limits for user`));
+      this.logger.log(colors.green(`✅ Retrieved usage limits for user (plan: ${subscriptionPlan?.plan_type || 'none'})`));
       return usageLimits;
 
     } catch (error) {
@@ -781,60 +810,83 @@ export class AiChatService {
   }
 
   /**
-   * Get supported document types for upload
+   * Get supported document types for upload based on subscription plan
    */
-  private getSupportedDocumentTypes(): SupportedDocumentTypeDto[] {
-    return [
-      {
+  private getSupportedDocumentTypes(subscriptionPlan: any): SupportedDocumentTypeDto[] {
+    // Define all possible document types with their metadata
+    const allDocumentTypes: Record<string, SupportedDocumentTypeDto> = {
+      pdf: {
         type: 'PDF',
         extension: '.pdf',
         mimeType: 'application/pdf',
-        maxSize: '50MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Portable Document Format files'
       },
-      {
+      docx: {
         type: 'Word Document',
         extension: '.docx',
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        maxSize: '25MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Microsoft Word documents'
       },
-      {
+      doc: {
         type: 'Word Document (Legacy)',
         extension: '.doc',
         mimeType: 'application/msword',
-        maxSize: '25MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Legacy Microsoft Word documents'
       },
-      {
+      pptx: {
         type: 'PowerPoint',
         extension: '.pptx',
         mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        maxSize: '50MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Microsoft PowerPoint presentations'
       },
-      {
+      xlsx: {
         type: 'Excel',
         extension: '.xlsx',
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        maxSize: '25MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Microsoft Excel spreadsheets'
       },
-      {
+      txt: {
         type: 'Text Document',
         extension: '.txt',
         mimeType: 'text/plain',
-        maxSize: '10MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Plain text documents'
       },
-      {
+      rtf: {
         type: 'Rich Text Format',
         extension: '.rtf',
         mimeType: 'application/rtf',
-        maxSize: '10MB',
+        maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
         description: 'Rich Text Format documents'
       }
-    ];
+    };
+
+    // Get allowed document types from plan (default to ['pdf'] if no plan)
+    const allowedTypes = subscriptionPlan?.allowed_document_types || ['pdf'];
+
+    // Filter and return only allowed document types
+    const supportedTypes: SupportedDocumentTypeDto[] = [];
+    
+    for (const type of allowedTypes) {
+      const normalizedType = type.toLowerCase().replace('.', '');
+      if (allDocumentTypes[normalizedType]) {
+        supportedTypes.push(allDocumentTypes[normalizedType]);
+      }
+    }
+
+    // If no types found or empty array, default to PDF
+    if (supportedTypes.length === 0) {
+      supportedTypes.push(allDocumentTypes.pdf);
+    }
+
+    this.logger.log(colors.cyan(`   - Supported document types: ${supportedTypes.map(t => t.type).join(', ')}`));
+    
+    return supportedTypes;
   }
 }
 

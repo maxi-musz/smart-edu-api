@@ -95,6 +95,15 @@ db-migrate-prod: ## Run database migrations in production
 db-migrate-staging: ## Run database migrations in staging
 	docker-compose -f docker-compose.staging.yml exec app npm run prisma:migrate
 
+db-push: ## Push Prisma schema changes to database (dev, no migration)
+	docker-compose -f docker-compose.dev.yml exec app npm run prisma:use-env && docker-compose -f docker-compose.dev.yml exec app npx prisma db push
+
+db-push-staging: ## Push Prisma schema changes to staging database (no migration)
+	docker-compose -f docker-compose.staging.yml exec app npm run prisma:use-env && docker-compose -f docker-compose.staging.yml exec app npx prisma db push
+
+db-push-prod: ## Push Prisma schema changes to production database (no migration, use with caution!)
+	docker-compose -f docker-compose.prod.yml exec app npm run prisma:use-env && docker-compose -f docker-compose.prod.yml exec app npx prisma db push
+
 db-seed: ## Seed database with sample data
 	docker-compose -f docker-compose.dev.yml exec app npm run prisma:seed
 

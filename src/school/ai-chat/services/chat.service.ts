@@ -256,6 +256,20 @@ export class ChatService {
       const responseTime = Date.now() - startTime;
       this.logger.log(colors.green(`✅ Message processed in ${responseTime}ms`));
 
+      // Get user data for plan lookup
+      const userData = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true }
+      });
+
+      // Get school's subscription plan
+      const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
+        where: { school_id: schoolId }
+      });
+
+      // Get updated usage limits (merged with plan limits)
+      const usageLimits = await this.getUserUsageLimits(userId, schoolId, userData?.role || 'student', subscriptionPlan);
+
       return {
         id: aiMessage.id,
         content: aiMessage.content,
@@ -272,6 +286,7 @@ export class ChatService {
         tokensUsed: aiMessage.tokens_used,
         responseTimeMs: aiMessage.response_time_ms,
         createdAt: aiMessage.createdAt.toISOString(),
+        usageLimits: usageLimits, // Include usage limits after every message
       };
 
     } catch (error) {
@@ -316,8 +331,20 @@ export class ChatService {
         createdAt: message.createdAt.toISOString(),
       }));
 
-      // Get usage limits
-      const usageLimits = await this.getUserUsageLimits(userId);
+      // Get user data for plan lookup
+      const { schoolId } = await this.extractUserData(user);
+      const userData = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true }
+      });
+
+      // Get school's subscription plan
+      const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
+        where: { school_id: schoolId }
+      });
+
+      // Get usage limits (merged with plan limits)
+      const usageLimits = await this.getUserUsageLimits(userId, schoolId, userData?.role || 'student', subscriptionPlan);
 
       return {
         conversationHistory,
@@ -331,9 +358,14 @@ export class ChatService {
   }
 
   /**
-   * Get user's usage limits
+   * Get user's usage limits (merged with subscription plan limits)
    */
-  private async getUserUsageLimits(userId: string): Promise<any> {
+  private async getUserUsageLimits(
+    userId: string,
+    schoolId: string,
+    userRole: string,
+    subscriptionPlan: any
+  ): Promise<any> {
     try {
       this.logger.log(colors.blue(`📊 Fetching usage limits for user: ${userId}`));
 
@@ -361,23 +393,40 @@ export class ChatService {
         throw new Error('User not found');
       }
 
+      // Determine max document uploads based on role and plan
+      let maxDocumentUploadsPerDay: number;
+      if (subscriptionPlan) {
+        if (userRole === 'student') {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_student_per_day || 3;
+        } else if (userRole === 'teacher') {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+        } else {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+        }
+      } else {
+        // Defaults if no plan
+        maxDocumentUploadsPerDay = userRole === 'student' ? 3 : 10;
+      }
+
+      // Use plan limits where available, fallback to user model defaults
       const usageLimits = {
         filesUploadedThisMonth: user.filesUploadedThisMonth,
         totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
         totalStorageUsedMB: user.totalStorageUsedMB,
-        maxFilesPerMonth: user.maxFilesPerMonth,
-        maxFileSizeMB: user.maxFileSizeMB,
-        maxStorageMB: user.maxStorageMB,
+        maxFilesPerMonth: subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
+        maxFileSizeMB: subscriptionPlan?.max_file_size_mb ?? user.maxFileSizeMB,
+        maxStorageMB: subscriptionPlan?.max_storage_mb ?? user.maxStorageMB,
         tokensUsedThisWeek: user.tokensUsedThisWeek,
         tokensUsedThisDay: user.tokensUsedThisDay,
         tokensUsedAllTime: user.tokensUsedAllTime,
-        maxTokensPerWeek: user.maxTokensPerWeek,
-        maxTokensPerDay: user.maxTokensPerDay,
+        maxTokensPerWeek: subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
+        maxTokensPerDay: subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
+        maxDocumentUploadsPerDay: maxDocumentUploadsPerDay,
         lastFileResetDate: user.lastFileResetDate.toISOString(),
         lastTokenResetDate: user.lastTokenResetDateAllTime.toISOString(),
       };
 
-      this.logger.log(colors.green(`✅ Retrieved usage limits for user`));
+      this.logger.log(colors.green(`✅ Retrieved usage limits for user (plan: ${subscriptionPlan?.plan_type || 'none'})`));
       return usageLimits;
 
     } catch (error) {
