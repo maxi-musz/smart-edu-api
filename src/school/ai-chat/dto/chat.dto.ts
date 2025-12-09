@@ -62,6 +62,9 @@ export class ChatMessageResponseDto {
 
   @ApiProperty()
   createdAt: string;
+
+  @ApiProperty({ required: false })
+  usageLimits?: any;
 }
 
 export class CreateConversationDto {

@@ -38,13 +38,31 @@ export class S3Service {
     this.bucketName = bucketName;
     this.region = region;
 
-    this.s3Client = new S3Client({
+    // Get optional endpoint override (useful for custom S3-compatible services or specific regions)
+    const endpoint = this.config.get('AWS_S3_ENDPOINT');
+    
+    const s3ClientConfig: Record<string, any> = {
       region: this.region,
       credentials: {
         accessKeyId,
         secretAccessKey,
       },
-    });
+    };
+
+    // Add endpoint if specified (useful for custom S3 endpoints or specific region requirements)
+    if (endpoint) {
+      s3ClientConfig.endpoint = endpoint;
+      this.logger.log(colors.cyan(`   - Using custom endpoint: ${endpoint}`));
+    }
+
+    // Force path-style addressing if needed (some buckets require this)
+    const forcePathStyle = this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
+    if (forcePathStyle) {
+      s3ClientConfig.forcePathStyle = true;
+      this.logger.log(colors.cyan(`   - Using path-style addressing`));
+    }
+
+    this.s3Client = new S3Client(s3ClientConfig);
 
     this.logger.log(colors.green(`✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`));
   }
@@ -69,9 +87,10 @@ export class S3Service {
       default:
         // Fallback to default bucket or environment-specific if available
         return this.config.get('AWS_S3_BUCKET_DEV') || 
+               this.config.get('AWS_S3_BUCKET') || 
                this.config.get('AWS_S3_BUCKET_STAGING') || 
                this.config.get('AWS_S3_BUCKET_PROD') || 
-               this.config.get('AWS_S3_BUCKET') || '';
+               '';
     }
   }
 
@@ -120,7 +139,8 @@ export class S3Service {
 
       const result: any = await upload.done();
       
-      const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+      // Generate URL based on endpoint configuration
+      const url = this.getFileUrl(key);
       
       this.logger.log(colors.green(`✅ S3 upload successful: ${file.originalname}`));
       this.logger.log(colors.blue(`   - URL: ${url}`));
@@ -132,7 +152,16 @@ export class S3Service {
         bucket: this.bucketName,
         etag: result.ETag || '',
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Enhanced error handling for region/endpoint issues
+      if (error.message?.includes('must be addressed using the specified endpoint')) {
+        this.logger.error(colors.red(`❌ S3 region/endpoint mismatch detected`));
+        this.logger.error(colors.yellow(`   - Configured region: ${this.region}`));
+        this.logger.error(colors.yellow(`   - Bucket: ${this.bucketName}`));
+        this.logger.error(colors.yellow(`   - Tip: Check if AWS_REGION matches the bucket's actual region`));
+        this.logger.error(colors.yellow(`   - Tip: Or set AWS_S3_ENDPOINT in .env if using custom endpoint`));
+        throw new Error(`S3 upload failed: Region/endpoint mismatch. Please verify AWS_REGION matches the bucket's region. Original error: ${error.message}`);
+      }
       this.logger.error(colors.red(`❌ S3 upload failed: ${error.message}`));
       throw new Error(`S3 upload failed: ${error.message}`);
     }
@@ -259,9 +288,33 @@ export class S3Service {
 
   /**
    * Get file URL from S3
+   * Handles different URL formats based on endpoint configuration
    */
   getFileUrl(key: string): string {
-    return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+    const endpoint = this.config.get('AWS_S3_ENDPOINT');
+    const forcePathStyle = this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
+    
+    // If custom endpoint is set, use it
+    if (endpoint) {
+      if (forcePathStyle) {
+        // Path-style: https://endpoint/bucket/key
+        const baseUrl = endpoint.replace(/\/$/, ''); // Remove trailing slash
+        return `${baseUrl}/${this.bucketName}/${key}`;
+      } else {
+        // Virtual-hosted-style with custom endpoint
+        return `${endpoint}/${key}`;
+      }
+    }
+    
+    // Default AWS S3 URL format
+    // Handle special cases for certain regions
+    if (this.region === 'us-east-1') {
+      // us-east-1 uses s3.amazonaws.com (no region in URL)
+      return `https://${this.bucketName}.s3.amazonaws.com/${key}`;
+    } else {
+      // Other regions use s3.region.amazonaws.com
+      return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+    }
   }
 
   /**

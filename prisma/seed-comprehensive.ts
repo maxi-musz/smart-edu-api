@@ -56,9 +56,9 @@ function getRandomName(ethnicity: 'yoruba' | 'igbo' | 'hausa') {
 }
 
 function generateEmail(firstName: string, lastName: string, role: string, index: number) {
-  const baseEmail = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+  const baseEmail = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${role}${index}`;
   // Add role and index to ensure uniqueness
-  return `${baseEmail}.${role}${index}@bestacademy.edu.ng`;
+  return `${baseEmail}@edu.ng`;
 }
 
 function generatePhoneNumber() {
@@ -994,6 +994,591 @@ async function main() {
     ]);
     console.log(`✅ ${notifications.length} notifications created`);
 
+    // 14. Create Assessments (CBT, EXAM, ASSIGNMENT) for both sessions
+    console.log('📝 Creating assessments...');
+    const previousSession = academicSessions[0];
+    
+    // Helper function to get all students from a class
+    const getStudentsFromClass = (classId: string) => {
+      return students.filter(s => s.student.current_class_id === classId);
+    };
+
+    // Helper function to get teacher for a subject
+    const getTeacherForSubject = (subjectId: string) => {
+      const teacherSubject = teacherSubjects.find(ts => ts.subjectId === subjectId);
+      if (teacherSubject) {
+        return teachers.find(t => t.teacher.id === teacherSubject.teacherId);
+      }
+      return teachers[Math.floor(Math.random() * teachers.length)];
+    };
+
+    const allAssessments: any[] = [];
+    const allQuestions: any[] = [];
+    const allOptions: any[] = [];
+    const allCorrectAnswers: any[] = [];
+    const allAttempts: any[] = [];
+    const allResponses: any[] = [];
+    const allSubmissions: any[] = [];
+    const allAnalytics: any[] = [];
+
+    // Assessment templates
+    const assessmentTemplates = [
+      { type: 'CBT', title: 'CBT Quiz', description: 'Computer Based Test Quiz' },
+      { type: 'EXAM', title: 'End of Term Examination', description: 'Comprehensive examination' },
+      { type: 'ASSIGNMENT', title: 'Take-Home Assignment', description: 'Assignment to be completed at home' },
+      { type: 'CBT', title: 'Weekly CBT Test', description: 'Weekly assessment test' },
+      { type: 'EXAM', title: 'Mid-Term Examination', description: 'Mid-term comprehensive exam' },
+      { type: 'ASSIGNMENT', title: 'Project Assignment', description: 'Project-based assignment' },
+    ];
+
+    // Create assessments for previous session (completed - some with results released)
+    console.log('   📚 Creating assessments for previous session (2024/2025)...');
+    for (let i = 0; i < 3; i++) {
+      const template = assessmentTemplates[i];
+      // Pick a class and get subjects for that class level
+      const classItem = classes[Math.floor(Math.random() * classes.length)];
+      const classSubjects = getSubjectsForClass(classItem);
+      if (classSubjects.length === 0) continue; // Skip if no subjects for this class
+      const subject = classSubjects[Math.floor(Math.random() * classSubjects.length)];
+      const teacher = getTeacherForSubject(subject.id);
+      const topic = topics.find(t => t.subject_id === subject.id);
+      
+      const isResultReleased = i < 2; // First 2 have results released
+      
+      const assessment = await prisma.assessment.create({
+        data: {
+          title: `${template.title} - ${subject.name}`,
+          description: `${template.description} for ${subject.name}`,
+          duration: template.type === 'CBT' ? 60 : template.type === 'EXAM' ? 120 : null,
+          time_limit: template.type === 'CBT' ? 60 : template.type === 'EXAM' ? 120 : null,
+          academic_session_id: previousSession.id,
+          school_id: school.id,
+          subject_id: subject.id,
+          topic_id: topic?.id || null,
+          created_by: teacher.user.id,
+          assessment_type: template.type as any,
+          status: isResultReleased ? 'CLOSED' : 'PUBLISHED',
+          is_published: true,
+          published_at: new Date(previousSession.start_date.getTime() + 30 * 24 * 60 * 60 * 1000),
+          is_result_released: isResultReleased,
+          result_released_at: isResultReleased ? new Date(previousSession.end_date.getTime() - 7 * 24 * 60 * 60 * 1000) : null,
+          start_date: new Date(previousSession.start_date.getTime() + 30 * 24 * 60 * 60 * 1000),
+          end_date: new Date(previousSession.end_date.getTime() - 7 * 24 * 60 * 60 * 1000),
+          total_points: 100,
+          passing_score: 50,
+          grading_type: template.type === 'ASSIGNMENT' ? 'MANUAL' : 'AUTOMATIC',
+          show_correct_answers: isResultReleased,
+          show_feedback: true,
+          allow_review: true,
+          max_attempts: 1,
+          tags: [subject.name, template.type],
+        },
+      });
+      allAssessments.push(assessment);
+
+      // Create questions (5-10 questions per assessment)
+      const questionCount = Math.floor(Math.random() * 6) + 5;
+      for (let q = 0; q < questionCount; q++) {
+        const questionType = template.type === 'ASSIGNMENT' 
+          ? (q % 2 === 0 ? 'LONG_ANSWER' : 'SHORT_ANSWER')
+          : (q % 3 === 0 ? 'MULTIPLE_CHOICE_SINGLE' : q % 3 === 1 ? 'TRUE_FALSE' : 'SHORT_ANSWER');
+        
+        const question = await prisma.assessmentQuestion.create({
+          data: {
+            assessment_id: assessment.id,
+            question_text: `Question ${q + 1}: What is the main concept in ${subject.name}?`,
+            question_type: questionType as any,
+            order: q + 1,
+            points: 10,
+            is_required: true,
+            difficulty_level: q < 3 ? 'EASY' : q < 6 ? 'MEDIUM' : 'HARD',
+            explanation: `This question tests understanding of ${subject.name} concepts.`,
+          },
+        });
+        allQuestions.push(question);
+
+        // Create options for multiple choice and true/false
+        if (questionType === 'MULTIPLE_CHOICE_SINGLE' || questionType === 'TRUE_FALSE') {
+          const optionsCount = questionType === 'TRUE_FALSE' ? 2 : 4;
+          const correctOptionIndex = Math.floor(Math.random() * optionsCount);
+          
+          const questionOptions: any[] = [];
+          for (let o = 0; o < optionsCount; o++) {
+            const optionText = questionType === 'TRUE_FALSE' 
+              ? (o === 0 ? 'True' : 'False')
+              : `Option ${String.fromCharCode(65 + o)}`;
+            
+            const option = await prisma.assessmentOption.create({
+              data: {
+                question_id: question.id,
+                option_text: optionText,
+                order: o + 1,
+                is_correct: o === correctOptionIndex,
+              },
+            });
+            questionOptions.push(option);
+            allOptions.push(option);
+          }
+
+          // Create correct answer
+          const correctOption = questionOptions[correctOptionIndex];
+          const correctAnswer = await prisma.assessmentCorrectAnswer.create({
+            data: {
+              question_id: question.id,
+              option_ids: [correctOption.id],
+            },
+          });
+          allCorrectAnswers.push(correctAnswer);
+          } else {
+            // For text questions, create correct answer with text
+            const correctAnswer = await prisma.assessmentCorrectAnswer.create({
+              data: {
+                question_id: question.id,
+                answer_text: `Sample correct answer for ${subject.name}`,
+              },
+            });
+            allCorrectAnswers.push(correctAnswer);
+          }
+      }
+
+      // Create student attempts/submissions - use most students (80-100%) so they can see results
+      const allClassStudents = getStudentsFromClass(classItem.id);
+      const studentCount = Math.max(5, Math.floor(allClassStudents.length * (0.8 + Math.random() * 0.2))); // 80-100% of students
+      const classStudents = allClassStudents
+        .sort(() => 0.5 - Math.random())
+        .slice(0, studentCount);
+      
+      if (template.type === 'CBT' || template.type === 'EXAM') {
+        // Create attempts for CBT/EXAM
+        for (const student of classStudents) {
+          const startedAt = new Date(assessment.start_date!.getTime() + Math.random() * 7 * 24 * 60 * 60 * 1000);
+          const submittedAt = new Date(startedAt.getTime() + Math.random() * 3600000); // 0-1 hour
+          const timeSpent = Math.floor((submittedAt.getTime() - startedAt.getTime()) / 1000 / 60);
+          
+          // Calculate score (random but realistic)
+          const totalScore = Math.floor(Math.random() * 40) + 50; // 50-90
+          const percentage = (totalScore / assessment.total_points) * 100;
+          
+          const attempt = await prisma.assessmentAttempt.create({
+            data: {
+              assessment_id: assessment.id,
+              student_id: student.user.id,
+              school_id: school.id,
+              academic_session_id: previousSession.id,
+              attempt_number: 1,
+              status: isResultReleased ? 'GRADED' : 'SUBMITTED',
+              started_at: startedAt,
+              submitted_at: submittedAt,
+              time_spent: timeSpent,
+              total_score: totalScore,
+              max_score: assessment.total_points,
+              percentage: percentage,
+              passed: percentage >= assessment.passing_score,
+              is_graded: isResultReleased,
+              graded_at: isResultReleased ? new Date(submittedAt.getTime() + 24 * 60 * 60 * 1000) : null,
+              grade_letter: percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : percentage >= 50 ? 'E' : 'F',
+            },
+          });
+          allAttempts.push(attempt);
+
+          // Create responses for each question
+          for (const question of allQuestions.filter(q => q.assessment_id === assessment.id)) {
+            const questionOptions = allOptions.filter(o => o.question_id === question.id);
+            let selectedOptions: string[] = [];
+            let isCorrect = false;
+            let pointsEarned = 0;
+
+            if (question.question_type === 'MULTIPLE_CHOICE_SINGLE' || question.question_type === 'TRUE_FALSE') {
+              // Select correct option 70% of the time
+              const correctOption = questionOptions.find(o => o.is_correct);
+              if (correctOption && Math.random() < 0.7) {
+                selectedOptions = [correctOption.id];
+                isCorrect = true;
+                pointsEarned = question.points;
+              } else {
+                const wrongOption = questionOptions.find(o => !o.is_correct);
+                if (wrongOption) selectedOptions = [wrongOption.id];
+              }
+            } else {
+              // For text questions, mark as correct 70% of the time
+              isCorrect = Math.random() < 0.7;
+              pointsEarned = isCorrect ? question.points : 0;
+            }
+
+            const response = await prisma.assessmentResponse.create({
+              data: {
+                attempt_id: attempt.id,
+                question_id: question.id,
+                student_id: student.user.id,
+                selected_options: selectedOptions,
+                text_answer: question.question_type.includes('ANSWER') ? `Student answer for question ${question.order}` : null,
+                is_correct: isCorrect,
+                points_earned: pointsEarned,
+                max_points: question.points,
+                time_spent: Math.floor(Math.random() * 300) + 60, // 1-6 minutes
+                is_graded: isResultReleased,
+              },
+            });
+            allResponses.push(response);
+          }
+        }
+      } else {
+        // Create submissions for ASSIGNMENT
+        for (const student of classStudents) {
+          const submittedAt = new Date(assessment.start_date!.getTime() + Math.random() * 14 * 24 * 60 * 60 * 1000);
+          const totalScore = Math.floor(Math.random() * 30) + 60; // 60-90
+          const percentage = (totalScore / assessment.total_points) * 100;
+          
+          const submission = await prisma.assessmentSubmission.create({
+            data: {
+              assessment_id: assessment.id,
+              student_id: student.user.id,
+              school_id: school.id,
+              academic_session_id: previousSession.id,
+              submission_type: 'ASSIGNMENT',
+              content: `Assignment submission for ${assessment.title}`,
+              status: isResultReleased ? 'GRADED' : 'SUBMITTED',
+              submitted_at: submittedAt,
+              late_submission: submittedAt > assessment.end_date!,
+              word_count: Math.floor(Math.random() * 500) + 200,
+              total_score: isResultReleased ? totalScore : null,
+              max_score: assessment.total_points,
+              percentage: isResultReleased ? percentage : null,
+              passed: isResultReleased ? percentage >= assessment.passing_score : false,
+              is_graded: isResultReleased,
+              graded_at: isResultReleased ? new Date(submittedAt.getTime() + 48 * 60 * 60 * 1000) : null,
+              graded_by: isResultReleased ? teacher.user.id : null,
+              feedback: isResultReleased ? `Good work! Keep it up.` : null,
+              grade_letter: isResultReleased ? (percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : percentage >= 50 ? 'E' : 'F') : null,
+            },
+          });
+          allSubmissions.push(submission);
+        }
+      }
+
+      // Create analytics for assessments with attempts
+      if (allAttempts.filter(a => a.assessment_id === assessment.id).length > 0) {
+        const attempts = allAttempts.filter(a => a.assessment_id === assessment.id);
+        const avgScore = attempts.reduce((sum, a) => sum + a.total_score, 0) / attempts.length;
+        const avgTime = attempts.reduce((sum, a) => sum + (a.time_spent || 0), 0) / attempts.length;
+        const passRate = (attempts.filter(a => a.passed).length / attempts.length) * 100;
+
+        const analytics = await prisma.assessmentAnalytics.create({
+          data: {
+            assessment_id: assessment.id,
+            total_attempts: attempts.length,
+            total_students: new Set(attempts.map(a => a.student_id)).size,
+            average_score: avgScore,
+            average_time: Math.floor(avgTime),
+            pass_rate: passRate,
+            completion_rate: 100,
+            abandonment_rate: 0,
+            question_stats: {},
+            daily_attempts: {},
+            hourly_attempts: {},
+          },
+        });
+        allAnalytics.push(analytics);
+      }
+    }
+
+    // Create assessments for current session (mix of statuses)
+    console.log('   📚 Creating assessments for current session (2025/2026)...');
+    for (let i = 0; i < 9; i++) {
+      const template = assessmentTemplates[i % assessmentTemplates.length];
+      // Pick a class and get subjects for that class level
+      const classItem = classes[Math.floor(Math.random() * classes.length)];
+      const classSubjects = getSubjectsForClass(classItem);
+      if (classSubjects.length === 0) continue; // Skip if no subjects for this class
+      const subject = classSubjects[Math.floor(Math.random() * classSubjects.length)];
+      const teacher = getTeacherForSubject(subject.id);
+      const topic = topics.find(t => t.subject_id === subject.id);
+      
+      // Determine status based on index
+      let status: 'DRAFT' | 'PUBLISHED' | 'ACTIVE' | 'CLOSED' = 'DRAFT';
+      let isPublished = false;
+      let isResultReleased = false;
+      let publishedAt: Date | null = null;
+      let resultReleasedAt: Date | null = null;
+      let startDate: Date | null = null;
+      let endDate: Date | null = null;
+
+      if (i < 3) {
+        // First 3: DRAFT
+        status = 'DRAFT';
+      } else if (i < 6) {
+        // Next 3: PUBLISHED
+        status = 'PUBLISHED';
+        isPublished = true;
+        publishedAt = new Date(currentSession.start_date.getTime() + (i - 3) * 7 * 24 * 60 * 60 * 1000);
+        startDate = new Date(publishedAt.getTime() + 1 * 24 * 60 * 60 * 1000);
+        endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      } else if (i < 8) {
+        // Next 2: ACTIVE
+        status = 'ACTIVE';
+        isPublished = true;
+        publishedAt = new Date(currentSession.start_date.getTime() + (i - 6) * 7 * 24 * 60 * 60 * 1000);
+        startDate = new Date(publishedAt.getTime() - 1 * 24 * 60 * 60 * 1000);
+        endDate = new Date(startDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+      } else {
+        // Last 1: CLOSED with results released
+        status = 'CLOSED';
+        isPublished = true;
+        isResultReleased = true;
+        publishedAt = new Date(currentSession.start_date.getTime() + 14 * 24 * 60 * 60 * 1000);
+        startDate = new Date(publishedAt.getTime() + 1 * 24 * 60 * 60 * 1000);
+        endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+        resultReleasedAt = new Date(endDate.getTime() + 2 * 24 * 60 * 60 * 1000);
+      }
+
+      const assessment = await prisma.assessment.create({
+        data: {
+          title: `${template.title} - ${subject.name}`,
+          description: `${template.description} for ${subject.name}`,
+          duration: template.type === 'CBT' ? 60 : template.type === 'EXAM' ? 120 : null,
+          time_limit: template.type === 'CBT' ? 60 : template.type === 'EXAM' ? 120 : null,
+          academic_session_id: currentSession.id,
+          school_id: school.id,
+          subject_id: subject.id,
+          topic_id: topic?.id || null,
+          created_by: teacher.user.id,
+          assessment_type: template.type as any,
+          status: status,
+          is_published: isPublished,
+          published_at: publishedAt,
+          is_result_released: isResultReleased,
+          result_released_at: resultReleasedAt,
+          start_date: startDate,
+          end_date: endDate,
+          total_points: 100,
+          passing_score: 50,
+          grading_type: template.type === 'ASSIGNMENT' ? 'MANUAL' : 'AUTOMATIC',
+          show_correct_answers: isResultReleased,
+          show_feedback: true,
+          allow_review: true,
+          max_attempts: 1,
+          tags: [subject.name, template.type],
+        },
+      });
+      allAssessments.push(assessment);
+
+      // Only create questions if published
+      if (isPublished) {
+        const questionCount = Math.floor(Math.random() * 6) + 5;
+        for (let q = 0; q < questionCount; q++) {
+          const questionType = template.type === 'ASSIGNMENT' 
+            ? (q % 2 === 0 ? 'LONG_ANSWER' : 'SHORT_ANSWER')
+            : (q % 3 === 0 ? 'MULTIPLE_CHOICE_SINGLE' : q % 3 === 1 ? 'TRUE_FALSE' : 'SHORT_ANSWER');
+          
+          const question = await prisma.assessmentQuestion.create({
+            data: {
+              assessment_id: assessment.id,
+              question_text: `Question ${q + 1}: Explain the key concepts in ${subject.name}?`,
+              question_type: questionType as any,
+              order: q + 1,
+              points: 10,
+              is_required: true,
+              difficulty_level: q < 3 ? 'EASY' : q < 6 ? 'MEDIUM' : 'HARD',
+              explanation: `This question tests understanding of ${subject.name} concepts.`,
+            },
+          });
+          allQuestions.push(question);
+
+          // Create options for multiple choice and true/false
+          if (questionType === 'MULTIPLE_CHOICE_SINGLE' || questionType === 'TRUE_FALSE') {
+            const optionsCount = questionType === 'TRUE_FALSE' ? 2 : 4;
+            const correctOptionIndex = Math.floor(Math.random() * optionsCount);
+            
+            const questionOptions: any[] = [];
+            for (let o = 0; o < optionsCount; o++) {
+              const optionText = questionType === 'TRUE_FALSE' 
+                ? (o === 0 ? 'True' : 'False')
+                : `Option ${String.fromCharCode(65 + o)}`;
+              
+              const option = await prisma.assessmentOption.create({
+                data: {
+                  question_id: question.id,
+                  option_text: optionText,
+                  order: o + 1,
+                  is_correct: o === correctOptionIndex,
+                },
+              });
+              questionOptions.push(option);
+              allOptions.push(option);
+            }
+
+            // Create correct answer
+            const correctOption = questionOptions[correctOptionIndex];
+            const correctAnswer = await prisma.assessmentCorrectAnswer.create({
+              data: {
+                question_id: question.id,
+                option_ids: [correctOption.id],
+              },
+            });
+            allCorrectAnswers.push(correctAnswer);
+          } else {
+            // For text questions
+            const correctAnswer = await prisma.assessmentCorrectAnswer.create({
+              data: {
+                question_id: question.id,
+                answer_text: `Sample correct answer for ${subject.name}`,
+              },
+            });
+            allCorrectAnswers.push(correctAnswer);
+          }
+        }
+
+        // Create attempts/submissions only for ACTIVE or CLOSED assessments
+        if (status === 'ACTIVE' || status === 'CLOSED') {
+          // Use most students (80-100%) so they can see results
+          const allClassStudents = getStudentsFromClass(classItem.id);
+          const studentCount = Math.max(5, Math.floor(allClassStudents.length * (0.8 + Math.random() * 0.2))); // 80-100% of students
+          const classStudents = allClassStudents
+            .sort(() => 0.5 - Math.random())
+            .slice(0, studentCount);
+          
+          if (template.type === 'CBT' || template.type === 'EXAM') {
+            // Create attempts
+            for (const student of classStudents) {
+              const startedAt = startDate ? new Date(startDate.getTime() + Math.random() * 3 * 24 * 60 * 60 * 1000) : new Date();
+              const submittedAt = new Date(startedAt.getTime() + Math.random() * 3600000);
+              const timeSpent = Math.floor((submittedAt.getTime() - startedAt.getTime()) / 1000 / 60);
+              
+              const totalScore = Math.floor(Math.random() * 40) + 50;
+              const percentage = (totalScore / assessment.total_points) * 100;
+              
+              const attempt = await prisma.assessmentAttempt.create({
+                data: {
+                  assessment_id: assessment.id,
+                  student_id: student.user.id,
+                  school_id: school.id,
+                  academic_session_id: currentSession.id,
+                  attempt_number: 1,
+                  status: status === 'CLOSED' ? 'GRADED' : 'SUBMITTED',
+                  started_at: startedAt,
+                  submitted_at: submittedAt,
+                  time_spent: timeSpent,
+                  total_score: totalScore,
+                  max_score: assessment.total_points,
+                  percentage: percentage,
+                  passed: percentage >= assessment.passing_score,
+                  is_graded: status === 'CLOSED',
+                  graded_at: status === 'CLOSED' ? new Date(submittedAt.getTime() + 24 * 60 * 60 * 1000) : null,
+                  grade_letter: status === 'CLOSED' ? (percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : percentage >= 50 ? 'E' : 'F') : null,
+                },
+              });
+              allAttempts.push(attempt);
+
+              // Create responses
+              const assessmentQuestions = allQuestions.filter(q => q.assessment_id === assessment.id);
+              for (const question of assessmentQuestions) {
+                const questionOptions = allOptions.filter(o => o.question_id === question.id);
+                let selectedOptions: string[] = [];
+                let isCorrect = false;
+                let pointsEarned = 0;
+
+                if (question.question_type === 'MULTIPLE_CHOICE_SINGLE' || question.question_type === 'TRUE_FALSE') {
+                  const correctOption = questionOptions.find(o => o.is_correct);
+                  if (correctOption && Math.random() < 0.7) {
+                    selectedOptions = [correctOption.id];
+                    isCorrect = true;
+                    pointsEarned = question.points;
+                  } else {
+                    const wrongOption = questionOptions.find(o => !o.is_correct);
+                    if (wrongOption) selectedOptions = [wrongOption.id];
+                  }
+                } else {
+                  isCorrect = Math.random() < 0.7;
+                  pointsEarned = isCorrect ? question.points : 0;
+                }
+
+                const response = await prisma.assessmentResponse.create({
+                  data: {
+                    attempt_id: attempt.id,
+                    question_id: question.id,
+                    student_id: student.user.id,
+                    selected_options: selectedOptions,
+                    text_answer: question.question_type.includes('ANSWER') ? `Student answer for question ${question.order}` : null,
+                    is_correct: isCorrect,
+                    points_earned: pointsEarned,
+                    max_points: question.points,
+                    time_spent: Math.floor(Math.random() * 300) + 60,
+                    is_graded: status === 'CLOSED',
+                  },
+                });
+                allResponses.push(response);
+              }
+            }
+          } else {
+            // Create submissions for ASSIGNMENT
+            for (const student of classStudents) {
+              const submittedAt = startDate ? new Date(startDate.getTime() + Math.random() * 7 * 24 * 60 * 60 * 1000) : new Date();
+              const totalScore = status === 'CLOSED' ? Math.floor(Math.random() * 30) + 60 : null;
+              const percentage = totalScore ? (totalScore / assessment.total_points) * 100 : null;
+              
+              const submission = await prisma.assessmentSubmission.create({
+                data: {
+                  assessment_id: assessment.id,
+                  student_id: student.user.id,
+                  school_id: school.id,
+                  academic_session_id: currentSession.id,
+                  submission_type: 'ASSIGNMENT',
+                  content: `Assignment submission for ${assessment.title}`,
+                  status: status === 'CLOSED' ? 'GRADED' : 'SUBMITTED',
+                  submitted_at: submittedAt,
+                  late_submission: endDate ? submittedAt > endDate : false,
+                  word_count: Math.floor(Math.random() * 500) + 200,
+                  total_score: totalScore,
+                  max_score: assessment.total_points,
+                  percentage: percentage,
+                  passed: percentage ? percentage >= assessment.passing_score : false,
+                  is_graded: status === 'CLOSED',
+                  graded_at: status === 'CLOSED' ? new Date(submittedAt.getTime() + 48 * 60 * 60 * 1000) : null,
+                  graded_by: status === 'CLOSED' ? teacher.user.id : null,
+                  feedback: status === 'CLOSED' ? `Good work! Keep it up.` : null,
+                  grade_letter: status === 'CLOSED' && percentage ? (percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : percentage >= 50 ? 'E' : 'F') : null,
+                },
+              });
+              allSubmissions.push(submission);
+            }
+          }
+
+          // Create analytics for assessments with attempts
+          const attempts = allAttempts.filter(a => a.assessment_id === assessment.id);
+          if (attempts.length > 0) {
+            const avgScore = attempts.reduce((sum, a) => sum + a.total_score, 0) / attempts.length;
+            const avgTime = attempts.reduce((sum, a) => sum + (a.time_spent || 0), 0) / attempts.length;
+            const passRate = (attempts.filter(a => a.passed).length / attempts.length) * 100;
+
+            await prisma.assessmentAnalytics.create({
+              data: {
+                assessment_id: assessment.id,
+                total_attempts: attempts.length,
+                total_students: new Set(attempts.map(a => a.student_id)).size,
+                average_score: avgScore,
+                average_time: Math.floor(avgTime),
+                pass_rate: passRate,
+                completion_rate: 100,
+                abandonment_rate: 0,
+                question_stats: {},
+                daily_attempts: {},
+                hourly_attempts: {},
+              },
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`✅ Assessments created: ${allAssessments.length} (${allAssessments.filter(a => a.academic_session_id === previousSession.id).length} for previous session, ${allAssessments.filter(a => a.academic_session_id === currentSession.id).length} for current session)`);
+    console.log(`   - Questions: ${allQuestions.length}`);
+    console.log(`   - Options: ${allOptions.length}`);
+    console.log(`   - Correct Answers: ${allCorrectAnswers.length}`);
+    console.log(`   - Attempts: ${allAttempts.length}`);
+    console.log(`   - Responses: ${allResponses.length}`);
+    console.log(`   - Submissions: ${allSubmissions.length}`);
+    console.log(`   - Analytics: ${allAnalytics.length}`);
+
     console.log('🎉 Comprehensive database seeding completed successfully!');
     console.log('\n📊 Summary:');
     console.log(`- School: ${school.school_name}`);
@@ -1011,6 +1596,12 @@ async function main() {
     console.log(`- Payment Records: ${createdPayments.length}`);
     console.log(`- Finance Records: 1`);
     console.log(`- Wallet Records: 1`);
+    console.log(`- Assessments: ${allAssessments.length} (CBT, EXAM, ASSIGNMENT)`);
+    console.log(`  - Previous Session: ${allAssessments.filter(a => a.academic_session_id === previousSession.id).length} (some with results released)`);
+    console.log(`  - Current Session: ${allAssessments.filter(a => a.academic_session_id === currentSession.id).length} (mix of DRAFT, PUBLISHED, ACTIVE, CLOSED)`);
+    console.log(`- Assessment Questions: ${allQuestions.length}`);
+    console.log(`- Assessment Attempts: ${allAttempts.length}`);
+    console.log(`- Assessment Submissions: ${allSubmissions.length}`);
 
     console.log('\n🔐 Sample Login Credentials:');
     console.log('Password for all users: password123');

@@ -61,6 +61,16 @@ export class AuthService {
             )
         }
 
+        // create new user also with email and hashed password
+        // Check if user already exists
+        const existingUser = await this.prisma.user.findUnique({
+            where: { email: dto.school_email.toLowerCase() }
+        });
+
+        if (existingUser) {
+            throw new Error('A user with this email already exists. Please use a different email address.');
+        }
+
         let uploadedFiles: CloudinaryUploadResult[] = [];
         try {
             const defaultPassword = `${dto.school_name.slice(0, 3).toLowerCase().replace(/\s+/g, '')}/sm/${dto.school_phone.slice(-4)}`;
@@ -230,15 +240,7 @@ export class AuthService {
                 }
             });
 
-            // create new user also with email and hashed password
-            // Check if user already exists
-            const existingUser = await this.prisma.user.findUnique({
-                where: { email: dto.school_email.toLowerCase() }
-            });
-
-            if (existingUser) {
-                throw new Error('A user with this email already exists. Please use a different email address.');
-            }
+            
 
             await this.prisma.user.create({
                 data: {
@@ -248,6 +250,7 @@ export class AuthService {
                     school_id: school.id,
                     first_name: "School",
                     last_name: "Director",
+                    is_email_verified: true,
                     phone_number: dto.school_phone
                 }
             });
@@ -496,12 +499,7 @@ export class AuthService {
             // if user does not exist, return error
             if (!existing_user) {
                 console.log(colors.red("User not found"));
-                throw new NotFoundException({
-                    success: false,
-                    message: "User not found",
-                    error: null,
-                    statusCode: 404
-                });
+                return ResponseHelper.error("User not found", null, 404);
             }
 
             // if user exists, compare the password with the hashed password
@@ -510,11 +508,14 @@ export class AuthService {
             // if password matches, return success response with user data
             if(!passwordMatches) {
                 console.log(colors.red("Password does not match"));
-                throw new BadRequestException({
-                    success: false,
-                    message: "Passwords do not match",
-                    error: null,
-                    statusCode: 400
+                return ResponseHelper.error("Passwords do not match", null, 400);
+            }
+
+            // set email to verified if it is not already
+            if(!existing_user.is_email_verified) {
+                await this.prisma.user.update({
+                    where: { id: existing_user.id },
+                    data: { is_email_verified: true }
                 });
             }
 
@@ -529,45 +530,6 @@ export class AuthService {
                 school_id: existing_user.school_id,
                 created_at: formatDate(existing_user.createdAt),
                 updated_at: formatDate(existing_user.updatedAt)
-            }
-
-            // Define roles that require OTP verification
-            const rolesRequiringOtp = ['admin', 'school_director'];
-            
-            // Define emails that are exempt from OTP verification
-            const otpExemptEmails = [
-                'bernardmayowaa@gmail.com',
-                'lola.mariam.director1@bestacademy.edu.ng',
-                'nkem.obi2@bestacademy.edu.ng',
-                'tope.rasheedat1@bestacademy.edu.ng',
-                'quadri.jumoke1@bestacademy.edu.ng',
-                'omayowagold@gmail.com',
-                'adeyeye.toyorsi@gmail.com'
-            ];
-            
-            // Check if user role requires OTP verification
-            if (rolesRequiringOtp.includes(existing_user.role.toLowerCase()) && !otpExemptEmails.includes(existing_user.email)) {
-                console.log(colors.yellow(`Role ${existing_user.role} requires OTP verification`));
-                
-                // Send OTP for roles that require verification
-                await this.directorRequestLoginOtp({ email: existing_user.email });
-                
-                return ResponseHelper.success(
-                    "OTP verification required for this role. Please check your email for the OTP.",
-                    formatted_user
-                );
-            }
-            
-            // For roles that don't require OTP, check if email is verified
-            if(!existing_user.is_email_verified) {
-                console.log(colors.yellow("Email not verified, sending otp to verify email address"));
-                
-                await this.directorRequestLoginOtp({ email: existing_user.email });
-                
-                return ResponseHelper.success(
-                    "Email not verified, please verify your email address with the otp sent to your email address",
-                    formatted_user
-                );
             }
 
             // if password matches and all checks pass, return success response with tokens
@@ -604,28 +566,14 @@ export class AuthService {
             );
             
         } catch (error) {
-            console.log(colors.red("Error signing in: "), error);
+            this.logger.log(colors.red("Error signing in: "), error);
             
-            // If it's already a HttpException, just rethrow it
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            // For other errors, wrap them in a proper response
-            throw new InternalServerErrorException({
-                success: false,
-                message: "Error signing in",
-                error: error.message,
-                statusCode: 500
-            });
+            return new ApiResponse(false, "Error signing in", error.message);
         }
     }
-
-
-
     //
     async requestPasswordResetOTP(payload: RequestPasswordResetDTO) {
-        console.log(colors.blue("Requesting password reset otp..."))
+        this.logger.log(colors.blue("Requesting password reset otp..."))
 
         try {
             const existing_user = await this.prisma.user.findFirst({
