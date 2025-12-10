@@ -304,8 +304,8 @@ export class SchedulesController {
       status: 400,
       description: 'Bad request - Invalid data provided'
   })
-  async getTimetableSchedules(@Body(ValidationPipe) dto: getTimeTableDTO) {
-    return this.schedulesService.getTimetable(dto);
+  async getTimetableSchedules(@GetUser() user: User, @Body(ValidationPipe) dto: getTimeTableDTO) {
+    return this.schedulesService.getTimetable(dto, user);
   }
 
   @Post("create-timetable")

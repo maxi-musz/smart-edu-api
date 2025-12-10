@@ -53,6 +53,10 @@ export class ClassesService {
       },
     });
 
+    // Debug: Log the class IDs being returned
+    const classIds = classes.map(c => ({ id: c.id, name: c.name }));
+    this.logger.log(colors.yellow(`📋 fetch-all-classes returning class IDs: ${JSON.stringify(classIds)}`));
+
     // Fetch all teachers in the school
     const teachers = await this.prisma.user.findMany({
       where: {

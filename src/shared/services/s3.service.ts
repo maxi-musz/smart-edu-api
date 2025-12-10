@@ -117,7 +117,8 @@ export class S3Service {
           Body: file.buffer,
           ContentType: resolvedContentType,
           ContentDisposition: 'inline',
-          ACL: 'public-read',
+          // ACL removed - bucket uses "Bucket owner enforced" which disables ACLs
+          // Use bucket policies for public access instead
           Metadata: {
             originalName: file.originalname,
             size: file.size.toString(),
@@ -208,7 +209,8 @@ export class S3Service {
           Body: fs.createReadStream(localFilePath),
           ContentType: contentType,
           ContentDisposition: 'inline',
-          ACL: 'public-read',
+          // ACL removed - bucket uses "Bucket owner enforced" which disables ACLs
+          // Use bucket policies for public access instead
           Metadata: { uploadedAt: new Date().toISOString() },
         },
         queueSize: 4,

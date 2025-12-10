@@ -937,9 +937,16 @@ export class TeachersService {
 
     try {
       // 1. Get full user data with school_id
+      // Use user.sub (JWT subject) to match other endpoints behavior
+      const userId = (user as any).sub || user.id;
+      this.logger.log(colors.cyan(`🔍 Using user ID: ${userId} (user.sub: ${(user as any).sub}, user.id: ${user.id})`));
+      
       const fullUser = await this.prisma.user.findFirst({
-        where: { id: user.id },
-        select: { id: true, school_id: true }
+        where: { id: userId },
+        select: { 
+          id: true, 
+          school_id: true
+        }
       });
 
       if (!fullUser || !fullUser.school_id) {
@@ -954,15 +961,34 @@ export class TeachersService {
       }
       const currentSession = currentSessionResponse.data;
 
-      // 3. Get teacher data
+      // 3. Get teacher data using user_id from User model
+      this.logger.log(colors.yellow(`🔍 Searching for teacher with user_id: ${fullUser.id}, school_id: ${fullUser.school_id}`));
+      
+      // First, check if teacher exists at all for this user
+      const teacherExists = await this.prisma.teacher.findFirst({
+        where: {
+          user_id: fullUser.id
+        },
+        select: {
+          id: true,
+          user_id: true,
+          school_id: true,
+          academic_session_id: true,
+          email: true
+        }
+      });
+
+      if (teacherExists) {
+        this.logger.log(colors.cyan(`✅ Found teacher record: ${JSON.stringify(teacherExists)}`));
+      } else {
+        this.logger.log(colors.red(`❌ No teacher record found for user_id: ${fullUser.id}`));
+      }
+
       const teacher = await this.prisma.teacher.findFirst({
         where: {
-          OR: [
-            { user_id: user.id },
-            { email: user.email }
-          ],
+          user_id: fullUser.id, // Use user_id from User model
           school_id: fullUser.school_id,
-          academic_session_id: currentSession.id
+          // academic_session_id: currentSession.id
         },
         include: {
           subjectsTeaching: {
@@ -984,6 +1010,15 @@ export class TeachersService {
       });
 
       if (!teacher) {
+        this.logger.error(colors.red(`❌ Teacher not found for user: ${user.email} with user_id: ${fullUser.id}, school_id: ${fullUser.school_id}`));
+        // Try to find any teacher with this user_id to see what's different
+        const anyTeacher = await this.prisma.teacher.findFirst({
+          where: { user_id: fullUser.id },
+          select: { id: true, user_id: true, school_id: true, academic_session_id: true, email: true }
+        });
+        if (anyTeacher) {
+          this.logger.log(colors.yellow(`⚠️ Found teacher with different school_id: ${JSON.stringify(anyTeacher)}`));
+        }
         return new ApiResponse(false, 'Teacher not found', null);
       }
 
