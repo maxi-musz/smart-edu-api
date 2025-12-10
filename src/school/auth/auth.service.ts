@@ -513,6 +513,7 @@ export class AuthService {
 
             // set email to verified if it is not already
             if(!existing_user.is_email_verified) {
+                this.logger.log(colors.yellow(`Email not verified for user: ${existing_user.email}, verifying...`));
                 await this.prisma.user.update({
                     where: { id: existing_user.id },
                     data: { is_email_verified: true }

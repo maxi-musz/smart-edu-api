@@ -1025,7 +1025,7 @@ export class StudentsService {
           where: {
             topic_id: topicId,
             schoolId: schoolId,
-            status: 'published'
+            // status: 'published'
           },
           orderBy: { createdAt: 'desc' },
           select: {
@@ -1118,6 +1118,7 @@ export class StudentsService {
         }),
       ]);
 
+      this.logger.log(colors.yellow(`🔍 Total of Materials: ${materials?.length || 0}`));
       this.logger.log(colors.blue(`📊 Content fetched successfully:`));
       this.logger.log(colors.blue(`   - Videos: ${videos.length}`));
       this.logger.log(colors.blue(`   - Materials: ${materials.length}`));

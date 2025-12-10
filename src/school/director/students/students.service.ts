@@ -574,13 +574,17 @@ export class StudentsService {
 
         try {
           // 1. Validate required fields
-          if (!dto.first_name || !dto.last_name || !dto.email || !dto.phone_number) {
+          if (!dto.first_name || !dto.last_name || !dto.email) {
             return new ApiResponse(false, 'Missing required fields', null);
           }
 
           // 2. Get full user data with school_id
+          // Use user.sub (JWT subject) to match getAllClasses endpoint behavior
+          const userId = (user as any).sub || user.id;
+          this.logger.log(colors.cyan(`🔍 Using user ID: ${userId} (user.sub: ${(user as any).sub}, user.id: ${user.id})`));
+          
           const fullUser = await this.prisma.user.findFirst({
-            where: { id: user.id },
+            where: { id: userId },
             select: { id: true, school_id: true, first_name: true, last_name: true }
           });
 
@@ -588,6 +592,15 @@ export class StudentsService {
             this.logger.error(colors.red("User not found or missing school_id"));
             return new ApiResponse(false, 'User not found or invalid school data', 400);
           }
+
+          // log all available class fr this school 
+          const availableClasses = await this.prisma.class.findMany({
+            where: {
+              schoolId: fullUser.school_id
+            }
+          });
+          const debugClasses = availableClasses.map(c => ({ id: c.id, classId: c.classId, name: c.name }));
+          this.logger.log(colors.yellow(`all available classes for this school: ${JSON.stringify(debugClasses)}`));
 
           // 3. Check if student already exists
           const existingStudent = await this.prisma.user.findFirst({
@@ -601,6 +614,7 @@ export class StudentsService {
           // 4. Verify class exists and belongs to the school (only if class_id is provided)
           let classExists: any = null;
           if (dto.class_id) {
+            this.logger.log(colors.cyan(`🔍 Checking class_id: ${dto.class_id} for school: ${fullUser.school_id}`));
             classExists = await this.prisma.class.findFirst({
               where: {
                 id: dto.class_id,
@@ -609,10 +623,12 @@ export class StudentsService {
             });
 
             if (!classExists) {
-              this.logger.log(colors.red(`Specified class not found or doesn't belong to school`));
+              this.logger.log(colors.red(`❌ Class not found! Searching for class_id: ${dto.class_id}`));
+              this.logger.log(colors.yellow(`Available class IDs: ${JSON.stringify(availableClasses.map(c => c.id))}`));
+              console.log(colors.red(`Specified class not found or doesn't belong to school`));
               return new ApiResponse(false, 'Specified class not found or access denied', 404);
             }
-            this.logger.log(colors.green(`✅ Class verified: ${classExists.name}`));
+            this.logger.log(colors.green(`✅ Class verified: ${classExists.name} (ID: ${classExists.id})`));
           } else {
             this.logger.log(colors.yellow(`⚠️ No class specified - student will be enrolled without a class`));
           }

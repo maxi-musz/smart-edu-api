@@ -1420,6 +1420,8 @@ export class TopicsService {
     user: any
   ): Promise<any> {
     this.logger.log(colors.cyan(`📚 Starting material upload: "${uploadDto.title}"`));
+    let s3Key: string | undefined;
+    let s3UploadSucceeded = false;
     
     try {
       // Validate file
@@ -1505,30 +1507,61 @@ export class TopicsService {
         `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
       );
 
+      // Store S3 key for potential rollback
+      s3Key = materialUploadResult.key;
+      s3UploadSucceeded = true;
+
       this.logger.log(colors.green(`✅ Material uploaded successfully to S3`));
 
       // Calculate material size
       const materialSize = FileValidationHelper.formatFileSize(materialFile.size);
 
+      // Get or create S3 platform Organisation
+      this.logger.log(colors.blue(`🏢 Getting or creating S3 platform...`));
+      let s3Platform;
+      try {
+        s3Platform = await this.prisma.organisation.upsert({
+          where: { name: 'AWS S3' },
+          update: {},
+          create: {
+            name: 'AWS S3',
+            email: 's3@smart-edu.com'
+          }
+        });
+        this.logger.log(colors.green(`✅ S3 platform ready: ${s3Platform.id}`));
+      } catch (platformError) {
+        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
+        // Rollback: Delete S3 file
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to platform creation failure`));
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+        }
+        throw new BadRequestException(`Failed to get/create S3 platform: ${platformError.message}`);
+      }
+
       // Create material record in database
       this.logger.log(colors.blue(`💾 Saving material to database...`));
       
-      const material = await this.prisma.pDFMaterial.create({
-        data: {
-          title: uploadDto.title.toLowerCase(),
-          description: uploadDto.description?.toLowerCase(),
-          topic_id: uploadDto.topic_id,
-          schoolId: schoolId,
-          platformId: 's3-platform-001', // Using S3 organisation ID
-          uploadedById: userId,
-          order: nextOrder, // Auto-assign order
-          url: materialUploadResult.url, // S3 URL
-          size: materialSize,
-          fileType: validationResult.fileType,
-          originalName: materialFile.originalname,
-          status: 'published',
-          downloads: 0
-        },
+      let material;
+      try {
+        material = await this.prisma.pDFMaterial.create({
+          data: {
+            title: uploadDto.title.toLowerCase(),
+            description: uploadDto.description?.toLowerCase(),
+            topic_id: uploadDto.topic_id,
+            schoolId: schoolId,
+            platformId: s3Platform.id, // Use the actual platform ID
+            uploadedById: userId,
+            order: nextOrder, // Auto-assign order
+            url: materialUploadResult.url, // S3 URL
+            size: materialSize,
+            fileType: validationResult.fileType,
+            originalName: materialFile.originalname,
+            status: 'published',
+            downloads: 0
+          },
         include: {
           topic: {
             select: {
@@ -1544,6 +1577,17 @@ export class TopicsService {
           }
         }
       });
+      } catch (dbError) {
+        // Rollback: Delete S3 file if DB save fails
+        this.logger.error(colors.red(`❌ Database save failed, rolling back S3 upload...`));
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to database save failure`));
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+        }
+        throw dbError;
+      }
 
       this.logger.log(colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully!`));
       try {
@@ -1590,6 +1634,17 @@ export class TopicsService {
       );
 
     } catch (error) {
+      // Rollback: Delete S3 file if it was uploaded but operation failed
+      if (typeof s3Key !== 'undefined' && s3UploadSucceeded) {
+        this.logger.log(colors.yellow(`🔄 Attempting to rollback S3 upload...`));
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to operation failure`));
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+        }
+      }
+      
       this.logger.error(colors.red(`❌ Error uploading material: ${error.message}`));
       
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
@@ -1615,7 +1670,11 @@ export class TopicsService {
     const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.school_id, materialFile.size);
 
     this.uploadMaterialWithProgress(uploadDto, materialFile, user, sessionId)
-      .catch(err => this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message));
+      .catch(err => {
+        this.logger.error(colors.red(`❌ Material upload failed in background: ${err.message}`));
+        this.logger.error(colors.red(`❌ Error stack: ${err.stack}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message);
+      });
 
     return {
       success: true,
@@ -1635,6 +1694,9 @@ export class TopicsService {
     sessionId: string
   ) {
     this.logger.log(colors.cyan(`📚 Starting material upload with progress: "${uploadDto.title}"`));
+    let smoother: NodeJS.Timeout | null = null;
+    let s3Key: string | undefined;
+    let s3UploadSucceeded = false;
     try {
       // Validate file type/size using existing helper
       const validationResult = FileValidationHelper.validateMaterialFile(materialFile);
@@ -1672,7 +1734,7 @@ export class TopicsService {
       const onePercent = Math.max(1, Math.floor(totalBytes / 100));
       const tickMs = 250;
       this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
-      const smoother = setInterval(() => {
+      smoother = setInterval(() => {
         if (emittedLoaded < lastKnownLoaded) {
           const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
           emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
@@ -1694,8 +1756,38 @@ export class TopicsService {
         }
       );
 
+      // Store S3 key for potential rollback
+      s3Key = materialUploadResult.key;
+      s3UploadSucceeded = true;
+
       // Processing/saving
       this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
+      this.logger.log(colors.blue(`💾 Starting database save operation...`));
+
+      // Get or create S3 platform Organisation
+      this.logger.log(colors.blue(`🏢 Getting or creating S3 platform...`));
+      let s3Platform;
+      try {
+        s3Platform = await this.prisma.organisation.upsert({
+          where: { name: 'AWS S3' },
+          update: {},
+          create: {
+            name: 'AWS S3',
+            email: 's3@smart-edu.com'
+          }
+        });
+        this.logger.log(colors.green(`✅ S3 platform ready: ${s3Platform.id}`));
+      } catch (platformError) {
+        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
+        // Rollback: Delete S3 file
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to platform creation failure`));
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+        }
+        throw new BadRequestException(`Failed to get/create S3 platform: ${platformError.message}`);
+      }
 
       // Next order
       const lastMaterial = await this.prisma.pDFMaterial.findFirst({
@@ -1704,33 +1796,56 @@ export class TopicsService {
         select: { order: true }
       });
       const nextOrder = (lastMaterial?.order || 0) + 1;
+      this.logger.log(colors.blue(`📊 Next material order: ${nextOrder}`));
 
       this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
+      this.logger.log(colors.blue(`💾 Saving material to database...`));
 
-      const material = await this.prisma.pDFMaterial.create({
-        data: {
-          title: uploadDto.title.toLowerCase(),
-          description: uploadDto.description?.toLowerCase(),
-          topic_id: uploadDto.topic_id,
-          schoolId,
-          platformId: 's3-platform-001',
-          uploadedById: userId,
-          order: nextOrder,
-          url: materialUploadResult.url,
-          size: FileValidationHelper.formatFileSize(materialFile.size),
-          fileType: validationResult.fileType,
-          originalName: materialFile.originalname,
-          status: 'published',
-          downloads: 0
-        },
-        include: {
-          topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
+      let material;
+      try {
+        material = await this.prisma.pDFMaterial.create({
+          data: {
+            title: uploadDto.title.toLowerCase(),
+            description: uploadDto.description?.toLowerCase(),
+            topic_id: uploadDto.topic_id,
+            schoolId,
+            platformId: s3Platform.id, // Use the actual platform ID
+            uploadedById: userId,
+            order: nextOrder,
+            url: materialUploadResult.url,
+            size: FileValidationHelper.formatFileSize(materialFile.size),
+            fileType: validationResult.fileType,
+            originalName: materialFile.originalname,
+            status: 'published',
+            downloads: 0
+          },
+          include: {
+            topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
+          }
+        });
+      } catch (dbError) {
+        // Rollback: Delete S3 file if DB save fails
+        this.logger.error(colors.red(`❌ Database save failed, rolling back S3 upload...`));
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to database save failure`));
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
         }
-      });
+        throw dbError;
+      }
 
-      clearInterval(smoother);
+      if (smoother) clearInterval(smoother);
       // finalize
       this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, material.id);
+
+      this.logger.log(colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully with progress tracking!`));
+      this.logger.log(colors.blue(`📊 Material Details:`));
+      this.logger.log(colors.blue(`   - ID: ${material.id}`));
+      this.logger.log(colors.blue(`   - Size: ${material.size || '0 Bytes'}`));
+      this.logger.log(colors.blue(`   - Type: ${material.fileType || 'unknown'}`));
+      this.logger.log(colors.blue(`   - URL: ${material.url}`));
+      this.logger.log(colors.blue(`   - Session ID: ${sessionId}`));
 
       return ResponseHelper.created(
         'Material uploaded successfully',
@@ -1754,6 +1869,21 @@ export class TopicsService {
         }
       );
     } catch (error) {
+      if (smoother) clearInterval(smoother);
+      
+      // Rollback: Delete S3 file if it was uploaded but operation failed
+      if (typeof s3Key !== 'undefined' && s3UploadSucceeded) {
+        this.logger.log(colors.yellow(`🔄 Attempting to rollback S3 upload...`));
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to operation failure`));
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+        }
+      }
+      
+      this.logger.error(colors.red(`❌ Error uploading material with progress: ${error.message}`));
+      this.logger.error(colors.red(`❌ Error stack: ${error.stack}`));
       this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
       throw error;
     }

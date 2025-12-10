@@ -16,16 +16,30 @@ export class SchedulesService {
     private readonly academicSessionService: AcademicSessionService
   ) {}
 
-  async getTimetable(dto: getTimeTableDTO): Promise<ApiResponse<any>> {
+  async getTimetable(dto: getTimeTableDTO, user: User): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`Fetching timetable for class: ${dto.class}`));
     
-    // Get all available classes for the school first
+    // Get user's school_id
+    const userData = await this.prisma.user.findUnique({
+      where: { email: user.email },
+      select: { school_id: true }
+    });
+
+    if (!userData || !userData.school_id) {
+      this.logger.log(colors.red(`User not found or missing school_id`));
+      return new ApiResponse(false, 'User not found or invalid school data', null);
+    }
+
+    this.logger.log(colors.cyan(`Fetching timetable for school: ${userData.school_id}`));
+    
+    // Get all available classes for the school first (filtered by school)
     const availableClasses = await this.prisma.class.findMany({
       where: {
         name: {
           equals: String(dto.class),
           mode: 'insensitive'
-        }
+        },
+        schoolId: userData.school_id, // Filter by school
       },
       select: { 
         id: true,
@@ -34,20 +48,24 @@ export class SchedulesService {
     });
 
     if (availableClasses.length === 0) {
+      this.logger.log(colors.red(`Class ${dto.class} not found for school ${userData.school_id}`));
       return new ApiResponse(false, `Class ${dto.class} not found`, null);
     }
 
     const classData = availableClasses[0]; // Get the first matching class
 
-    // Get all time slots for the school first
+    // Get all time slots for the school (filtered by school)
     const timeSlots = await this.prisma.timeSlot.findMany({
       where: {
+        schoolId: userData.school_id, // Filter by school
         isActive: true,
       },
       orderBy: {
         order: 'asc',
       },
     });
+
+    this.logger.log(colors.yellow(`Found ${timeSlots.length} time slots for school ${userData.school_id}`));
 
     // Get all timetable entries for the class
     const timetable = await this.prisma.timetableEntry.findMany({
@@ -614,20 +632,22 @@ export class SchedulesService {
     });
 
     if (!school) {
+      this.logger.log(colors.red(`School not found for user: ${user.email}`));
       return new ApiResponse(false, "School not found", null);
     }
 
     const timeSlots = await this.prisma.timeSlot.findMany({
       where: {
         schoolId: school.id,
-        isActive: true,
+        // isActive: true,
       },
       orderBy: {
         order: 'asc',
       },
     });
 
-    return new ApiResponse(true, "Time slots fetched successfully", timeSlots);
+    this.logger.log(colors.green(`Total of ${timeSlots.length} time slots fetched successfully`));
+    return new ApiResponse(true, "Total of " + timeSlots.length + " time slots fetched successfully", timeSlots);
   }
 
   async updateTimeSlot(user: User, id: string, dto: UpdateTimeSlotDTO) {

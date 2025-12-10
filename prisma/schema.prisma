@@ -133,8 +133,8 @@ model User {
   gender                     Gender                 @default(other)
   otp                        String?                @default("")
   otp_expires_at             DateTime?
-  is_email_verified          Boolean?               @default(false)
-  is_otp_verified            Boolean?               @default(false)
+  is_email_verified          Boolean?               @default(true)
+  is_otp_verified            Boolean?               @default(true)
   role                       Roles                  @default(student)
   status                     UserStatus             @default(active)
   createdAt                  DateTime               @default(now())
