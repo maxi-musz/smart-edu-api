@@ -8,11 +8,12 @@ import { TopicsModule } from './topics/topics.module';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { AttendanceTeacherModule } from './attendance-teacher/attendance-teacher.module';
 import { ResultsModule } from './results/results.module';
+import { ProfilesModule } from './profiles/profiles.module';
 
 @Module({
-  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule, ResultsModule],
+  imports: [PrismaModule, AcademicSessionModule, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule, ResultsModule, ProfilesModule],
   controllers: [TeachersController],
   providers: [TeachersService],
-  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule, ResultsModule]
+  exports: [TeachersService, SubjectsModule, TopicsModule, AssessmentsModule, AttendanceTeacherModule, ResultsModule, ProfilesModule]
 })
 export class TeachersModule {}

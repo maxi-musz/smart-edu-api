@@ -1,17 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiResponse } from '../shared/helper-functions/response';
+import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
+import { StorageService } from '../shared/services/providers/storage.service';
 
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storageService: StorageService
+  ) {}
 
   async getUserProfile(user: any) {
     try {
-      this.logger.log(colors.blue(`🔍 Fetching profile for user: ${user.email}`));
+      this.logger.log(colors.blue(`🔍 Fetching profile for user: ${user.email} Role: ${user.role}`));
 
       // Get full user details
       const fullUser = await this.prisma.user.findUnique({
@@ -240,6 +245,188 @@ export class UserService {
     } catch (error) {
       this.logger.error(colors.red(`❌ Error fetching user profile: ${error.message}`));
       return new ApiResponse(false, 'Failed to fetch profile data', null);
+    }
+  }
+
+  /**
+   * Update user profile picture (works for all roles: student, teacher, director)
+   * @param user - Authenticated user
+   * @param file - Profile picture file
+   * @returns Updated profile picture information
+   */
+  async updateProfilePicture(user: any, file: Express.Multer.File) {
+    this.logger.log(colors.cyan(`Updating profile picture for user: ${user.email} (Role: ${user.role})`));
+
+    try {
+      // Validate file
+      if (!file) {
+        throw new BadRequestException('Profile picture file is required');
+      }
+
+      // Validate file type (images only)
+      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedMimeTypes.includes(file.mimetype)) {
+        throw new BadRequestException('Invalid file type. Allowed types: JPEG, PNG, GIF, WEBP');
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new BadRequestException('File size exceeds 5MB limit');
+      }
+
+      // Get user with current display picture
+      const currentUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: {
+          id: true,
+          school_id: true,
+          display_picture: true,
+          role: true
+        }
+      });
+
+      if (!currentUser) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Store old picture info for deletion
+      const oldDisplayPicture = currentUser.display_picture as any;
+      let oldPictureKey: string | undefined;
+      
+      if (oldDisplayPicture?.key) {
+        oldPictureKey = oldDisplayPicture.key;
+      }
+
+      // Determine folder based on role
+      let folder: string;
+      let entityId: string = currentUser.id;
+
+      // Get role-specific entity ID for folder organization
+      if (currentUser.role === 'teacher') {
+        const teacher = await this.prisma.teacher.findFirst({
+          where: { user_id: currentUser.id },
+          select: { id: true }
+        });
+        if (teacher) {
+          entityId = teacher.id;
+          folder = `profile-pictures/schools/${currentUser.school_id}/teachers/${entityId}`;
+        } else {
+          folder = `profile-pictures/schools/${currentUser.school_id}/users/${entityId}`;
+        }
+      } else if (currentUser.role === 'student') {
+        const student = await this.prisma.student.findFirst({
+          where: { user_id: currentUser.id },
+          select: { id: true }
+        });
+        if (student) {
+          entityId = student.id;
+          folder = `profile-pictures/schools/${currentUser.school_id}/students/${entityId}`;
+        } else {
+          folder = `profile-pictures/schools/${currentUser.school_id}/users/${entityId}`;
+        }
+      } else {
+        // Director or other roles
+        folder = `profile-pictures/schools/${currentUser.school_id}/users/${entityId}`;
+      }
+
+      // Upload new picture to storage
+      const fileName = `profile_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      
+      let uploadResult;
+      let newPictureKey: string | undefined;
+      
+      try {
+        uploadResult = await this.storageService.uploadFile(file, folder, fileName);
+        newPictureKey = uploadResult.key;
+        this.logger.log(colors.green(`✅ Profile picture uploaded successfully: ${uploadResult.url}`));
+      } catch (uploadError) {
+        this.logger.error(colors.red(`❌ Failed to upload profile picture: ${uploadError.message}`));
+        throw new BadRequestException(`Failed to upload profile picture: ${uploadError.message}`);
+      }
+
+      // Prepare new display picture object
+      const newDisplayPicture = {
+        url: uploadResult.url,
+        key: uploadResult.key,
+        ...(uploadResult.bucket && { bucket: uploadResult.bucket }),
+        ...(uploadResult.etag && { etag: uploadResult.etag }),
+        uploaded_at: new Date().toISOString()
+      };
+
+      // Update User display_picture
+      try {
+        await this.prisma.user.update({
+          where: { id: currentUser.id },
+          data: { display_picture: newDisplayPicture }
+        });
+
+        // Also update role-specific entity if it exists
+        if (currentUser.role === 'teacher') {
+          const teacher = await this.prisma.teacher.findFirst({
+            where: { user_id: currentUser.id },
+            select: { id: true }
+          });
+          if (teacher) {
+            await this.prisma.teacher.update({
+              where: { id: teacher.id },
+              data: { display_picture: newDisplayPicture }
+            });
+          }
+        } else if (currentUser.role === 'student') {
+          const student = await this.prisma.student.findFirst({
+            where: { user_id: currentUser.id },
+            select: { id: true }
+          });
+          if (student) {
+            // Note: Student model doesn't have display_picture field, only User does
+            // But we keep this structure for consistency
+          }
+        }
+
+        this.logger.log(colors.green(`✅ Profile picture updated successfully for user: ${user.email}`));
+
+        // Delete old picture if it exists (after successful update)
+        if (oldPictureKey) {
+          try {
+            await this.storageService.deleteFile(oldPictureKey);
+            this.logger.log(colors.yellow(`🗑️ Old profile picture deleted: ${oldPictureKey}`));
+          } catch (deleteError) {
+            // Log but don't fail - old picture deletion is not critical
+            this.logger.warn(colors.yellow(`⚠️ Failed to delete old profile picture: ${deleteError.message}`));
+          }
+        }
+
+        return ResponseHelper.success(
+          'Profile picture updated successfully',
+          {
+            display_picture: newDisplayPicture,
+            url: uploadResult.url
+          }
+        );
+
+      } catch (updateError) {
+        // Rollback: Delete newly uploaded picture if database update fails
+        this.logger.error(colors.red(`❌ Database update failed, rolling back upload...`));
+        if (newPictureKey) {
+          try {
+            await this.storageService.deleteFile(newPictureKey);
+            this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted newly uploaded picture due to database update failure`));
+          } catch (deleteError) {
+            this.logger.error(colors.red(`❌ Failed to rollback uploaded picture: ${deleteError.message}`));
+          }
+        }
+        throw new BadRequestException(`Failed to update profile picture: ${updateError.message}`);
+      }
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error updating profile picture: ${error.message}`));
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new BadRequestException('Failed to update profile picture');
     }
   }
 }
