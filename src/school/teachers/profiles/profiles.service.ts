@@ -162,6 +162,8 @@ export class ProfilesService {
       }
 
       this.logger.log(colors.green(`✅ Teacher found: ${teacher.first_name} ${teacher.last_name} (ID: ${teacher.id}, User ID: ${teacher.user_id})`));
+    //   log teacher display picture 
+    this.logger.log(colors.blue(`🔍 Teacher display picture: ${JSON.stringify(teacher.display_picture)}`));
 
       if (!teacher.school) {
         this.logger.error(colors.red(`❌ School not found for teacher: ${user.email}`));
