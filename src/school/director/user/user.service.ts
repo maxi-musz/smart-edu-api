@@ -653,6 +653,7 @@ export class UserService {
                 settings: settings,
                 support_info: supportInfo
             };
+            this.logger.log(colors.blue(`Student display picture: ${JSON.stringify(userProfile.display_picture)}`));
 
             this.logger.log(colors.green(`Mobile student profile retrieved successfully for: ${user.email}`));
             
