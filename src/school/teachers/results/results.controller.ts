@@ -33,10 +33,12 @@ export class ResultsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
     summary: 'Get data for result main page',
-    description: 'Retrieves current session, teacher classes, default subject, and paginated student results for the first class and subject'
+    description: 'Retrieves a list of sessions/terms, and for a selected session/term (defaults to current), returns every class managed by the teacher with students and their released subject results (as prepared by the director). Supports pagination of students.'
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (defaults to 1)', example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page (defaults to 10)', example: 10 })
+  @ApiQuery({ name: 'sessionId', required: false, description: 'Academic session ID to filter by (defaults to current session)' })
+  @ApiQuery({ name: 'term', required: false, description: 'Term to filter by; used with sessionId' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number for students pagination (defaults to 1)', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size for students pagination (defaults to 30)', example: 30 })
   @ApiResponse({ 
     status: 200, 
     description: 'Result main page data retrieved successfully',
@@ -56,11 +58,13 @@ export class ResultsController {
   })
   getResultMainPageData(
     @GetUser() user: any,
+    @Query('sessionId') sessionId?: string,
+    @Query('term') term?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number
   ) {
     const pageNum = page ? parseInt(page.toString(), 10) : 1;
-    const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
-    return this.resultsService.getResultMainPageData(user, pageNum, limitNum);
+    const limitNum = limit ? parseInt(limit.toString(), 10) : 30;
+    return this.resultsService.getResultMainPageData(user, { sessionId, term, page: pageNum, limit: limitNum });
   }
 }

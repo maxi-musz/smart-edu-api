@@ -25,7 +25,7 @@ export class SessionSummaryDto {
   is_current: boolean;
 }
 
-export class TeacherClassDto {
+export class ClassInfoDto {
   @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Class ID' })
   id: string;
 
@@ -79,18 +79,18 @@ export class StudentSubjectResultDto {
   grade: string;
 }
 
-export class ClassStudentResultDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Student ID' })
-  student_id: string;
+export class StudentResultDataDto {
+  @ApiProperty({ type: CurrentSessionDto, description: 'Current academic session and term' })
+  current_session: CurrentSessionDto;
 
-  @ApiProperty({ example: 'John Doe', description: 'Student full name' })
-  student_name: string;
+  @ApiProperty({ type: [SessionSummaryDto], description: 'Available sessions/terms to filter by' })
+  sessions: SessionSummaryDto[];
 
-  @ApiProperty({ example: 'STU001', description: 'Student roll number' })
-  roll_number: string;
+  @ApiProperty({ type: ClassInfoDto, description: 'Current class information' })
+  current_class: ClassInfoDto;
 
-  @ApiProperty({ example: 'https://api.school.com/images/students/student_1.jpg', description: 'Student display picture' })
-  display_picture: string;
+  @ApiProperty({ type: [ClassSubjectDto], description: 'Subjects offered in the current class' })
+  subjects: ClassSubjectDto[];
 
   @ApiProperty({ example: 45, description: 'Total CA score across subjects', nullable: true })
   total_ca_score: number | null;
@@ -98,16 +98,16 @@ export class ClassStudentResultDto {
   @ApiProperty({ example: 60, description: 'Total exam score across subjects', nullable: true })
   total_exam_score: number | null;
 
-  @ApiProperty({ example: 105, description: 'Overall total score' })
+  @ApiProperty({ example: 105, description: 'Overall total score', nullable: true })
   total_score: number | null;
 
-  @ApiProperty({ example: 150, description: 'Overall maximum obtainable score' })
+  @ApiProperty({ example: 150, description: 'Overall maximum obtainable score', nullable: true })
   total_max_score: number | null;
 
-  @ApiProperty({ example: 70, description: 'Overall percentage' })
+  @ApiProperty({ example: 70, description: 'Overall percentage', nullable: true })
   overall_percentage: number | null;
 
-  @ApiProperty({ example: 'B', description: 'Overall grade' })
+  @ApiProperty({ example: 'B', description: 'Overall grade', nullable: true })
   overall_grade: string | null;
 
   @ApiProperty({ example: 5, description: 'Student position in class', nullable: true })
@@ -117,59 +117,16 @@ export class ClassStudentResultDto {
   total_students: number | null;
 
   @ApiProperty({ type: [StudentSubjectResultDto], description: 'Subject results for the student' })
-  subjects: StudentSubjectResultDto[];
+  subject_results: StudentSubjectResultDto[];
 }
 
-export class TeacherClassWithResultsDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Class ID' })
-  id: string;
-
-  @ApiProperty({ example: 'Grade 10A', description: 'Class name' })
-  name: string;
-
-  @ApiProperty({ example: '10A', description: 'Class ID (short identifier)' })
-  classId: string;
-
-  @ApiProperty({ type: [ClassSubjectDto], description: 'Subjects offered in the class' })
-  subjects: ClassSubjectDto[];
-
-  @ApiProperty({ type: [ClassStudentResultDto], description: 'Students and their released results' })
-  students: ClassStudentResultDto[];
-
-  @ApiProperty({ example: 1, description: 'Current page for this class' })
-  page: number;
-
-  @ApiProperty({ example: 30, description: 'Page size for this class' })
-  limit: number;
-
-  @ApiProperty({ example: 120, description: 'Total students in class (unpaginated)' })
-  total_students: number;
-}
-
-export class ResultMainPageDataDto {
-  @ApiProperty({ type: CurrentSessionDto, description: 'Current academic session and term' })
-  current_session: CurrentSessionDto;
-
-  @ApiProperty({ type: [SessionSummaryDto], description: 'Available sessions/terms to filter by' })
-  sessions: SessionSummaryDto[];
-
-  @ApiProperty({ type: [TeacherClassWithResultsDto], description: 'Classes managed by the teacher with released results' })
-  classes: TeacherClassWithResultsDto[];
-
-  @ApiProperty({ example: 1, description: 'Requested page (applied per class list)' })
-  page: number;
-
-  @ApiProperty({ example: 30, description: 'Requested limit (applied per class list)' })
-  limit: number;
-}
-
-export class ResultMainPageResponseDto {
+export class StudentResultResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Result main page data retrieved successfully', description: 'Response message' })
+  @ApiProperty({ example: 'Student result retrieved successfully', description: 'Response message' })
   message: string;
 
-  @ApiProperty({ type: ResultMainPageDataDto, description: 'Result main page data' })
-  data: ResultMainPageDataDto;
+  @ApiProperty({ type: StudentResultDataDto, description: 'Student result data' })
+  data: StudentResultDataDto;
 }

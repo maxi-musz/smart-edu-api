@@ -2777,73 +2777,73 @@ export class StudentsService {
   }
 
   /**
-   * Update quiz submissions tracking
-   * @param quizId - Quiz ID
-   * @param userId - User ID
-   * @param email - User email
-   * @param firstName - User first name
-   * @param lastName - User last name
-   */
-  private async updateQuizSubmissions(quizId: string, userId: string, email: string, firstName: string, lastName: string) {
-    try {
-      // Get current quiz data
-      const quiz = await this.prisma.assessment.findUnique({
-        where: { id: quizId },
-        select: { submissions: true }
-      });
+  //  * Update quiz submissions tracking
+  //  * @param quizId - Quiz ID
+  //  * @param userId - User ID
+  //  * @param email - User email
+  //  * @param firstName - User first name
+  //  * @param lastName - User last name
+  //  */
+  // private async updateQuizSubmissions(quizId: string, userId: string, email: string, firstName: string, lastName: string) {
+  //   try {
+  //     // Get current quiz data
+  //     const quiz = await this.prisma.assessment.findUnique({
+  //       where: { id: quizId },
+  //       select: { submissions: true }
+  //     });
 
-      if (!quiz) return;
+  //     if (!quiz) return;
 
-      // Parse existing submissions or initialize
-      const currentSubmissions = quiz.submissions as any || {
-        total_submissions: 0,
-        recent_submissions: [],
-        student_counts: {} // Track individual student submission counts
-      };
+  //     // Parse existing submissions or initialize
+  //     const currentSubmissions = quiz.submissions as any || {
+  //       total_submissions: 0,
+  //       recent_submissions: [],
+  //       student_counts: {} // Track individual student submission counts
+  //     };
 
-      // Check if user already submitted and get current count
-      const existingSubmission = currentSubmissions.recent_submissions.find(
-        (sub: any) => sub.user_id === userId
-      );
-      const userAlreadySubmitted = !!existingSubmission;
-      const currentUserCount = currentSubmissions.student_counts[userId] || 0;
+  //     // Check if user already submitted and get current count
+  //     const existingSubmission = currentSubmissions.recent_submissions.find(
+  //       (sub: any) => sub.user_id === userId
+  //     );
+  //     const userAlreadySubmitted = !!existingSubmission;
+  //     const currentUserCount = currentSubmissions.student_counts[userId] || 0;
 
-      // Update submissions data
-      const updatedSubmissions = {
-        total_submissions: userAlreadySubmitted 
-          ? currentSubmissions.total_submissions 
-          : currentSubmissions.total_submissions + 1,
-        student_counts: {
-          ...currentSubmissions.student_counts,
-          [userId]: currentUserCount + 1
-        },
-        recent_submissions: [
-          {
-            user_id: userId,
-            name: `${firstName} ${lastName}`,
-            email: email,
-            submitted_at: new Date().toISOString(),
-            count: currentUserCount + 1 // Add count for this specific submission
-          },
-          // Keep only the 10 most recent submissions, excluding current user's old entries
-          ...currentSubmissions.recent_submissions.filter((sub: any) => sub.user_id !== userId)
-        ].slice(0, 10)
-      };
+  //     // Update submissions data
+  //     const updatedSubmissions = {
+  //       total_submissions: userAlreadySubmitted 
+  //         ? currentSubmissions.total_submissions 
+  //         : currentSubmissions.total_submissions + 1,
+  //       student_counts: {
+  //         ...currentSubmissions.student_counts,
+  //         [userId]: currentUserCount + 1
+  //       },
+  //       recent_submissions: [
+  //         {
+  //           user_id: userId,
+  //           name: `${firstName} ${lastName}`,
+  //           email: email,
+  //           submitted_at: new Date().toISOString(),
+  //           count: currentUserCount + 1 // Add count for this specific submission
+  //         },
+  //         // Keep only the 10 most recent submissions, excluding current user's old entries
+  //         ...currentSubmissions.recent_submissions.filter((sub: any) => sub.user_id !== userId)
+  //       ].slice(0, 10)
+  //     };
 
-      // Update quiz with new submissions data
-      await this.prisma.assessment.update({
-        where: { id: quizId },
-        data: {
-          submissions: updatedSubmissions
-        }
-      });
+  //     // Update quiz with new submissions data
+  //     await this.prisma.assessment.update({
+  //       where: { id: quizId },
+  //       data: {
+  //         submissions: updatedSubmissions
+  //       }
+  //     });
       
 
-      this.logger.log(colors.green(`✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`));
-    } catch (error) {
-      this.logger.error(colors.red(`❌ Error updating quiz submissions: ${error.message}`));
-    }
-  }
+  //     this.logger.log(colors.green(`✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`));
+  //   } catch (error) {
+  //     this.logger.error(colors.red(`❌ Error updating quiz submissions: ${error.message}`));
+  //   }
+  // }
 
   /**
    * Get assessment questions with user's previous answers
