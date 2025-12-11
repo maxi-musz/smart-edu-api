@@ -1737,6 +1737,7 @@ export class StudentsService {
               submitted_at: latestAttempt.submitted_at?.toISOString()
             } : null
           },
+          student_can_view_grading: assessment.student_can_view_grading ?? true,
           performance_summary: {
             highest_score: highestScore,
             highest_percentage: highestPercentage,
@@ -2979,6 +2980,12 @@ export class StudentsService {
       if (!assessment) {
         this.logger.error(colors.red(`❌ Assessment not found or access denied: ${assessmentId}`));
         return new ApiResponse(false, 'Assessment not found or access denied', null);
+      }
+
+      // Check if student can view grading
+      if (assessment.student_can_view_grading === false) {
+        this.logger.warn(colors.yellow(`⚠️ Assessment grading is not available for viewing: ${assessmentId}`));
+        return new ApiResponse(false, 'Assessment grading is not available for viewing', null);
       }
 
       // Get all attempts for this assessment by this student

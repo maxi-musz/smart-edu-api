@@ -712,49 +712,50 @@ model Assignment {
 }
 
 model Assessment {
-  id                    String                 @id @default(cuid())
-  title                 String
-  description           String?
-  duration              Int?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  topic_id              String?
-  order                 Int                    @default(0)
-  academic_session_id   String
-  allow_review          Boolean                @default(true)
-  auto_submit           Boolean                @default(false)
-  created_by            String
-  end_date              DateTime?
-  grading_type          GradingType            @default(AUTOMATIC)
-  instructions          String?
-  is_published          Boolean                @default(false)
-  is_result_released    Boolean                @default(false)
-  max_attempts          Int                    @default(1)
-  passing_score         Float                  @default(50.0)
-  published_at          DateTime?
-  result_released_at    DateTime?
-  school_id             String
-  show_correct_answers  Boolean                @default(false)
-  show_feedback         Boolean                @default(true)
-  shuffle_options       Boolean                @default(false)
-  shuffle_questions     Boolean                @default(false)
-  start_date            DateTime?
-  tags                  String[]
-  time_limit            Int?
-  total_points          Float                  @default(100.0)
-  status                QuizStatus             @default(DRAFT)
-  subject_id            String
-  assessment_type       AssessmentType         @default(CBT)
-  submissions           Json?
-  academicSession       AcademicSession        @relation(fields: [academic_session_id], references: [id])
-  createdBy             User                   @relation(fields: [created_by], references: [id])
-  school                School                 @relation(fields: [school_id], references: [id])
-  subject               Subject                @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  topic                 Topic?                 @relation(fields: [topic_id], references: [id])
-  analytics             AssessmentAnalytics?
-  attempts              AssessmentAttempt[]
-  questions             AssessmentQuestion[]
-  assessmentSubmissions AssessmentSubmission[]
+  id                       String                 @id @default(cuid())
+  title                    String
+  description              String?
+  duration                 Int?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  topic_id                 String?
+  order                    Int                    @default(0)
+  academic_session_id      String
+  allow_review             Boolean                @default(true)
+  auto_submit              Boolean                @default(false)
+  created_by               String
+  end_date                 DateTime?
+  grading_type             GradingType            @default(AUTOMATIC)
+  instructions             String?
+  is_published             Boolean                @default(false)
+  is_result_released       Boolean                @default(false)
+  max_attempts             Int                    @default(1)
+  passing_score            Float                  @default(50.0)
+  published_at             DateTime?
+  result_released_at       DateTime?
+  school_id                String
+  show_correct_answers     Boolean                @default(false)
+  show_feedback            Boolean                @default(true)
+  shuffle_options          Boolean                @default(false)
+  shuffle_questions        Boolean                @default(false)
+  start_date               DateTime?
+  tags                     String[]
+  time_limit               Int?
+  total_points             Float                  @default(100.0)
+  status                   QuizStatus             @default(DRAFT)
+  subject_id               String
+  assessment_type          AssessmentType         @default(CBT)
+  submissions              Json?
+  student_can_view_grading Boolean                @default(true)
+  academicSession          AcademicSession        @relation(fields: [academic_session_id], references: [id])
+  createdBy                User                   @relation(fields: [created_by], references: [id])
+  school                   School                 @relation(fields: [school_id], references: [id])
+  subject                  Subject                @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic                    Topic?                 @relation(fields: [topic_id], references: [id])
+  analytics                AssessmentAnalytics?
+  attempts                 AssessmentAttempt[]
+  questions                AssessmentQuestion[]
+  assessmentSubmissions    AssessmentSubmission[]
 
   @@index([school_id, academic_session_id])
   @@index([topic_id])

@@ -8,7 +8,8 @@ import { formatDate } from 'src/shared/helper-functions/formatter';
 import { OnboardDataDto, OnboardSchoolDto, RequestLoginOtpDTO, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyEmailOTPDto, VerifyresetOtp } from 'src/school/director/students/dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { CloudinaryService } from 'src/shared/services/providers/cloudinary-provider/cloudinary.service';
+import { StorageService } from 'src/shared/services/providers/storage.service';
+import { StorageUploadResult } from 'src/shared/services/providers/storage-provider.interface';
 import { sendOnboardingMailToSchoolOwner, sendOnboardingMailToBTechAdmin, sendPasswordResetOtp, sendLoginOtpByMail } from 'src/common/mailer/send-mail';
 import { sendEmailVerificationOTP } from 'src/common/mailer/send-email-verification-otp';
 import { sendTeacherOnboardEmail, sendStudentOnboardEmail, sendDirectorOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
@@ -21,11 +22,12 @@ import { ExcelProcessorService } from 'src/shared/services/excel-processor.servi
 import { AcademicSessionService } from '../../academic-session/academic-session.service';
 import { PushNotificationsService } from 'src/push-notifications/push-notifications.service';
 import { DeviceType } from 'src/push-notifications/dto/register-device.dto';
+import { generateStrongPassword } from 'src/shared/helper-functions/password-generator';
 
-interface CloudinaryUploadResult {
+// Storage upload result mapped to match database schema
+interface DocumentUploadResult {
     secure_url: string;
     public_id: string;
-    original_filename: string;
 }
 
 @Injectable()
@@ -36,7 +38,7 @@ export class AuthService {
         private prisma: PrismaService,
         private jwt: JwtService,
         private config: ConfigService,
-        private readonly cloudinaryService: CloudinaryService,
+        private readonly storageService: StorageService,
         private readonly excelProcessorService: ExcelProcessorService,
         private readonly academicSessionService: AcademicSessionService,
         private readonly pushNotificationsService: PushNotificationsService
@@ -68,17 +70,43 @@ export class AuthService {
         });
 
         if (existingUser) {
-            throw new Error('A user with this email already exists. Please use a different email address.');
+            this.logger.error(colors.red("A user with this email already exists. Please use a different email address."));
+            throw ResponseHelper.error(
+                "A user with this email already exists. Please use a different email address."
+            )
         }
 
-        let uploadedFiles: CloudinaryUploadResult[] = [];
+        let uploadedFiles: DocumentUploadResult[] = [];
         try {
             const defaultPassword = `${dto.school_name.slice(0, 3).toLowerCase().replace(/\s+/g, '')}/sm/${dto.school_phone.slice(-4)}`;
     
-            uploadedFiles = await this.cloudinaryService.uploadToCloudinary(files);
+            // Upload files using storage provider (S3/Cloudinary based on config)
+            const documentTypes = ['cac', 'utility_bill', 'tax_clearance'];
+            const uploadPromises = files.map(async (file, index) => {
+                const documentType = documentTypes[index] || 'document';
+                const folder = `schools/${dto.school_name.toLowerCase().replace(/\s+/g, '_')}/onboarding/${documentType}`;
+                const fileName = `${documentType}_${Date.now()}.${file.originalname.split('.').pop()}`;
+                
+                const result: StorageUploadResult = await this.storageService.uploadFile(
+                    file,
+                    folder,
+                    fileName
+                );
+                
+                // Map StorageUploadResult to DocumentUploadResult (matching database schema)
+                return {
+                    secure_url: result.url,
+                    public_id: result.key
+                };
+            });
+            
+            uploadedFiles = await Promise.all(uploadPromises);
+
+            // randmon password generator used here
+            const randomPassword = generateStrongPassword("School", "Director", dto.school_email, dto.school_phone);
 
             // hash the password 
-            const hashedPassword = await argon.hash("maximus123");
+            const hashedPassword = await argon.hash(randomPassword);
             console.log(colors.green("Hashed password: "), hashedPassword);
 
             // create a new school in the database
@@ -318,7 +346,14 @@ export class AuthService {
             // Not during email sending
             if (uploadedFiles.length > 0 && !error.message?.includes('No recipients defined')) {
                 console.log(colors.yellow("Cleaning up uploaded files due to error..."));
-                await this.cloudinaryService.cleanupUploadedFiles(uploadedFiles);
+                // Delete each uploaded file using the storage service
+                for (const uploadedFile of uploadedFiles) {
+                    try {
+                        await this.storageService.deleteFile(uploadedFile.public_id);
+                    } catch (deleteError) {
+                        console.log(colors.yellow(`Warning: Failed to delete file ${uploadedFile.public_id}: ${deleteError.message}`));
+                    }
+                }
             }
             
             return ResponseHelper.error(

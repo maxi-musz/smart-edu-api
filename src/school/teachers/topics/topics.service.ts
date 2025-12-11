@@ -1448,6 +1448,12 @@ export class TopicsService {
       }
 
       const schoolId = dbUser.school_id;
+      // school name
+      const schoolName = await this.prisma.school.findUnique({ where: { id: schoolId }, select: { school_name: true } });
+      if (!schoolName) {
+        this.logger.error(colors.red(`❌ School not found: ${schoolId}`));
+        throw new NotFoundException('School not found');
+      }
       const userId = dbUser.id;
       this.logger.log(colors.blue(`✅ User validated. School ID: ${schoolId}`));
 
@@ -1503,7 +1509,7 @@ export class TopicsService {
       this.logger.log(colors.blue(`🚀 Starting S3 material upload...`));
       const materialUploadResult = await this.s3Service.uploadFile(
         materialFile,
-        `materials/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
+        `materials/schools/${schoolName.school_name}/subjects/${subject.name}/topics/${topic.title}`,
         `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
       );
 
