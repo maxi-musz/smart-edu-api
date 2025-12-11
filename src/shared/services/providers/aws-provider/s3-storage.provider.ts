@@ -17,7 +17,7 @@ export class S3StorageProvider implements IStorageProvider {
     const region = this.config.get('AWS_REGION') || 'us-east-1'; // Default to us-east-1
     const accessKeyId = this.config.get('AWS_ACCESS_KEY_ID');
     const secretAccessKey = this.config.get('AWS_SECRET_ACCESS_KEY');
-    const nodeEnv = this.config.get('NODE_ENV') || 'development';
+    const nodeEnv = this.config.get('NODE_ENV') || 'staging';
 
     const bucketName = this.getBucketNameForEnvironment(nodeEnv);
 
@@ -131,7 +131,10 @@ export class S3StorageProvider implements IStorageProvider {
     // Ensure we're using the correct region for the bucket
     await this.ensureCorrectRegion();
     
-    const key = fileName || `${folder}/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    // Combine folder path with fileName if provided, otherwise generate filename
+    const key = fileName 
+      ? `${folder}/${fileName}` 
+      : `${folder}/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     const resolvedContentType = this.resolveContentType(file);
     
     this.logger.log(colors.cyan(`🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`));
