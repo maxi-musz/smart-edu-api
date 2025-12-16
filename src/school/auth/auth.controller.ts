@@ -46,7 +46,8 @@ export class AuthController {
         FileFieldsInterceptor([
             { name: 'cac_or_approval_letter', maxCount: 1 },
             { name: 'utility_bill', maxCount: 1 },
-            { name: 'tax_cert', maxCount: 1 }
+            { name: 'tax_cert', maxCount: 1 },
+            { name: 'school_icon', maxCount: 1 }
         ]),
         FileValidationInterceptor
     )
@@ -55,7 +56,8 @@ export class AuthController {
         @UploadedFiles() files: {
             cac_or_approval_letter?: Express.Multer.File[],
             utility_bill?: Express.Multer.File[],
-            tax_cert?: Express.Multer.File[]
+            tax_cert?: Express.Multer.File[],
+            school_icon?: Express.Multer.File[]
         }
     ): Promise<ApiResponse> {
         const fileArray = [
@@ -64,7 +66,9 @@ export class AuthController {
             files.tax_cert?.[0]
         ].filter((file): file is Express.Multer.File => file !== undefined);
 
-        return this.authService.onboardSchool(dto, fileArray) as Promise<ApiResponse>;
+        const schoolIcon = files.school_icon?.[0];
+
+        return this.authService.onboardSchool(dto, fileArray, schoolIcon) as Promise<ApiResponse>;
     }
 
     // Request login OTP for director

@@ -45,7 +45,7 @@ export class AuthService {
     ) {}
     
     // Onboard new school
-    async onboardSchool(dto: OnboardSchoolDto, files: Express.Multer.File[]) {
+    async onboardSchool(dto: OnboardSchoolDto, files: Express.Multer.File[], schoolIcon?: Express.Multer.File) {
         
         console.log(colors.blue('Onboarding a new school...'));
         console.log("email: ", dto.school_email)
@@ -77,6 +77,7 @@ export class AuthService {
         }
 
         let uploadedFiles: DocumentUploadResult[] = [];
+        let schoolIconResult: StorageUploadResult | null = null;
         try {
             const defaultPassword = `${dto.school_name.slice(0, 3).toLowerCase().replace(/\s+/g, '')}/sm/${dto.school_phone.slice(-4)}`;
     
@@ -102,12 +103,44 @@ export class AuthService {
             
             uploadedFiles = await Promise.all(uploadPromises);
 
+            // Upload school icon if provided
+            if (schoolIcon) {
+                const folder = `schools/${dto.school_name.toLowerCase().replace(/\s+/g, '_')}/onboarding/icon`;
+                const fileName = `school_icon_${Date.now()}.${schoolIcon.originalname.split('.').pop()}`;
+                
+                schoolIconResult = await this.storageService.uploadFile(
+                    schoolIcon,
+                    folder,
+                    fileName
+                );
+                
+                this.logger.log(colors.green(`✅ School icon uploaded successfully`));
+            }
+
             // randmon password generator used here
             const randomPassword = generateStrongPassword("School", "Director", dto.school_email, dto.school_phone);
 
             // hash the password 
             const hashedPassword = await argon.hash(randomPassword);
             console.log(colors.green("Hashed password: "), hashedPassword);
+
+            // Prepare school icon object if uploaded
+            const schoolIconData = schoolIconResult ? {
+                url: schoolIconResult.url,
+                key: schoolIconResult.key,
+                ...(schoolIconResult.bucket && { bucket: schoolIconResult.bucket }),
+                ...(schoolIconResult.etag && { etag: schoolIconResult.etag }),
+                uploaded_at: new Date().toISOString()
+            } : undefined;
+
+            // Prepare display picture for director (same as school icon if provided)
+            const directorDisplayPicture = schoolIconResult ? {
+                url: schoolIconResult.url,
+                key: schoolIconResult.key,
+                ...(schoolIconResult.bucket && { bucket: schoolIconResult.bucket }),
+                ...(schoolIconResult.etag && { etag: schoolIconResult.etag }),
+                uploaded_at: new Date().toISOString()
+            } : undefined;
 
             // create a new school in the database
             const school = await this.prisma.school.create({
@@ -118,6 +151,7 @@ export class AuthService {
                     school_address: dto.school_address.toLowerCase(),
                     school_type: dto.school_type.toLowerCase() as SchoolType,
                     school_ownership: dto.school_ownership.toLowerCase() as SchoolOwnership,
+                    school_icon: schoolIconData,
                     // Create and connect documents
                     cac: uploadedFiles[0] ? {
                         create: {
@@ -279,7 +313,8 @@ export class AuthService {
                     first_name: "School",
                     last_name: "Director",
                     is_email_verified: true,
-                    phone_number: dto.school_phone
+                    phone_number: dto.school_phone,
+                    display_picture: directorDisplayPicture
                 }
             });
 
@@ -326,6 +361,7 @@ export class AuthService {
                 school_name: school.school_name,
                 school_email: school.school_email,
                 school_address: school.school_address,
+                school_icon: schoolIconData || null,
                 documents: {
                     cac: uploadedFiles[0]?.secure_url || null,
                     utility_bill: uploadedFiles[1]?.secure_url || null,
@@ -344,7 +380,7 @@ export class AuthService {
             
             // Only clean up files if the error occurred during school/user creation
             // Not during email sending
-            if (uploadedFiles.length > 0 && !error.message?.includes('No recipients defined')) {
+            if ((uploadedFiles.length > 0 || schoolIconResult) && !error.message?.includes('No recipients defined')) {
                 console.log(colors.yellow("Cleaning up uploaded files due to error..."));
                 // Delete each uploaded file using the storage service
                 for (const uploadedFile of uploadedFiles) {
@@ -352,6 +388,14 @@ export class AuthService {
                         await this.storageService.deleteFile(uploadedFile.public_id);
                     } catch (deleteError) {
                         console.log(colors.yellow(`Warning: Failed to delete file ${uploadedFile.public_id}: ${deleteError.message}`));
+                    }
+                }
+                // Delete school icon if it was uploaded
+                if (schoolIconResult) {
+                    try {
+                        await this.storageService.deleteFile(schoolIconResult.key);
+                    } catch (deleteError) {
+                        console.log(colors.yellow(`Warning: Failed to delete school icon ${schoolIconResult.key}: ${deleteError.message}`));
                     }
                 }
             }
