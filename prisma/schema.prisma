@@ -60,6 +60,7 @@ model School {
   school_type           SchoolType
   school_ownership      SchoolOwnership
   status                SchoolStatus              @default(pending)
+  school_icon           Json?
   cacId                 String?                   @unique
   utilityBillId         String?                   @unique
   taxClearanceId        String?                   @unique

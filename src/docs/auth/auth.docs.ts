@@ -45,6 +45,29 @@ export const OnboardSchoolDocs = {
           enum: ['government', 'private', 'other'],
           example: 'private'
         },
+        academic_year: {
+          type: 'string',
+          description: 'Current academic year (e.g., "2024/2025", "2024-2025")',
+          example: '2024/2025'
+        },
+        current_term: {
+          type: 'string',
+          description: 'Current academic term',
+          enum: ['first', 'second', 'third'],
+          example: 'first'
+        },
+        term_start_date: {
+          type: 'string',
+          format: 'date',
+          description: 'Start date of the current term',
+          example: '2024-09-01'
+        },
+        term_end_date: {
+          type: 'string',
+          format: 'date',
+          description: 'End date of the current term (optional - can be updated later)',
+          example: '2024-12-20'
+        },
         cac_or_approval_letter: {
           type: 'string',
           format: 'binary',
@@ -59,9 +82,14 @@ export const OnboardSchoolDocs = {
           type: 'string',
           format: 'binary',
           description: 'Tax certificate (PDF, DOC, DOCX)'
+        },
+        school_icon: {
+          type: 'string',
+          format: 'binary',
+          description: 'School icon/logo image (optional) - JPG, PNG, or other image formats'
         }
       },
-      required: ['school_name', 'school_email', 'school_address', 'school_phone', 'school_type', 'school_ownership']
+      required: ['school_name', 'school_email', 'school_address', 'school_phone', 'school_type', 'school_ownership', 'academic_year', 'current_term', 'term_start_date']
     }
   }),
   response201: ApiResponse({
