@@ -21,12 +21,7 @@ export class LibraryDevClassController {
   @CreateLibraryClassDevDocs.response201
   @ApiResponse({ status: 400, description: 'Bad Request' })
   async createClass(@Body() dto: CreateLibraryClassDevDto) {
-    const result = await this.libraryDevClassService.createClass(dto);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+    return this.libraryDevClassService.createClass(dto);
   }
 
   @Get()
@@ -34,12 +29,7 @@ export class LibraryDevClassController {
   @ListLibraryClassDevDocs.operation
   @ListLibraryClassDevDocs.response200
   async listClasses(@Query('platformId') platformId: string) {
-    const result = await this.libraryDevClassService.listClasses(platformId);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+    return this.libraryDevClassService.listClasses(platformId);
   }
 
   @Get(':id')
@@ -47,12 +37,7 @@ export class LibraryDevClassController {
   @GetLibraryClassDevDocs.operation
   @GetLibraryClassDevDocs.response200
   async getClass(@Param('id') id: string) {
-    const result = await this.libraryDevClassService.getClass(id);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+    return this.libraryDevClassService.getClass(id);
   }
 
   @Patch(':id')
@@ -60,12 +45,7 @@ export class LibraryDevClassController {
   @UpdateLibraryClassDevDocs.operation
   @UpdateLibraryClassDevDocs.response200
   async updateClass(@Param('id') id: string, @Body() dto: UpdateLibraryClassDevDto) {
-    const result = await this.libraryDevClassService.updateClass(id, dto);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+    return this.libraryDevClassService.updateClass(id, dto);
   }
 
   @Delete(':id')
@@ -73,12 +53,7 @@ export class LibraryDevClassController {
   @DeleteLibraryClassDevDocs.operation
   @DeleteLibraryClassDevDocs.response200
   async deleteClass(@Param('id') id: string) {
-    const result = await this.libraryDevClassService.deleteClass(id);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+    return this.libraryDevClassService.deleteClass(id);
   }
 }
 

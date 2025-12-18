@@ -4,8 +4,8 @@ export const CreateLibrarySubjectDevDocs = {
   operation: ApiOperation({
     summary: 'Create a library subject (developer only)',
     description:
-      'Create a subject under a LibraryPlatform, optionally grouped under a LibraryClass. ' +
-      'Platforms will later attach content to these canonical subjects.',
+      'Create a subject in the Smart Edu public library, optionally grouped under a LibraryClass. ' +
+      'Individual schools will later attach content to these canonical subjects.',
   }),
   response201: ApiResponse({
     status: 201,
@@ -17,7 +17,7 @@ export const ListLibrarySubjectDevDocs = {
   operation: ApiOperation({
     summary: 'List library subjects (developer only)',
     description:
-      'Fetch all subjects for a LibraryPlatform, optionally filtered by LibraryClass.',
+      'Fetch all subjects in the public library, optionally filtered by LibraryClass.',
   }),
   response200: ApiResponse({
     status: 200,

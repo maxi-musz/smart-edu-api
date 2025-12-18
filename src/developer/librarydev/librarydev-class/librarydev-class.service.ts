@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import * as colors from 'colors';
+import { CreateLibraryClassDevDto } from './dto';
 
 @Injectable()
 export class LibraryDevClassService {
@@ -9,43 +10,35 @@ export class LibraryDevClassService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async createClass(payload: {
-    platformId: string;
-    name: string;
-    order?: number;
-  }): Promise<ApiResponse<any>> {
+  async createClass(payload: CreateLibraryClassDevDto): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[DEV] Creating library class: ${payload.name}`));
-
-    if (!payload.platformId || !payload.name) {
-      throw new BadRequestException('platformId and name are required');
-    }
-
-    const platform = await this.prisma.libraryPlatform.findUnique({
-      where: { id: payload.platformId },
-    });
-
-    if (!platform) {
-      throw new NotFoundException('Library platform not found');
-    }
 
     const existing = await this.prisma.libraryClass.findFirst({
       where: {
-        platformId: payload.platformId,
         name: payload.name,
       },
     });
 
     if (existing) {
-      throw new BadRequestException('A class with this name already exists in this platform');
+      this.logger.error(colors.red('A class with this name already exists'));
+      throw new BadRequestException('A class with this name already exists');
     }
+
+    // Compute next order automatically (auto-increment-like behavior)
+    const lastClass = await this.prisma.libraryClass.findFirst({
+      orderBy: { order: 'desc' },
+    });
+
+    const nextOrder = (lastClass?.order ?? 0) + 1;
 
     const created = await this.prisma.libraryClass.create({
       data: {
-        platformId: payload.platformId,
         name: payload.name,
-        order: payload.order ?? 1,
+        order: nextOrder,
       },
     });
+
+    this.logger.log(colors.green('Library class created successfully'));
 
     return new ApiResponse(true, 'Library class created successfully', created);
   }
@@ -58,7 +51,6 @@ export class LibraryDevClassService {
     }
 
     const classes = await this.prisma.libraryClass.findMany({
-      where: { platformId },
       orderBy: { order: 'asc' },
     });
 

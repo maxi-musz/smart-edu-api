@@ -4,8 +4,8 @@ export const CreateLibraryClassDevDocs = {
   operation: ApiOperation({
     summary: 'Create a library class (developer only)',
     description:
-      'Create a canonical library class under a specific LibraryPlatform. ' +
-      'Platforms will later attach to these classes instead of defining their own.',
+      'Create a canonical library class in the Smart Edu public library. ' +
+      'Individual schools will later attach to these classes instead of defining their own.',
   }),
   response201: ApiResponse({
     status: 201,
@@ -15,8 +15,8 @@ export const CreateLibraryClassDevDocs = {
 
 export const ListLibraryClassDevDocs = {
   operation: ApiOperation({
-    summary: 'List library classes for a platform (developer only)',
-    description: 'Fetch all library classes defined for a specific LibraryPlatform.',
+    summary: 'List library classes (developer only)',
+    description: 'Fetch all canonical library classes available in the public library.',
   }),
   response200: ApiResponse({
     status: 200,

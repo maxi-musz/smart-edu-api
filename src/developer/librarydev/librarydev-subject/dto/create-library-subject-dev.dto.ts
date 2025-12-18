@@ -3,7 +3,7 @@ import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateLibrarySubjectDevDto {
   @ApiProperty({
-    description: 'Library platform ID this subject belongs to',
+    description: 'Library ID this subject belongs to',
     example: 'clibplat1234567890abcdef',
   })
   @IsUUID()
@@ -19,7 +19,7 @@ export class CreateLibrarySubjectDevDto {
   name: string;
 
   @ApiPropertyOptional({
-    description: 'Optional subject code (must be unique per platform if provided)',
+    description: 'Optional subject code (must be unique per library if provided)',
     example: 'MTH101',
   })
   @IsOptional()
