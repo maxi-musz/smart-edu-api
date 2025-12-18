@@ -7,6 +7,8 @@ import { SchoolModule } from './school/school.module';
 import { AcademicSessionModule } from './academic-session/academic-session.module';
 import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 import { SchedulesModule } from './school/director/schedules/schedules.module';
+import { LibraryModule } from './library/library.module';
+import { DeveloperModule } from './developer/developer.module';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import * as joi from 'joi';
@@ -39,7 +41,9 @@ import { UserModule } from './user/user.module';
     PushNotificationsModule,
     SchedulesModule,
     PrismaModule,
-    UserModule
+    UserModule,
+    LibraryModule,
+    DeveloperModule
   ],
   controllers: [AppController],
   providers: [AppService],
