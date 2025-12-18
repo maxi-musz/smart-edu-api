@@ -11,7 +11,7 @@ export class UpdateLibrarySubjectDevDto {
   name?: string;
 
   @ApiPropertyOptional({
-    description: 'Updated subject code (must be unique per platform)',
+    description: 'Updated subject code (must be unique per library)',
     example: 'MTH201',
   })
   @IsOptional()

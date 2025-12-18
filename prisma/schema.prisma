@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   // @ts-ignore - Prisma 6.8.2 syntax (correct for v6, warning is for v7)
-  url      = "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+  url      = env("DATABASE_URL")
 }
 
 model AcademicSession {
@@ -1827,6 +1827,21 @@ enum SubscriptionStatus {
 }
 
 // ===================================================================
+// Developer identity (for Smart Edu Hub internal developers)
+// ===================================================================
+
+model Developer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("developer")
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===================================================================
 // Public Library domain (moved from prisma/library.prisma so that
 // Prisma Client can see these models without multi-file config)
 // ===================================================================
@@ -1841,6 +1856,14 @@ enum LibraryUserRole {
   admin
   manager
   content_creator
+  reviewer
+  viewer
+}
+
+enum LibraryUserType {
+  libraryresourceowner
+  librarymanager
+  contentcreator
   reviewer
   viewer
 }
@@ -1883,7 +1906,6 @@ model LibraryPlatform {
 
   // Relations
   users     LibraryResourceUser[]
-  classes   LibraryClass[]
   subjects  LibrarySubject[]
   topics    LibraryTopic[]
   videos    LibraryVideoLesson[]
@@ -1903,8 +1925,9 @@ model LibraryResourceUser {
   last_name    String
   phone_number String?
 
-  role   LibraryUserRole @default(content_creator)
-  status UserStatus      @default(active) // Reuses existing enum from main schema
+  role     LibraryUserRole @default(content_creator)
+  userType LibraryUserType @default(libraryresourceowner)
+  status   UserStatus      @default(active) // Reuses existing enum from main schema
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1919,22 +1942,15 @@ model LibraryResourceUser {
 // -------------------------------------------------------------------
 
 /// High-level grouping (e.g. "JSS 1", "JSS 2", "SS 1 Science Track")
-/// but scoped to a LibraryPlatform instead of a School.
 model LibraryClass {
-  id         String @id @default(cuid())
-  platformId String
+  id String @id @default(cuid())
 
   name  String
   order Int    @default(1)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  platform LibraryPlatform  @relation(fields: [platformId], references: [id])
-  subjects LibrarySubject[]
-
-  @@unique([platformId, name])
-  @@index([platformId])
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  subjects  LibrarySubject[]
 }
 
 /// Subjects under a library class (e.g. "Mathematics", "Physics").

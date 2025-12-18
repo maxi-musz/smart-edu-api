@@ -1,77 +1,69 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { LibraryDevService } from './librarydev.service';
-import { ApiTags } from '@nestjs/swagger';
-
-class CreateLibraryPlatformDevDto {
-  name: string;
-  slug: string;
-  description?: string;
-}
-
-class UpdateLibraryPlatformDevDto {
-  name?: string;
-  slug?: string;
-  description?: string;
-}
+import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  CreateLibraryDevDocs,
+  GetLibraryDevDocs,
+  ListLibraryDevDocs,
+  UpdateLibraryDevDocs,
+  DeleteLibraryDevDocs,
+  AddLibraryOwnerDocs,
+} from './docs/librarydev.docs';
+import { AddLibraryOwnerDto, CreateLibraryDevDto, UpdateLibraryDevDto } from './dto/librarydev.dto';
 
 @ApiTags('Developer - Library')
 @Controller('developer/librarydev')
 export class LibraryDevController {
   constructor(private readonly libraryDevService: LibraryDevService) {}
 
-  @Post('platforms')
+  @Post('onboardnewlibrary')
   @HttpCode(HttpStatus.CREATED)
-  async createPlatform(@Body() dto: CreateLibraryPlatformDevDto) {
-    const result = await this.libraryDevService.createPlatform(dto);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+  @CreateLibraryDevDocs.operation
+  @CreateLibraryDevDocs.response201
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  async onboardNewLibrary(@Body() dto: CreateLibraryDevDto) {
+    return this.libraryDevService.createLibrary(dto);
   }
 
-  @Get('platforms')
+  @Get('listalllibraries')
   @HttpCode(HttpStatus.OK)
-  async listPlatforms() {
-    const result = await this.libraryDevService.listPlatforms();
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+  @ListLibraryDevDocs.operation
+  @ListLibraryDevDocs.response200
+  async listAllLibraries() {
+    return this.libraryDevService.listAllLibraries();
   }
 
-  @Get('platforms/:id')
+  @Get('getlibrary/:id')
   @HttpCode(HttpStatus.OK)
-  async getPlatform(@Param('id') id: string) {
-    const result = await this.libraryDevService.getPlatform(id);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+  @GetLibraryDevDocs.operation
+  @GetLibraryDevDocs.response200
+  async getLibrary(@Param('id') id: string) {
+    return this.libraryDevService.getLibrary(id);
   }
 
-  @Patch('platforms/:id')
+  @Patch('updatelibrary/:id')
   @HttpCode(HttpStatus.OK)
-  async updatePlatform(@Param('id') id: string, @Body() dto: UpdateLibraryPlatformDevDto) {
-    const result = await this.libraryDevService.updatePlatform(id, dto);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+  @UpdateLibraryDevDocs.operation
+  @UpdateLibraryDevDocs.response200
+  async updateLibrary(@Param('id') id: string, @Body() dto: UpdateLibraryDevDto) {
+    return this.libraryDevService.updateLibrary(id, dto);
   }
 
-  @Delete('platforms/:id')
+  @Delete('deletelibrary/:id')
   @HttpCode(HttpStatus.OK)
-  async deletePlatform(@Param('id') id: string) {
-    const result = await this.libraryDevService.deletePlatform(id);
-    return {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
+  @DeleteLibraryDevDocs.operation
+  @DeleteLibraryDevDocs.response200
+  async deleteLibrary(@Param('id') id: string) {
+    return this.libraryDevService.deleteLibrary(id);
+  }
+
+  @Post('add-library-owner')
+  @HttpCode(HttpStatus.CREATED)
+  @AddLibraryOwnerDocs.operation
+  @AddLibraryOwnerDocs.response201
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  async addLibraryOwner(@Body() dto: AddLibraryOwnerDto) {
+    return this.libraryDevService.addLibraryOwner(dto);
   }
 }
 
