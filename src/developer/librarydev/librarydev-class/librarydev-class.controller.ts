@@ -1,17 +1,14 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { LibraryDevClassService } from './librarydev-class.service';
-import { ApiTags } from '@nestjs/swagger';
-
-class CreateLibraryClassDevDto {
-  platformId: string;
-  name: string;
-  order?: number;
-}
-
-class UpdateLibraryClassDevDto {
-  name?: string;
-  order?: number;
-}
+import { ApiTags, ApiResponse } from '@nestjs/swagger';
+import { CreateLibraryClassDevDto, UpdateLibraryClassDevDto } from './dto';
+import {
+  CreateLibraryClassDevDocs,
+  ListLibraryClassDevDocs,
+  GetLibraryClassDevDocs,
+  UpdateLibraryClassDevDocs,
+  DeleteLibraryClassDevDocs,
+} from './docs/librarydev-class.docs';
 
 @ApiTags('Developer - Library Class')
 @Controller('developer/librarydev/classes')
@@ -20,6 +17,9 @@ export class LibraryDevClassController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @CreateLibraryClassDevDocs.operation
+  @CreateLibraryClassDevDocs.response201
+  @ApiResponse({ status: 400, description: 'Bad Request' })
   async createClass(@Body() dto: CreateLibraryClassDevDto) {
     const result = await this.libraryDevClassService.createClass(dto);
     return {
@@ -31,6 +31,8 @@ export class LibraryDevClassController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
+  @ListLibraryClassDevDocs.operation
+  @ListLibraryClassDevDocs.response200
   async listClasses(@Query('platformId') platformId: string) {
     const result = await this.libraryDevClassService.listClasses(platformId);
     return {
@@ -42,6 +44,8 @@ export class LibraryDevClassController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
+  @GetLibraryClassDevDocs.operation
+  @GetLibraryClassDevDocs.response200
   async getClass(@Param('id') id: string) {
     const result = await this.libraryDevClassService.getClass(id);
     return {
@@ -53,6 +57,8 @@ export class LibraryDevClassController {
 
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
+  @UpdateLibraryClassDevDocs.operation
+  @UpdateLibraryClassDevDocs.response200
   async updateClass(@Param('id') id: string, @Body() dto: UpdateLibraryClassDevDto) {
     const result = await this.libraryDevClassService.updateClass(id, dto);
     return {
@@ -64,6 +70,8 @@ export class LibraryDevClassController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
+  @DeleteLibraryClassDevDocs.operation
+  @DeleteLibraryClassDevDocs.response200
   async deleteClass(@Param('id') id: string) {
     const result = await this.libraryDevClassService.deleteClass(id);
     return {
