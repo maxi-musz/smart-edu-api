@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   // @ts-ignore - Prisma 6.8.2 syntax (correct for v6, warning is for v7)
-  url      = env("DATABASE_URL")
+  url      = "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 }
 
 model AcademicSession {
@@ -1824,4 +1824,237 @@ enum SubscriptionStatus {
   EXPIRED
   CANCELLED
   TRIAL
+}
+
+// ===================================================================
+// Public Library domain (moved from prisma/library.prisma so that
+// Prisma Client can see these models without multi-file config)
+// ===================================================================
+
+enum LibraryPlatformStatus {
+  active
+  inactive
+  archived
+}
+
+enum LibraryUserRole {
+  admin
+  manager
+  content_creator
+  reviewer
+  viewer
+}
+
+enum LibraryContentStatus {
+  draft
+  published
+  archived
+}
+
+enum LibraryMaterialType {
+  PDF
+  DOC
+  PPT
+  VIDEO
+  NOTE
+  LINK
+  OTHER
+}
+
+// -------------------------------------------------------------------
+// Core platform-level library models
+// -------------------------------------------------------------------
+
+/// Represents a public content library owned/managed by Smart Edu Hub.
+/// Examples:
+/// - Smart Edu Library
+/// - Accessible Publishers Library
+/// - Best Tech Academy Library
+/// - Access Study Library
+model LibraryPlatform {
+  id          String                @id @default(cuid())
+  name        String                @unique
+  slug        String                @unique
+  description String?
+  status      LibraryPlatformStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users     LibraryResourceUser[]
+  classes   LibraryClass[]
+  subjects  LibrarySubject[]
+  topics    LibraryTopic[]
+  videos    LibraryVideoLesson[]
+  materials LibraryMaterial[]
+}
+
+/// Users who belong to a LibraryPlatform (e.g. content team members,
+/// admins, reviewers). This is separate from the existing `User` model
+/// to keep the public library domain isolated.
+model LibraryResourceUser {
+  id         String @id @default(cuid())
+  platformId String
+
+  email        String  @unique
+  password     String
+  first_name   String
+  last_name    String
+  phone_number String?
+
+  role   LibraryUserRole @default(content_creator)
+  status UserStatus      @default(active) // Reuses existing enum from main schema
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform LibraryPlatform @relation(fields: [platformId], references: [id])
+
+  @@index([platformId])
+}
+
+// -------------------------------------------------------------------
+// Academic-like structure within each public library
+// -------------------------------------------------------------------
+
+/// High-level grouping (e.g. "JSS 1", "JSS 2", "SS 1 Science Track")
+/// but scoped to a LibraryPlatform instead of a School.
+model LibraryClass {
+  id         String @id @default(cuid())
+  platformId String
+
+  name  String
+  order Int    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform LibraryPlatform  @relation(fields: [platformId], references: [id])
+  subjects LibrarySubject[]
+
+  @@unique([platformId, name])
+  @@index([platformId])
+}
+
+/// Subjects under a library class (e.g. "Mathematics", "Physics").
+model LibrarySubject {
+  id         String  @id @default(cuid())
+  platformId String
+  classId    String?
+
+  name        String
+  code        String?
+  color       String  @default("#3B82F6")
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform  LibraryPlatform      @relation(fields: [platformId], references: [id])
+  class     LibraryClass?        @relation(fields: [classId], references: [id])
+  topics    LibraryTopic[]
+  videos    LibraryVideoLesson[]
+  materials LibraryMaterial[]
+
+  @@unique([platformId, code])
+  @@index([platformId, name])
+}
+
+/// Topics within a library subject (e.g. "Introduction to Algebra").
+model LibraryTopic {
+  id         String @id @default(cuid())
+  platformId String
+  subjectId  String
+
+  title       String
+  description String?
+  order       Int     @default(1)
+  is_active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform LibraryPlatform @relation(fields: [platformId], references: [id])
+  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
+
+  videos    LibraryVideoLesson[]
+  materials LibraryMaterial[]
+
+  @@index([platformId, subjectId])
+  @@index([subjectId, order])
+}
+
+// -------------------------------------------------------------------
+// Content models: video lessons & study materials
+// -------------------------------------------------------------------
+
+/// High-quality video lessons produced by the library teams.
+/// Actual video files are expected to live in S3; this model stores
+/// URLs/keys/metadata only.
+model LibraryVideoLesson {
+  id         String  @id @default(cuid())
+  platformId String
+  subjectId  String
+  topicId    String?
+
+  title       String
+  description String?
+
+  videoUrl       String // Public or signed URL
+  videoS3Key     String? // S3 object key
+  thumbnailUrl   String?
+  thumbnailS3Key String?
+
+  durationSeconds Int?
+  sizeBytes       Int?
+
+  status LibraryContentStatus @default(published)
+  order  Int                  @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform LibraryPlatform @relation(fields: [platformId], references: [id])
+  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
+  topic    LibraryTopic?   @relation(fields: [topicId], references: [id])
+
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([status])
+}
+
+/// Non-video study materials under each topic/subject in a library:
+/// PDFs, notes, slides, links, etc. Files should live in S3.
+model LibraryMaterial {
+  id         String  @id @default(cuid())
+  platformId String
+  subjectId  String
+  topicId    String?
+
+  title       String
+  description String?
+
+  materialType LibraryMaterialType @default(PDF)
+  url          String // Public or signed URL
+  s3Key        String? // S3 object key
+
+  sizeBytes Int?
+  pageCount Int?
+
+  status LibraryContentStatus @default(published)
+  order  Int                  @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform LibraryPlatform @relation(fields: [platformId], references: [id])
+  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
+  topic    LibraryTopic?   @relation(fields: [topicId], references: [id])
+
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([status])
 }
