@@ -1,6 +1,3 @@
--- Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- CreateEnum
 CREATE TYPE "SchoolType" AS ENUM ('primary', 'secondary', 'primary_and_secondary');
 
@@ -143,6 +140,7 @@ CREATE TABLE "School" (
     "school_type" "SchoolType" NOT NULL,
     "school_ownership" "SchoolOwnership" NOT NULL,
     "status" "SchoolStatus" NOT NULL DEFAULT 'pending',
+    "school_icon" JSONB,
     "cacId" TEXT,
     "utilityBillId" TEXT,
     "taxClearanceId" TEXT,
@@ -175,8 +173,8 @@ CREATE TABLE "User" (
     "gender" "Gender" NOT NULL DEFAULT 'other',
     "otp" TEXT DEFAULT '',
     "otp_expires_at" TIMESTAMP(3),
-    "is_email_verified" BOOLEAN DEFAULT false,
-    "is_otp_verified" BOOLEAN DEFAULT false,
+    "is_email_verified" BOOLEAN DEFAULT true,
+    "is_otp_verified" BOOLEAN DEFAULT true,
     "role" "Roles" NOT NULL DEFAULT 'student',
     "status" "UserStatus" NOT NULL DEFAULT 'active',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -633,6 +631,7 @@ CREATE TABLE "Assessment" (
     "subject_id" TEXT NOT NULL,
     "assessment_type" "AssessmentType" NOT NULL DEFAULT 'CBT',
     "submissions" JSONB,
+    "student_can_view_grading" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "Assessment_pkey" PRIMARY KEY ("id")
 );

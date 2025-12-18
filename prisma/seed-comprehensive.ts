@@ -1,5 +1,5 @@
 import { PrismaClient, SubscriptionPlanType, BillingCycle, SubscriptionStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import * as argon from 'argon2';
 
 const prisma = new PrismaClient();
 
@@ -96,6 +96,16 @@ function getClassLevel(className: string): string {
 
 async function main() {
   console.log('🌱 Starting comprehensive database seeding...');
+
+  // Ensure pgvector extension exists (required for `vector` column type)
+  // This is safe to run multiple times and will no-op if already installed.
+  try {
+    await prisma.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS vector`);
+    console.log('✅ Ensured pgvector extension (vector) is available');
+  } catch (err) {
+    console.warn('⚠️ Could not create pgvector extension automatically. If seeding fails with "type \\"vector\\" does not exist", run:');
+    console.warn('   CREATE EXTENSION IF NOT EXISTS vector;  -- in your Postgres database as a superuser');
+  }
 
   // Check if data already exists
   const existingSchool = await prisma.school.findFirst();
@@ -554,7 +564,7 @@ async function main() {
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'director', i + 1);
       
-      const hashedPassword = await bcrypt.hash('password123', 10);
+      const hashedPassword = await argon.hash('password123');
       
       const user = await prisma.user.create({
         data: {
@@ -581,7 +591,7 @@ async function main() {
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'teacher', i + 1);
       
-      const hashedPassword = await bcrypt.hash('password123', 10);
+      const hashedPassword = await argon.hash('password123');
       
       const user = await prisma.user.create({
         data: {
@@ -630,7 +640,7 @@ async function main() {
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'parent', i + 1);
       
-      const hashedPassword = await bcrypt.hash('password123', 10);
+      const hashedPassword = await argon.hash('password123');
       
       const user = await prisma.user.create({
         data: {
@@ -673,7 +683,7 @@ async function main() {
       const { firstName, lastName } = getRandomName(ethnicity);
       const email = generateEmail(firstName, lastName, 'student', i + 1);
       
-      const hashedPassword = await bcrypt.hash('password123', 10);
+      const hashedPassword = await argon.hash('password123');
       
       const user = await prisma.user.create({
         data: {
