@@ -127,6 +127,7 @@ export class LibraryDevService {
     });
 
     if (!existing) {
+      this.logger.error(colors.red('Library not found'));
       throw new NotFoundException('Library not found');
     }
 
@@ -135,6 +136,7 @@ export class LibraryDevService {
         where: { slug: payload.slug },
       });
       if (slugTaken) {
+        this.logger.error(colors.red('Slug already in use'));
         throw new BadRequestException('Slug already in use');
       }
     }
@@ -148,6 +150,8 @@ export class LibraryDevService {
       },
     });
 
+    this.logger.log(colors.green('Library updated successfully'));
+
     return new ApiResponse(true, 'Library updated successfully', updatedLibrary);
   }
 
@@ -159,12 +163,15 @@ export class LibraryDevService {
     });
 
     if (!existing) {
+      this.logger.error(colors.red('Library not found'));
       throw new NotFoundException('Library not found');
     }
 
     await this.prisma.libraryPlatform.delete({
       where: { id },
     });
+
+    this.logger.log(colors.green('Library deleted successfully'));
 
     return new ApiResponse(true, 'Library deleted successfully', null);
   }
