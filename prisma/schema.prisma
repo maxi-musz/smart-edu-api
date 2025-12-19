@@ -1932,7 +1932,9 @@ model LibraryResourceUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform LibraryPlatform @relation(fields: [platformId], references: [id])
+  platform          LibraryPlatform      @relation(fields: [platformId], references: [id])
+  uploadedVideos    LibraryVideoLesson[]
+  uploadedMaterials LibraryMaterial[]
 
   @@index([platformId])
 }
@@ -2009,10 +2011,11 @@ model LibraryTopic {
 /// Actual video files are expected to live in S3; this model stores
 /// URLs/keys/metadata only.
 model LibraryVideoLesson {
-  id         String  @id @default(cuid())
-  platformId String
-  subjectId  String
-  topicId    String?
+  id           String  @id @default(cuid())
+  platformId   String
+  subjectId    String
+  topicId      String?
+  uploadedById String // Tracks which library user uploaded this video
 
   title       String
   description String?
@@ -2031,23 +2034,26 @@ model LibraryVideoLesson {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform LibraryPlatform @relation(fields: [platformId], references: [id])
-  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
-  topic    LibraryTopic?   @relation(fields: [topicId], references: [id])
+  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
+  subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
+  topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
+  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
 
   @@index([platformId])
   @@index([subjectId])
   @@index([topicId])
+  @@index([uploadedById])
   @@index([status])
 }
 
 /// Non-video study materials under each topic/subject in a library:
 /// PDFs, notes, slides, links, etc. Files should live in S3.
 model LibraryMaterial {
-  id         String  @id @default(cuid())
-  platformId String
-  subjectId  String
-  topicId    String?
+  id           String  @id @default(cuid())
+  platformId   String
+  subjectId    String
+  topicId      String?
+  uploadedById String // Tracks which library user uploaded this material
 
   title       String
   description String?
@@ -2065,12 +2071,14 @@ model LibraryMaterial {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform LibraryPlatform @relation(fields: [platformId], references: [id])
-  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
-  topic    LibraryTopic?   @relation(fields: [topicId], references: [id])
+  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
+  subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
+  topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
+  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
 
   @@index([platformId])
   @@index([subjectId])
   @@index([topicId])
+  @@index([uploadedById])
   @@index([status])
 }
