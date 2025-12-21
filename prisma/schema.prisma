@@ -188,6 +188,7 @@ model User {
   userSettings               UserSettings?
   videoContent               VideoContent[]
   resultsReleased            Result[]               @relation("ResultReleasedBy")
+  libraryComments            LibraryComment[]
 }
 
 model Teacher {
@@ -1884,6 +1885,22 @@ enum LibraryMaterialType {
   OTHER
 }
 
+enum LibraryAssignmentType {
+  HOMEWORK
+  PROJECT
+  ESSAY
+  QUIZ
+  PRACTICAL
+  OTHER
+}
+
+enum LibraryAssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
 // -------------------------------------------------------------------
 // Core platform-level library models
 // -------------------------------------------------------------------
@@ -1905,11 +1922,15 @@ model LibraryPlatform {
   updatedAt DateTime @updatedAt
 
   // Relations
-  users     LibraryResourceUser[]
-  subjects  LibrarySubject[]
-  topics    LibraryTopic[]
-  videos    LibraryVideoLesson[]
-  materials LibraryMaterial[]
+  users          LibraryResourceUser[]
+  subjects       LibrarySubject[]
+  topics         LibraryTopic[]
+  videos         LibraryVideoLesson[]
+  materials      LibraryMaterial[]
+  assignments    LibraryAssignment[]
+  links          LibraryLink[]
+  comments       LibraryComment[]
+  LibraryChapter LibraryChapter[]
 }
 
 /// Users who belong to a LibraryPlatform (e.g. content team members,
@@ -1932,9 +1953,12 @@ model LibraryResourceUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform          LibraryPlatform      @relation(fields: [platformId], references: [id])
-  uploadedVideos    LibraryVideoLesson[]
-  uploadedMaterials LibraryMaterial[]
+  platform            LibraryPlatform      @relation(fields: [platformId], references: [id])
+  uploadedVideos      LibraryVideoLesson[]
+  uploadedMaterials   LibraryMaterial[]
+  uploadedAssignments LibraryAssignment[]
+  uploadedLinks       LibraryLink[]
+  comments            LibraryComment[]
 
   @@index([platformId])
 }
@@ -1966,21 +1990,28 @@ model LibrarySubject {
   color       String  @default("#3B82F6")
   description String?
 
+  thumbnailUrl String?
+  thumbnailKey String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform  LibraryPlatform      @relation(fields: [platformId], references: [id])
-  class     LibraryClass?        @relation(fields: [classId], references: [id])
-  topics    LibraryTopic[]
-  videos    LibraryVideoLesson[]
-  materials LibraryMaterial[]
+  platform    LibraryPlatform      @relation(fields: [platformId], references: [id])
+  class       LibraryClass?        @relation(fields: [classId], references: [id])
+  chapters    LibraryChapter[]
+  topics      LibraryTopic[]
+  videos      LibraryVideoLesson[]
+  materials   LibraryMaterial[]
+  assignments LibraryAssignment[]
+  links       LibraryLink[]
+  comments    LibraryComment[]
 
   @@unique([platformId, code])
   @@index([platformId, name])
 }
 
-/// Topics within a library subject (e.g. "Introduction to Algebra").
-model LibraryTopic {
+/// Chapters within a library subject (e.g. "Chapter 1: Algebra Basics").
+model LibraryChapter {
   id         String @id @default(cuid())
   platformId String
   subjectId  String
@@ -1996,11 +2027,42 @@ model LibraryTopic {
   platform LibraryPlatform @relation(fields: [platformId], references: [id])
   subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
 
-  videos    LibraryVideoLesson[]
-  materials LibraryMaterial[]
+  topics   LibraryTopic[]
+  links    LibraryLink[]
+  comments LibraryComment[]
 
   @@index([platformId, subjectId])
   @@index([subjectId, order])
+}
+
+/// Topics within a library chapter (e.g. "Introduction to Algebra").
+model LibraryTopic {
+  id         String @id @default(cuid())
+  platformId String
+  subjectId  String
+  chapterId  String
+
+  title       String
+  description String?
+  order       Int     @default(1)
+  is_active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform LibraryPlatform @relation(fields: [platformId], references: [id])
+  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
+  chapter  LibraryChapter  @relation(fields: [chapterId], references: [id])
+
+  videos      LibraryVideoLesson[]
+  materials   LibraryMaterial[]
+  assignments LibraryAssignment[]
+  links       LibraryLink[]
+  comments    LibraryComment[]
+
+  @@index([platformId, subjectId])
+  @@index([subjectId, chapterId])
+  @@index([chapterId, order])
 }
 
 // -------------------------------------------------------------------
@@ -2041,6 +2103,141 @@ model LibraryVideoLesson {
 
   @@index([platformId])
   @@index([subjectId])
+  @@index([topicId])
+  @@index([uploadedById])
+  @@index([status])
+}
+
+/// Comments on library content (subjects, chapters, or topics).
+/// Users/students can leave comments and replies on library content.
+model LibraryComment {
+  id         String @id @default(cuid())
+  platformId String
+
+  // Polymorphic relation - comment can be on subject, chapter, or topic
+  // Only one of these should be set
+  subjectId String?
+  chapterId String?
+  topicId   String?
+
+  // User who made the comment (can be LibraryResourceUser or regular User/Student)
+  // For library users, use commentedById
+  // For regular users/students, use userId
+  commentedById String? // LibraryResourceUser ID
+  userId        String? // Regular User ID (for students)
+
+  content String // Comment text content
+
+  // Support for nested comments (replies)
+  parentCommentId String? // If this is a reply to another comment
+  parentComment   LibraryComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies         LibraryComment[] @relation("CommentReplies")
+
+  // Edit tracking
+  isEdited Boolean   @default(false)
+  editedAt DateTime?
+
+  // Moderation
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform    LibraryPlatform      @relation(fields: [platformId], references: [id])
+  subject     LibrarySubject?      @relation(fields: [subjectId], references: [id])
+  chapter     LibraryChapter?      @relation(fields: [chapterId], references: [id])
+  topic       LibraryTopic?        @relation(fields: [topicId], references: [id])
+  commentedBy LibraryResourceUser? @relation(fields: [commentedById], references: [id])
+  user        User?                @relation(fields: [userId], references: [id])
+
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([chapterId])
+  @@index([topicId])
+  @@index([commentedById])
+  @@index([userId])
+  @@index([parentCommentId])
+  @@index([createdAt])
+  @@index([isDeleted])
+}
+
+/// Assignments under each topic in a library.
+/// These are assignments that students can complete as part of the library content.
+model LibraryAssignment {
+  id           String @id @default(cuid())
+  platformId   String
+  subjectId    String
+  topicId      String // Required - assignments must be under a topic
+  uploadedById String // Tracks which library user created this assignment
+
+  title       String
+  description String?
+
+  assignmentType  LibraryAssignmentType @default(HOMEWORK)
+  instructions    String?
+  attachmentUrl   String? // URL to assignment file/document
+  attachmentS3Key String? // S3 object key for assignment file
+
+  dueDate             DateTime?
+  maxScore            Int       @default(100)
+  allowLateSubmission Boolean   @default(false)
+  latePenalty         Float?
+
+  status LibraryAssignmentStatus @default(DRAFT)
+  order  Int                     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
+  subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
+  topic      LibraryTopic        @relation(fields: [topicId], references: [id])
+  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
+
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([uploadedById])
+  @@index([status])
+  @@index([dueDate])
+}
+
+/// External links attached to library content (subjects, chapters, or topics).
+/// Course owners can add helpful external links like reference materials, videos, articles, etc.
+model LibraryLink {
+  id         String  @id @default(cuid())
+  platformId String
+  subjectId  String
+  chapterId  String? // Optional - can be attached to chapter
+  topicId    String? // Optional - can be attached to topic
+
+  uploadedById String // Tracks which library user added this link
+
+  title       String
+  description String?
+  url         String // The external link URL
+  linkType    String? // e.g., "article", "video", "reference", "tutorial", "documentation", etc.
+
+  // Optional metadata
+  thumbnailUrl String? // Preview thumbnail if available
+  domain       String? // Extracted domain name for display
+
+  status LibraryContentStatus @default(published)
+  order  Int                  @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
+  subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
+  chapter    LibraryChapter?     @relation(fields: [chapterId], references: [id])
+  topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
+  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
+
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([chapterId])
   @@index([topicId])
   @@index([uploadedById])
   @@index([status])
