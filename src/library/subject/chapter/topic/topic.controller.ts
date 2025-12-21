@@ -1,8 +1,8 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param, Get } from '@nestjs/common';
 import { TopicService } from './topic.service';
 import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
 import { LibraryJwtGuard } from '../../../library-auth/guard/library-jwt.guard';
-import { CreateTopicDocs, UpdateTopicDocs } from './docs/topic.docs';
+import { CreateTopicDocs, UpdateTopicDocs, GetTopicMaterialsDocs } from './docs/topic.docs';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Library Topic')
@@ -45,6 +45,23 @@ export class TopicController {
     @Body() payload: UpdateTopicDto,
   ) {
     return await this.topicService.updateTopic(req.user, topicId, payload);
+  }
+
+  @Get('getmaterials/:topicId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @GetTopicMaterialsDocs.operation
+  @GetTopicMaterialsDocs.response200
+  @GetTopicMaterialsDocs.response400
+  @GetTopicMaterialsDocs.response401
+  @GetTopicMaterialsDocs.response404
+  @GetTopicMaterialsDocs.response500
+  async getTopicMaterials(
+    @Request() req: any,
+    @Param('topicId') topicId: string,
+  ) {
+    return await this.topicService.getTopicMaterials(req.user, topicId);
   }
 }
 

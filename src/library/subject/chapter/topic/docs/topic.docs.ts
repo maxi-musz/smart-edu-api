@@ -84,3 +84,39 @@ export const UpdateTopicDocs = {
   }),
 };
 
+export const GetTopicMaterialsDocs = {
+  operation: ApiOperation({
+    summary: 'Get all materials for a topic',
+    description:
+      'Retrieves all content associated with a specific library topic, including videos, materials, links, assignments, and comments. ' +
+      'Only published content is returned. Comments include nested replies. ' +
+      'Requires a valid JWT token in the Authorization header. ' +
+      'Response is wrapped in { success, message, data } where data contains the topic information, statistics, and all associated content.',
+  }),
+
+  response200: ApiResponse({
+    status: 200,
+    description: 'Topic materials retrieved successfully',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - validation error',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description: 'Not found - library user not found or topic not found/does not belong to user\'s platform',
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
+

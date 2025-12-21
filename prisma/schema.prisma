@@ -2089,6 +2089,7 @@ model LibraryVideoLesson {
 
   durationSeconds Int?
   sizeBytes       Int?
+  views           Int          @default(0)
 
   status LibraryContentStatus @default(published)
   order  Int                  @default(1)
