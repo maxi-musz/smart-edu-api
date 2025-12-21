@@ -212,5 +212,227 @@ export class ChapterService {
       throw new InternalServerErrorException('Failed to update chapter');
     }
   }
+
+  async getChapterContents(user: any, chapterId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CHAPTER] Fetching contents for chapter: ${chapterId} for library user: ${user.email}`));
+
+    try {
+      // Get the library user to ensure they exist and get their platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify the chapter exists and belongs to the user's platform
+      const chapter = await this.prisma.libraryChapter.findFirst({
+        where: {
+          id: chapterId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          is_active: true,
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              thumbnailUrl: true,
+              thumbnailKey: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!chapter) {
+        this.logger.error(colors.red(`Chapter not found or does not belong to user's platform: ${chapterId}`));
+        throw new NotFoundException('Chapter not found or does not belong to your platform');
+      }
+
+      // Get all topics for this chapter
+      const topics = await this.prisma.libraryTopic.findMany({
+        where: {
+          chapterId: chapterId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          is_active: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      });
+
+      // Get content counts for all topics in this chapter
+      const topicIds = topics.map(t => t.id);
+
+      // Fetch all content counts in parallel
+      const [
+        videosCount,
+        materialsCount,
+        linksCount,
+        assignmentsCount,
+        commentsCount,
+      ] = await Promise.all([
+        // Total videos across all topics
+        this.prisma.libraryVideoLesson.count({
+          where: {
+            topicId: { in: topicIds },
+            platformId: libraryUser.platformId,
+            status: 'published' as any,
+          },
+        }),
+
+        // Total materials across all topics
+        this.prisma.libraryMaterial.count({
+          where: {
+            topicId: { in: topicIds },
+            platformId: libraryUser.platformId,
+            status: 'published' as any,
+          },
+        }),
+
+        // Total links across all topics
+        this.prisma.libraryLink.count({
+          where: {
+            topicId: { in: topicIds },
+            platformId: libraryUser.platformId,
+            status: 'published' as any,
+          },
+        }),
+
+        // Total assignments across all topics
+        this.prisma.libraryAssignment.count({
+          where: {
+            topicId: { in: topicIds },
+            platformId: libraryUser.platformId,
+            status: 'PUBLISHED' as any,
+          },
+        }),
+
+        // Total comments across all topics
+        this.prisma.libraryComment.count({
+          where: {
+            topicId: { in: topicIds },
+            platformId: libraryUser.platformId,
+            isDeleted: false,
+          },
+        }),
+      ]);
+
+      // Get content counts per topic
+      const topicsWithContent = await Promise.all(
+        topics.map(async (topic) => {
+          const [videos, materials, links, assignments, comments] = await Promise.all([
+            this.prisma.libraryVideoLesson.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'published' as any,
+              },
+            }),
+            this.prisma.libraryMaterial.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'published' as any,
+              },
+            }),
+            this.prisma.libraryLink.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'published' as any,
+              },
+            }),
+            this.prisma.libraryAssignment.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'PUBLISHED' as any,
+              },
+            }),
+            this.prisma.libraryComment.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                isDeleted: false,
+              },
+            }),
+          ]);
+
+          return {
+            ...topic,
+            contentCounts: {
+              videos,
+              materials,
+              links,
+              assignments,
+              comments,
+              total: videos + materials + links + assignments,
+            },
+          };
+        }),
+      );
+
+      // Build analysis/statistics card
+      const analysis = {
+        totalTopics: topics.length,
+        activeTopics: topics.filter(t => t.is_active).length,
+        totalVideos: videosCount,
+        totalMaterials: materialsCount,
+        totalLinks: linksCount,
+        totalAssignments: assignmentsCount,
+        totalComments: commentsCount,
+        totalContent: videosCount + materialsCount + linksCount + assignmentsCount,
+        averageContentPerTopic: topics.length > 0 
+          ? Math.round((videosCount + materialsCount + linksCount + assignmentsCount) / topics.length) 
+          : 0,
+      };
+
+      const responseData = {
+        chapter: {
+          id: chapter.id,
+          title: chapter.title,
+          description: chapter.description,
+          order: chapter.order,
+          is_active: chapter.is_active,
+          subject: chapter.subject,
+        },
+        analysis,
+        topics: topicsWithContent,
+      };
+
+      this.logger.log(colors.green(`Successfully retrieved contents for chapter: ${chapter.title}`));
+      return new ApiResponse(true, 'Chapter contents retrieved successfully', responseData);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error fetching chapter contents: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to retrieve chapter contents');
+    }
+  }
 }
 

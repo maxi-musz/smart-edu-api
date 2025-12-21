@@ -1,8 +1,8 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param, Get } from '@nestjs/common';
 import { ChapterService } from './chapter.service';
 import { CreateChapterDto, UpdateChapterDto } from './dto/chapter.dto';
 import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
-import { CreateChapterDocs, UpdateChapterDocs } from './docs/chapter.docs';
+import { CreateChapterDocs, UpdateChapterDocs, GetChapterContentsDocs } from './docs/chapter.docs';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Library Chapter')
@@ -45,6 +45,23 @@ export class ChapterController {
     @Body() payload: UpdateChapterDto,
   ) {
     return await this.chapterService.updateChapter(req.user, chapterId, payload);
+  }
+
+  @Get('getcontents/:chapterId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @GetChapterContentsDocs.operation
+  @GetChapterContentsDocs.response200
+  @GetChapterContentsDocs.response400
+  @GetChapterContentsDocs.response401
+  @GetChapterContentsDocs.response404
+  @GetChapterContentsDocs.response500
+  async getChapterContents(
+    @Request() req: any,
+    @Param('chapterId') chapterId: string,
+  ) {
+    return await this.chapterService.getChapterContents(req.user, chapterId);
   }
 }
 
