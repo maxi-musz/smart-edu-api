@@ -5,9 +5,11 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { LibraryAuthModule } from './library-auth/library-auth.module';
 import { ProfileModule } from './profile/profile.module';
 import { SchoolsModule } from './schools/schools.module';
+import { ResourcesModule } from './resources/resources.module';
+import { SubjectModule } from './subject/subject.module';
 
 @Module({
-  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule],
+  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule, ResourcesModule, SubjectModule],
   controllers: [LibraryController],
   providers: [LibraryService],
   exports: [LibraryService],
