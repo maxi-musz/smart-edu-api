@@ -1946,6 +1946,7 @@ model LibraryPlatform {
   generalMaterialPurchases         LibraryGeneralMaterialPurchase[]
   generalMaterialChatConversations LibraryGeneralMaterialChatConversation[]
   generalMaterialChapters          LibraryGeneralMaterialChapter[]
+  generalMaterialChapterFiles      LibraryGeneralMaterialChapterFile[]
   generalMaterialProcessings       LibraryGeneralMaterialProcessing[]
   generalMaterialChunks            LibraryGeneralMaterialChunk[]
 }
@@ -1977,6 +1978,7 @@ model LibraryResourceUser {
   uploadedLinks            LibraryLink[]
   comments                 LibraryComment[]
   uploadedGeneralMaterials LibraryGeneralMaterial[]
+  uploadedChapterFiles     LibraryGeneralMaterialChapterFile[]
 
   @@index([platformId])
 }
@@ -2403,9 +2405,44 @@ model LibraryGeneralMaterialChapter {
   material LibraryGeneralMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
   platform LibraryPlatform               @relation(fields: [platformId], references: [id])
   chunks   LibraryGeneralMaterialChunk[]
+  files    LibraryGeneralMaterialChapterFile[]
 
   @@index([materialId])
   @@index([platformId])
+  @@index([order])
+}
+
+/// Files attached to general material chapters
+/// A chapter can have multiple files (e.g., PDF, DOC, images, etc.)
+model LibraryGeneralMaterialChapterFile {
+  id         String @id @default(cuid())
+  chapterId  String
+  platformId String
+  uploadedById String // Tracks which library user uploaded this file
+
+  // File Info
+  fileName   String // Original file name
+  fileType   LibraryMaterialType @default(PDF)
+  url        String // Public or signed URL
+  s3Key      String? // S3 object key
+  sizeBytes  Int?
+  pageCount  Int?
+
+  // Metadata
+  title      String? // Optional title/description for the file
+  description String?
+  order      Int     @default(1) // Order within the chapter
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chapter    LibraryGeneralMaterialChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  platform   LibraryPlatform               @relation(fields: [platformId], references: [id])
+  uploadedBy LibraryResourceUser            @relation(fields: [uploadedById], references: [id])
+
+  @@index([chapterId])
+  @@index([platformId])
+  @@index([uploadedById])
   @@index([order])
 }
 
