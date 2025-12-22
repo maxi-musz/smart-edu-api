@@ -8,9 +8,10 @@ import { SchoolsModule } from './schools/schools.module';
 import { ResourcesModule } from './resources/resources.module';
 import { SubjectModule } from './subject/subject.module';
 import { ContentModule } from './content/content.module';
+import { GeneralMaterialsModule } from './general-materials/general-materials.module';
 
 @Module({
-  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule, ResourcesModule, SubjectModule, ContentModule],
+  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule, ResourcesModule, SubjectModule, ContentModule, GeneralMaterialsModule],
   controllers: [LibraryController],
   providers: [LibraryService],
   exports: [LibraryService],
