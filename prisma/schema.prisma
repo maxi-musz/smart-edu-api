@@ -2339,7 +2339,7 @@ model LibraryGeneralMaterial {
   subjectId String? // Optional - can be attached to a subject for organization
 
   // AI Chat Support
-  isAiEnabled      Boolean                  @default(false) // Whether AI chat is enabled
+  isAiEnabled      Boolean                  @default(false) // Master switch - if false, no chapters can be AI-enabled
   processingStatus MaterialProcessingStatus @default(PENDING)
 
   // Metadata
@@ -2396,7 +2396,8 @@ model LibraryGeneralMaterialChapter {
   order       Int     @default(1)
 
   // AI Processing
-  isProcessed Boolean @default(false)
+  isAiEnabled Boolean @default(false) // Whether AI chat is enabled for this chapter
+  isProcessed Boolean @default(false)  // Whether the chapter has been processed/chunked for AI
   chunkCount  Int     @default(0)
 
   createdAt DateTime @default(now())
@@ -2410,6 +2411,7 @@ model LibraryGeneralMaterialChapter {
   @@index([materialId])
   @@index([platformId])
   @@index([order])
+  @@index([isAiEnabled])
 }
 
 /// Files attached to general material chapters

@@ -174,8 +174,46 @@ export class GeneralMaterialsService {
         ];
       }
 
+      // Handle isAiEnabled filter: Material must have isAiEnabled=true AND have at least one chapter with isAiEnabled=true
       if (query.isAiEnabled !== undefined) {
-        where.isAiEnabled = query.isAiEnabled;
+        if (query.isAiEnabled === true) {
+          // Find materials that have isAiEnabled=true AND have at least one AI-enabled chapter
+          const materialsWithAiChapters = await this.prisma.libraryGeneralMaterialChapter.findMany({
+            where: {
+              platformId: libraryUser.platformId, 
+              isAiEnabled: true,
+            },
+            select: {
+              materialId: true,
+            },
+            distinct: ['materialId'],
+          });
+
+          const materialIds = materialsWithAiChapters.map((ch) => ch.materialId);
+          where.id = { in: materialIds };
+          where.isAiEnabled = true;
+        } else {
+          // For false: materials where isAiEnabled=false OR no AI-enabled chapters
+          const materialsWithAiChapters = await this.prisma.libraryGeneralMaterialChapter.findMany({
+            where: {
+              platformId: libraryUser.platformId,
+              isAiEnabled: true,
+            },
+            select: {
+              materialId: true,
+            },
+            distinct: ['materialId'],
+          });
+
+          const materialIdsWithAiChapters = materialsWithAiChapters.map((ch) => ch.materialId);
+          where.OR = [
+            { isAiEnabled: false },
+            {
+              isAiEnabled: true,
+              id: { notIn: materialIdsWithAiChapters },
+            },
+          ];
+        }
       }
 
       if (query.classId) {
@@ -341,6 +379,7 @@ export class GeneralMaterialsService {
               pageStart: true,
               pageEnd: true,
               order: true,
+              isAiEnabled: true,
               isProcessed: true,
               chunkCount: true,
               createdAt: true,
@@ -432,6 +471,7 @@ export class GeneralMaterialsService {
           pageStart: true,
           pageEnd: true,
           order: true,
+          isAiEnabled: true,
           isProcessed: true,
           chunkCount: true,
           createdAt: true,
@@ -834,6 +874,23 @@ export class GeneralMaterialsService {
 
       const nextOrder = (lastChapter?.order || 0) + 1;
 
+      // Verify material has isAiEnabled=true if chapter is being enabled
+      if (payload.isAiEnabled === true) {
+        const materialCheck = await this.prisma.libraryGeneralMaterial.findFirst({
+          where: {
+            id: materialId,
+            platformId: libraryUser.platformId,
+            isAiEnabled: true,
+          },
+          select: { id: true },
+        });
+
+        if (!materialCheck) {
+          this.logger.error(colors.red(`Cannot enable AI for chapter: Material must have isAiEnabled=true first`));
+          throw new BadRequestException('Cannot enable AI for chapter: The parent material must have AI enabled first');
+        }
+      }
+
       const chapter = await this.prisma.libraryGeneralMaterialChapter.create({
         data: {
           materialId: materialId,
@@ -842,6 +899,7 @@ export class GeneralMaterialsService {
           description: payload.description ?? null,
           pageStart: payload.pageStart ?? null,
           pageEnd: payload.pageEnd ?? null,
+          isAiEnabled: payload.isAiEnabled ?? false,
           order: nextOrder,
         },
       });

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsInt, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength, IsInt, Min, IsBoolean } from 'class-validator';
 
 export class CreateGeneralMaterialChapterDto {
   @ApiProperty({
@@ -37,4 +37,13 @@ export class CreateGeneralMaterialChapterDto {
   @IsOptional()
   @Min(1)
   pageEnd?: number;
+
+  @ApiPropertyOptional({
+    description: 'Whether AI chat is enabled for this chapter. Note: The parent material must also have isAiEnabled=true for this to take effect.',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isAiEnabled?: boolean;
 }
