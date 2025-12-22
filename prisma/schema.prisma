@@ -123,72 +123,75 @@ model Document {
 }
 
 model User {
-  id                         String                 @id @default(cuid())
-  school_id                  String
-  email                      String                 @unique
-  password                   String
-  first_name                 String
-  last_name                  String
-  phone_number               String
-  display_picture            Json?
-  gender                     Gender                 @default(other)
-  otp                        String?                @default("")
-  otp_expires_at             DateTime?
-  is_email_verified          Boolean?               @default(true)
-  is_otp_verified            Boolean?               @default(true)
-  role                       Roles                  @default(student)
-  status                     UserStatus             @default(active)
-  createdAt                  DateTime               @default(now())
-  updatedAt                  DateTime               @updatedAt
-  filesUploadedThisMonth     Int                    @default(0)
-  lastFileResetDate          DateTime               @default(now())
-  lastTokenResetDateAllTime  DateTime               @default(now())
-  maxFileSizeMB              Int                    @default(100)
-  maxFilesPerMonth           Int                    @default(10)
-  maxMessagesPerWeek         Int                    @default(100)
-  maxStorageMB               Int                    @default(500)
-  maxTokensPerDay            Int                    @default(50000)
-  maxTokensPerWeek           Int                    @default(50000)
-  messagesSentThisWeek       Int                    @default(0)
-  tokensUsedAllTime          Int                    @default(0)
-  tokensUsedThisDay          Int                    @default(0)
-  tokensUsedThisWeek         Int                    @default(0)
-  totalFilesUploadedAllTime  Int                    @default(0)
-  totalStorageUsedMB         Int                    @default(0)
-  assessmentsCreated         Assessment[]
-  assessmentAttemptsGraded   AssessmentAttempt[]    @relation("AssessmentGrader")
-  assessmentAttempts         AssessmentAttempt[]
-  assessmentResponses        AssessmentResponse[]
-  assessmentGradesGiven      AssessmentSubmission[] @relation("AssessmentGrader")
-  assessmentSubmissions      AssessmentSubmission[]
-  assignmentsCreated         Assignment[]
-  assignmentGradesReceived   AssignmentGrade[]
-  assignmentGradesGiven      AssignmentGrade[]      @relation("AssignmentGradeGiver")
-  assignmentSubmissions      AssignmentSubmission[]
-  attendanceRecordsMarked    AttendanceRecord[]     @relation("AttendanceMarker")
-  attendanceRecords          AttendanceRecord[]
-  attendanceSessionsApproved AttendanceSession[]    @relation("AttendanceApprover")
-  attendanceSummaries        AttendanceSummary[]
-  chatAnalytics              ChatAnalytics[]
-  chatConversations          ChatConversation[]
-  chatMessages               ChatMessage[]
-  deviceTokens               DeviceToken[]
-  gradingRubricsCreated      GradingRubric[]
-  libraryResource            LibraryResource[]
-  liveClass                  LiveClass[]
-  pdfMaterial                PDFMaterial[]
-  parent                     Parent?
-  payments                   Payment[]              @relation("StudentPayment")
-  student                    Student?
-  studentAchievements        StudentAchievement[]   @relation("StudentAchievements")
-  performances               StudentPerformance[]   @relation("StudentPerformance")
-  teacher                    Teacher?
-  topicsCreated              Topic[]                @relation("TopicCreator")
-  school                     School                 @relation(fields: [school_id], references: [id])
-  userSettings               UserSettings?
-  videoContent               VideoContent[]
-  resultsReleased            Result[]               @relation("ResultReleasedBy")
-  libraryComments            LibraryComment[]
+  id                               String                                   @id @default(cuid())
+  school_id                        String
+  email                            String                                   @unique
+  password                         String
+  first_name                       String
+  last_name                        String
+  phone_number                     String
+  display_picture                  Json?
+  gender                           Gender                                   @default(other)
+  otp                              String?                                  @default("")
+  otp_expires_at                   DateTime?
+  is_email_verified                Boolean?                                 @default(true)
+  is_otp_verified                  Boolean?                                 @default(true)
+  role                             Roles                                    @default(student)
+  status                           UserStatus                               @default(active)
+  createdAt                        DateTime                                 @default(now())
+  updatedAt                        DateTime                                 @updatedAt
+  filesUploadedThisMonth           Int                                      @default(0)
+  lastFileResetDate                DateTime                                 @default(now())
+  lastTokenResetDateAllTime        DateTime                                 @default(now())
+  maxFileSizeMB                    Int                                      @default(100)
+  maxFilesPerMonth                 Int                                      @default(10)
+  maxMessagesPerWeek               Int                                      @default(100)
+  maxStorageMB                     Int                                      @default(500)
+  maxTokensPerDay                  Int                                      @default(50000)
+  maxTokensPerWeek                 Int                                      @default(50000)
+  messagesSentThisWeek             Int                                      @default(0)
+  tokensUsedAllTime                Int                                      @default(0)
+  tokensUsedThisDay                Int                                      @default(0)
+  tokensUsedThisWeek               Int                                      @default(0)
+  totalFilesUploadedAllTime        Int                                      @default(0)
+  totalStorageUsedMB               Int                                      @default(0)
+  assessmentsCreated               Assessment[]
+  assessmentAttemptsGraded         AssessmentAttempt[]                      @relation("AssessmentGrader")
+  assessmentAttempts               AssessmentAttempt[]
+  assessmentResponses              AssessmentResponse[]
+  assessmentGradesGiven            AssessmentSubmission[]                   @relation("AssessmentGrader")
+  assessmentSubmissions            AssessmentSubmission[]
+  assignmentsCreated               Assignment[]
+  assignmentGradesReceived         AssignmentGrade[]
+  assignmentGradesGiven            AssignmentGrade[]                        @relation("AssignmentGradeGiver")
+  assignmentSubmissions            AssignmentSubmission[]
+  attendanceRecordsMarked          AttendanceRecord[]                       @relation("AttendanceMarker")
+  attendanceRecords                AttendanceRecord[]
+  attendanceSessionsApproved       AttendanceSession[]                      @relation("AttendanceApprover")
+  attendanceSummaries              AttendanceSummary[]
+  chatAnalytics                    ChatAnalytics[]
+  chatConversations                ChatConversation[]
+  chatMessages                     ChatMessage[]
+  deviceTokens                     DeviceToken[]
+  gradingRubricsCreated            GradingRubric[]
+  libraryResource                  LibraryResource[]
+  liveClass                        LiveClass[]
+  pdfMaterial                      PDFMaterial[]
+  parent                           Parent?
+  payments                         Payment[]                                @relation("StudentPayment")
+  student                          Student?
+  studentAchievements              StudentAchievement[]                     @relation("StudentAchievements")
+  performances                     StudentPerformance[]                     @relation("StudentPerformance")
+  teacher                          Teacher?
+  topicsCreated                    Topic[]                                  @relation("TopicCreator")
+  school                           School                                   @relation(fields: [school_id], references: [id])
+  userSettings                     UserSettings?
+  videoContent                     VideoContent[]
+  resultsReleased                  Result[]                                 @relation("ResultReleasedBy")
+  libraryComments                  LibraryComment[]
+  generalMaterialPurchases         LibraryGeneralMaterialPurchase[]
+  generalMaterialChatConversations LibraryGeneralMaterialChatConversation[]
+  generalMaterialChatMessages      LibraryGeneralMaterialChatMessage[]
 }
 
 model Teacher {
@@ -1662,6 +1665,14 @@ enum ChunkType {
   FOOTNOTE
 }
 
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
 enum QuestionType {
   MULTIPLE_CHOICE_SINGLE
   MULTIPLE_CHOICE_MULTIPLE
@@ -1922,15 +1933,21 @@ model LibraryPlatform {
   updatedAt DateTime @updatedAt
 
   // Relations
-  users          LibraryResourceUser[]
-  subjects       LibrarySubject[]
-  topics         LibraryTopic[]
-  videos         LibraryVideoLesson[]
-  materials      LibraryMaterial[]
-  assignments    LibraryAssignment[]
-  links          LibraryLink[]
-  comments       LibraryComment[]
-  LibraryChapter LibraryChapter[]
+  users                            LibraryResourceUser[]
+  subjects                         LibrarySubject[]
+  topics                           LibraryTopic[]
+  videos                           LibraryVideoLesson[]
+  materials                        LibraryMaterial[]
+  assignments                      LibraryAssignment[]
+  links                            LibraryLink[]
+  comments                         LibraryComment[]
+  LibraryChapter                   LibraryChapter[]
+  generalMaterials                 LibraryGeneralMaterial[]
+  generalMaterialPurchases         LibraryGeneralMaterialPurchase[]
+  generalMaterialChatConversations LibraryGeneralMaterialChatConversation[]
+  generalMaterialChapters          LibraryGeneralMaterialChapter[]
+  generalMaterialProcessings       LibraryGeneralMaterialProcessing[]
+  generalMaterialChunks            LibraryGeneralMaterialChunk[]
 }
 
 /// Users who belong to a LibraryPlatform (e.g. content team members,
@@ -1953,12 +1970,13 @@ model LibraryResourceUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform            LibraryPlatform      @relation(fields: [platformId], references: [id])
-  uploadedVideos      LibraryVideoLesson[]
-  uploadedMaterials   LibraryMaterial[]
-  uploadedAssignments LibraryAssignment[]
-  uploadedLinks       LibraryLink[]
-  comments            LibraryComment[]
+  platform                 LibraryPlatform          @relation(fields: [platformId], references: [id])
+  uploadedVideos           LibraryVideoLesson[]
+  uploadedMaterials        LibraryMaterial[]
+  uploadedAssignments      LibraryAssignment[]
+  uploadedLinks            LibraryLink[]
+  comments                 LibraryComment[]
+  uploadedGeneralMaterials LibraryGeneralMaterial[]
 
   @@index([platformId])
 }
@@ -1974,9 +1992,10 @@ model LibraryClass {
   name  String
   order Int    @default(1)
 
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  subjects  LibrarySubject[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  subjects         LibrarySubject[]
+  generalMaterials LibraryGeneralMaterial[]
 }
 
 /// Subjects under a library class (e.g. "Mathematics", "Physics").
@@ -1996,15 +2015,16 @@ model LibrarySubject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform    LibraryPlatform      @relation(fields: [platformId], references: [id])
-  class       LibraryClass?        @relation(fields: [classId], references: [id])
-  chapters    LibraryChapter[]
-  topics      LibraryTopic[]
-  videos      LibraryVideoLesson[]
-  materials   LibraryMaterial[]
-  assignments LibraryAssignment[]
-  links       LibraryLink[]
-  comments    LibraryComment[]
+  platform         LibraryPlatform          @relation(fields: [platformId], references: [id])
+  class            LibraryClass?            @relation(fields: [classId], references: [id])
+  chapters         LibraryChapter[]
+  topics           LibraryTopic[]
+  videos           LibraryVideoLesson[]
+  materials        LibraryMaterial[]
+  assignments      LibraryAssignment[]
+  links            LibraryLink[]
+  comments         LibraryComment[]
+  generalMaterials LibraryGeneralMaterial[]
 
   @@unique([platformId, code])
   @@index([platformId, name])
@@ -2089,7 +2109,7 @@ model LibraryVideoLesson {
 
   durationSeconds Int?
   sizeBytes       Int?
-  views           Int          @default(0)
+  views           Int  @default(0)
 
   status LibraryContentStatus @default(published)
   order  Int                  @default(1)
@@ -2279,4 +2299,282 @@ model LibraryMaterial {
   @@index([topicId])
   @@index([uploadedById])
   @@index([status])
+}
+
+// ==================== GENERAL MATERIALS (E-COMMERCE) ====================
+
+/// Standalone ebooks/textbooks that can be sold and have AI chat capabilities.
+/// These are NOT tied to the educational hierarchy (class/subject/topic).
+model LibraryGeneralMaterial {
+  id           String @id @default(cuid())
+  platformId   String
+  uploadedById String
+
+  // Basic Info
+  title       String
+  description String?
+  author      String?
+  isbn        String?
+  publisher   String?
+
+  // File Info
+  materialType   LibraryMaterialType @default(PDF)
+  url            String // Main file URL
+  s3Key          String? // S3 object key
+  sizeBytes      Int?
+  pageCount      Int?
+  thumbnailUrl   String?
+  thumbnailS3Key String?
+
+  // E-commerce Fields
+  price       Float? // Price in platform currency (null = free)
+  currency    String? @default("NGN") // Currency code
+  isFree      Boolean @default(false)
+  isAvailable Boolean @default(true) // For inventory management
+
+  // Optional Educational Attachment (for categorization)
+  classId   String? // Optional - can be attached to a class for organization
+  subjectId String? // Optional - can be attached to a subject for organization
+
+  // AI Chat Support
+  isAiEnabled      Boolean                  @default(false) // Whether AI chat is enabled
+  processingStatus MaterialProcessingStatus @default(PENDING)
+
+  // Metadata
+  status     LibraryContentStatus @default(published)
+  order      Int                  @default(1)
+  views      Int                  @default(0)
+  downloads  Int                  @default(0)
+  salesCount Int                  @default(0) // Number of purchases
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
+  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
+  class      LibraryClass?       @relation(fields: [classId], references: [id])
+  subject    LibrarySubject?     @relation(fields: [subjectId], references: [id])
+
+  // Chapters for AI chunking
+  chapters LibraryGeneralMaterialChapter[]
+
+  // Processing & AI
+  processing LibraryGeneralMaterialProcessing?
+  chunks     LibraryGeneralMaterialChunk[]
+
+  // Purchases
+  purchases LibraryGeneralMaterialPurchase[]
+
+  // Chat conversations
+  chatConversations                  LibraryGeneralMaterialChatConversation[]
+  libraryGeneralMaterialChatMessages LibraryGeneralMaterialChatMessage[]
+  libraryGeneralMaterialChatContexts LibraryGeneralMaterialChatContext[]
+
+  @@index([platformId])
+  @@index([uploadedById])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([status])
+  @@index([isAiEnabled])
+  @@index([price])
+  @@index([createdAt])
+}
+
+/// Chapters within a general material for AI chunking
+model LibraryGeneralMaterialChapter {
+  id         String @id @default(cuid())
+  materialId String
+  platformId String
+
+  title       String
+  description String?
+  pageStart   Int? // Starting page number
+  pageEnd     Int? // Ending page number
+  order       Int     @default(1)
+
+  // AI Processing
+  isProcessed Boolean @default(false)
+  chunkCount  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  material LibraryGeneralMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  platform LibraryPlatform               @relation(fields: [platformId], references: [id])
+  chunks   LibraryGeneralMaterialChunk[]
+
+  @@index([materialId])
+  @@index([platformId])
+  @@index([order])
+}
+
+/// AI Processing status for general materials
+model LibraryGeneralMaterialProcessing {
+  id         String @id @default(cuid())
+  materialId String @unique
+  platformId String
+
+  status          MaterialProcessingStatus @default(PENDING)
+  totalChunks     Int                      @default(0)
+  processedChunks Int                      @default(0)
+  failedChunks    Int                      @default(0)
+
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  errorMessage          String?
+  retryCount            Int       @default(0)
+
+  vectorDatabaseId String?
+  embeddingModel   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  material LibraryGeneralMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  platform LibraryPlatform               @relation(fields: [platformId], references: [id])
+  chunks   LibraryGeneralMaterialChunk[]
+
+  @@index([platformId])
+  @@index([status])
+}
+
+/// AI Chunks for general materials
+model LibraryGeneralMaterialChunk {
+  id           String  @id @default(cuid())
+  materialId   String
+  chapterId    String?
+  processingId String
+  platformId   String
+
+  content        String
+  chunkType      ChunkType             @default(TEXT)
+  pageNumber     Int?
+  sectionTitle   String?
+  embedding      Unsupported("vector") // Vector embedding for AI
+  embeddingModel String
+  tokenCount     Int                   @default(0)
+  wordCount      Int                   @default(0)
+  orderIndex     Int
+  keywords       String[]              @default([])
+  summary        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  material     LibraryGeneralMaterial              @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  chapter      LibraryGeneralMaterialChapter?      @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  processing   LibraryGeneralMaterialProcessing    @relation(fields: [processingId], references: [id], onDelete: Cascade)
+  platform     LibraryPlatform                     @relation(fields: [platformId], references: [id])
+  chatContexts LibraryGeneralMaterialChatContext[]
+
+  @@index([materialId])
+  @@index([chapterId])
+  @@index([processingId])
+  @@index([platformId])
+  @@index([orderIndex])
+}
+
+/// Purchase tracking for general materials
+model LibraryGeneralMaterialPurchase {
+  id         String @id @default(cuid())
+  materialId String
+  userId     String // Regular User ID (student/parent who purchased)
+  platformId String
+
+  price         Float
+  currency      String  @default("NGN")
+  paymentMethod String? // e.g., "card", "bank_transfer", "wallet"
+  transactionId String? // External payment transaction ID
+
+  status PurchaseStatus @default(PENDING) // PENDING, COMPLETED, FAILED, REFUNDED
+
+  purchasedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  material LibraryGeneralMaterial @relation(fields: [materialId], references: [id])
+  user     User                   @relation(fields: [userId], references: [id])
+  platform LibraryPlatform        @relation(fields: [platformId], references: [id])
+
+  @@index([materialId])
+  @@index([userId])
+  @@index([platformId])
+  @@index([status])
+  @@index([purchasedAt])
+}
+
+/// AI Chat conversations for general materials
+model LibraryGeneralMaterialChatConversation {
+  id         String @id @default(cuid())
+  userId     String
+  materialId String
+  platformId String
+
+  title          String?
+  status         ConversationStatus @default(ACTIVE)
+  systemPrompt   String?
+  contextSummary String?
+  totalMessages  Int                @default(0)
+  lastActivity   DateTime           @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User                                @relation(fields: [userId], references: [id])
+  material LibraryGeneralMaterial              @relation(fields: [materialId], references: [id])
+  platform LibraryPlatform                     @relation(fields: [platformId], references: [id])
+  messages LibraryGeneralMaterialChatMessage[]
+  contexts LibraryGeneralMaterialChatContext[]
+
+  @@index([userId])
+  @@index([materialId])
+  @@index([platformId])
+  @@index([status])
+}
+
+/// Chat messages for general materials
+model LibraryGeneralMaterialChatMessage {
+  id             String @id @default(cuid())
+  conversationId String
+  materialId     String
+  userId         String
+
+  role       MessageRole // USER, ASSISTANT, SYSTEM
+  content    String
+  tokensUsed Int?
+  model      String?
+
+  // Context from chunks
+  referencedChunks String[] // IDs of chunks used for context
+
+  createdAt DateTime @default(now())
+
+  conversation LibraryGeneralMaterialChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  material     LibraryGeneralMaterial                 @relation(fields: [materialId], references: [id])
+  user         User                                   @relation(fields: [userId], references: [id])
+
+  @@index([conversationId])
+  @@index([materialId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// Chat context from chunks
+model LibraryGeneralMaterialChatContext {
+  id             String @id @default(cuid())
+  conversationId String
+  chunkId        String
+  materialId     String
+
+  relevanceScore Float?
+  createdAt      DateTime @default(now())
+
+  conversation LibraryGeneralMaterialChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  chunk        LibraryGeneralMaterialChunk            @relation(fields: [chunkId], references: [id])
+  material     LibraryGeneralMaterial                 @relation(fields: [materialId], references: [id])
+
+  @@index([conversationId])
+  @@index([chunkId])
+  @@index([materialId])
 }
