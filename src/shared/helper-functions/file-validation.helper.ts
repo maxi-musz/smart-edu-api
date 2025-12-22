@@ -17,8 +17,23 @@ export class FileValidationHelper {
   // Allowed file extensions
   private static readonly ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
 
+  // Allowed image MIME types
+  private static readonly ALLOWED_IMAGE_TYPES = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+  ];
+
+  // Allowed image extensions
+  private static readonly ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
   // Max file size in bytes (300MB)
   private static readonly MAX_FILE_SIZE = 300 * 1024 * 1024;
+
+  // Max image file size in bytes (5MB)
+  private static readonly MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
   /**
    * Validate material file upload
@@ -64,6 +79,49 @@ export class FileValidationHelper {
     return {
       isValid: true,
       fileType
+    };
+  }
+
+  /**
+   * Validate image file upload (for thumbnails)
+   */
+  static validateImageFile(file: Express.Multer.File): FileValidationResult {
+    // Check if file exists
+    if (!file) {
+      return {
+        isValid: false,
+        error: 'No file provided',
+      };
+    }
+
+    // Check file size
+    if (file.size > this.MAX_IMAGE_SIZE) {
+      const maxSizeMB = this.MAX_IMAGE_SIZE / (1024 * 1024);
+      return {
+        isValid: false,
+        error: `Image file size exceeds maximum allowed size of ${maxSizeMB}MB`,
+      };
+    }
+
+    // Check MIME type
+    if (!this.ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      return {
+        isValid: false,
+        error: `Image type not allowed. Allowed types: ${this.ALLOWED_IMAGE_EXTENSIONS.join(', ')}`,
+      };
+    }
+
+    // Check file extension
+    const fileExtension = this.getFileExtension(file.originalname);
+    if (!this.ALLOWED_IMAGE_EXTENSIONS.includes(fileExtension.toLowerCase())) {
+      return {
+        isValid: false,
+        error: `Image extension not allowed. Allowed extensions: ${this.ALLOWED_IMAGE_EXTENSIONS.join(', ')}`,
+      };
+    }
+
+    return {
+      isValid: true,
     };
   }
 

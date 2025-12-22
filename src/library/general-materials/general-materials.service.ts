@@ -46,7 +46,7 @@ export class GeneralMaterialsService {
         throw new NotFoundException('Library platform not found');
       }
 
-      const [allMaterials, allChapters, purchases] = await Promise.all([
+      const [recentMaterials, allChapters, totalMaterialsCount, aiEnabledCount, statusCounts] = await Promise.all([
         this.prisma.libraryGeneralMaterial.findMany({
           where: { platformId: libraryUser.platformId },
           select: {
@@ -54,55 +54,64 @@ export class GeneralMaterialsService {
             title: true,
             description: true,
             author: true,
-            price: true,
-            currency: true,
-            isFree: true,
             isAvailable: true,
             isAiEnabled: true,
             status: true,
             views: true,
             downloads: true,
-            salesCount: true,
+            thumbnailUrl: true,
+            thumbnailS3Key: true,
             createdAt: true,
             updatedAt: true,
+            uploadedBy: {
+              select: {
+                id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
+          take: 20,
         }),
         this.prisma.libraryGeneralMaterialChapter.findMany({
           where: { platformId: libraryUser.platformId },
           select: { id: true, materialId: true },
         }),
-        this.prisma.libraryGeneralMaterialPurchase.findMany({
+        this.prisma.libraryGeneralMaterial.count({
           where: { platformId: libraryUser.platformId },
-          select: { id: true, materialId: true, price: true, status: true },
+        }),
+        this.prisma.libraryGeneralMaterial.count({
+          where: {
+            platformId: libraryUser.platformId,
+            isAiEnabled: true,
+          },
+        }),
+        this.prisma.libraryGeneralMaterial.groupBy({
+          by: ['status'],
+          where: { platformId: libraryUser.platformId },
+          _count: true,
         }),
       ]);
 
-      const totalMaterials = allMaterials.length;
-      const freeMaterials = allMaterials.filter((m: any) => m.isFree || !m.price).length;
-      const paidMaterials = allMaterials.filter((m: any) => !m.isFree && m.price && m.price > 0).length;
-      const aiEnabledMaterials = allMaterials.filter((m: any) => m.isAiEnabled).length;
-
       const totalChapters = allChapters.length;
 
-      const completedPurchases = purchases.filter((p: any) => p.status === 'COMPLETED');
-      const totalSales = completedPurchases.length;
-      const totalRevenue = completedPurchases.reduce((sum: number, p: any) => sum + (p.price || 0), 0);
+      const statusMap = statusCounts.reduce((acc: any, item: any) => {
+        acc[item.status] = item._count;
+        return acc;
+      }, {});
 
       const statistics = {
         overview: {
-          totalMaterials,
-          freeMaterials,
-          paidMaterials,
-          aiEnabledMaterials,
+          totalMaterials: totalMaterialsCount,
+          aiEnabledMaterials: aiEnabledCount,
           totalChapters,
-          totalSales,
-          totalRevenue,
         },
         byStatus: {
-          published: allMaterials.filter((m: any) => m.status === 'published').length,
-          draft: allMaterials.filter((m: any) => m.status === 'draft').length,
-          archived: allMaterials.filter((m: any) => m.status === 'archived').length,
+          published: statusMap.published || 0,
+          draft: statusMap.draft || 0,
+          archived: statusMap.archived || 0,
         },
       };
 
@@ -112,9 +121,10 @@ export class GeneralMaterialsService {
           name: platform.name,
           slug: platform.slug,
           status: platform.status,
-          materialsCount: totalMaterials,
+          materialsCount: totalMaterialsCount,
         },
         statistics,
+        materials: recentMaterials,
       };
 
       this.logger.log(colors.green(`[GENERAL MATERIALS] Dashboard fetched for platform: ${platform.name}`));
@@ -162,10 +172,6 @@ export class GeneralMaterialsService {
         ];
       }
 
-      if (query.isFree !== undefined) {
-        where.isFree = query.isFree;
-      }
-
       if (query.isAiEnabled !== undefined) {
         where.isAiEnabled = query.isAiEnabled;
       }
@@ -178,12 +184,6 @@ export class GeneralMaterialsService {
         where.subjectId = query.subjectId;
       }
 
-      if (query.minPrice !== undefined || query.maxPrice !== undefined) {
-        where.price = {};
-        if (query.minPrice !== undefined) where.price.gte = query.minPrice;
-        if (query.maxPrice !== undefined) where.price.lte = query.maxPrice;
-      }
-
       const [totalItems, items] = await Promise.all([
         this.prisma.libraryGeneralMaterial.count({ where }),
         this.prisma.libraryGeneralMaterial.findMany({
@@ -193,15 +193,13 @@ export class GeneralMaterialsService {
             title: true,
             description: true,
             author: true,
-            price: true,
-            currency: true,
-            isFree: true,
             isAvailable: true,
             isAiEnabled: true,
             status: true,
             views: true,
             downloads: true,
-            salesCount: true,
+            thumbnailUrl: true,
+            thumbnailS3Key: true,
             createdAt: true,
             updatedAt: true,
             class: {
@@ -215,6 +213,14 @@ export class GeneralMaterialsService {
                 id: true,
                 name: true,
                 code: true,
+              },
+            },
+            uploadedBy: {
+              select: {
+                id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
               },
             },
           },
@@ -255,7 +261,8 @@ export class GeneralMaterialsService {
   async createGeneralMaterial(
     user: any,
     payload: CreateGeneralMaterialDto,
-    file: Express.Multer.File,
+    file: Express.Multer.File | undefined,
+    thumbnailFile?: Express.Multer.File,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[GENERAL MATERIALS] Creating general material for library user: ${user.email}`));
 
@@ -268,6 +275,14 @@ export class GeneralMaterialsService {
       if (!validationResult.isValid) {
         this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
         throw new BadRequestException(validationResult.error);
+      }
+
+      if (thumbnailFile) {
+        const thumbValidation = FileValidationHelper.validateImageFile(thumbnailFile);
+        if (!thumbValidation.isValid) {
+          this.logger.error(colors.red(`❌ Thumbnail validation failed: ${thumbValidation.error}`));
+          throw new BadRequestException(thumbValidation.error);
+        }
       }
 
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -283,9 +298,19 @@ export class GeneralMaterialsService {
       const uploadFolder = `library/general-materials/platforms/${libraryUser.platformId}`;
       const uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
 
-      const price = payload.isFree ? null : payload.price ?? null;
-      const isFree = payload.isFree ?? (!price || price === 0);
-      const currency = price ? payload.currency || 'NGN' : null;
+      let thumbnailUrl: string | null = null;
+      let thumbnailS3Key: string | null = null;
+
+      if (thumbnailFile) {
+        const thumbFolder = `library/general-materials/thumbnails/platforms/${libraryUser.platformId}`;
+        const thumbResult = await this.s3Service.uploadFile(
+          thumbnailFile,
+          thumbFolder,
+          `${payload.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
+        );
+        thumbnailUrl = thumbResult.url;
+        thumbnailS3Key = thumbResult.key;
+      }
 
       const material = await this.prisma.libraryGeneralMaterial.create({
         data: {
@@ -301,15 +326,25 @@ export class GeneralMaterialsService {
           s3Key: uploadResult.key,
           sizeBytes: file.size,
           pageCount: null,
-          thumbnailUrl: null,
-          thumbnailS3Key: null,
-          price,
-          currency,
-          isFree,
+          thumbnailUrl,
+          thumbnailS3Key,
+          price: null,
+          currency: null,
+          isFree: false,
           isAvailable: true,
-          classId: payload.classId ?? null,
-          subjectId: payload.subjectId ?? null,
-          isAiEnabled: payload.isAiEnabled ?? false,
+          classId: null,
+          subjectId: null,
+          isAiEnabled: false,
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              email: true,
+              first_name: true,
+              last_name: true,
+            },
+          },
         },
       });
 
@@ -330,7 +365,8 @@ export class GeneralMaterialsService {
    */
   async startGeneralMaterialUploadSession(
     payload: CreateGeneralMaterialDto,
-    file: Express.Multer.File,
+    file: Express.Multer.File | undefined,
+    thumbnailFile: Express.Multer.File | undefined,
     user: any,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[GENERAL MATERIALS] Starting upload session for material: ${payload.title}`));
@@ -345,14 +381,22 @@ export class GeneralMaterialsService {
       throw new BadRequestException(validationResult.error);
     }
 
-    const totalBytes = file.size;
+    if (thumbnailFile) {
+      const thumbValidation = FileValidationHelper.validateImageFile(thumbnailFile);
+      if (!thumbValidation.isValid) {
+        this.logger.error(colors.red(`❌ Thumbnail validation failed: ${thumbValidation.error}`));
+        throw new BadRequestException(thumbValidation.error);
+      }
+    }
+
+    const totalBytes = file.size + (thumbnailFile?.size || 0);
     const sessionId = this.uploadProgressService.createUploadSession(
       user.sub,
       user.platform_id || 'library-general-materials',
       totalBytes,
     );
 
-    this.uploadGeneralMaterialWithProgress(payload, file, user, sessionId).catch((err) => {
+    this.uploadGeneralMaterialWithProgress(payload, file, thumbnailFile, user, sessionId).catch((err) => {
       this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message);
     });
 
@@ -368,13 +412,16 @@ export class GeneralMaterialsService {
   private async uploadGeneralMaterialWithProgress(
     payload: CreateGeneralMaterialDto,
     file: Express.Multer.File,
+    thumbnailFile: Express.Multer.File | undefined,
     user: any,
     sessionId: string,
   ) {
     this.logger.log(colors.cyan(`[GENERAL MATERIALS] Uploading material with progress: "${payload.title}"`));
 
     let s3Key: string | undefined;
+    let thumbnailS3Key: string | undefined;
     let uploadSucceeded = false;
+    let thumbnailUploadSucceeded = false;
     let smoother: NodeJS.Timeout | null = null;
 
     try {
@@ -390,7 +437,7 @@ export class GeneralMaterialsService {
         throw new NotFoundException('Library user not found');
       }
 
-      const totalBytes = file.size;
+      const totalBytes = file.size + (thumbnailFile?.size || 0);
       let lastKnownLoaded = 0;
       let emittedLoaded = 0;
       let lastPercent = -1;
@@ -423,12 +470,26 @@ export class GeneralMaterialsService {
       s3Key = uploadResult.key;
       uploadSucceeded = true;
 
+      let thumbnailUrl: string | null = null;
+      let thumbnailS3KeyValue: string | null = null;
+
+      if (thumbnailFile) {
+        const thumbFolder = `library/general-materials/thumbnails/platforms/${libraryUser.platformId}`;
+        const thumbResult = await this.s3Service.uploadFile(
+          thumbnailFile,
+          thumbFolder,
+          `${payload.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
+          (loaded) => {
+            lastKnownLoaded = Math.min(file.size + loaded, totalBytes);
+          },
+        );
+        thumbnailUrl = thumbResult.url;
+        thumbnailS3KeyValue = thumbResult.key;
+        thumbnailS3Key = thumbResult.key;
+        thumbnailUploadSucceeded = true;
+      }
+
       this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
-
-      const price = payload.isFree ? null : payload.price ?? null;
-      const isFree = payload.isFree ?? (!price || price === 0);
-      const currency = price ? payload.currency || 'NGN' : null;
-
       this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
 
       const material = await this.prisma.libraryGeneralMaterial.create({
@@ -445,15 +506,25 @@ export class GeneralMaterialsService {
           s3Key: uploadResult.key,
           sizeBytes: file.size,
           pageCount: null,
-          thumbnailUrl: null,
-          thumbnailS3Key: null,
-          price,
-          currency,
-          isFree,
+          thumbnailUrl,
+          thumbnailS3Key: thumbnailS3KeyValue,
+          price: null,
+          currency: null,
+          isFree: false,
           isAvailable: true,
-          classId: payload.classId ?? null,
-          subjectId: payload.subjectId ?? null,
-          isAiEnabled: payload.isAiEnabled ?? false,
+          classId: null,
+          subjectId: null,
+          isAiEnabled: false,
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              email: true,
+              first_name: true,
+              last_name: true,
+            },
+          },
         },
       });
 
