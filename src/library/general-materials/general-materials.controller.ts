@@ -8,7 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Query,
-  UploadedFile,
+  UploadedFiles,
   UseInterceptors,
   Param,
   Sse,
@@ -19,7 +19,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
@@ -85,13 +85,24 @@ export class GeneralMaterialsController {
   @CreateGeneralMaterialDocs.response401
   @CreateGeneralMaterialDocs.response404
   @CreateGeneralMaterialDocs.response500
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'thumbnail', maxCount: 1 },
+    ]),
+  )
   async createGeneralMaterial(
     @Request() req: any,
     @Body() payload: CreateGeneralMaterialDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles()
+    files: {
+      file?: Express.Multer.File[];
+      thumbnail?: Express.Multer.File[];
+    },
   ) {
-    return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, file);
+    const materialFile = files.file?.[0];
+    const thumbnailFile = files.thumbnail?.[0];
+    return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, materialFile, thumbnailFile);
   }
 
   // 4) Create chapter for a general material
@@ -119,7 +130,12 @@ export class GeneralMaterialsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(LibraryJwtGuard)
   @ApiBearerAuth()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'thumbnail', maxCount: 1 },
+    ]),
+  )
   @StartGeneralMaterialUploadDocs.consumes
   @StartGeneralMaterialUploadDocs.operation
   @StartGeneralMaterialUploadDocs.body
@@ -131,9 +147,15 @@ export class GeneralMaterialsController {
   async startGeneralMaterialUpload(
     @Request() req: any,
     @Body() payload: CreateGeneralMaterialDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles()
+    files: {
+      file?: Express.Multer.File[];
+      thumbnail?: Express.Multer.File[];
+    },
   ) {
-    return await this.generalMaterialsService.startGeneralMaterialUploadSession(payload, file, req.user);
+    const materialFile = files.file?.[0];
+    const thumbnailFile = files.thumbnail?.[0];
+    return await this.generalMaterialsService.startGeneralMaterialUploadSession(payload, materialFile, thumbnailFile, req.user);
   }
 
   // 6) Upload progress (SSE)

@@ -2326,11 +2326,11 @@ model LibraryGeneralMaterial {
   thumbnailUrl   String?
   thumbnailS3Key String?
 
-  // E-commerce Fields
-  price       Float? // Price in platform currency (null = free)
+  // Access / Pricing Fields (school-tier based, NOT per-user purchase)
+  price       Float?  // Price used for school tier/subscription plans (null = included in free tier)
   currency    String? @default("NGN") // Currency code
-  isFree      Boolean @default(false)
-  isAvailable Boolean @default(true) // For inventory management
+  isFree      Boolean @default(false) // True = available on free tier for all schools
+  isAvailable Boolean @default(true)  // For inventory/visibility management
 
   // Optional Educational Attachment (for categorization)
   classId   String? // Optional - can be attached to a class for organization
@@ -2345,7 +2345,7 @@ model LibraryGeneralMaterial {
   order      Int                  @default(1)
   views      Int                  @default(0)
   downloads  Int                  @default(0)
-  salesCount Int                  @default(0) // Number of purchases
+  salesCount Int                  @default(0) // Number of school-level activations / tier-inclusions
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2476,13 +2476,14 @@ model LibraryGeneralMaterialChunk {
 }
 
 /// Purchase tracking for general materials
+/// School-level purchase/activation of a general material (not per individual end-user).
 model LibraryGeneralMaterialPurchase {
   id         String @id @default(cuid())
   materialId String
-  userId     String // Regular User ID (student/parent who purchased)
+  userId     String // Admin/billing user representing the school that activated this material
   platformId String
 
-  price         Float
+  price         Float // Price paid at time of activation (typically at school-tier level)
   currency      String  @default("NGN")
   paymentMethod String? // e.g., "card", "bank_transfer", "wallet"
   transactionId String? // External payment transaction ID

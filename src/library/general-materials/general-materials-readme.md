@@ -13,7 +13,9 @@ Authorization: Bearer <token>
 **Endpoint:** `GET /api/v1/library/general-materials/dashboard`
 
 ### Description
-Retrieves comprehensive dashboard statistics for general materials (ebooks/textbooks) on the authenticated library user's platform. Returns high-level statistics including total materials, free/paid breakdown, AI-enabled materials, chapters, sales, and revenue.
+Retrieves comprehensive dashboard statistics for general materials (ebooks/textbooks) on the authenticated library user's platform.  
+Access to these materials is **tier-based at the school level** (e.g., free tier, basic, premium) – individual learners do **not** buy books directly.  
+Returns high-level statistics including total materials, free vs paid-tier materials, AI-enabled materials, chapters, and school-level activations/revenue.
 
 ### Request
 No request body required. Only requires authentication token.
@@ -35,19 +37,59 @@ No request body required. Only requires authentication token.
     "statistics": {
       "overview": {
         "totalMaterials": 150,
-        "freeMaterials": 50,
-        "paidMaterials": 100,
         "aiEnabledMaterials": 75,
-        "totalChapters": 450,
-        "totalSales": 1200,
-        "totalRevenue": 3000000
+        "totalChapters": 450
       },
       "byStatus": {
         "published": 130,
         "draft": 15,
         "archived": 5
       }
-    }
+    },
+    "materials": [
+      {
+        "id": "material_123",
+        "title": "Advanced Algebra for Senior Secondary Schools",
+        "description": "A comprehensive guide to advanced algebra concepts.",
+        "author": "John Doe",
+        "isAvailable": true,
+        "isAiEnabled": true,
+        "status": "published",
+        "views": 1500,
+        "downloads": 800,
+        "thumbnailUrl": "https://bucket.s3.region.amazonaws.com/library/general-materials/thumbnails/platforms/platform_123/thumbnail_123.jpg",
+        "thumbnailS3Key": "library/general-materials/thumbnails/platforms/platform_123/thumbnail_123.jpg",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T00:00:00.000Z",
+        "uploadedBy": {
+          "id": "user_123",
+          "email": "uploader@example.com",
+          "first_name": "John",
+          "last_name": "Doe"
+        }
+      },
+      {
+        "id": "material_456",
+        "title": "Introduction to Physics",
+        "description": "Basic physics concepts for beginners.",
+        "author": "Jane Smith",
+        "isAvailable": true,
+        "isAiEnabled": false,
+        "status": "draft",
+        "views": 300,
+        "downloads": 50,
+        "thumbnailUrl": null,
+        "thumbnailS3Key": null,
+        "createdAt": "2025-01-02T00:00:00.000Z",
+        "updatedAt": "2025-01-02T00:00:00.000Z",
+        "uploadedBy": {
+          "id": "user_456",
+          "email": "jane@example.com",
+          "first_name": "Jane",
+          "last_name": "Smith"
+        }
+      }
+    ]
   }
 }
 ```
@@ -64,16 +106,33 @@ No request body required. Only requires authentication token.
 #### Statistics Object
 - `overview`: Summary statistics
   - `totalMaterials`: Total number of general materials
-  - `freeMaterials`: Number of free materials
-  - `paidMaterials`: Number of paid materials
   - `aiEnabledMaterials`: Number of materials with AI chat enabled
   - `totalChapters`: Total number of chapters across all materials
-  - `totalSales`: Total number of completed purchases
-  - `totalRevenue`: Total revenue from completed purchases (in platform currency)
 - `byStatus`: Breakdown by material status
   - `published`: Number of published materials
   - `draft`: Number of draft materials
   - `archived`: Number of archived materials
+
+#### Materials Array
+Array of all general materials with the following fields:
+- `id`: Material ID
+- `title`: Material title
+- `description`: Material description (nullable)
+- `author`: Author name (nullable)
+- `isAvailable`: Whether the material is available
+- `isAiEnabled`: Whether AI chat is enabled for this material
+- `status`: Material status (published, draft, archived)
+- `views`: Number of views
+- `downloads`: Number of downloads
+- `thumbnailUrl`: Thumbnail image URL (nullable)
+- `thumbnailS3Key`: S3 object key for thumbnail (nullable)
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `uploadedBy`: Library user who uploaded the material
+  - `id`: User ID
+  - `email`: User email
+  - `first_name`: User first name
+  - `last_name`: User last name
 
 ### Error Responses
 - **401**: Unauthorized - Invalid or missing token
@@ -87,7 +146,9 @@ No request body required. Only requires authentication token.
 **Endpoint:** `GET /api/v1/library/general-materials/all`
 
 ### Description
-Retrieves a paginated list of all general materials for the authenticated library user's platform. Supports search, filtering by price range, free/AI-enabled status, and class/subject categorization.
+Retrieves a paginated list of all general materials for the authenticated library user's platform.  
+Materials are unlocked based on the **school's subscription tier** (e.g., basic, premium). End users never pay directly; they only see what their school tier allows.  
+Supports search, AI-enabled filters, and class/subject categorization.
 
 ### Query Parameters
 All query parameters are optional:
@@ -95,16 +156,13 @@ All query parameters are optional:
 - `page` (number, default: 1): Page number (minimum: 1)
 - `limit` (number, default: 20): Items per page (minimum: 1, maximum: 100)
 - `search` (string): Search term to match against title, author, description, or publisher (case-insensitive)
-- `minPrice` (number, minimum: 0): Minimum price filter
-- `maxPrice` (number, minimum: 0): Maximum price filter
-- `isFree` (boolean): Filter by free materials (true) or paid materials (false)
 - `isAiEnabled` (boolean): Filter by AI-enabled materials (true) or non-AI materials (false)
 - `classId` (string): Filter by library class ID
 - `subjectId` (string): Filter by library subject ID
 
 ### Example Request
 ```
-GET /api/v1/library/general-materials/all?page=1&limit=20&search=algebra&isFree=false&isAiEnabled=true
+GET /api/v1/library/general-materials/all?page=1&limit=20&search=algebra&isAiEnabled=true
 Authorization: Bearer <token>
 ```
 
@@ -121,15 +179,13 @@ Authorization: Bearer <token>
         "title": "Advanced Algebra for Senior Secondary Schools",
         "description": "A comprehensive guide to advanced algebra concepts.",
         "author": "John Doe",
-        "price": 2500,
-        "currency": "NGN",
-        "isFree": false,
         "isAvailable": true,
         "isAiEnabled": true,
         "status": "published",
         "views": 1500,
         "downloads": 800,
-        "salesCount": 200,
+        "thumbnailUrl": "https://s3.amazonaws.com/bucket/library/general-materials/thumbnails/platforms/platform_123/thumbnail_abc123.jpg",
+        "thumbnailS3Key": "library/general-materials/thumbnails/platforms/platform_123/thumbnail_abc123.jpg",
         "createdAt": "2025-01-01T00:00:00.000Z",
         "updatedAt": "2025-01-01T00:00:00.000Z",
         "class": {
@@ -140,6 +196,12 @@ Authorization: Bearer <token>
           "id": "subject_123",
           "name": "Mathematics",
           "code": "MATH"
+        },
+        "uploadedBy": {
+          "id": "user_123",
+          "email": "uploader@example.com",
+          "first_name": "John",
+          "last_name": "Doe"
         }
       },
       {
@@ -147,19 +209,23 @@ Authorization: Bearer <token>
         "title": "Introduction to Physics",
         "description": "Basic physics concepts for beginners.",
         "author": "Jane Smith",
-        "price": null,
-        "currency": null,
-        "isFree": true,
         "isAvailable": true,
         "isAiEnabled": false,
         "status": "published",
         "views": 3000,
         "downloads": 2500,
-        "salesCount": 0,
+        "thumbnailUrl": null,
+        "thumbnailS3Key": null,
         "createdAt": "2025-01-02T00:00:00.000Z",
         "updatedAt": "2025-01-02T00:00:00.000Z",
         "class": null,
-        "subject": null
+        "subject": null,
+        "uploadedBy": {
+          "id": "user_456",
+          "email": "jane@example.com",
+          "first_name": "Jane",
+          "last_name": "Smith"
+        }
       }
     ],
     "meta": {
@@ -180,15 +246,13 @@ Each material object contains:
 - `title`: Material title
 - `description`: Material description (nullable)
 - `author`: Author name (nullable)
-- `price`: Price in platform currency (nullable, null if free)
-- `currency`: Currency code (nullable, e.g., "NGN", "USD")
-- `isFree`: Whether the material is free
-- `isAvailable`: Whether the material is available for purchase/download
+- `isAvailable`: Whether the material is available for schools to include in any tier (visibility/inventory)
 - `isAiEnabled`: Whether AI chat is enabled for this material
 - `status`: Material status (published, draft, archived)
 - `views`: Number of views
 - `downloads`: Number of downloads
-- `salesCount`: Number of completed purchases
+- `thumbnailUrl`: Thumbnail image URL (nullable)
+- `thumbnailS3Key`: S3 object key for thumbnail (nullable)
 - `createdAt`: Creation timestamp
 - `updatedAt`: Last update timestamp
 - `class`: Associated library class (nullable)
@@ -198,6 +262,11 @@ Each material object contains:
   - `id`: Subject ID
   - `name`: Subject name
   - `code`: Subject code
+- `uploadedBy`: Library user who uploaded the material
+  - `id`: User ID
+  - `email`: User email
+  - `first_name`: User first name
+  - `last_name`: User last name
 
 #### Meta Object
 - `totalItems`: Total number of materials matching the query
@@ -229,14 +298,12 @@ This is the **recommended flow** for uploading large general materials so the UI
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | File | Yes | Full material file (PDF, DOC, PPT, etc. - max 300MB) |
+| `thumbnail` | File | No | Optional thumbnail image (JPEG, PNG, GIF, WEBP - max 5MB) |
 | `title` | string | Yes | Title of the material (max 200 characters) |
 | `description` | string | No | Description of the material (max 2000 characters) |
 | `author` | string | No | Author name (max 150 characters) |
 | `isbn` | string | No | ISBN of the material (max 50 characters) |
 | `publisher` | string | No | Publisher name (max 150 characters) |
-| `price` | number | No | Price in platform currency (minimum: 0, null or omitted = free) |
-| `currency` | string | No | Currency code (max 10 characters, e.g., \"NGN\", \"USD\") |
-| `isFree` | boolean | No | Whether the material is free (overrides price if true) |
 | `classId` | string | No | Optional library class ID for categorization |
 | `subjectId` | string | No | Optional library subject ID for categorization |
 | `isAiEnabled` | boolean | No | Whether AI chat is enabled for this material (default: false) |
@@ -248,14 +315,12 @@ Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 file: [binary file data]
+thumbnail: [binary image data]
 title: Advanced Algebra for Senior Secondary Schools
 description: A comprehensive guide to advanced algebra concepts.
 author: John Doe
 isbn: 978-3-16-148410-0
 publisher: Smart Edu Publishing
-price: 2500
-currency: NGN
-isFree: false
 classId: class_123
 subjectId: subject_123
 isAiEnabled: true
@@ -333,7 +398,7 @@ Returns a Server-Sent Events (SSE) stream with real-time progress updates.
 **Endpoint:** `POST /api/v1/library/general-materials`
 
 ### Description
-Creates a new general material (ebook/textbook) for the authenticated library user's platform in **one step**. Uploads the full material file to cloud storage and stores its metadata in the database. Supports optional pricing, class/subject categorization, and AI enablement.
+Creates a new general material (ebook/textbook) for the authenticated library user's platform in **one step**. Uploads the full material file to cloud storage and stores its metadata in the database. Supports class/subject categorization and AI enablement.
 
 > Note: This endpoint does **not** provide progress tracking. For large files and better UX, prefer `POST /upload/start` + progress endpoints above.
 
@@ -345,14 +410,12 @@ Creates a new general material (ebook/textbook) for the authenticated library us
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | File | Yes | Full material file (PDF, DOC, PPT, etc. - max 300MB) |
+| `thumbnail` | File | No | Optional thumbnail image (JPEG, PNG, GIF, WEBP - max 5MB) |
 | `title` | string | Yes | Title of the material (max 200 characters) |
 | `description` | string | No | Description of the material (max 2000 characters) |
 | `author` | string | No | Author name (max 150 characters) |
 | `isbn` | string | No | ISBN of the material (max 50 characters) |
 | `publisher` | string | No | Publisher name (max 150 characters) |
-| `price` | number | No | Price in platform currency (minimum: 0, null or omitted = free) |
-| `currency` | string | No | Currency code (max 10 characters, e.g., "NGN", "USD") |
-| `isFree` | boolean | No | Whether the material is free (overrides price if true) |
 | `classId` | string | No | Optional library class ID for categorization |
 | `subjectId` | string | No | Optional library subject ID for categorization |
 | `isAiEnabled` | boolean | No | Whether AI chat is enabled for this material (default: false) |
@@ -364,14 +427,12 @@ Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 file: [binary file data]
+thumbnail: [binary image data]
 title: Advanced Algebra for Senior Secondary Schools
 description: A comprehensive guide to advanced algebra concepts.
 author: John Doe
 isbn: 978-3-16-148410-0
 publisher: Smart Edu Publishing
-price: 2500
-currency: NGN
-isFree: false
 classId: class_123
 subjectId: subject_123
 isAiEnabled: true
@@ -397,11 +458,8 @@ isAiEnabled: true
     "s3Key": "library/general-materials/platforms/platform_123/material_123.pdf",
     "sizeBytes": 52428800,
     "pageCount": null,
-    "thumbnailUrl": null,
-    "thumbnailS3Key": null,
-    "price": 2500,
-    "currency": "NGN",
-    "isFree": false,
+    "thumbnailUrl": "https://bucket.s3.region.amazonaws.com/library/general-materials/thumbnails/platforms/platform_123/thumbnail_123.jpg",
+    "thumbnailS3Key": "library/general-materials/thumbnails/platforms/platform_123/thumbnail_123.jpg",
     "isAvailable": true,
     "classId": "class_123",
     "subjectId": "subject_123",
@@ -433,11 +491,8 @@ isAiEnabled: true
 - `sizeBytes`: File size in bytes
 - `pageCount`: Number of pages (nullable, typically set later)
 - `thumbnailUrl`: Thumbnail image URL (nullable)
-- `thumbnailS3Key`: S3 object key for thumbnail (nullable)
-- `price`: Price in platform currency (nullable)
-- `currency`: Currency code (nullable)
-- `isFree`: Whether the material is free
-- `isAvailable`: Whether the material is available
+-- `thumbnailS3Key`: S3 object key for thumbnail (nullable)
+-- `isAvailable`: Whether the material is available
 - `classId`: Associated class ID (nullable)
 - `subjectId`: Associated subject ID (nullable)
 - `isAiEnabled`: Whether AI chat is enabled
@@ -457,9 +512,6 @@ isAiEnabled: true
 ### Notes
 - File upload supports: PDF, DOC, DOCX, PPT, PPTX, and other document formats
 - Maximum file size: 300MB
-- If `isFree` is set to `true`, the `price` will be set to `null` regardless of the provided value
-- If `price` is `null` or `0` and `isFree` is not explicitly set, `isFree` will be automatically set to `true`
-- If `price` is provided but `currency` is not, it defaults to "NGN"
 
 ---
 
@@ -567,12 +619,6 @@ Content-Type: application/json
 ### Ordering
 - Materials in "Get All" endpoint: Ordered by `createdAt` (descending - newest first)
 - Chapters: Automatically ordered sequentially (1, 2, 3, ...) based on creation order
-
-### Pricing Logic
-- If `isFree` is explicitly set to `true`, the material is free regardless of `price`
-- If `price` is `null` or `0` and `isFree` is not set, `isFree` defaults to `true`
-- If `price` is provided but `currency` is not, it defaults to "NGN"
-- Free materials have `price: null` and `currency: null`
 
 ### File Upload
 - Supported file types: PDF, DOC, DOCX, PPT, PPTX, and other document formats

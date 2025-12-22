@@ -36,7 +36,7 @@ export const GetAllGeneralMaterialsDocs = {
     summary: 'Get all general materials (paginated, filterable, searchable)',
     description:
       'Returns a paginated list of general materials for the authenticated library user\'s platform. ' +
-      'Supports search by title/author/description/publisher, price filters, free/AI-enabled filters, and class/subject filters.',
+      'Supports search by title/author/description/publisher, AI-enabled filters, and class/subject filters.',
   }),
 
   // Note: Query params are described via QueryGeneralMaterialsDto in controller
@@ -82,12 +82,14 @@ export const CreateGeneralMaterialDocs = {
         author: { type: 'string' },
         isbn: { type: 'string' },
         publisher: { type: 'string' },
-        price: { type: 'number' },
-        currency: { type: 'string' },
-        isFree: { type: 'boolean' },
         classId: { type: 'string' },
         subjectId: { type: 'string' },
         isAiEnabled: { type: 'boolean' },
+        thumbnail: {
+          type: 'string',
+          format: 'binary',
+          description: 'Optional thumbnail image for the material (JPEG, PNG, GIF, WEBP - max 5MB)',
+        },
         file: {
           type: 'string',
           format: 'binary',
@@ -182,12 +184,14 @@ export const StartGeneralMaterialUploadDocs = {
         author: { type: 'string', description: 'Author name (optional)' },
         isbn: { type: 'string', description: 'ISBN (optional)' },
         publisher: { type: 'string', description: 'Publisher (optional)' },
-        price: { type: 'number', description: 'Price in platform currency (optional)' },
-        currency: { type: 'string', description: 'Currency code (optional, e.g., NGN, USD)' },
-        isFree: { type: 'boolean', description: 'Whether the material is free (overrides price if true)' },
         classId: { type: 'string', description: 'Optional library class ID for categorization' },
         subjectId: { type: 'string', description: 'Optional library subject ID for categorization' },
         isAiEnabled: { type: 'boolean', description: 'Whether AI chat is enabled for this material' },
+        thumbnail: {
+          type: 'string',
+          format: 'binary',
+          description: 'Optional thumbnail image for the material (JPEG, PNG, GIF, WEBP - max 5MB)',
+        },
         file: {
           type: 'string',
           format: 'binary',

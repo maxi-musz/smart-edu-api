@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsNumber, Min, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength, IsBoolean } from 'class-validator';
 
 export class CreateGeneralMaterialDto {
   @ApiProperty({
@@ -46,54 +46,4 @@ export class CreateGeneralMaterialDto {
   @IsOptional()
   @MaxLength(150)
   publisher?: string;
-
-  @ApiPropertyOptional({
-    description: 'Price of the material in platform currency (null or omitted = free)',
-    example: 2500,
-  })
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  price?: number;
-
-  @ApiPropertyOptional({
-    description: 'Currency code (e.g., NGN, USD)',
-    example: 'NGN',
-  })
-  @IsString()
-  @IsOptional()
-  @MaxLength(10)
-  currency?: string;
-
-  @ApiPropertyOptional({
-    description: 'Whether the material is free (overrides price if true)',
-    example: false,
-  })
-  @IsBoolean()
-  @IsOptional()
-  isFree?: boolean;
-
-  @ApiPropertyOptional({
-    description: 'Optional library class ID for categorization',
-    example: 'class_123',
-  })
-  @IsString()
-  @IsOptional()
-  classId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Optional library subject ID for categorization',
-    example: 'subject_123',
-  })
-  @IsString()
-  @IsOptional()
-  subjectId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Whether AI chat is enabled for this material',
-    example: true,
-  })
-  @IsBoolean()
-  @IsOptional()
-  isAiEnabled?: boolean;
 }

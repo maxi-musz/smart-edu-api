@@ -1,16 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsNumber, Min, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class QueryGeneralMaterialsDto {
   @ApiPropertyOptional({ description: 'Page number', example: 1, default: 1 })
-  @IsNumber()
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   @Min(1)
   page?: number = 1;
 
   @ApiPropertyOptional({ description: 'Items per page', example: 20, default: 20 })
-  @IsNumber()
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   @Min(1)
   limit?: number = 20;
 
@@ -19,26 +22,10 @@ export class QueryGeneralMaterialsDto {
   @IsOptional()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Minimum price filter', example: 0 })
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  minPrice?: number;
-
-  @ApiPropertyOptional({ description: 'Maximum price filter', example: 5000 })
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  maxPrice?: number;
-
-  @ApiPropertyOptional({ description: 'Filter by free materials', example: true })
-  @IsBoolean()
-  @IsOptional()
-  isFree?: boolean;
-
   @ApiPropertyOptional({ description: 'Filter by AI-enabled materials', example: true })
-  @IsBoolean()
   @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
   isAiEnabled?: boolean;
 
   @ApiPropertyOptional({ description: 'Filter by class ID', example: 'class_123' })
