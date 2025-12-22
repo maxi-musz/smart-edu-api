@@ -1,10 +1,11 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, UseInterceptors, UploadedFiles, Get, Param, Sse } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, UseInterceptors, UploadedFiles, Get, Param, Sse, Delete, Patch } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { ContentService } from './content.service';
 import { UploadLibraryVideoDto, UploadLibraryVideoResponseDto } from './dto/upload-video.dto';
 import { UploadLibraryMaterialDto, UploadLibraryMaterialResponseDto } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
+import { UpdateLibraryVideoDto } from './dto/update-video.dto';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
 import { ApiTags, ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
@@ -185,6 +186,123 @@ export class ContentController {
     @Param('videoId') videoId: string,
   ) {
     return await this.contentService.getVideoForPlayback(req.user, videoId);
+  }
+
+  // ==================== VIDEO UPDATE ====================
+
+  @Patch('video/:videoId/update')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update a video',
+    description: 'Updates video title, description, and/or swaps order with another video. To swap orders, provide the swapOrderWith field with the ID of the video to swap with.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Video updated successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Video not found or does not belong to user\'s platform' })
+  async updateVideo(
+    @Request() req: any,
+    @Param('videoId') videoId: string,
+    @Body() payload: UpdateLibraryVideoDto,
+  ) {
+    return await this.contentService.updateVideo(req.user, videoId, payload);
+  }
+
+  // ==================== VIDEO DELETE ====================
+
+  @Delete('video/:videoId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Delete a video',
+    description: 'Deletes a video from the library. Removes the video file, thumbnail, and database record. Automatically reorders remaining videos in the same topic to close gaps.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Video deleted successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Video not found or does not belong to user\'s platform' })
+  async deleteVideo(
+    @Request() req: any,
+    @Param('videoId') videoId: string,
+  ) {
+    return await this.contentService.deleteVideo(req.user, videoId);
+  }
+
+  // ==================== MATERIAL DELETE ====================
+
+  @Delete('material/:materialId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Delete a material',
+    description: 'Deletes a material (PDF, DOC, PPT, etc.) from the library. Removes the material file and database record. Automatically reorders remaining materials in the same topic to close gaps.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Material deleted successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Material not found or does not belong to user\'s platform' })
+  async deleteMaterial(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+  ) {
+    return await this.contentService.deleteMaterial(req.user, materialId);
+  }
+
+  // ==================== LINK DELETE ====================
+
+  @Delete('link/:linkId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Delete a link',
+    description: 'Deletes a link from the library. Removes the database record. Automatically reorders remaining links in the same topic to close gaps.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Link deleted successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Link not found or does not belong to user\'s platform' })
+  async deleteLink(
+    @Request() req: any,
+    @Param('linkId') linkId: string,
+  ) {
+    return await this.contentService.deleteLink(req.user, linkId);
+  }
+
+  // ==================== ASSIGNMENT DELETE ====================
+
+  @Delete('assignment/:assignmentId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Delete an assignment',
+    description: 'Deletes an assignment from the library. Removes the assignment file (if any) and database record. Automatically reorders remaining assignments in the same topic to close gaps.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Assignment deleted successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Assignment not found or does not belong to user\'s platform' })
+  async deleteAssignment(
+    @Request() req: any,
+    @Param('assignmentId') assignmentId: string,
+  ) {
+    return await this.contentService.deleteAssignment(req.user, assignmentId);
   }
 }
 
