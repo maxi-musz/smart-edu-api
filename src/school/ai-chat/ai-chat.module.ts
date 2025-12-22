@@ -32,6 +32,10 @@ import { S3Module } from '../../shared/services/s3.module';
     AiChatDeletionService,
     UploadProgressService,
     DocumentProcessingService,
+    TextExtractionService,
+    DocumentChunkingService,
+    EmbeddingService,
+    PineconeService,
   ]
 })
 export class AiChatModule {}
