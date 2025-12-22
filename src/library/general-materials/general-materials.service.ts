@@ -9,6 +9,10 @@ import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
 import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
 import { LibraryMaterialType } from '@prisma/client';
+import { TextExtractionService } from '../../school/ai-chat/services/text-extraction.service';
+import { DocumentChunkingService } from '../../school/ai-chat/services/document-chunking.service';
+import { EmbeddingService } from '../../school/ai-chat/services/embedding.service';
+import { PineconeService } from '../../school/ai-chat/services/pinecone.service';
 import * as colors from 'colors';
 
 @Injectable()
@@ -19,6 +23,10 @@ export class GeneralMaterialsService {
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
     private readonly uploadProgressService: UploadProgressService,
+    private readonly textExtractionService: TextExtractionService,
+    private readonly chunkingService: DocumentChunkingService,
+    private readonly embeddingService: EmbeddingService,
+    private readonly pineconeService: PineconeService,
   ) {}
 
   /**
@@ -959,10 +967,14 @@ export class GeneralMaterialsService {
         select: {
           id: true,
           title: true,
+          materialId: true,
+          isAiEnabled: true,
+          isProcessed: true,
           material: {
             select: {
               id: true,
               title: true,
+              isAiEnabled: true,
             },
           },
         },
@@ -971,6 +983,13 @@ export class GeneralMaterialsService {
       if (!chapter) {
         this.logger.error(colors.red(`Chapter not found or does not belong to your platform: ${chapterId}`));
         throw new NotFoundException('Chapter not found or does not belong to your platform');
+      }
+
+      // Check if AI chat is enabled (default true) but material doesn't have AI enabled
+      const shouldEnableAiChat = payload.enableAiChat !== false; // Default to true unless explicitly set to false
+      if (shouldEnableAiChat && !chapter.material.isAiEnabled) {
+        this.logger.error(colors.red('AI chat enabled by default but material does not have AI chat enabled'));
+        throw new BadRequestException('Material does not have AI chat enabled. Please enable AI chat for the material first.');
       }
 
       // Get the last file order for this chapter
@@ -1034,10 +1053,50 @@ export class GeneralMaterialsService {
         });
 
         this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter file uploaded successfully: ${chapterFile.id}`));
-        return new ApiResponse(true, 'Chapter file uploaded successfully', chapterFile);
+
+        // Process for AI chat by default (unless explicitly disabled)
+        const shouldEnableAiChat = payload.enableAiChat !== false; // Default to true unless explicitly set to false
+        if (shouldEnableAiChat) {
+          this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${chapterFile.id}`));
+          
+          // Process directly from file buffer (more efficient than downloading from S3)
+          // If this fails, the entire upload transaction fails
+          const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
+          await this.processChapterFileForAiChatFromBuffer(
+            chapterFile,
+            chapter,
+            file.buffer,
+            fileTypeString,
+            libraryUser.platformId,
+          );
+
+          // Update chapter status
+          await this.prisma.libraryGeneralMaterialChapter.update({
+            where: { id: chapterId },
+            data: {
+              isAiEnabled: true,
+              isProcessed: true,
+            },
+          });
+
+          this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter file: ${chapterFile.id}`));
+        }
+
+        return new ApiResponse(
+          true,
+          shouldEnableAiChat
+            ? 'Chapter file uploaded successfully and AI chat processing completed'
+            : 'Chapter file uploaded successfully',
+          {
+            ...chapterFile,
+            aiChatProcessed: shouldEnableAiChat,
+          }
+        );
       } catch (dbError: any) {
-        // If DB save fails, delete the uploaded file from S3
-        this.logger.error(colors.red(`❌ Database save failed, deleting uploaded file: ${dbError.message}`));
+        // If DB save or AI processing fails, delete the uploaded file from S3 and database record
+        this.logger.error(colors.red(`❌ Upload or processing failed, rolling back: ${dbError.message}`));
+        
+        // Delete from S3
         if (uploadResult.key) {
           try {
             await this.s3Service.deleteFile(uploadResult.key);
@@ -1046,6 +1105,19 @@ export class GeneralMaterialsService {
             this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
           }
         }
+
+        // Delete database record if it was created
+        if (chapterFile?.id) {
+          try {
+            await this.prisma.libraryGeneralMaterialChapterFile.delete({
+              where: { id: chapterFile.id },
+            });
+            this.logger.log(colors.yellow('✅ Rollback: Deleted chapter file record from database'));
+          } catch (deleteDbError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete chapter file record during rollback: ${deleteDbError.message}`));
+          }
+        }
+
         throw dbError;
       }
     } catch (error: any) {
@@ -1055,6 +1127,416 @@ export class GeneralMaterialsService {
 
       this.logger.error(colors.red(`Error uploading chapter file: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to upload chapter file');
+    }
+  }
+
+  /**
+   * Process a chapter file for AI chat from buffer (more efficient - no S3 download needed)
+   */
+  private async processChapterFileForAiChatFromBuffer(
+    chapterFile: any,
+    chapter: any,
+    fileBuffer: Buffer,
+    fileType: string,
+    platformId: string,
+  ): Promise<void> {
+    const startTime = Date.now();
+    this.logger.log(colors.cyan(`🔄 Processing chapter file for AI chat from buffer: ${chapterFile.fileName}`));
+
+    try {
+      // Step 1: Ensure processing record exists
+      let processing = await this.prisma.libraryGeneralMaterialProcessing.findUnique({
+        where: { materialId: chapter.materialId },
+      });
+
+      if (!processing) {
+        processing = await this.prisma.libraryGeneralMaterialProcessing.create({
+          data: {
+            materialId: chapter.materialId,
+            platformId: platformId,
+            status: 'PROCESSING',
+            totalChunks: 0,
+            processedChunks: 0,
+            failedChunks: 0,
+            embeddingModel: 'text-embedding-3-small',
+            processingStartedAt: new Date(),
+          },
+        });
+        this.logger.log(colors.blue(`📝 Created processing record for material: ${chapter.materialId}`));
+      } else {
+        await this.prisma.libraryGeneralMaterialProcessing.update({
+          where: { id: processing.id },
+          data: {
+            status: 'PROCESSING',
+            processingStartedAt: new Date(),
+          },
+        });
+      }
+
+      // Step 2: Extract text directly from buffer
+      this.logger.log(colors.blue(`📄 Extracting text from file buffer...`));
+      const extractedText = await this.textExtractionService.extractText(fileBuffer, fileType);
+
+      // Step 3: Chunk the document
+      this.logger.log(colors.blue(`✂️ Chunking document into sections...`));
+      const chunkingResult = await this.chunkingService.chunkDocument(
+        extractedText.text,
+        chapter.materialId,
+        {
+          pageCount: extractedText.pageCount,
+          originalName: chapterFile.fileName,
+        }
+      );
+
+      // Step 4: Generate embeddings
+      this.logger.log(colors.blue(`🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`));
+      const embeddingResult = await this.embeddingService.generateBatchEmbeddings(
+        chunkingResult.chunks.map(chunk => chunk.content)
+      );
+
+      if (embeddingResult.successCount === 0) {
+        throw new Error('No valid embeddings generated - cannot save to Pinecone');
+      }
+
+      // Step 5: Save chunks and embeddings to Pinecone and database
+      this.logger.log(colors.blue(`💾 Saving chunks and embeddings...`));
+      await this.saveLibraryChunksAndEmbeddings(
+        chapter.materialId,
+        chapter.id,
+        chunkingResult.chunks,
+        embeddingResult.embeddings,
+        platformId,
+        processing.id,
+      );
+
+      // Step 6: Update processing status
+      await this.prisma.libraryGeneralMaterialProcessing.update({
+        where: { id: processing.id },
+        data: {
+          status: 'COMPLETED',
+          totalChunks: chunkingResult.totalChunks,
+          processedChunks: embeddingResult.successCount,
+          failedChunks: embeddingResult.failureCount,
+          processingCompletedAt: new Date(),
+        },
+      });
+
+      // Update chapter chunk count
+      const chunkCount = await this.prisma.libraryGeneralMaterialChunk.count({
+        where: { chapterId: chapter.id },
+      });
+
+      await this.prisma.libraryGeneralMaterialChapter.update({
+        where: { id: chapter.id },
+        data: { chunkCount },
+      });
+
+      const processingTime = Date.now() - startTime;
+      this.logger.log(colors.green(`🎉 Chapter file processing completed successfully in ${processingTime}ms`));
+
+    } catch (error: any) {
+      this.logger.error(colors.red(`❌ Error processing chapter file: ${error.message}`));
+
+      // Update processing status to failed if processing record exists
+      if (chapter.materialId) {
+        try {
+          const processing = await this.prisma.libraryGeneralMaterialProcessing.findUnique({
+            where: { materialId: chapter.materialId },
+          });
+
+          if (processing) {
+            await this.prisma.libraryGeneralMaterialProcessing.update({
+              where: { id: processing.id },
+              data: {
+                status: 'FAILED',
+                errorMessage: error.message,
+              },
+            });
+          }
+        } catch (updateError: any) {
+          this.logger.error(colors.red(`❌ Failed to update processing status: ${updateError.message}`));
+        }
+      }
+
+      // Re-throw error to fail the entire upload transaction
+      throw error;
+    }
+  }
+
+  /**
+   * Process a chapter file for AI chat (extract, chunk, embed, save to Pinecone)
+   * Legacy method that downloads from S3 - use processChapterFileForAiChatFromBuffer when file is already in memory
+   */
+  private async processChapterFileForAiChat(
+    chapterFile: any,
+    chapter: any,
+    platformId: string,
+  ): Promise<void> {
+    const startTime = Date.now();
+    this.logger.log(colors.cyan(`🔄 Processing chapter file for AI chat: ${chapterFile.fileName}`));
+
+    try {
+      // Step 1: Ensure processing record exists
+      let processing = await this.prisma.libraryGeneralMaterialProcessing.findUnique({
+        where: { materialId: chapter.materialId },
+      });
+
+      if (!processing) {
+        processing = await this.prisma.libraryGeneralMaterialProcessing.create({
+          data: {
+            materialId: chapter.materialId,
+            platformId: platformId,
+            status: 'PROCESSING',
+            totalChunks: 0,
+            processedChunks: 0,
+            failedChunks: 0,
+            embeddingModel: 'text-embedding-3-small',
+            processingStartedAt: new Date(),
+          },
+        });
+        this.logger.log(colors.blue(`📝 Created processing record for material: ${chapter.materialId}`));
+      } else {
+        await this.prisma.libraryGeneralMaterialProcessing.update({
+          where: { id: processing.id },
+          data: {
+            status: 'PROCESSING',
+            processingStartedAt: new Date(),
+          },
+        });
+      }
+
+      // Step 2: Download file from S3
+      this.logger.log(colors.blue(`📥 Downloading file from S3: ${chapterFile.url}`));
+      const fileBuffer = await this.downloadFileFromS3(chapterFile.url);
+
+      // Step 3: Extract text
+      this.logger.log(colors.blue(`📄 Extracting text from file...`));
+      const fileType = this.mapLibraryMaterialTypeToFileType(chapterFile.fileType);
+      const extractedText = await this.textExtractionService.extractText(fileBuffer, fileType);
+
+      // Step 4: Chunk the document
+      this.logger.log(colors.blue(`✂️ Chunking document into sections...`));
+      const chunkingResult = await this.chunkingService.chunkDocument(
+        extractedText.text,
+        chapter.materialId,
+        {
+          pageCount: extractedText.pageCount,
+          originalName: chapterFile.fileName,
+        }
+      );
+
+      // Step 5: Generate embeddings
+      this.logger.log(colors.blue(`🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`));
+      const embeddingResult = await this.embeddingService.generateBatchEmbeddings(
+        chunkingResult.chunks.map(chunk => chunk.content)
+      );
+
+      if (embeddingResult.successCount === 0) {
+        throw new Error('No valid embeddings generated - cannot save to Pinecone');
+      }
+
+      // Step 6: Save chunks and embeddings to Pinecone and database
+      this.logger.log(colors.blue(`💾 Saving chunks and embeddings...`));
+      await this.saveLibraryChunksAndEmbeddings(
+        chapter.materialId,
+        chapter.id,
+        chunkingResult.chunks,
+        embeddingResult.embeddings,
+        platformId,
+        processing.id,
+      );
+
+      // Step 7: Update processing status
+      await this.prisma.libraryGeneralMaterialProcessing.update({
+        where: { id: processing.id },
+        data: {
+          status: 'COMPLETED',
+          totalChunks: chunkingResult.totalChunks,
+          processedChunks: embeddingResult.successCount,
+          failedChunks: embeddingResult.failureCount,
+          processingCompletedAt: new Date(),
+        },
+      });
+
+      // Update chapter chunk count
+      const chunkCount = await this.prisma.libraryGeneralMaterialChunk.count({
+        where: { chapterId: chapter.id },
+      });
+
+      await this.prisma.libraryGeneralMaterialChapter.update({
+        where: { id: chapter.id },
+        data: { chunkCount },
+      });
+
+      const processingTime = Date.now() - startTime;
+      this.logger.log(colors.green(`🎉 Chapter file processing completed successfully in ${processingTime}ms`));
+
+    } catch (error: any) {
+      this.logger.error(colors.red(`❌ Error processing chapter file: ${error.message}`));
+
+      // Update processing status to failed if processing record exists
+      if (chapter.materialId) {
+        try {
+          const processing = await this.prisma.libraryGeneralMaterialProcessing.findUnique({
+            where: { materialId: chapter.materialId },
+          });
+
+          if (processing) {
+            await this.prisma.libraryGeneralMaterialProcessing.update({
+              where: { id: processing.id },
+              data: {
+                status: 'FAILED',
+                errorMessage: error.message,
+              },
+            });
+          }
+        } catch (updateError: any) {
+          this.logger.error(colors.red(`❌ Failed to update processing status: ${updateError.message}`));
+        }
+      }
+
+      // Re-throw error to fail the entire upload transaction
+      throw error;
+    }
+  }
+
+  /**
+   * Download file from S3
+   */
+  private async downloadFileFromS3(s3Url: string): Promise<Buffer> {
+    try {
+      const url = new URL(s3Url);
+      const s3Key = url.pathname.substring(1); // Remove leading slash
+
+      const presignedUrl = await this.s3Service.generateReadPresignedUrl(s3Key);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      const response = await fetch(presignedUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'SmartEdu-Library/1.0' },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+      }
+
+      const chunks: Uint8Array[] = [];
+      const reader = response.body?.getReader();
+
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+
+      return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
+
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error('S3 download timed out after 60 seconds');
+      }
+      throw new Error(`Failed to download file from S3: ${error.message}`);
+    }
+  }
+
+  /**
+   * Map LibraryMaterialType to file type string
+   */
+  private mapLibraryMaterialTypeToFileType(materialType: LibraryMaterialType): string {
+    switch (materialType) {
+      case LibraryMaterialType.PDF:
+        return 'pdf';
+      case LibraryMaterialType.DOC:
+        return 'doc';
+      case LibraryMaterialType.PPT:
+        return 'ppt';
+      default:
+        return 'pdf';
+    }
+  }
+
+  /**
+   * Save chunks and embeddings to Pinecone and database for library materials
+   */
+  private async saveLibraryChunksAndEmbeddings(
+    materialId: string,
+    chapterId: string,
+    chunks: any[],
+    embeddings: any[],
+    platformId: string,
+    processingId: string,
+  ): Promise<void> {
+    try {
+      // Convert chunks to Pinecone format
+      const pineconeChunks = chunks.map((chunk, index) =>
+        this.pineconeService.convertToPineconeChunk(
+          chunk,
+          embeddings[index]?.embedding || [],
+          materialId,
+          platformId, // Using platformId as school_id equivalent
+        )
+      );
+
+      // Save to Pinecone
+      await this.pineconeService.upsertChunks(pineconeChunks);
+
+      // Save chunks to database
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const embedding = embeddings[i];
+
+        await this.prisma.$executeRaw`
+          INSERT INTO "LibraryGeneralMaterialChunk" (
+            id, "materialId", "chapterId", "processingId", "platformId", content,
+            "chunkType", "pageNumber", "sectionTitle", embedding, "embeddingModel",
+            "tokenCount", "wordCount", "orderIndex", keywords, summary, "createdAt", "updatedAt"
+          ) VALUES (
+            ${chunk.id}, ${materialId}, ${chapterId}, ${processingId}, ${platformId},
+            ${chunk.content.replace(/\0/g, '')}, ${this.mapChunkType(chunk.chunkType)}::"ChunkType",
+            ${chunk.metadata.pageNumber || null}, ${chunk.metadata.sectionTitle?.replace(/\0/g, '') || null},
+            ${embedding?.embedding || []}::vector, ${embedding?.model || 'text-embedding-3-small'},
+            ${chunk.tokenCount}, ${Math.ceil(chunk.content.split(' ').length)}, ${chunk.chunkIndex},
+            ${[]}::text[], ${null}, NOW(), NOW()
+          )
+        `;
+      }
+
+      this.logger.log(colors.green(`✅ Saved ${chunks.length} chunks to Pinecone and database`));
+    } catch (error: any) {
+      this.logger.error(colors.red(`❌ Error saving chunks: ${error.message}`));
+      throw new Error(`Failed to save chunks: ${error.message}`);
+    }
+  }
+
+  /**
+   * Map chunk type to database enum
+   */
+  private mapChunkType(chunkType: string): 'TEXT' | 'HEADING' | 'PARAGRAPH' | 'LIST' | 'TABLE' | 'IMAGE_CAPTION' | 'FOOTNOTE' {
+    switch (chunkType) {
+      case 'text':
+        return 'TEXT';
+      case 'heading':
+        return 'HEADING';
+      case 'paragraph':
+        return 'PARAGRAPH';
+      case 'list':
+        return 'LIST';
+      case 'table':
+        return 'TABLE';
+      case 'image_caption':
+        return 'IMAGE_CAPTION';
+      case 'footnote':
+        return 'FOOTNOTE';
+      default:
+        return 'TEXT';
     }
   }
 }

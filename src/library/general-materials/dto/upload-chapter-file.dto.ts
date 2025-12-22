@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsEnum, IsInt, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength, IsEnum, IsInt, Min, IsBoolean } from 'class-validator';
 import { LibraryMaterialType } from '@prisma/client';
 
 export class UploadChapterFileDto {
@@ -41,6 +41,15 @@ export class UploadChapterFileDto {
   @IsOptional()
   @Min(1)
   order?: number;
+
+  @ApiPropertyOptional({
+    description: 'Enable AI chat processing for this chapter file (default: true). Set to false to disable. Requires material to have AI chat enabled.',
+    example: true,
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  enableAiChat?: boolean;
 
   @ApiProperty({
     description: 'File to upload (PDF, DOC, DOCX, PPT, PPTX, etc. - max 300MB)',

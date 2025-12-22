@@ -5,9 +5,10 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { LibraryAuthModule } from '../library-auth/library-auth.module';
 import { S3Module } from '../../shared/services/s3.module';
 import { UploadModule } from '../../shared/upload/upload.module';
+import { AiChatModule } from '../../school/ai-chat/ai-chat.module';
 
 @Module({
-  imports: [PrismaModule, LibraryAuthModule, S3Module, UploadModule],
+  imports: [PrismaModule, LibraryAuthModule, S3Module, UploadModule, AiChatModule],
   controllers: [GeneralMaterialsController],
   providers: [GeneralMaterialsService],
   exports: [GeneralMaterialsService],
