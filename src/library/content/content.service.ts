@@ -7,6 +7,7 @@ import { ApiResponse } from '../../shared/helper-functions/response';
 import { UploadLibraryVideoDto } from './dto/upload-video.dto';
 import { UploadLibraryMaterialDto } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
+import { UpdateLibraryVideoDto } from './dto/update-video.dto';
 import * as colors from 'colors';
 
 @Injectable()
@@ -662,6 +663,578 @@ export class ContentService {
 
       this.logger.error(colors.red(`Error getting video for playback: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to retrieve video');
+    }
+  }
+
+  /**
+   * Delete a video
+   */
+  async deleteVideo(user: any, videoId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting video: ${videoId} for library user: ${user.email}`));
+
+    try {
+      // Get library user and platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red(`Library user not found: ${user.email}`));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Get video and verify it belongs to user's platform
+      const video = await this.prisma.libraryVideoLesson.findFirst({
+        where: {
+          id: videoId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          videoS3Key: true,
+          thumbnailS3Key: true,
+          topicId: true,
+          order: true,
+        },
+      }) as any;
+
+      if (!video) {
+        this.logger.error(colors.red(`Video not found or does not belong to your platform: ${videoId}`));
+        throw new NotFoundException('Video not found or does not belong to your platform');
+      }
+
+      // Delete in transaction: files first, then database
+      await this.prisma.$transaction(async (tx) => {
+        // Delete video file from storage
+        if (video.videoS3Key) {
+          try {
+            await this.s3Service.deleteFile(video.videoS3Key);
+            this.logger.log(colors.green(`✅ Deleted video file from storage: ${video.videoS3Key}`));
+          } catch (error) {
+            this.logger.error(colors.yellow(`⚠️ Failed to delete video file from storage: ${error.message}`));
+            // Continue with DB deletion even if file deletion fails
+          }
+        }
+
+        // Delete thumbnail from storage
+        if (video.thumbnailS3Key) {
+          try {
+            await this.s3Service.deleteFile(video.thumbnailS3Key);
+            this.logger.log(colors.green(`✅ Deleted thumbnail from storage: ${video.thumbnailS3Key}`));
+          } catch (error) {
+            this.logger.error(colors.yellow(`⚠️ Failed to delete thumbnail from storage: ${error.message}`));
+            // Continue with DB deletion even if file deletion fails
+          }
+        }
+
+        // Delete from database
+        await tx.libraryVideoLesson.delete({
+          where: { id: videoId },
+        });
+
+        // Reorder remaining videos in the same topic (close gaps)
+        // Get all videos in the same topic with order greater than deleted video's order
+        const videosToReorder = await tx.libraryVideoLesson.findMany({
+          where: {
+            topicId: video.topicId,
+            platformId: libraryUser.platformId,
+            order: {
+              gt: video.order,
+            },
+          },
+          select: {
+            id: true,
+            order: true,
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        });
+
+        // Decrement order for all videos after the deleted one
+        for (const vid of videosToReorder) {
+          await tx.libraryVideoLesson.update({
+            where: { id: vid.id },
+            data: { order: vid.order - 1 },
+          });
+        }
+
+        if (videosToReorder.length > 0) {
+          this.logger.log(colors.cyan(`🔄 Reordered ${videosToReorder.length} video(s) after deletion`));
+        }
+      }, {
+        maxWait: 5000,
+        timeout: 15000,
+      });
+
+      this.logger.log(colors.green(`✅ Video deleted successfully: ${video.title}`));
+      return new ApiResponse(true, 'Video deleted successfully', { id: videoId, title: video.title });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error deleting video: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to delete video');
+    }
+  }
+
+  /**
+   * Update a video (title, description, order swap)
+   */
+  async updateVideo(user: any, videoId: string, payload: UpdateLibraryVideoDto): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Updating video: ${videoId} for library user: ${user.email}`));
+
+    try {
+      // Get library user and platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red(`Library user not found: ${user.email}`));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Get current video and verify it belongs to user's platform
+      const currentVideo = await this.prisma.libraryVideoLesson.findFirst({
+        where: {
+          id: videoId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          topicId: true,
+        },
+      }) as any;
+
+      if (!currentVideo) {
+        this.logger.error(colors.red(`Video not found or does not belong to your platform: ${videoId}`));
+        throw new NotFoundException('Video not found or does not belong to your platform');
+      }
+
+      // Update in transaction
+      const updatedVideo = await this.prisma.$transaction(async (tx) => {
+        // If swapping order, handle that first
+        if (payload.swapOrderWith) {
+          // Get target video
+          const targetVideo = await tx.libraryVideoLesson.findFirst({
+            where: {
+              id: payload.swapOrderWith,
+              platformId: libraryUser.platformId,
+              topicId: currentVideo.topicId, // Must be in same topic
+            },
+            select: {
+              id: true,
+              order: true,
+            },
+          }) as any;
+
+          if (!targetVideo) {
+            throw new NotFoundException('Target video not found, does not belong to your platform, or is not in the same topic');
+          }
+
+          // Swap orders
+          await tx.libraryVideoLesson.update({
+            where: { id: videoId },
+            data: { order: targetVideo.order },
+          });
+
+          await tx.libraryVideoLesson.update({
+            where: { id: payload.swapOrderWith },
+            data: { order: currentVideo.order },
+          });
+
+          this.logger.log(colors.cyan(`🔄 Swapped orders: Video ${videoId} (${currentVideo.order} ↔ ${targetVideo.order}) with Video ${payload.swapOrderWith}`));
+        }
+
+        // Build update data (title, description)
+        const updateData: any = {};
+        if (payload.title !== undefined) updateData.title = payload.title;
+        if (payload.description !== undefined) updateData.description = payload.description ?? null;
+
+        // Update video if there are other fields to update
+        if (Object.keys(updateData).length > 0) {
+          return await tx.libraryVideoLesson.update({
+            where: { id: videoId },
+            data: updateData,
+            include: {
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                },
+              },
+              uploadedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+            },
+          });
+        } else {
+          // If only order swap, just return the updated video
+          const video = await tx.libraryVideoLesson.findUnique({
+            where: { id: videoId },
+            include: {
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                },
+              },
+              uploadedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+            },
+          });
+          if (!video) {
+            throw new NotFoundException('Video not found after update');
+          }
+          return video;
+        }
+      }, {
+        maxWait: 5000,
+        timeout: 15000,
+      }) as any;
+
+      if (!updatedVideo) {
+        throw new NotFoundException('Video not found after update');
+      }
+
+      this.logger.log(colors.green(`✅ Video updated successfully: ${updatedVideo.title}`));
+      return new ApiResponse(true, 'Video updated successfully', updatedVideo);
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error updating video: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to update video');
+    }
+  }
+
+  /**
+   * Delete a material
+   */
+  async deleteMaterial(user: any, materialId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting material: ${materialId} for library user: ${user.email}`));
+
+    try {
+      // Get library user and platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red(`Library user not found: ${user.email}`));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Get material and verify it belongs to user's platform
+      const material = await this.prisma.libraryMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          s3Key: true,
+          topicId: true,
+          order: true,
+        },
+      }) as any;
+
+      if (!material) {
+        this.logger.error(colors.red(`Material not found or does not belong to your platform: ${materialId}`));
+        throw new NotFoundException('Material not found or does not belong to your platform');
+      }
+
+      // Delete in transaction: file first, then database
+      await this.prisma.$transaction(async (tx) => {
+        // Delete material file from storage
+        if (material.s3Key) {
+          try {
+            await this.s3Service.deleteFile(material.s3Key);
+            this.logger.log(colors.green(`✅ Deleted material file from storage: ${material.s3Key}`));
+          } catch (error) {
+            this.logger.error(colors.yellow(`⚠️ Failed to delete material file from storage: ${error.message}`));
+            // Continue with DB deletion even if file deletion fails
+          }
+        }
+
+        // Delete from database
+        await tx.libraryMaterial.delete({
+          where: { id: materialId },
+        });
+
+        // Reorder remaining materials in the same topic (close gaps)
+        const materialsToReorder = await tx.libraryMaterial.findMany({
+          where: {
+            topicId: material.topicId,
+            platformId: libraryUser.platformId,
+            order: {
+              gt: material.order,
+            },
+          },
+          select: {
+            id: true,
+            order: true,
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        });
+
+        // Decrement order for all materials after the deleted one
+        for (const mat of materialsToReorder) {
+          await tx.libraryMaterial.update({
+            where: { id: mat.id },
+            data: { order: mat.order - 1 },
+          });
+        }
+
+        if (materialsToReorder.length > 0) {
+          this.logger.log(colors.cyan(`🔄 Reordered ${materialsToReorder.length} material(s) after deletion`));
+        }
+      }, {
+        maxWait: 5000,
+        timeout: 15000,
+      });
+
+      this.logger.log(colors.green(`✅ Material deleted successfully: ${material.title}`));
+      return new ApiResponse(true, 'Material deleted successfully', { id: materialId, title: material.title });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error deleting material: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to delete material');
+    }
+  }
+
+  /**
+   * Delete a link
+   */
+  async deleteLink(user: any, linkId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting link: ${linkId} for library user: ${user.email}`));
+
+    try {
+      // Get library user and platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red(`Library user not found: ${user.email}`));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Get link and verify it belongs to user's platform
+      const link = await this.prisma.libraryLink.findFirst({
+        where: {
+          id: linkId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          topicId: true,
+          order: true,
+        },
+      }) as any;
+
+      if (!link) {
+        this.logger.error(colors.red(`Link not found or does not belong to your platform: ${linkId}`));
+        throw new NotFoundException('Link not found or does not belong to your platform');
+      }
+
+      // Delete in transaction
+      await this.prisma.$transaction(async (tx) => {
+        // Delete from database (links don't have files, just URLs)
+        await tx.libraryLink.delete({
+          where: { id: linkId },
+        });
+
+        // Reorder remaining links in the same topic (close gaps)
+        if (link.topicId) {
+          const linksToReorder = await tx.libraryLink.findMany({
+            where: {
+              topicId: link.topicId,
+              platformId: libraryUser.platformId,
+              order: {
+                gt: link.order,
+              },
+            },
+            select: {
+              id: true,
+              order: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          });
+
+          // Decrement order for all links after the deleted one
+          for (const l of linksToReorder) {
+            await tx.libraryLink.update({
+              where: { id: l.id },
+              data: { order: l.order - 1 },
+            });
+          }
+
+          if (linksToReorder.length > 0) {
+            this.logger.log(colors.cyan(`🔄 Reordered ${linksToReorder.length} link(s) after deletion`));
+          }
+        }
+      }, {
+        maxWait: 5000,
+        timeout: 15000,
+      });
+
+      this.logger.log(colors.green(`✅ Link deleted successfully: ${link.title}`));
+      return new ApiResponse(true, 'Link deleted successfully', { id: linkId, title: link.title });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error deleting link: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to delete link');
+    }
+  }
+
+  /**
+   * Delete an assignment
+   */
+  async deleteAssignment(user: any, assignmentId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting assignment: ${assignmentId} for library user: ${user.email}`));
+
+    try {
+      // Get library user and platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red(`Library user not found: ${user.email}`));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Get assignment and verify it belongs to user's platform
+      const assignment = await this.prisma.libraryAssignment.findFirst({
+        where: {
+          id: assignmentId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          attachmentS3Key: true,
+          topicId: true,
+          order: true,
+        },
+      }) as any;
+
+      if (!assignment) {
+        this.logger.error(colors.red(`Assignment not found or does not belong to your platform: ${assignmentId}`));
+        throw new NotFoundException('Assignment not found or does not belong to your platform');
+      }
+
+      // Delete in transaction: file first, then database
+      await this.prisma.$transaction(async (tx) => {
+        // Delete assignment file from storage
+        if (assignment.attachmentS3Key) {
+          try {
+            await this.s3Service.deleteFile(assignment.attachmentS3Key);
+            this.logger.log(colors.green(`✅ Deleted assignment file from storage: ${assignment.attachmentS3Key}`));
+          } catch (error) {
+            this.logger.error(colors.yellow(`⚠️ Failed to delete assignment file from storage: ${error.message}`));
+            // Continue with DB deletion even if file deletion fails
+          }
+        }
+
+        // Delete from database
+        await tx.libraryAssignment.delete({
+          where: { id: assignmentId },
+        });
+
+        // Reorder remaining assignments in the same topic (close gaps)
+        const assignmentsToReorder = await tx.libraryAssignment.findMany({
+          where: {
+            topicId: assignment.topicId,
+            platformId: libraryUser.platformId,
+            order: {
+              gt: assignment.order,
+            },
+          },
+          select: {
+            id: true,
+            order: true,
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        });
+
+        // Decrement order for all assignments after the deleted one
+        for (const ass of assignmentsToReorder) {
+          await tx.libraryAssignment.update({
+            where: { id: ass.id },
+            data: { order: ass.order - 1 },
+          });
+        }
+
+        if (assignmentsToReorder.length > 0) {
+          this.logger.log(colors.cyan(`🔄 Reordered ${assignmentsToReorder.length} assignment(s) after deletion`));
+        }
+      }, {
+        maxWait: 5000,
+        timeout: 15000,
+      });
+
+      this.logger.log(colors.green(`✅ Assignment deleted successfully: ${assignment.title}`));
+      return new ApiResponse(true, 'Assignment deleted successfully', { id: assignmentId, title: assignment.title });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error deleting assignment: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to delete assignment');
     }
   }
 
