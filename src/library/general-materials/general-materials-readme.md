@@ -186,6 +186,7 @@ Authorization: Bearer <token>
         "downloads": 800,
         "thumbnailUrl": "https://s3.amazonaws.com/bucket/library/general-materials/thumbnails/platforms/platform_123/thumbnail_abc123.jpg",
         "thumbnailS3Key": "library/general-materials/thumbnails/platforms/platform_123/thumbnail_abc123.jpg",
+        "chapterCount": 5,
         "createdAt": "2025-01-01T00:00:00.000Z",
         "updatedAt": "2025-01-01T00:00:00.000Z",
         "class": {
@@ -216,6 +217,7 @@ Authorization: Bearer <token>
         "downloads": 2500,
         "thumbnailUrl": null,
         "thumbnailS3Key": null,
+        "chapterCount": 8,
         "createdAt": "2025-01-02T00:00:00.000Z",
         "updatedAt": "2025-01-02T00:00:00.000Z",
         "class": null,
@@ -253,6 +255,7 @@ Each material object contains:
 - `downloads`: Number of downloads
 - `thumbnailUrl`: Thumbnail image URL (nullable)
 - `thumbnailS3Key`: S3 object key for thumbnail (nullable)
+- `chapterCount`: Number of chapters in this material
 - `createdAt`: Creation timestamp
 - `updatedAt`: Last update timestamp
 - `class`: Associated library class (nullable)
@@ -281,7 +284,282 @@ Each material object contains:
 
 ---
 
-## 3. Start General Material Upload (with Progress Tracking)
+## 3. Get Single General Material by ID
+
+**Endpoint:** `GET /api/v1/library/general-materials/:materialId`
+
+### Description
+Retrieves detailed information for a specific general material, including all its chapters and chapter files. This endpoint is useful for displaying a material's full details on a detail page.
+
+### Request Parameters
+- `materialId` (path parameter): The ID of the general material
+
+### Example Request
+```
+GET /api/v1/library/general-materials/material_123
+Authorization: Bearer <token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "General material retrieved successfully",
+  "data": {
+    "id": "material_123",
+    "title": "Advanced Algebra for Senior Secondary Schools",
+    "description": "A comprehensive guide to advanced algebra concepts.",
+    "author": "John Doe",
+    "isbn": "978-3-16-148410-0",
+    "publisher": "Smart Edu Publishing",
+    "materialType": "PDF",
+    "url": "https://bucket.s3.region.amazonaws.com/library/general-materials/platforms/platform_123/material_123.pdf",
+    "s3Key": "library/general-materials/platforms/platform_123/material_123.pdf",
+    "sizeBytes": 52428800,
+    "pageCount": null,
+    "thumbnailUrl": "https://bucket.s3.region.amazonaws.com/library/general-materials/thumbnails/platforms/platform_123/thumbnail_123.jpg",
+    "thumbnailS3Key": "library/general-materials/thumbnails/platforms/platform_123/thumbnail_123.jpg",
+    "isAvailable": true,
+    "isAiEnabled": true,
+    "status": "published",
+    "views": 1500,
+    "downloads": 800,
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "updatedAt": "2025-01-01T00:00:00.000Z",
+    "class": {
+      "id": "class_123",
+      "name": "SSS 1"
+    },
+    "subject": {
+      "id": "subject_123",
+      "name": "Mathematics",
+      "code": "MATH"
+    },
+    "uploadedBy": {
+      "id": "user_123",
+      "email": "uploader@example.com",
+      "first_name": "John",
+      "last_name": "Doe"
+    },
+    "chapters": [
+      {
+        "id": "chapter_123",
+        "title": "Chapter 1: Introduction to Algebra",
+        "description": "This chapter introduces basic algebraic concepts.",
+        "pageStart": 1,
+        "pageEnd": 20,
+        "order": 1,
+        "isProcessed": false,
+        "chunkCount": 0,
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T00:00:00.000Z",
+        "files": [
+          {
+            "id": "file_123",
+            "fileName": "chapter1-intro.pdf",
+            "fileType": "PDF",
+            "url": "https://s3.amazonaws.com/bucket/library/general-materials/chapters/platform_123/material_123/chapter_123/file_abc123.pdf",
+            "sizeBytes": 2048576,
+            "title": "Chapter 1 - Introduction PDF",
+            "description": "Introduction to algebra concepts",
+            "order": 1,
+            "createdAt": "2025-01-01T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "id": "chapter_456",
+        "title": "Chapter 2: Linear Equations",
+        "description": "Understanding linear equations and their solutions.",
+        "pageStart": 21,
+        "pageEnd": 45,
+        "order": 2,
+        "isProcessed": true,
+        "chunkCount": 15,
+        "createdAt": "2025-01-02T00:00:00.000Z",
+        "updatedAt": "2025-01-02T00:00:00.000Z",
+        "files": []
+      }
+    ]
+  }
+}
+```
+
+### Response Structure Breakdown
+
+#### Material Object
+- `id`: Material ID
+- `title`: Material title
+- `description`: Material description (nullable)
+- `author`: Author name (nullable)
+- `isbn`: ISBN (nullable)
+- `publisher`: Publisher name (nullable)
+- `materialType`: Type of material (e.g., "PDF")
+- `url`: Full URL to the material file in cloud storage
+- `s3Key`: S3 object key for the material file
+- `sizeBytes`: File size in bytes (nullable)
+- `pageCount`: Number of pages (nullable)
+- `thumbnailUrl`: Thumbnail image URL (nullable)
+- `thumbnailS3Key`: S3 object key for thumbnail (nullable)
+- `isAvailable`: Whether the material is available
+- `isAiEnabled`: Whether AI chat is enabled for this material
+- `status`: Material status (published, draft, archived)
+- `views`: Number of views
+- `downloads`: Number of downloads
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `class`: Associated library class (nullable)
+  - `id`: Class ID
+  - `name`: Class name
+- `subject`: Associated library subject (nullable)
+  - `id`: Subject ID
+  - `name`: Subject name
+  - `code`: Subject code
+- `uploadedBy`: Library user who uploaded the material
+  - `id`: User ID
+  - `email`: User email
+  - `first_name`: User first name
+  - `last_name`: User last name
+- `chapters`: Array of all chapters for this material (ordered by `order` ascending)
+  - `id`: Chapter ID
+  - `title`: Chapter title
+  - `description`: Chapter description (nullable)
+  - `pageStart`: Starting page number (nullable)
+  - `pageEnd`: Ending page number (nullable)
+  - `order`: Chapter order
+  - `isProcessed`: Whether the chapter has been processed for AI
+  - `chunkCount`: Number of AI chunks created for this chapter
+  - `createdAt`: Creation timestamp
+  - `updatedAt`: Last update timestamp
+  - `files`: Array of files attached to this chapter (ordered by `order` ascending)
+    - `id`: File ID
+    - `fileName`: Original filename
+    - `fileType`: Type of file (PDF, DOC, PPT, VIDEO, NOTE)
+    - `url`: Public or signed URL to access the file
+    - `sizeBytes`: File size in bytes (nullable)
+    - `title`: Title/name for the file (nullable)
+    - `description`: Description of the file content (nullable)
+    - `order`: Order/sequence number within the chapter
+    - `createdAt`: Creation timestamp
+
+### Error Responses
+- **401**: Unauthorized - Invalid or missing token
+- **404**: Library user not found, material not found, or material does not belong to user's platform
+- **500**: Internal server error
+
+### Notes
+- This endpoint returns the complete material details including all chapters and their files
+- Chapters are ordered by `order` (ascending)
+- Files within each chapter are also ordered by `order` (ascending)
+- The material must belong to the authenticated user's platform
+
+---
+
+## 4. Get Chapters for a Material
+
+**Endpoint:** `GET /api/v1/library/general-materials/:materialId/chapters`
+
+### Description
+Retrieves all chapters for a specific general material, including their associated files. This endpoint is useful when you only need chapter information without the full material details.
+
+### Request Parameters
+- `materialId` (path parameter): The ID of the general material
+
+### Example Request
+```
+GET /api/v1/library/general-materials/material_123/chapters
+Authorization: Bearer <token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Material chapters retrieved successfully",
+  "data": [
+    {
+      "id": "chapter_123",
+      "title": "Chapter 1: Introduction to Algebra",
+      "description": "This chapter introduces basic algebraic concepts.",
+      "pageStart": 1,
+      "pageEnd": 20,
+      "order": 1,
+      "isProcessed": false,
+      "chunkCount": 0,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z",
+      "files": [
+        {
+          "id": "file_123",
+          "fileName": "chapter1-intro.pdf",
+          "fileType": "PDF",
+          "url": "https://s3.amazonaws.com/bucket/library/general-materials/chapters/platform_123/material_123/chapter_123/file_abc123.pdf",
+          "sizeBytes": 2048576,
+          "title": "Chapter 1 - Introduction PDF",
+          "description": "Introduction to algebra concepts",
+          "order": 1,
+          "createdAt": "2025-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "chapter_456",
+      "title": "Chapter 2: Linear Equations",
+      "description": "Understanding linear equations and their solutions.",
+      "pageStart": 21,
+      "pageEnd": 45,
+      "order": 2,
+      "isProcessed": true,
+      "chunkCount": 15,
+      "createdAt": "2025-01-02T00:00:00.000Z",
+      "updatedAt": "2025-01-02T00:00:00.000Z",
+      "files": []
+    }
+  ]
+}
+```
+
+### Response Structure Breakdown
+
+#### Chapters Array
+Array of chapter objects, each containing:
+- `id`: Chapter ID
+- `title`: Chapter title
+- `description`: Chapter description (nullable)
+- `pageStart`: Starting page number in the full material (nullable)
+- `pageEnd`: Ending page number in the full material (nullable)
+- `order`: Chapter order (automatically assigned, increments by 1)
+- `isProcessed`: Whether the chapter has been processed for AI
+- `chunkCount`: Number of AI chunks created for this chapter
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `files`: Array of files attached to this chapter (ordered by `order` ascending)
+  - `id`: File ID
+  - `fileName`: Original filename
+  - `fileType`: Type of file (PDF, DOC, PPT, VIDEO, NOTE)
+  - `url`: Public or signed URL to access the file
+  - `sizeBytes`: File size in bytes (nullable)
+  - `title`: Title/name for the file (nullable)
+  - `description`: Description of the file content (nullable)
+  - `order`: Order/sequence number within the chapter
+  - `createdAt`: Creation timestamp
+
+### Error Responses
+- **401**: Unauthorized - Invalid or missing token
+- **404**: Library user not found, material not found, or material does not belong to user's platform
+- **500**: Internal server error
+
+### Notes
+- Chapters are ordered by `order` (ascending)
+- Files within each chapter are also ordered by `order` (ascending)
+- The material must belong to the authenticated user's platform
+- Use this endpoint when you only need chapter information without full material details
+
+---
+
+## 5. Start General Material Upload (with Progress Tracking)
 
 **Endpoint:** `POST /api/v1/library/general-materials/upload/start`
 
@@ -347,7 +625,7 @@ isAiEnabled: true
 
 ---
 
-## 4. Track General Material Upload Progress
+## 6. Track General Material Upload Progress
 
 You can track upload progress using **SSE (recommended)** or **polling**, similar to the `content` module.
 
@@ -391,7 +669,7 @@ Returns a Server-Sent Events (SSE) stream with real-time progress updates.
 
 ---
 
-## 5. Create General Material (Single-Step Upload)
+## 7. Create General Material (Single-Step Upload)
 
 **Endpoint:** `POST /api/v1/library/general-materials`
 
@@ -515,7 +793,7 @@ isAiEnabled: true
 
 ---
 
-## 4. Create General Material Chapter
+## 8. Create General Material Chapter
 
 **Endpoint:** `POST /api/v1/library/general-materials/:materialId/chapters`
 
@@ -609,6 +887,119 @@ Content-Type: application/json
 
 ---
 
+## 9. Upload File for Chapter
+
+**Endpoint:** `POST /api/v1/library/general-materials/:materialId/chapters/:chapterId/files`
+
+### Description
+Uploads a file (PDF, DOC, PPT, etc.) to a specific chapter. A chapter can have multiple files. Files are automatically ordered sequentially if order is not provided. This allows chapters to have supplementary materials, separate PDFs, or additional resources beyond the main material file.
+
+### Request Parameters
+- `materialId` (path parameter): The ID of the general material
+- `chapterId` (path parameter): The ID of the chapter
+
+### Request
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | File to upload (PDF, DOC, DOCX, PPT, PPTX, etc. - max 300MB) |
+| `title` | string | No | Optional title/name for the file (defaults to original filename, max 200 characters) |
+| `description` | string | No | Optional description of the file content (max 2000 characters) |
+| `fileType` | string | No | Optional file type (PDF, DOC, PPT, VIDEO, NOTE). Auto-detected from extension if not provided |
+| `order` | number | No | Optional order/sequence number (auto-assigned if not provided, minimum: 1) |
+
+### Example Request
+```
+POST /api/v1/library/general-materials/material_123/chapters/chapter_456/files
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file: [binary file data]
+title: Chapter 1 - Introduction PDF
+description: Introduction to algebra concepts
+fileType: PDF
+order: 1
+```
+
+### Success Response (201)
+
+```json
+{
+  "success": true,
+  "message": "Chapter file uploaded successfully",
+  "data": {
+    "id": "file_123",
+    "chapterId": "chapter_456",
+    "platformId": "platform_123",
+    "uploadedById": "user_123",
+    "fileName": "chapter1-intro.pdf",
+    "fileType": "PDF",
+    "url": "https://s3.amazonaws.com/bucket/library/general-materials/chapters/platform_123/material_123/chapter_456/file_abc123.pdf",
+    "s3Key": "library/general-materials/chapters/platform_123/material_123/chapter_456/file_abc123.pdf",
+    "sizeBytes": 2048576,
+    "pageCount": null,
+    "title": "Chapter 1 - Introduction PDF",
+    "description": "Introduction to algebra concepts",
+    "order": 1,
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "updatedAt": "2025-01-01T00:00:00.000Z",
+    "uploadedBy": {
+      "id": "user_123",
+      "email": "uploader@example.com",
+      "first_name": "John",
+      "last_name": "Doe"
+    }
+  }
+}
+```
+
+### Response Structure Breakdown
+
+#### Chapter File Object
+- `id`: File ID
+- `chapterId`: ID of the parent chapter
+- `platformId`: Platform ID
+- `uploadedById`: ID of the library user who uploaded the file
+- `fileName`: Original filename
+- `fileType`: Type of file (PDF, DOC, PPT, VIDEO, NOTE)
+- `url`: Public or signed URL to access the file
+- `s3Key`: S3 object key (nullable)
+- `sizeBytes`: File size in bytes (nullable)
+- `pageCount`: Number of pages (nullable, typically for PDFs)
+- `title`: Title/name for the file (nullable)
+- `description`: Description of the file content (nullable)
+- `order`: Order/sequence number within the chapter
+- `createdAt`: Creation timestamp
+- `updatedAt`: Last update timestamp
+- `uploadedBy`: Library user who uploaded the file
+  - `id`: User ID
+  - `email`: User email
+  - `first_name`: User first name
+  - `last_name`: User last name
+
+### Error Responses
+- **400**: Bad request - Validation error, missing file, or invalid file type/size
+- **401**: Unauthorized - Invalid or missing token
+- **404**: Library user not found, material not found, chapter not found, or does not belong to user's platform
+- **500**: Internal server error
+
+### Notes
+- File `order` is automatically assigned based on the highest existing order + 1 if not provided
+- If no files exist for the chapter, the first file will have `order: 1`
+- Files are ordered sequentially (1, 2, 3, ...) within each chapter
+- `fileType` is auto-detected from the file extension if not provided
+- Supported file types: PDF, DOC, DOCX, PPT, PPTX, and other document formats
+- Maximum file size: 300MB
+- Files are uploaded to cloud storage (S3/Cloudinary based on environment configuration)
+- If database save fails, the uploaded file is automatically deleted from cloud storage (transactional rollback)
+- The chapter and material must belong to the authenticated user's platform
+- A chapter can have multiple files, allowing for supplementary materials or separate resources
+
+---
+
 ## Notes
 
 ### Platform Scoping
@@ -625,7 +1016,8 @@ Content-Type: application/json
 - Maximum file size: 300MB
 - Files are uploaded to cloud storage (S3/Cloudinary based on environment configuration)
 - The full material file is stored for offline download capability
-- Chapters are metadata (page ranges) and do not require separate file uploads
+- Chapters can have multiple files attached (see "Upload File for Chapter" endpoint)
+- Chapter files are separate from the main material file and allow for supplementary resources
 
 ### AI Chat Integration
 - Materials with `isAiEnabled: true` can be used for AI chat conversations

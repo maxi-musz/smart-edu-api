@@ -7,6 +7,8 @@ import { UploadProgressService } from '../../school/ai-chat/upload-progress.serv
 import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
+import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
+import { LibraryMaterialType } from '@prisma/client';
 import * as colors from 'colors';
 
 @Injectable()
@@ -202,6 +204,11 @@ export class GeneralMaterialsService {
             thumbnailS3Key: true,
             createdAt: true,
             updatedAt: true,
+            _count: {
+              select: {
+                chapters: true,
+              },
+            },
             class: {
               select: {
                 id: true,
@@ -234,8 +241,15 @@ export class GeneralMaterialsService {
 
       const totalPages = Math.ceil(totalItems / limit) || 1;
 
+      // Map items to include chapter count
+      const itemsWithChapterCount = items.map((item: any) => ({
+        ...item,
+        chapterCount: item._count?.chapters || 0,
+        _count: undefined, // Remove _count from response
+      }));
+
       const responseData = {
-        items,
+        items: itemsWithChapterCount,
         meta: {
           totalItems,
           totalPages,
@@ -252,6 +266,207 @@ export class GeneralMaterialsService {
 
       this.logger.error(colors.red(`Error fetching general materials: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to retrieve general materials');
+    }
+  }
+
+  /**
+   * Get a single general material by ID
+   */
+  async getGeneralMaterialById(user: any, materialId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Fetching material by ID: ${materialId} for user: ${user.email}`));
+
+    try {
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      const material = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          author: true,
+          isbn: true,
+          publisher: true,
+          materialType: true,
+          url: true,
+          s3Key: true,
+          sizeBytes: true,
+          pageCount: true,
+          thumbnailUrl: true,
+          thumbnailS3Key: true,
+          isAvailable: true,
+          isAiEnabled: true,
+          status: true,
+          views: true,
+          downloads: true,
+          createdAt: true,
+          updatedAt: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+          uploadedBy: {
+            select: {
+              id: true,
+              email: true,
+              first_name: true,
+              last_name: true,
+            },
+          },
+          chapters: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              pageStart: true,
+              pageEnd: true,
+              order: true,
+              isProcessed: true,
+              chunkCount: true,
+              createdAt: true,
+              updatedAt: true,
+              files: {
+                select: {
+                  id: true,
+                  fileName: true,
+                  fileType: true,
+                  url: true,
+                  sizeBytes: true,
+                  title: true,
+                  description: true,
+                  order: true,
+                  createdAt: true,
+                },
+                orderBy: {
+                  order: 'asc',
+                },
+              },
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          },
+        },
+      });
+
+      if (!material) {
+        this.logger.error(colors.red(`Material not found or does not belong to your platform: ${materialId}`));
+        throw new NotFoundException('Material not found or does not belong to your platform');
+      }
+
+      this.logger.log(colors.green(`[GENERAL MATERIALS] Material retrieved successfully: ${material.id}`));
+      return new ApiResponse(true, 'General material retrieved successfully', material);
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error fetching general material: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to retrieve general material');
+    }
+  }
+
+  /**
+   * Get all chapters for a general material
+   */
+  async getMaterialChapters(user: any, materialId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Fetching chapters for material: ${materialId} by user: ${user.email}`));
+
+    try {
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify material exists and belongs to the user's platform
+      const material = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+        },
+      });
+
+      if (!material) {
+        this.logger.error(colors.red(`Material not found or does not belong to your platform: ${materialId}`));
+        throw new NotFoundException('Material not found or does not belong to your platform');
+      }
+
+      const chapters = await this.prisma.libraryGeneralMaterialChapter.findMany({
+        where: {
+          materialId: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          pageStart: true,
+          pageEnd: true,
+          order: true,
+          isProcessed: true,
+          chunkCount: true,
+          createdAt: true,
+          updatedAt: true,
+          files: {
+            select: {
+              id: true,
+              fileName: true,
+              fileType: true,
+              url: true,
+              sizeBytes: true,
+              title: true,
+              description: true,
+              order: true,
+              createdAt: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      });
+
+      this.logger.log(colors.green(`[GENERAL MATERIALS] Material chapters retrieved successfully: ${materialId}`));
+      return new ApiResponse(true, 'Material chapters retrieved successfully', chapters);
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error fetching material chapters: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to retrieve material chapters');
     }
   }
 
@@ -640,6 +855,148 @@ export class GeneralMaterialsService {
 
       this.logger.error(colors.red(`Error creating general material chapter: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to create general material chapter');
+    }
+  }
+
+  /**
+   * Upload a file for a general material chapter
+   */
+  async uploadChapterFile(
+    user: any,
+    materialId: string,
+    chapterId: string,
+    payload: UploadChapterFileDto,
+    file: Express.Multer.File,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Uploading file for chapter: ${chapterId} by user: ${user.email}`));
+
+    try {
+      if (!file) {
+        throw new BadRequestException('File is required');
+      }
+
+      const validationResult = FileValidationHelper.validateMaterialFile(file);
+      if (!validationResult.isValid) {
+        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
+        throw new BadRequestException(validationResult.error);
+      }
+
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { id: true, platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify chapter exists and belongs to the user's platform and material
+      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
+        where: {
+          id: chapterId,
+          materialId: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          material: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      });
+
+      if (!chapter) {
+        this.logger.error(colors.red(`Chapter not found or does not belong to your platform: ${chapterId}`));
+        throw new NotFoundException('Chapter not found or does not belong to your platform');
+      }
+
+      // Get the last file order for this chapter
+      const lastFile = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+        where: {
+          chapterId: chapterId,
+          platformId: libraryUser.platformId,
+        },
+        orderBy: {
+          order: 'desc',
+        },
+        select: {
+          order: true,
+        },
+      });
+
+      const nextOrder = payload.order || (lastFile?.order || 0) + 1;
+
+      // Upload file to S3
+      const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}/${chapterId}`;
+      const uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+
+      // Determine file type from extension if not provided
+      let fileType: LibraryMaterialType = payload.fileType || LibraryMaterialType.PDF;
+      if (!payload.fileType) {
+        const ext = file.originalname.split('.').pop()?.toLowerCase();
+        if (ext === 'doc' || ext === 'docx') fileType = LibraryMaterialType.DOC;
+        else if (ext === 'ppt' || ext === 'pptx') fileType = LibraryMaterialType.PPT;
+        else if (ext === 'pdf') fileType = LibraryMaterialType.PDF;
+        else if (ext === 'mp4' || ext === 'mov' || ext === 'avi') fileType = LibraryMaterialType.VIDEO;
+        else fileType = LibraryMaterialType.NOTE;
+      }
+
+      // Create chapter file record within a transaction
+      let chapterFile: any;
+      try {
+        chapterFile = await this.prisma.libraryGeneralMaterialChapterFile.create({
+          data: {
+            chapterId: chapterId,
+            platformId: libraryUser.platformId,
+            uploadedById: libraryUser.id,
+            fileName: file.originalname,
+            fileType: fileType,
+            url: uploadResult.url,
+            s3Key: uploadResult.key || null,
+            sizeBytes: file.size,
+            title: payload.title || file.originalname,
+            description: payload.description || null,
+            order: nextOrder,
+          },
+          include: {
+            uploadedBy: {
+              select: {
+                id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
+              },
+            },
+          },
+        });
+
+        this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter file uploaded successfully: ${chapterFile.id}`));
+        return new ApiResponse(true, 'Chapter file uploaded successfully', chapterFile);
+      } catch (dbError: any) {
+        // If DB save fails, delete the uploaded file from S3
+        this.logger.error(colors.red(`❌ Database save failed, deleting uploaded file: ${dbError.message}`));
+        if (uploadResult.key) {
+          try {
+            await this.s3Service.deleteFile(uploadResult.key);
+            this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
+          } catch (deleteError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
+          }
+        }
+        throw dbError;
+      }
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error uploading chapter file: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to upload chapter file');
     }
   }
 }

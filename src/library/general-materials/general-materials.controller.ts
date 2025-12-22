@@ -9,6 +9,7 @@ import {
   HttpStatus,
   Query,
   UploadedFiles,
+  UploadedFile,
   UseInterceptors,
   Param,
   Sse,
@@ -19,7 +20,8 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
@@ -28,6 +30,7 @@ import {
   GetAllGeneralMaterialsDocs,
   CreateGeneralMaterialDocs,
   CreateGeneralMaterialChapterDocs,
+  UploadChapterFileDocs,
   StartGeneralMaterialUploadDocs,
   GeneralMaterialUploadProgressSseDocs,
   GeneralMaterialUploadProgressPollDocs,
@@ -70,6 +73,30 @@ export class GeneralMaterialsController {
     @Query() query: QueryGeneralMaterialsDto,
   ) {
     return await this.generalMaterialsService.getAllGeneralMaterials(req.user, query);
+  }
+
+  // 2.1) Get chapters for a material (must come before :materialId to avoid route conflicts)
+  @Get(':materialId/chapters')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  async getMaterialChapters(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+  ) {
+    return await this.generalMaterialsService.getMaterialChapters(req.user, materialId);
+  }
+
+  // 2.2) Get single general material by ID
+  @Get(':materialId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  async getMaterialById(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+  ) {
+    return await this.generalMaterialsService.getGeneralMaterialById(req.user, materialId);
   }
 
   // 3) Create new general material (full file upload)
@@ -125,7 +152,31 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.createGeneralMaterialChapter(req.user, materialId, payload);
   }
 
-  // 5) Start general material upload with progress tracking
+  // 5) Upload file for a chapter
+  @Post(':materialId/chapters/:chapterId/files')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @UploadChapterFileDocs.consumes
+  @UploadChapterFileDocs.operation
+  @UploadChapterFileDocs.body
+  @UploadChapterFileDocs.response201
+  @UploadChapterFileDocs.response400
+  @UploadChapterFileDocs.response401
+  @UploadChapterFileDocs.response404
+  @UploadChapterFileDocs.response500
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadChapterFile(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+    @Param('chapterId') chapterId: string,
+    @Body() payload: UploadChapterFileDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.generalMaterialsService.uploadChapterFile(req.user, materialId, chapterId, payload, file);
+  }
+
+  // 6) Start general material upload with progress tracking
   @Post('upload/start')
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(LibraryJwtGuard)

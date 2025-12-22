@@ -2,6 +2,7 @@ import { ApiOperation, ApiBody, ApiConsumes, ApiResponse } from '@nestjs/swagger
 import { CreateGeneralMaterialDto } from '../dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from '../dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from '../dto/create-general-material-chapter.dto';
+import { UploadChapterFileDto } from '../dto/upload-chapter-file.dto';
 
 export const GetGeneralMaterialsDashboardDocs = {
   operation: ApiOperation({
@@ -156,6 +157,60 @@ export const CreateGeneralMaterialChapterDocs = {
   response404: ApiResponse({
     status: 404,
     description: 'Not found - library user or material not found/does not belong to user\'s platform',
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
+
+export const UploadChapterFileDocs = {
+  operation: ApiOperation({
+    summary: 'Upload a file for a general material chapter',
+    description:
+      'Uploads a file (PDF, DOC, PPT, etc.) to a specific chapter. ' +
+      'A chapter can have multiple files. Files are automatically ordered sequentially if order is not provided.',
+  }),
+
+  consumes: ApiConsumes('multipart/form-data'),
+
+  body: ApiBody({
+    description: 'Chapter file upload data',
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Optional title/name for the file (defaults to original filename)' },
+        description: { type: 'string', description: 'Optional description of the file content' },
+        fileType: { type: 'string', enum: ['PDF', 'DOC', 'PPT', 'VIDEO', 'NOTE'], description: 'Optional file type (auto-detected from extension if not provided)' },
+        order: { type: 'number', description: 'Optional order/sequence number (auto-assigned if not provided)' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'File to upload (PDF, DOC, DOCX, PPT, PPTX, etc. - max 300MB)',
+        },
+      },
+    },
+  }),
+
+  response201: ApiResponse({
+    status: 201,
+    description: 'Chapter file uploaded successfully',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - validation error, missing file, or invalid file type/size',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description: 'Not found - library user, material, or chapter not found/does not belong to user\'s platform',
   }),
 
   response500: ApiResponse({
