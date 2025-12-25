@@ -37,7 +37,9 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/platform-socket.io": "^11.1.10",
     "@nestjs/swagger": "^11.2.0",
+    "@nestjs/websockets": "^11.1.10",
     "@pinecone-database/pinecone": "^6.1.2",
     "@prisma/client": "^6.8.2",
     "@types/passport": "^1.0.17",
@@ -61,6 +63,7 @@
     "pdf-parse": "^1.1.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
     "xlsx": "^0.18.5"
   },

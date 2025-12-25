@@ -17,6 +17,7 @@ import databaseConfig from './config/database.config';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { UserModule } from './user/user.module';
+import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
 
 @Module({
   imports: [
@@ -43,7 +44,8 @@ import { UserModule } from './user/user.module';
     PrismaModule,
     UserModule,
     LibraryModule,
-    DeveloperModule
+    DeveloperModule,
+    AiChatLatestModule,
   ],
   controllers: [AppController],
   providers: [AppService],
