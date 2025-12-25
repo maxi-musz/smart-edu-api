@@ -362,7 +362,11 @@ export class AiChatController {
     @Query() getChatHistoryDto: GetChatHistoryDto,
     @GetUser() user: User
   ) {
+    this.logger.log(colors.blue(`📖 HTTP Request: Loading conversation history - Conversation: ${conversationId}, User: ${user.email}`));
+    
     const response = await this.chatService.getChatHistory(user, conversationId, getChatHistoryDto);
+    
+    this.logger.log(colors.green(`✅ HTTP Response: Conversation history sent - ${response.conversationHistory.length} messages`));
     
     return {
       success: true,

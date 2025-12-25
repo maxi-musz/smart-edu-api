@@ -31,30 +31,35 @@ export class ChatService {
   }
 
   private readonly MATERIAL_SYSTEM_PROMPT = `
-  You are a professional teacher and subject‑matter expert.
-  Your job is to teach with confidence using the uploaded material as your primary source. For questions about the material's content, use it directly. For improvement suggestions, analysis, or general guidance, provide helpful professional advice.
+  You are a professional teacher and subject‑matter expert. You teach with absolute confidence and authority.
+
+  Your job is to teach using the uploaded material as your primary source. You KNOW the content because you have direct access to it. Answer questions with certainty and authority.
 
   Communication style:
-  - Be direct, confident, and authoritative. Avoid hedging and filler.
-  - Do NOT use weak phrases: "appears", "seems", "might", "I think", "I believe", "likely".
-  - Prefer imperative teacher language: "Do X", "Recall that…", "Use method Y because…".
+  - Be direct, confident, and authoritative. NEVER hedge or use uncertain language.
+  - STRICTLY FORBIDDEN phrases: "it looks like", "it seems", "appears", "might", "I think", "I believe", "likely", "probably", "perhaps", "maybe", "could be", "might be", "seems to be", "looks like", "appears to be".
+  - Use definitive statements: "This is...", "The chapter covers...", "This material explains...", "You will learn...".
+  - Prefer imperative teacher language: "This chapter teaches...", "The material states...", "You need to understand...".
+  - Start answers directly with facts, not disclaimers.
   - Keep answers concise but complete. Use bullets or short steps when helpful.
   - When a calculation or method is requested, show the minimal steps needed, then the result.
+  - Use professional emojis appropriately to enhance clarity and engagement: 📚 for materials/chapters, 💡 for insights/tips, ✅ for confirmations, ⚠️ for warnings, 📝 for notes, 🔍 for analysis, 🎯 for key points, 📊 for data/stats, ⚡ for important concepts, 🚀 for next steps. Use emojis naturally and sparingly - 1-3 per response maximum.
 
   Grounding rules:
-  - For content questions: Use facts, definitions, notation, and examples from the material first.
-  - For improvement/analysis questions: Provide professional guidance based on the material's structure and content, even if not explicitly stated.
+  - For content questions: State facts directly from the material. Use "The material states...", "According to this chapter...", "This chapter covers...".
+  - For improvement/analysis questions: Provide confident professional guidance based on the material's structure and content.
   - For completely unrelated topics: Say "This question is outside the scope of this material" and redirect to the material.
 
   Behavior:
-  - Act as a mentor guiding a student. Offer quick checks, common pitfalls, and next steps when appropriate.
+  - Act as a confident mentor. You KNOW the material, so teach it with authority.
   - If the student's question is vague, ask one concise clarifying question before proceeding.
   - Keep responses within 3–8 sentences unless the user explicitly requests more detail or steps.
+  - Always start with what you KNOW from the material, not what you think or guess.
 
   Tone examples:
+  - Good: "This chapter covers web development and AI integration in a 3-week intensive course. The program spans 21 days, requiring 4 to 6 hours daily commitment. It's designed for motivated beginners to intermediate developers."
   - Good: "This is a Level 1 workbook on number sense and basic algebra. Start with page 12: practice counting in tens; then attempt Exercise B. Use a number line to visualize jumps of ten."
-  - Good: "To improve this form, add clear instructions, use consistent formatting, and include examples for each section."
-  - Avoid: "This document appears to be… It might be about…"
+  - FORBIDDEN: "It looks like you're referring to...", "It seems this chapter is about...", "This appears to be..."
 `;
 
   private readonly GENERAL_SYSTEM_PROMPT = `
@@ -63,11 +68,14 @@ export class ChatService {
   Answer questions clearly and provide helpful explanations.
   Be encouraging and supportive in your responses.
   Keep your answers concise but complete when the user asks for specific amounts or detailed information.
+  Use professional emojis appropriately to enhance clarity and engagement: 💡 for insights, ✅ for confirmations, ⚠️ for warnings, 📝 for notes, 🔍 for analysis, 🎯 for key points, 📊 for data, ⚡ for important concepts, 🚀 for next steps. Use emojis naturally and sparingly - 1-3 per response maximum.
   Note: If asked about very recent events (after October 2023), mention that your knowledge may be limited and suggest checking the latest sources.
 `;
 
   /**
    * Extract user ID and fetch school ID from database
+   * Handles both regular users and library users
+   * For library users, creates a User record if it doesn't exist
    */
   private async extractUserData(user: any): Promise<{ userId: string; schoolId: string }> {
     const userId = user.id || user.sub;
@@ -76,21 +84,110 @@ export class ChatService {
       throw new Error('User ID not found in token');
     }
     
-    // Fetch user data from database to get school_id
+    // If school_id is already provided in user object (e.g., from gateway for library users), use it
+    if (user.school_id) {
+      // Still need to ensure User record exists for foreign key constraints
+      await this.ensureUserRecordExists(userId, user.email, user.school_id, user.platform_id);
+      return { userId, schoolId: user.school_id };
+    }
+    
+    // Try to fetch from User table (for regular school users)
     const userData = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { school_id: true }
     });
     
-    if (!userData) {
-      throw new Error('User not found in database');
+    if (userData && userData.school_id) {
+      return { userId, schoolId: userData.school_id };
     }
     
-    if (!userData.school_id) {
-      throw new Error('User school_id is missing from database');
+    // If user not found in User table, check if it's a library user
+    if (user.platform_id) {
+      // Verify library user exists in LibraryResourceUser table
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: userId },
+        select: { id: true, platformId: true, email: true, first_name: true, last_name: true, phone_number: true }
+      });
+      
+      if (libraryUser) {
+        // Library user exists - get or create default library school
+        const librarySchool = await this.prisma.school.upsert({
+          where: { school_email: 'library-chat@system.com' },
+          update: {},
+          create: {
+            school_name: 'Library Chat System',
+            school_email: 'library-chat@system.com',
+            school_phone: '+000-000-0000',
+            school_address: 'System Default',
+            school_type: 'primary_and_secondary',
+            school_ownership: 'private',
+            status: 'approved',
+          },
+        });
+        
+        // Create User record for library user (required for ChatConversation foreign key)
+        await this.ensureUserRecordExists(
+          userId,
+          libraryUser.email,
+          librarySchool.id,
+          user.platform_id,
+          libraryUser.first_name,
+          libraryUser.last_name,
+          libraryUser.phone_number
+        );
+        
+        return { userId, schoolId: librarySchool.id };
+      }
     }
     
-    return { userId, schoolId: userData.school_id };
+    // If we get here, user doesn't exist in either User or LibraryResourceUser table
+    throw new Error('User not found in database');
+  }
+
+  /**
+   * Ensure User record exists (for library users who need it for foreign key constraints)
+   */
+  private async ensureUserRecordExists(
+    userId: string,
+    email: string,
+    schoolId: string,
+    platformId?: string,
+    firstName?: string | null,
+    lastName?: string | null,
+    phoneNumber?: string | null
+  ): Promise<void> {
+    try {
+      // Check if User record already exists
+      const existingUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!existingUser) {
+        // Create minimal User record for library user
+        await this.prisma.user.create({
+          data: {
+            id: userId, // Use the same ID as LibraryResourceUser
+            email: email,
+            school_id: schoolId,
+            password: 'library-user-placeholder', // Placeholder - library users use LibraryResourceUser for auth
+            first_name: firstName || 'Library',
+            last_name: lastName || 'User',
+            phone_number: phoneNumber || '+000-000-0000',
+            role: 'student', // Default role
+            status: 'active',
+          },
+        });
+        this.logger.log(colors.cyan(`✅ Created User record for library user: ${userId}`));
+      }
+    } catch (error) {
+      // If user already exists (race condition), that's fine
+      if (error.code === 'P2002') {
+        this.logger.log(colors.cyan(`ℹ️ User record already exists: ${userId}`));
+      } else {
+        this.logger.warn(colors.yellow(`⚠️ Could not ensure User record exists: ${error.message}`));
+        // Don't throw - let it fail at conversation creation if needed
+      }
+    }
   }
 
   /**
@@ -105,14 +202,64 @@ export class ChatService {
       
       this.logger.log(colors.blue(`💬 Creating new conversation for user: ${userId}`));
       
+      // Validate material_id if provided - check PDFMaterial, LibraryGeneralMaterial, and LibraryGeneralMaterialChapterFile
+      let materialId: string | null = null;
+      let isLibraryMaterial = false;
+      
+      if (createConversationDto.materialId) {
+        try {
+          // First check PDFMaterial (school materials)
+          const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
+            where: { id: createConversationDto.materialId },
+            select: { id: true, schoolId: true },
+          });
+          
+          if (pdfMaterial && pdfMaterial.schoolId === schoolId) {
+            materialId = pdfMaterial.id;
+            this.logger.log(colors.green(`✅ PDF Material validated: ${materialId}`));
+          } else {
+            // Check LibraryGeneralMaterial
+            const libraryMaterial = await this.prisma.libraryGeneralMaterial.findUnique({
+              where: { id: createConversationDto.materialId },
+              select: { id: true, platformId: true },
+            });
+            
+            if (libraryMaterial) {
+              isLibraryMaterial = true;
+              // Library material exists but ChatConversation requires PDFMaterial foreign key
+              // So we set material_id to null but proceed (material exists, just different table)
+              this.logger.log(colors.cyan(`📚 Library Material found: ${libraryMaterial.id}, using general chat (library materials not linked to ChatConversation)`));
+              materialId = null;
+            } else {
+              // Check LibraryGeneralMaterialChapterFile
+              const libraryChapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findUnique({
+                where: { id: createConversationDto.materialId },
+                select: { id: true, platformId: true },
+              });
+              
+              if (libraryChapterFile) {
+                isLibraryMaterial = true;
+                this.logger.log(colors.cyan(`📚 Library Chapter File found: ${libraryChapterFile.id}, using general chat (library materials not linked to ChatConversation)`));
+                materialId = null;
+              } else {
+                this.logger.warn(colors.yellow(`⚠️ Material not found in PDFMaterial, LibraryGeneralMaterial, or LibraryGeneralMaterialChapterFile, using general chat`));
+                materialId = null;
+              }
+            }
+          }
+        } catch (error) {
+          this.logger.warn(colors.yellow(`⚠️ Error validating material: ${error.message}, using general chat`));
+          materialId = null;
+        }
+      }
 
       const conversation = await this.prisma.chatConversation.create({
         data: {
           user_id: userId,
           school_id: schoolId,
-          material_id: createConversationDto.materialId ?? null,
+          material_id: materialId,
           title: createConversationDto.title || 'New Conversation',
-          system_prompt: createConversationDto.materialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
+          system_prompt: materialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
           status: 'ACTIVE',
           total_messages: 0,
         },
@@ -160,13 +307,16 @@ export class ChatService {
         sendMessageDto.materialId
       );
 
+      // Use conversation's material_id (validated - will be null for library materials)
+      const validatedMaterialId = (conversation as any).material_id || null;
+
       // Save user message
       const userMessage = await this.prisma.chatMessage.create({
         data: {
           conversation_id: conversation.id,
           user_id: userId,
           school_id: schoolId,
-          material_id: sendMessageDto.materialId || null,
+          material_id: validatedMaterialId, // Use validated material_id from conversation
           role: 'USER',
           content: sendMessageDto.message,
           message_type: 'TEXT',
@@ -174,13 +324,29 @@ export class ChatService {
       });
 
       // Get relevant context chunks if material is specified
+      // Works for both PDFMaterial and LibraryGeneralMaterial (both stored in Pinecone)
       let contextChunks: any[] = [];
-      if (sendMessageDto.materialId) {
-        contextChunks = await this.documentProcessingService.searchRelevantChunks(
-          sendMessageDto.materialId,
-          sendMessageDto.message,
-          5
-        );
+      const materialIdToSearch = validatedMaterialId || sendMessageDto.materialId;
+      
+      if (materialIdToSearch) {
+        try {
+          // Search Pinecone - works for both PDFMaterial and LibraryGeneralMaterial
+          // Pinecone stores chunks with material_id filter, regardless of source table
+          contextChunks = await this.documentProcessingService.searchRelevantChunks(
+            materialIdToSearch,
+            sendMessageDto.message,
+            5
+          );
+          
+          if (contextChunks.length > 0) {
+            this.logger.log(colors.green(`✅ Found ${contextChunks.length} relevant chunks from material`));
+          } else {
+            this.logger.log(colors.yellow(`⚠️ No chunks found for material: ${materialIdToSearch}`));
+          }
+        } catch (error) {
+          this.logger.warn(colors.yellow(`⚠️ Could not search chunks: ${error.message}`));
+          contextChunks = [];
+        }
       }
 
       // Generate AI response
@@ -223,7 +389,7 @@ export class ChatService {
           conversation_id: conversation.id,
           user_id: userId,
           school_id: schoolId,
-          material_id: sendMessageDto.materialId || null,
+          material_id: validatedMaterialId, // Use validated material_id from conversation
           role: 'ASSISTANT',
           content: refinedContent,
           message_type: 'TEXT',
@@ -309,6 +475,11 @@ export class ChatService {
     try {
       const { userId } = await this.extractUserData(user);
       
+      const limit = parseInt((getChatHistoryDto.limit || 25).toString());
+      const offset = parseInt((getChatHistoryDto.offset || 0).toString());
+      
+      this.logger.log(colors.cyan(`📖 Loading conversation history - Limit: ${limit}, Offset: ${offset}`));
+      
       // Get conversation history
       const messages = await this.prisma.chatMessage.findMany({
         where: {
@@ -316,9 +487,13 @@ export class ChatService {
           user_id: userId,
         },
         orderBy: { createdAt: 'desc' },
-        take: parseInt((getChatHistoryDto.limit || 25).toString()),
-        skip: parseInt((getChatHistoryDto.offset || 0).toString()),
+        take: limit,
+        skip: offset,
       });
+
+      this.logger.log(
+        colors.green(`✅ Conversation history loaded: ${messages.length} messages found for conversation ${conversationId}`)
+      );
 
       const conversationHistory = messages.map(message => ({
         id: message.id,
@@ -677,21 +852,47 @@ export class ChatService {
   private refineTone(text: string): string {
     if (!text) return text;
 
-    // Remove common hedging phrases
-    const hedges = [
-      /\bthis (document|workbook) (appears to|seems to|might)\b/gi,
-      /\b(it|this) (appears|seems|might|likely)\b/gi,
-      /\bI (think|believe)\b/gi,
-      /\bprobably\b/gi,
-    ];
     let refined = text;
+
+    // Remove common hedging phrases with more aggressive replacements
+    const hedges = [
+      // "it looks like" -> direct statement
+      /\bit looks like\s+/gi,
+      /\bit seems like\s+/gi,
+      /\bit appears that\s+/gi,
+      /\bit seems that\s+/gi,
+      // "this appears to be" -> "this is"
+      /\bthis (document|workbook|chapter|material) (appears to|seems to|might be)\s+/gi,
+      /\b(it|this) (appears|seems|might|likely)\s+/gi,
+      /\bI (think|believe)\s+/gi,
+      /\bprobably\s+/gi,
+      /\bperhaps\s+/gi,
+      /\bmaybe\s+/gi,
+      /\bcould be\s+/gi,
+      /\bmight be\s+/gi,
+    ];
+    
     for (const h of hedges) {
-      refined = refined.replace(h, (match) => match.replace(/(appears to|seems to|might|likely|I think|I believe|probably)/gi, 'is'));
+      refined = refined.replace(h, '');
     }
 
-    // Ensure opening doesn’t start with weak framing
-    refined = refined.replace(/^\s*the document you provided\s+is/iu, 'This material is');
-    refined = refined.replace(/^\s*the document you provided\s+appears\s+to\s+be/iu, 'This material is');
+    // Replace weak openings with confident statements
+    refined = refined.replace(/^\s*(it looks like|it seems like|it appears that|it seems that)\s+/i, '');
+    refined = refined.replace(/^\s*the (document|workbook|chapter|material) you provided\s+(is|appears to be|seems to be)\s*/iu, 'This material ');
+    refined = refined.replace(/^\s*the (document|workbook|chapter|material)\s+(appears|seems)\s+to\s+be\s*/iu, 'This material is ');
+    
+    // Fix common patterns
+    refined = refined.replace(/\b(you're referring to|you are referring to)\s+a\s+/gi, 'This ');
+    refined = refined.replace(/\bbased on the context provided\s*[,:]\s*/gi, '');
+    
+    // Ensure sentences start with confidence
+    refined = refined.replace(/^\.\s*/, ''); // Remove leading period if created
+    refined = refined.replace(/^\s*,\s*/, ''); // Remove leading comma if created
+    
+    // Capitalize first letter if needed
+    if (refined.length > 0 && refined[0] === refined[0].toLowerCase()) {
+      refined = refined.charAt(0).toUpperCase() + refined.slice(1);
+    }
 
     return refined.trim();
   }

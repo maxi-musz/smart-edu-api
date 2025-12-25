@@ -36,6 +36,7 @@ import { S3Module } from '../../shared/services/s3.module';
     DocumentChunkingService,
     EmbeddingService,
     PineconeService,
+    ChatService,
   ]
 })
 export class AiChatModule {}
