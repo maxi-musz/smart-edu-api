@@ -369,54 +369,7 @@ export class AiChatLatestGateway
 
       // Check if user is a library platform owner (has platform_id instead of school_id)
       let finalSchoolId = schoolId;
-      // if (!schoolId) {
-      //   // Check if this is a library user (has platform_id instead of school_id)
-      //   if (user.platform_id) {
-      //     // Library platform owner - get or create default "Library Chat" school
-      //     try {
-      //       const librarySchool = await this.prisma.school.upsert({
-      //         where: { school_email: 'library-chat@system.com' },
-      //         update: {},
-      //         create: {
-      //           school_name: 'Library Chat System',
-      //           school_email: 'library-chat@system.com',
-      //           school_phone: '+000-000-0000',
-      //           school_address: 'System Default',
-      //           school_type: 'primary_and_secondary',
-      //           school_ownership: 'private',
-      //           status: 'approved',
-      //         },
-      //       });
-      //       finalSchoolId = librarySchool.id;
-      //       this.logger.log(colors.cyan(`   Library platform owner - using default Library Chat school: ${finalSchoolId}`));
-      //       // Update userObj with the finalSchoolId for getOrCreateConversation
-      //       userObj = { ...userObj, school_id: finalSchoolId } as User;
-      //     } catch (error) {
-      //       this.logger.error(colors.red(`   Failed to get/create library chat school: ${error.message}`));
-      //       throw new Error('Failed to initialize library chat school');
-      //     }
-      //   } else {
-      //     // Regular user - try to fetch school_id from database
-      //     try {
-      //       const userRecord = await this.prisma.user.findUnique({
-      //         where: { id: userId },
-      //         select: { school_id: true },
-      //       });
-      //       finalSchoolId = userRecord?.school_id || null;
-      //       if (finalSchoolId) {
-      //         this.logger.log(colors.cyan(`   Fetched school_id from database: ${finalSchoolId}`));
-      //         userObj = { ...userObj, school_id: finalSchoolId } as User;
-      //       } else {
-      //         this.logger.error(colors.red(`❌ School ID not found for user: ${user.email}`));
-      //         throw new Error('School ID not found');
-      //       }
-      //     } catch (error) {
-      //       this.logger.error(colors.red(`❌ Could not fetch school_id from database: ${error.message}`));
-      //       throw new Error('School ID not found');
-      //     }
-      //   }
-      // }
-
+     
       const frontendMaterialId = data.materialId;
 
       if (!frontendMaterialId) {
@@ -456,32 +409,24 @@ export class AiChatLatestGateway
       }
 
       // Save user message with error handling
+      // Use conversation.material_id which is the validated PDFMaterial.id
+      // (conversation.material_id is null if no material or if material validation failed)
+      const validatedMaterialId = conversation.material_id;
+      
       let userMessage: any;
       this.logger.log("Saving user message to database");
       try {
-        if (existingMaterial) {
-          userMessage = await this.prisma.libraryGeneralMaterialChatMessage.create({
-            data: {
-              conversationId: conversation.id,
-              userId: userId,
-              materialId: frontendMaterialId,
-              role: 'USER',
-              content: data.message,
-            },
-          });
-        } else {
-          userMessage = await this.prisma.chatMessage.create({
-            data: {
-              conversation_id: conversation.id,
-              user_id: userId,
-              school_id: finalSchoolId,
-              material_id: frontendMaterialId,
-              role: 'USER',
-              content: data.message,
-              message_type: 'TEXT',
-            },
-          });
-        }
+        userMessage = await this.prisma.chatMessage.create({
+          data: {
+            conversation_id: conversation.id,
+            user_id: userId,
+            school_id: finalSchoolId,
+            material_id: validatedMaterialId,
+            role: 'USER',
+            content: data.message,
+            message_type: 'TEXT',
+          },
+        });
         this.logger.log(colors.green(`✅ User message saved: ${userMessage.id}`));
       } catch (error) {
         this.logger.error(colors.red(`❌ Failed to save user message to database: ${error.message}`));
@@ -549,7 +494,7 @@ export class AiChatLatestGateway
             conversation_id: conversation.id,
             user_id: userId,
             school_id: finalSchoolId,
-            material_id: frontendMaterialId,
+            material_id: validatedMaterialId,
             role: 'ASSISTANT',
             content: refinedContent,
             message_type: 'TEXT',
@@ -910,23 +855,47 @@ export class AiChatLatestGateway
     
     if (materialId) {
       try {
+        // First, check if materialId is a PDFMaterial
         const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
           where: { id: materialId },
           select: { id: true, schoolId: true },
         });
         
-        if (pdfMaterial && pdfMaterial.schoolId === schoolId) {
-          validatedMaterialId = pdfMaterial.id;
-          this.logger.log(colors.green(`✅ PDF Material validated: ${validatedMaterialId}`));
+        if (pdfMaterial) {
+          // If it's a school-specific PDFMaterial, verify it belongs to the user's school
+          if (pdfMaterial.schoolId && pdfMaterial.schoolId !== schoolId) {
+            this.logger.warn(colors.yellow(`⚠️ PDF Material ${materialId} does not belong to school ${schoolId}`));
+            validatedMaterialId = null;
+          } else {
+            validatedMaterialId = pdfMaterial.id;
+            this.logger.log(colors.green(`✅ PDF Material validated: ${validatedMaterialId}`));
+          }
         } else {
-          // search in library general material chapter file
-          const libraryMaterialChapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
-            where: { chapterId: materialId },
-            select: { id: true, title: true },
+          // Check if it's a LibraryGeneralMaterialChapterFile
+          // When a chapter file is created, a PDFMaterial is created with materialId = chapterFile.id
+          // So we need to find the PDFMaterial that references this chapter file
+          const pdfMaterialForChapterFile = await this.prisma.pDFMaterial.findFirst({
+            where: { materialId: materialId },
+            select: { id: true },
           });
-          if (libraryMaterialChapterFile) {
-            validatedMaterialId = libraryMaterialChapterFile.id;
-            this.logger.log(colors.green(`✅ Library General Material Chapter File validated: ${validatedMaterialId}`));
+          
+          if (pdfMaterialForChapterFile) {
+            validatedMaterialId = pdfMaterialForChapterFile.id;
+            this.logger.log(colors.green(`✅ PDF Material found for chapter file ${materialId}: ${validatedMaterialId}`));
+          } else {
+            // Verify it's actually a chapter file
+            const libraryMaterialChapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findUnique({
+              where: { id: materialId },
+              select: { id: true, title: true },
+            });
+            
+            if (libraryMaterialChapterFile) {
+              this.logger.warn(colors.yellow(`⚠️ Chapter file ${materialId} found but no corresponding PDFMaterial exists`));
+              validatedMaterialId = null;
+            } else {
+              this.logger.warn(colors.yellow(`⚠️ Material ${materialId} not found in PDFMaterial or LibraryGeneralMaterialChapterFile`));
+              validatedMaterialId = null;
+            }
           }
         }
       } catch (error) {
@@ -936,18 +905,20 @@ export class AiChatLatestGateway
     }
 
     // Create new conversation
-    this.logger.log(colors.green(`✅ Creating new conversation for material: ${materialId}`));
+    this.logger.log(colors.green(`✅ Creating new conversation for material: ${validatedMaterialId || 'general chat'}`));
     const conversation = await this.prisma.chatConversation.create({
       data: {
         user_id: userId,
         school_id: schoolId,
-        material_id: materialId,
-        title: materialId ? 'Document Chat' : 'General Chat',
-        system_prompt: materialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
+        material_id: validatedMaterialId,
+        title: validatedMaterialId ? 'Document Chat' : 'General Chat',
+        system_prompt: validatedMaterialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
         status: 'ACTIVE',
         total_messages: 0,
       },
     });
+
+    this.logger.log(colors.green(`✅ Conversation created: ${conversation.id}`));
 
     return conversation;
   }
