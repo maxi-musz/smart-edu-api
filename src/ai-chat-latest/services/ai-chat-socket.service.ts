@@ -134,6 +134,23 @@ export class AiChatSocketService {
   }
 
   /**
+   * Get chat history by materialId (finds conversation automatically)
+   */
+  // async getChatHistoryByMaterial(
+  //   user: User,
+  //   materialId: string,
+  //   limit: number = 50,
+  //   offset: number = 0,
+  // ) {
+  //   try {
+  //     return await this.chatService.getChatHistoryByMaterial(user, materialId, limit, offset);
+  //   } catch (error) {
+  //     this.logger.error(colors.red(`❌ Error getting chat history by material: ${error.message}`));
+  //     throw error;
+  //   }
+  // }
+
+  /**
    * Convert user payload to User object
    */
   convertPayloadToUser(payload: any): User {
