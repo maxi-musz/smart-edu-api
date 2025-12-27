@@ -1106,9 +1106,43 @@ export class GeneralMaterialsService {
 
       const nextOrder = payload.order || (lastFile?.order || 0) + 1;
 
-      // Upload file to S3
-      const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}/${chapterId}`;
-      const uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+      // Validate platformId exists BEFORE uploading to S3
+      // This ensures we don't upload files that will fail later
+      if (!libraryUser.platformId) {
+        this.logger.error(colors.red(`❌ Library user ${libraryUser.id} does not have a platformId`));
+        throw new BadRequestException('Library user does not have a platform ID');
+      }
+
+      // Get library platform to find/create corresponding Organisation
+      const libraryPlatform = await this.prisma.libraryPlatform.findUnique({
+        where: { id: libraryUser.platformId },
+        select: { id: true, name: true },
+      });
+
+      if (!libraryPlatform) {
+        this.logger.error(colors.red('Library platform not found'));
+        throw new NotFoundException('Library platform not found');
+      }
+
+      // Find or create Organisation with same name as LibraryPlatform
+      // Organisation is linked to LibraryPlatform by name, not by ID
+      let organisation = await this.prisma.organisation.findUnique({
+        where: { name: libraryPlatform.name },
+        select: { id: true },
+      });
+
+      if (!organisation) {
+        // Create Organisation if it doesn't exist
+        organisation = await this.prisma.organisation.create({
+          data: {
+            name: libraryPlatform.name,
+            email: `${libraryPlatform.name.toLowerCase().replace(/\s+/g, '-')}@library.com`,
+          },
+        });
+        this.logger.log(colors.cyan(`✅ Created Organisation for LibraryPlatform: ${organisation.id} (name: ${libraryPlatform.name})`));
+      } else {
+        this.logger.log(colors.cyan(`✅ Found existing Organisation: ${organisation.id} for LibraryPlatform: ${libraryPlatform.name}`));
+      }
 
       // Determine file type from extension if not provided
       let fileType: LibraryMaterialType = payload.fileType || LibraryMaterialType.PDF;
@@ -1121,105 +1155,136 @@ export class GeneralMaterialsService {
         else fileType = LibraryMaterialType.NOTE;
       }
 
-      // Create chapter file record within a transaction
-      let chapterFile: any;
+      // Upload file to S3 (only after all validations pass)
+      const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}/${chapterId}`;
+      let uploadResult: any;
+      
       try {
-        chapterFile = await this.prisma.libraryGeneralMaterialChapterFile.create({
-          data: {
-            chapterId: chapterId,
-            platformId: libraryUser.platformId,
-            uploadedById: libraryUser.id,
-            fileName: file.originalname,
-            fileType: fileType,
-            url: uploadResult.url,
-            s3Key: uploadResult.key || null,
-            sizeBytes: file.size,
-            title: payload.title || file.originalname,
-            description: payload.description || null,
-            order: nextOrder,
-          },
-          include: {
-            uploadedBy: {
-              select: {
-                id: true,
-                email: true,
-                first_name: true,
-                last_name: true,
-              },
-            },
-          },
-        });
+        uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+      } catch (s3Error: any) {
+        this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
+        throw new InternalServerErrorException('Failed to upload file to storage');
+      }
 
-        // Validate platformId exists before creating PDFMaterial
-        if (!libraryUser.platformId) {
-          this.logger.error(colors.red(`❌ Library user ${libraryUser.id} does not have a platformId`));
-          throw new BadRequestException('Library user does not have a platform ID');
-        }
-
-        // Verify platform exists in Organisation table
-        const platform = await this.prisma.organisation.findUnique({
-          where: { id: libraryUser.platformId },
-          select: { id: true },
-        });
-
-        if (!platform) {
-          this.logger.error(colors.red(`❌ Platform with ID ${libraryUser.platformId} not found in Organisation table`));
-          throw new BadRequestException(`Platform with ID ${libraryUser.platformId} not found`);
-        }
-
-        // also save it under pdf material 
-        await this.prisma.pDFMaterial.create({
-          data: {
-            title: chapterFile.title,
-            description: chapterFile.description,
-            url: chapterFile.url,
-            platformId: libraryUser.platformId,
-            uploadedById: libraryUser.id,
-            schoolId: null,
-            topic_id: null,
-            downloads: 0,
-            size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
-            status: 'published',
-            order: 1,
-            fileType: file.mimetype || 'application/pdf',
-            originalName: file.originalname,
-            materialId: chapterFile.id,
-            chatAnalytics: {
-              connect: {
-                id: chapterFile.id,
-              },
-            },
-          },  
-        });
-
-        this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter file uploaded successfully: ${chapterFile.id}`));
-
-        // Process for AI chat by default (unless explicitly disabled)
-        const shouldEnableAiChat = payload.enableAiChat !== false; // Default to true unless explicitly set to false
-        if (shouldEnableAiChat) {
-          this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${chapterFile.id}`));
-          
-          // Process directly from file buffer (more efficient than downloading from S3)
-          // If this fails, the entire upload transaction fails
-          const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
-          await this.processChapterFileForAiChatFromBuffer(
-            chapterFile,
-            chapter,
-            file.buffer,
-            fileTypeString,
-            libraryUser.platformId,
-          );
-
-          // Update chapter status
-          await this.prisma.libraryGeneralMaterialChapter.update({
-            where: { id: chapterId },
+      // Wrap all database operations in a transaction
+      // If any operation fails, everything will be rolled back automatically
+      let chapterFile: any;
+      let pdfMaterial: any;
+      
+      try {
+        const result = await this.prisma.$transaction(async (tx) => {
+          // Create chapter file record
+          const createdChapterFile = await tx.libraryGeneralMaterialChapterFile.create({
             data: {
-              isAiEnabled: true,
-              isProcessed: true,
+              chapterId: chapterId,
+              platformId: libraryUser.platformId,
+              uploadedById: libraryUser.id,
+              fileName: file.originalname,
+              fileType: fileType,
+              url: uploadResult.url,
+              s3Key: uploadResult.key || null,
+              sizeBytes: file.size,
+              title: payload.title || file.originalname,
+              description: payload.description || null,
+              order: nextOrder,
+            },
+            include: {
+              uploadedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
+              },
             },
           });
 
-          this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter file: ${chapterFile.id}`));
+          // Create PDFMaterial record
+          // Note: chatAnalytics is created separately when chat happens, not during material creation
+          const createdPdfMaterial = await tx.pDFMaterial.create({
+            data: {
+              title: createdChapterFile.title || file.originalname,
+              description: createdChapterFile.description,
+              url: createdChapterFile.url,
+              platformId: organisation.id,
+              uploadedById: libraryUser.id,
+              schoolId: null,
+              topic_id: null,
+              downloads: 0,
+              size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
+              status: 'published',
+              order: 1,
+              fileType: file.mimetype || 'application/pdf',
+              originalName: file.originalname,
+              materialId: createdChapterFile.id,
+            },
+          });
+
+          return { chapterFile: createdChapterFile, pdfMaterial: createdPdfMaterial };
+        });
+
+        chapterFile = result.chapterFile;
+        pdfMaterial = result.pdfMaterial;
+
+        this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter file and PDFMaterial created successfully: ${chapterFile.id}`));
+
+        // Process for AI chat (happens outside transaction since it involves external services)
+        // If this fails, we'll rollback the transaction by deleting what was created
+        if (shouldEnableAiChat) {
+          this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${chapterFile.id}`));
+          
+          try {
+            const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
+            await this.processChapterFileForAiChatFromBuffer(
+              chapterFile,
+              chapter,
+              file.buffer,
+              fileTypeString,
+              libraryUser.platformId,
+            );
+
+            // Update chapter status (in a separate transaction to avoid long-running transaction)
+            await this.prisma.libraryGeneralMaterialChapter.update({
+              where: { id: chapterId },
+              data: {
+                isAiEnabled: true,
+                isProcessed: true,
+              },
+            });
+
+            this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter file: ${chapterFile.id}`));
+          } catch (aiProcessingError: any) {
+            // If AI processing fails, rollback everything
+            this.logger.error(colors.red(`❌ AI processing failed, rolling back all changes: ${aiProcessingError.message}`));
+            
+            // Delete from S3
+            if (uploadResult.key) {
+              try {
+                await this.s3Service.deleteFile(uploadResult.key);
+                this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
+              } catch (deleteError: any) {
+                this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
+              }
+            }
+
+            // Delete database records
+            try {
+              await this.prisma.$transaction(async (tx) => {
+                if (pdfMaterial?.id) {
+                  await tx.pDFMaterial.delete({ where: { id: pdfMaterial.id } });
+                }
+                if (chapterFile?.id) {
+                  await tx.libraryGeneralMaterialChapterFile.delete({ where: { id: chapterFile.id } });
+                }
+              });
+              this.logger.log(colors.yellow('✅ Rollback: Deleted all database records'));
+            } catch (deleteDbError: any) {
+              this.logger.error(colors.red(`❌ Failed to delete database records during rollback: ${deleteDbError.message}`));
+            }
+
+            throw aiProcessingError;
+          }
         }
 
         return new ApiResponse(
@@ -1233,8 +1298,8 @@ export class GeneralMaterialsService {
           }
         );
       } catch (dbError: any) {
-        // If DB save or AI processing fails, delete the uploaded file from S3 and database record
-        this.logger.error(colors.red(`❌ Upload or processing failed, rolling back: ${dbError.message}`));
+        // If transaction fails, delete the uploaded file from S3
+        this.logger.error(colors.red(`❌ Database transaction failed, rolling back: ${dbError.message}`));
         
         // Delete from S3
         if (uploadResult.key) {
@@ -1243,18 +1308,6 @@ export class GeneralMaterialsService {
             this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
           } catch (deleteError: any) {
             this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
-          }
-        }
-
-        // Delete database record if it was created
-        if (chapterFile?.id) {
-          try {
-            await this.prisma.libraryGeneralMaterialChapterFile.delete({
-              where: { id: chapterFile.id },
-            });
-            this.logger.log(colors.yellow('✅ Rollback: Deleted chapter file record from database'));
-          } catch (deleteDbError: any) {
-            this.logger.error(colors.red(`❌ Failed to delete chapter file record during rollback: ${deleteDbError.message}`));
           }
         }
 
@@ -1403,142 +1456,6 @@ export class GeneralMaterialsService {
     }
   }
 
-  /**
-   * Process a chapter file for AI chat (extract, chunk, embed, save to Pinecone)
-   * Legacy method that downloads from S3 - use processChapterFileForAiChatFromBuffer when file is already in memory
-   */
-  private async processChapterFileForAiChat(
-    chapterFile: any,
-    chapter: any,
-    platformId: string,
-  ): Promise<void> {
-    const startTime = Date.now();
-    this.logger.log(colors.cyan(`🔄 Processing chapter file for AI chat: ${chapterFile.fileName}`));
-
-    try {
-      // Step 1: Ensure processing record exists
-      let processing = await this.prisma.libraryGeneralMaterialProcessing.findUnique({
-        where: { materialId: chapter.materialId },
-      });
-
-      if (!processing) {
-        processing = await this.prisma.libraryGeneralMaterialProcessing.create({
-          data: {
-            materialId: chapter.materialId,
-            platformId: platformId,
-            status: 'PROCESSING',
-            totalChunks: 0,
-            processedChunks: 0,
-            failedChunks: 0,
-            embeddingModel: 'text-embedding-3-small',
-            processingStartedAt: new Date(),
-          },
-        });
-        this.logger.log(colors.blue(`📝 Created processing record for material: ${chapter.materialId}`));
-      } else {
-        await this.prisma.libraryGeneralMaterialProcessing.update({
-          where: { id: processing.id },
-          data: {
-            status: 'PROCESSING',
-            processingStartedAt: new Date(),
-          },
-        });
-      }
-
-      // Step 2: Download file from S3
-      this.logger.log(colors.blue(`📥 Downloading file from S3: ${chapterFile.url}`));
-      const fileBuffer = await this.downloadFileFromS3(chapterFile.url);
-
-      // Step 3: Extract text
-      this.logger.log(colors.blue(`📄 Extracting text from file...`));
-      const fileType = this.mapLibraryMaterialTypeToFileType(chapterFile.fileType);
-      const extractedText = await this.textExtractionService.extractText(fileBuffer, fileType);
-
-      // Step 4: Chunk the document
-      this.logger.log(colors.blue(`✂️ Chunking document into sections...`));
-      const chunkingResult = await this.chunkingService.chunkDocument(
-        extractedText.text,
-        chapter.materialId,
-        {
-          pageCount: extractedText.pageCount,
-          originalName: chapterFile.fileName,
-        }
-      );
-
-      // Step 5: Generate embeddings
-      this.logger.log(colors.blue(`🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`));
-      const embeddingResult = await this.embeddingService.generateBatchEmbeddings(
-        chunkingResult.chunks.map(chunk => chunk.content)
-      );
-
-      if (embeddingResult.successCount === 0) {
-        throw new Error('No valid embeddings generated - cannot save to Pinecone');
-      }
-
-      // Step 6: Save chunks and embeddings to Pinecone and database
-      this.logger.log(colors.blue(`💾 Saving chunks and embeddings...`));
-      await this.saveLibraryChunksAndEmbeddings(
-        chapter.materialId,
-        chapter.id,
-        chunkingResult.chunks,
-        embeddingResult.embeddings,
-        platformId,
-        processing.id,
-      );
-
-      // Step 7: Update processing status
-      await this.prisma.libraryGeneralMaterialProcessing.update({
-        where: { id: processing.id },
-        data: {
-          status: 'COMPLETED',
-          totalChunks: chunkingResult.totalChunks,
-          processedChunks: embeddingResult.successCount,
-          failedChunks: embeddingResult.failureCount,
-          processingCompletedAt: new Date(),
-        },
-      });
-
-      // Update chapter chunk count
-      const chunkCount = await this.prisma.libraryGeneralMaterialChunk.count({
-        where: { chapterId: chapter.id },
-      });
-
-      await this.prisma.libraryGeneralMaterialChapter.update({
-        where: { id: chapter.id },
-        data: { chunkCount },
-      });
-
-      const processingTime = Date.now() - startTime;
-      this.logger.log(colors.green(`🎉 Chapter file processing completed successfully in ${processingTime}ms`));
-
-    } catch (error: any) {
-      this.logger.error(colors.red(`❌ Error processing chapter file: ${error.message}`));
-
-      // Update processing status to failed if processing record exists
-      if (chapter.materialId) {
-        try {
-          const processing = await this.prisma.libraryGeneralMaterialProcessing.findUnique({
-            where: { materialId: chapter.materialId },
-          });
-
-          if (processing) {
-            await this.prisma.libraryGeneralMaterialProcessing.update({
-              where: { id: processing.id },
-              data: {
-                status: 'FAILED',
-                errorMessage: error.message,
-              },
-            });
-          }
-        } catch (updateError: any) {
-          this.logger.error(colors.red(`❌ Failed to update processing status: ${updateError.message}`));
-        }
-      }
-
-      // Re-throw error to fail the entire upload transaction
-      throw error;
-    }
-  }
 
   /**
    * Download file from S3
