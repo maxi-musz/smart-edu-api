@@ -441,13 +441,58 @@ export class AiChatLatestGateway
   }
 
   /**
+   * Handle getting chat history by materialId
+   * Event: 'history:by-material'
+   */
+  // @SubscribeMessage('history:by-material')
+  // async handleGetHistoryByMaterial(
+  //   @MessageBody() data: { materialId: string; limit?: number; offset?: number },
+  //   @ConnectedSocket() client: Socket,
+  // ) {
+  //   try {
+  //     const user = client.data.user;
+  //     const userObj = await this.getUserWithSchoolId(client);
+
+  //     this.logger.log(
+  //       colors.blue(`📖 Loading conversation history by material via socket - Material: ${data.materialId}, User: ${user?.email || 'unknown'}`)
+  //     );
+
+  //     const history = await this.aiChatSocketService.getChatHistoryByMaterial(
+  //       userObj,
+  //       data.materialId,
+  //       data.limit || 50,
+  //       data.offset || 0,
+  //     );
+
+  //     this.logger.log(
+  //       colors.green(`✅ Conversation history by material sent via socket - ${history.conversationHistory.length} messages loaded (Total: ${history.totalMessages}, Has More: ${history.hasMore})`)
+  //     );
+
+  //     client.emit('history:by-material', {
+  //       success: true,
+  //       message: 'Chat history retrieved by material',
+  //       data: history,
+  //       event: 'history:by-material',
+  //     } as SocketSuccessResponseDto);
+  //   } catch (error) {
+  //     this.logger.error(colors.red(`❌ Error getting chat history by material: ${error.message}`));
+  //     client.emit('history:error', {
+  //       success: false,
+  //       message: 'Failed to retrieve chat history by material',
+  //       error: error.message,
+  //       event: 'history:error',
+  //     } as SocketErrorResponseDto);
+  //   }
+  // }
+
+  /**
    * Handle getting user conversations
    * Event: 'conversations:get'
    */
   @SubscribeMessage('conversations:get')
   async handleGetConversations(@ConnectedSocket() client: Socket) {
     try {
-      const userObj = this.getUserWithSchoolId(client);
+      const userObj = await this.getUserWithSchoolId(client);
 
       const conversations = await this.aiChatSocketService.getUserConversations(userObj);
 

@@ -31,6 +31,21 @@ export class SocketCreateConversationDto {
 }
 
 /**
+ * DTO for getting chat history by material
+ */
+export class SocketGetHistoryByMaterialDto {
+  @IsString()
+  @IsNotEmpty()
+  materialId: string;
+
+  @IsOptional()
+  limit?: number;
+
+  @IsOptional()
+  offset?: number;
+}
+
+/**
  * Response DTO for socket message events
  */
 export interface SocketMessageResponseDto {
