@@ -440,7 +440,7 @@ export class ChatService {
         id: aiMessage.id,
         content: aiMessage.content,
         role: aiMessage.role,
-        conversationId: aiMessage.conversation_id,
+        conversationId: aiMessage.conversation_id || '',
         materialId: aiMessage.material_id,
         chatTitle: chatTitle, // Include generated title
         contextChunks: contextChunks.map((chunk: any) => ({
@@ -499,7 +499,7 @@ export class ChatService {
         id: message.id,
         content: message.content,
         role: message.role,
-        conversationId: message.conversation_id,
+        conversationId: message.conversation_id || conversationId, // Use conversationId from query if null
         materialId: message.material_id,
         tokensUsed: message.tokens_used,
         responseTimeMs: message.response_time_ms,
@@ -522,7 +522,7 @@ export class ChatService {
       const usageLimits = await this.getUserUsageLimits(userId, schoolId, userData?.role || 'student', subscriptionPlan);
 
       return {
-        conversationHistory,
+        conversationHistory: conversationHistory as ChatMessageResponseDto[],
         usageLimits
       };
 

@@ -1192,29 +1192,29 @@ model ChatConversation {
 }
 
 model ChatMessage {
-  id                String           @id @default(cuid())
-  conversation_id   String
+  id                String            @id @default(cuid())
+  conversation_id   String?
   user_id           String
   school_id         String
   material_id       String?
-  role              MessageRole      @default(USER)
+  role              MessageRole       @default(USER)
   content           String
-  message_type      String           @default("TEXT")
+  message_type      String            @default("TEXT")
   model_used        String?
   tokens_used       Int?
   response_time_ms  Int?
   context_chunks    String[]
   context_summary   String?
-  is_edited         Boolean          @default(false)
+  is_edited         Boolean           @default(false)
   edited_at         DateTime?
   parent_message_id String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
   contexts          ChatContext[]
-  conversation      ChatConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  material          PDFMaterial?     @relation(fields: [material_id], references: [id])
-  school            School           @relation(fields: [school_id], references: [id])
-  user              User             @relation(fields: [user_id], references: [id])
+  conversation      ChatConversation? @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  material          PDFMaterial?      @relation(fields: [material_id], references: [id])
+  school            School            @relation(fields: [school_id], references: [id])
+  user              User              @relation(fields: [user_id], references: [id])
 
   @@index([conversation_id])
   @@index([user_id])
@@ -1971,7 +1971,7 @@ model LibraryResourceUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform                 LibraryPlatform          @relation(fields: [platformId], references: [id])
+  platform                 LibraryPlatform                     @relation(fields: [platformId], references: [id])
   uploadedVideos           LibraryVideoLesson[]
   uploadedMaterials        LibraryMaterial[]
   uploadedAssignments      LibraryAssignment[]
@@ -2329,10 +2329,10 @@ model LibraryGeneralMaterial {
   thumbnailS3Key String?
 
   // Access / Pricing Fields (school-tier based, NOT per-user purchase)
-  price       Float?  // Price used for school tier/subscription plans (null = included in free tier)
+  price       Float? // Price used for school tier/subscription plans (null = included in free tier)
   currency    String? @default("NGN") // Currency code
   isFree      Boolean @default(false) // True = available on free tier for all schools
-  isAvailable Boolean @default(true)  // For inventory/visibility management
+  isAvailable Boolean @default(true) // For inventory/visibility management
 
   // Optional Educational Attachment (for categorization)
   classId   String? // Optional - can be attached to a class for organization
@@ -2397,14 +2397,14 @@ model LibraryGeneralMaterialChapter {
 
   // AI Processing
   isAiEnabled Boolean @default(false) // Whether AI chat is enabled for this chapter
-  isProcessed Boolean @default(false)  // Whether the chapter has been processed/chunked for AI
+  isProcessed Boolean @default(false) // Whether the chapter has been processed/chunked for AI
   chunkCount  Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  material LibraryGeneralMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  platform LibraryPlatform               @relation(fields: [platformId], references: [id])
+  material LibraryGeneralMaterial              @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  platform LibraryPlatform                     @relation(fields: [platformId], references: [id])
   chunks   LibraryGeneralMaterialChunk[]
   files    LibraryGeneralMaterialChapterFile[]
 
@@ -2417,30 +2417,30 @@ model LibraryGeneralMaterialChapter {
 /// Files attached to general material chapters
 /// A chapter can have multiple files (e.g., PDF, DOC, images, etc.)
 model LibraryGeneralMaterialChapterFile {
-  id         String @id @default(cuid())
-  chapterId  String
-  platformId String
+  id           String @id @default(cuid())
+  chapterId    String
+  platformId   String
   uploadedById String // Tracks which library user uploaded this file
 
   // File Info
-  fileName   String // Original file name
-  fileType   LibraryMaterialType @default(PDF)
-  url        String // Public or signed URL
-  s3Key      String? // S3 object key
-  sizeBytes  Int?
-  pageCount  Int?
+  fileName  String // Original file name
+  fileType  LibraryMaterialType @default(PDF)
+  url       String // Public or signed URL
+  s3Key     String? // S3 object key
+  sizeBytes Int?
+  pageCount Int?
 
   // Metadata
-  title      String? // Optional title/description for the file
+  title       String? // Optional title/description for the file
   description String?
-  order      Int     @default(1) // Order within the chapter
+  order       Int     @default(1) // Order within the chapter
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   chapter    LibraryGeneralMaterialChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   platform   LibraryPlatform               @relation(fields: [platformId], references: [id])
-  uploadedBy LibraryResourceUser            @relation(fields: [uploadedById], references: [id])
+  uploadedBy LibraryResourceUser           @relation(fields: [uploadedById], references: [id])
 
   @@index([chapterId])
   @@index([platformId])

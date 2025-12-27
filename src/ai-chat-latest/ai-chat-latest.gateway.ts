@@ -15,12 +15,16 @@ import { ConfigService } from '@nestjs/config';
 import { SocketJwtGuard } from './guards/socket-jwt.guard';
 import { AiChatSocketService } from './services/ai-chat-socket.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DocumentProcessingService } from '../school/ai-chat/services/document-processing.service';
 import {
   SocketSendMessageDto,
   SocketCreateConversationDto,
   SocketErrorResponseDto,
   SocketSuccessResponseDto,
+  SocketMessageResponseDto,
 } from './dto/socket-events.dto';
+import OpenAI from 'openai';
+import { User } from '@prisma/client';
 import * as colors from 'colors';
 
 /**
@@ -48,6 +52,49 @@ export class AiChatLatestGateway
   server: Server;
 
   private readonly logger = new Logger(AiChatLatestGateway.name);
+  private readonly openai: OpenAI;
+
+  private readonly MATERIAL_SYSTEM_PROMPT = `
+  You are a professional teacher and subject‑matter expert. You teach with absolute confidence and authority.
+
+  Your job is to teach using the uploaded material as your primary source. You KNOW the content because you have direct access to it. Answer questions with certainty and authority.
+
+  Communication style:
+  - Be direct, confident, and authoritative. NEVER hedge or use uncertain language.
+  - STRICTLY FORBIDDEN phrases: "it looks like", "it seems", "appears", "might", "I think", "I believe", "likely", "probably", "perhaps", "maybe", "could be", "might be", "seems to be", "looks like", "appears to be".
+  - Use definitive statements: "This is...", "The chapter covers...", "This material explains...", "You will learn...".
+  - Prefer imperative teacher language: "This chapter teaches...", "The material states...", "You need to understand...".
+  - Start answers directly with facts, not disclaimers.
+  - Keep answers concise but complete. Use bullets or short steps when helpful.
+  - When a calculation or method is requested, show the minimal steps needed, then the result.
+  - Use professional emojis appropriately to enhance clarity and engagement: 📚 for materials/chapters, 💡 for insights/tips, ✅ for confirmations, ⚠️ for warnings, 📝 for notes, 🔍 for analysis, 🎯 for key points, 📊 for data/stats, ⚡ for important concepts, 🚀 for next steps. Use emojis naturally and sparingly - 1-3 per response maximum.
+
+  Grounding rules:
+  - For content questions: State facts directly from the material. Use "The material states...", "According to this chapter...", "This chapter covers...".
+  - For improvement/analysis questions: Provide confident professional guidance based on the material's structure and content.
+  - For completely unrelated topics: Say "This question is outside the scope of this material" and redirect to the material.
+
+  Behavior:
+  - Act as a confident mentor. You KNOW the material, so teach it with authority.
+  - If the student's question is vague, ask one concise clarifying question before proceeding.
+  - Keep responses within 3–8 sentences unless the user explicitly requests more detail or steps.
+  - Always start with what you KNOW from the material, not what you think or guess.
+
+  Tone examples:
+  - Good: "This chapter covers web development and AI integration in a 3-week intensive course. The program spans 21 days, requiring 4 to 6 hours daily commitment. It's designed for motivated beginners to intermediate developers."
+  - Good: "This is a Level 1 workbook on number sense and basic algebra. Start with page 12: practice counting in tens; then attempt Exercise B. Use a number line to visualize jumps of ten."
+  - FORBIDDEN: "It looks like you're referring to...", "It seems this chapter is about...", "This appears to be..."
+`;
+
+  private readonly GENERAL_SYSTEM_PROMPT = `
+  You are a helpful AI assistant for educational purposes.
+  You help school owners, teachers, and students with general questions and educational topics.
+  Answer questions clearly and provide helpful explanations.
+  Be encouraging and supportive in your responses.
+  Keep your answers concise but complete when the user asks for specific amounts or detailed information.
+  Use professional emojis appropriately to enhance clarity and engagement: 💡 for insights, ✅ for confirmations, ⚠️ for warnings, 📝 for notes, 🔍 for analysis, 🎯 for key points, 📊 for data, ⚡ for important concepts, 🚀 for next steps. Use emojis naturally and sparingly - 1-3 per response maximum.
+  Note: If asked about very recent events (after October 2023), mention that your knowledge may be limited and suggest checking the latest sources.
+`;
 
   constructor(
     private readonly aiChatSocketService: AiChatSocketService,
@@ -55,7 +102,12 @@ export class AiChatLatestGateway
     private readonly configService: ConfigService,
     private readonly socketJwtGuard: SocketJwtGuard,
     private readonly prisma: PrismaService,
-  ) {}
+    private readonly documentProcessingService: DocumentProcessingService,
+  ) {
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
 
   afterInit(server: Server) {
     this.logger.log(colors.green('✅ AI Chat Latest Gateway initialized'));
@@ -288,9 +340,11 @@ export class AiChatLatestGateway
     @MessageBody() data: SocketSendMessageDto,
     @ConnectedSocket() client: Socket,
   ) {
+    const startTime = Date.now();
+    
     try {
       const user = client.data.user;
-      const userObj = this.getUserWithSchoolId(client);
+      let userObj = this.getUserWithSchoolId(client);
 
       this.logger.log(
         colors.blue(`💬 Message received from ${user.email}: ${data.message.substring(0, 50)}...`),
@@ -304,20 +358,254 @@ export class AiChatLatestGateway
         event: 'message:typing',
       } as SocketSuccessResponseDto);
 
-      // Process message
-      const response = await this.aiChatSocketService.sendMessage(userObj, data);
+      // Extract user data
+      const userId = userObj.id || (userObj as any).sub;
+      const schoolId = userObj.school_id || (userObj as any).school_id;
+
+      if (!userId) {
+        this.logger.error(colors.red(`❌ User ID not found for user: ${user.email}`));
+        throw new Error('User ID not found');
+      }
+
+      // Check if user is a library platform owner (has platform_id instead of school_id)
+      let finalSchoolId = schoolId;
+      // if (!schoolId) {
+      //   // Check if this is a library user (has platform_id instead of school_id)
+      //   if (user.platform_id) {
+      //     // Library platform owner - get or create default "Library Chat" school
+      //     try {
+      //       const librarySchool = await this.prisma.school.upsert({
+      //         where: { school_email: 'library-chat@system.com' },
+      //         update: {},
+      //         create: {
+      //           school_name: 'Library Chat System',
+      //           school_email: 'library-chat@system.com',
+      //           school_phone: '+000-000-0000',
+      //           school_address: 'System Default',
+      //           school_type: 'primary_and_secondary',
+      //           school_ownership: 'private',
+      //           status: 'approved',
+      //         },
+      //       });
+      //       finalSchoolId = librarySchool.id;
+      //       this.logger.log(colors.cyan(`   Library platform owner - using default Library Chat school: ${finalSchoolId}`));
+      //       // Update userObj with the finalSchoolId for getOrCreateConversation
+      //       userObj = { ...userObj, school_id: finalSchoolId } as User;
+      //     } catch (error) {
+      //       this.logger.error(colors.red(`   Failed to get/create library chat school: ${error.message}`));
+      //       throw new Error('Failed to initialize library chat school');
+      //     }
+      //   } else {
+      //     // Regular user - try to fetch school_id from database
+      //     try {
+      //       const userRecord = await this.prisma.user.findUnique({
+      //         where: { id: userId },
+      //         select: { school_id: true },
+      //       });
+      //       finalSchoolId = userRecord?.school_id || null;
+      //       if (finalSchoolId) {
+      //         this.logger.log(colors.cyan(`   Fetched school_id from database: ${finalSchoolId}`));
+      //         userObj = { ...userObj, school_id: finalSchoolId } as User;
+      //       } else {
+      //         this.logger.error(colors.red(`❌ School ID not found for user: ${user.email}`));
+      //         throw new Error('School ID not found');
+      //       }
+      //     } catch (error) {
+      //       this.logger.error(colors.red(`❌ Could not fetch school_id from database: ${error.message}`));
+      //       throw new Error('School ID not found');
+      //     }
+      //   }
+      // }
+
+      // Get or create conversation
+      let conversation = await this.getOrCreateConversation(
+        userObj,
+        data.conversationId,
+        data.materialId
+      );
+
+      // Use conversation's material_id (validated - will be null for library materials)
+      // But always use the materialId from frontend for messages (ChatMessage.material_id is not a foreign key)
+      const validatedMaterialId = (conversation as any).material_id || null;
+      const messageMaterialId = data.materialId || validatedMaterialId;
+
+      if (!messageMaterialId) {
+        this.logger.error(colors.red(`❌ Material ID is required but not provided`));
+        throw new Error('Material ID is required');
+      }
+
+      // Save user message with error handling
+      let userMessage;
+      try {
+        userMessage = await this.prisma.chatMessage.create({
+          data: {
+            conversation_id: conversation.id,
+            user_id: userId,
+            school_id: finalSchoolId,
+            material_id: messageMaterialId, // Always use the materialId from frontend
+            role: 'USER',
+            content: data.message,
+            message_type: 'TEXT',
+          },
+        });
+        this.logger.log(colors.green(`✅ User message saved: ${userMessage.id}`));
+      } catch (error) {
+        this.logger.error(colors.red(`❌ Failed to save user message to database: ${error.message}`));
+        throw new Error(`Failed to save message: ${error.message}`);
+      }
+
+      // Get relevant context chunks if material is specified
+      let contextChunks: any[] = [];
+      const materialIdToSearch = messageMaterialId; // Use the materialId that will be saved
+      
+      if (materialIdToSearch) {
+        try {
+          contextChunks = await this.documentProcessingService.searchRelevantChunks(
+            materialIdToSearch,
+            data.message,
+            5
+          );
+          
+          if (contextChunks.length > 0) {
+            this.logger.log(colors.green(`✅ Found ${contextChunks.length} relevant chunks from material`));
+          } else {
+            this.logger.log(colors.yellow(`⚠️ No chunks found for material: ${materialIdToSearch}`));
+          }
+        } catch (error) {
+          this.logger.warn(colors.yellow(`⚠️ Could not search chunks: ${error.message}`));
+          contextChunks = [];
+        }
+      }
+
+      // Generate AI response
+      const systemPrompt = (conversation as any).material_id ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT;
+      const aiResponse = await this.generateAIResponse(
+        data.message,
+        contextChunks,
+        systemPrompt,
+        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 50, userId) : [],
+        Boolean((conversation as any).material_id)
+      );
+
+      // Generate chat title for new conversations (first message)
+      let chatTitle: string | null = null;
+      const isNewConversation = ((conversation as any).total_messages === 0 || (conversation as any).total_messages === undefined) && 
+                                (!conversation.title || conversation.title === 'New Conversation' || conversation.title === 'General Chat');
+      
+      if (isNewConversation) {
+        this.logger.log(colors.cyan(`📝 Generating chat title for first message`));
+        chatTitle = await this.generateChatTitle(data.message);
+        
+        await this.prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: { title: chatTitle }
+        });
+        this.logger.log(colors.green(`✅ Updated conversation title to: "${chatTitle}"`));
+      }
+
+      // Save AI message with error handling
+      const refinedContent = this.refineTone(aiResponse.content);
+
+      let aiMessage;
+      try {
+        aiMessage = await this.prisma.chatMessage.create({
+          data: {
+            conversation_id: conversation.id,
+            user_id: userId,
+            school_id: finalSchoolId,
+            material_id: messageMaterialId, // Always use the materialId from frontend
+            role: 'ASSISTANT',
+            content: refinedContent,
+            message_type: 'TEXT',
+            model_used: 'gpt-4o-mini',
+            tokens_used: aiResponse.tokensUsed,
+            response_time_ms: Date.now() - startTime,
+            context_chunks: contextChunks.map(chunk => chunk.id),
+            context_summary: contextChunks.length > 0 ? 
+              `Found ${contextChunks.length} relevant chunks from the document` : null,
+          },
+        });
+        this.logger.log(colors.green(`✅ AI message saved: ${aiMessage.id}`));
+      } catch (error) {
+        this.logger.error(colors.red(`❌ Failed to save AI message to database: ${error.message}`));
+        throw new Error(`Failed to save AI response: ${error.message}`);
+      }
+
+      // Update conversation with error handling
+      try {
+        await this.prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            total_messages: ((conversation as any).total_messages || 0) + 2,
+            last_activity: new Date(),
+          },
+        });
+        this.logger.log(colors.green(`✅ Conversation updated`));
+      } catch (error) {
+        this.logger.error(colors.red(`❌ Failed to update conversation: ${error.message}`));
+        // Don't throw - conversation update failure shouldn't block response
+      }
+
+      // Update user token usage with error handling
+      try {
+        await this.updateUserTokenUsage(userId, aiResponse.tokensUsed);
+      } catch (error) {
+        this.logger.error(colors.red(`❌ Failed to update token usage: ${error.message}`));
+        // Don't throw - token update failure shouldn't block response
+      }
+
+      // Save context relationships with error handling
+      if (contextChunks.length > 0) {
+        try {
+          await this.saveContextRelationships(aiMessage.id, contextChunks, conversation.id, finalSchoolId);
+        } catch (error) {
+          this.logger.error(colors.red(`❌ Failed to save context relationships: ${error.message}`));
+          // Don't throw - context save failure shouldn't block response
+        }
+      }
+
+      // Get usage limits
+      const userData = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true }
+      });
+
+      const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
+        where: { school_id: finalSchoolId }
+      });
+
+      const usageLimits = await this.getUserUsageLimits(userId, finalSchoolId, userData?.role || 'student', subscriptionPlan);
+
+      const response: SocketMessageResponseDto = {
+        id: aiMessage.id,
+        content: aiMessage.content,
+        role: aiMessage.role,
+        conversationId: aiMessage.conversation_id || '',
+        materialId: aiMessage.material_id,
+        chatTitle: chatTitle,
+        contextChunks: contextChunks.map((chunk: any) => ({
+          id: chunk.id,
+          content: chunk.content.substring(0, 200) + '...',
+          similarity: chunk.similarity,
+          chunkType: chunk.chunk_type,
+        })),
+        tokensUsed: aiMessage.tokens_used,
+        responseTimeMs: aiMessage.response_time_ms,
+        createdAt: aiMessage.createdAt.toISOString(),
+        usageLimits: usageLimits,
+      };
 
       // Emit user message (echo back)
       client.emit('message:user', {
         success: true,
         message: 'Your message',
         data: {
-          id: `temp-${Date.now()}`,
+          id: userMessage.id,
           content: data.message,
           role: 'USER',
           conversationId: response.conversationId,
           materialId: data.materialId,
-          createdAt: new Date().toISOString(),
+          createdAt: userMessage.createdAt.toISOString(),
         },
         event: 'message:user',
       } as SocketSuccessResponseDto);
@@ -339,17 +627,21 @@ export class AiChatLatestGateway
       } as SocketSuccessResponseDto);
 
       // If conversation title was generated, emit update
-      if (response.chatTitle) {
+      if (chatTitle) {
         client.emit('conversation:title-updated', {
           success: true,
           message: 'Conversation title updated',
           data: {
             conversationId: response.conversationId,
-            title: response.chatTitle,
+            title: chatTitle,
           },
           event: 'conversation:title-updated',
         } as SocketSuccessResponseDto);
       }
+
+      const responseTime = Date.now() - startTime;
+      this.logger.log(colors.green(`✅ Message processed in ${responseTime}ms`));
+
     } catch (error) {
       this.logger.error(colors.red(`❌ Error handling message: ${error.message}`));
       client.emit('message:error', {
@@ -401,7 +693,7 @@ export class AiChatLatestGateway
    */
   @SubscribeMessage('conversation:history')
   async handleGetChatHistory(
-    @MessageBody() data: { conversationId: string; limit?: number; offset?: number },
+    @MessageBody() data: { materialId: string; limit?: number; offset?: number },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -409,18 +701,102 @@ export class AiChatLatestGateway
       const userObj = await this.getUserWithSchoolId(client);
 
       this.logger.log(
-        colors.blue(`📖 Loading conversation history via socket - Conversation: ${data.conversationId}, User: ${user?.email || 'unknown'}`)
+        colors.blue(`📖 Loading chat history via socket - Material: ${data.materialId}, User: ${user?.email || 'unknown'}`)
       );
 
-      const history = await this.aiChatSocketService.getChatHistory(
-        userObj,
-        data.conversationId,
-        data.limit || 50,
-        data.offset || 0,
-      );
+      const userId = userObj.id || (userObj as any).sub;
+      let schoolId = userObj.school_id || (userObj as any).school_id;
+
+      if (!userId) {
+        this.logger.error(colors.red(`❌ User ID not found for user: ${user?.email}`));
+        throw new Error('User ID not found');
+      }
+
+      if (!data.materialId) {
+        this.logger.error(colors.red(`❌ Material ID is required`));
+        throw new Error('Material ID is required');
+      }
+
+      // Validate that the material exists in PDFMaterial table
+      let material = await this.prisma.pDFMaterial.findUnique({
+        where: { id: data.materialId },
+        select: { id: true, title: true, status: true },
+      });
+
+      // it can also be a library material
+      const libraryMaterial = await this.prisma.libraryGeneralMaterial.findUnique({
+        where: { id: data.materialId },
+        select: { id: true, title: true, status: true },
+      });
+
+      if (libraryMaterial) {
+        material = libraryMaterial;
+      }
+
+      if (!material || !libraryMaterial) {
+        this.logger.error(colors.red(`❌ Material not found: ${data.materialId}`));
+        throw new Error(`Material not found: ${data.materialId}`);
+      }
+
+      if (material && material.status !== 'published') {
+        this.logger.warn(colors.yellow(`⚠️ Material is not published: ${data.materialId}, status: ${material.status}`));
+      }
+
+      const parsedLimit = parseInt((data.limit || 50).toString());
+      const parsedOffset = parseInt((data.offset || 0).toString());
+
+      this.logger.log(colors.cyan(`📖 Loading chat history by material - Material: ${data.materialId} (${material.title}), User: ${userId}, Limit: ${parsedLimit}, Offset: ${parsedOffset}`));
+
+      // Get chat history by material_id and user_id
+      const messages = await this.prisma.chatMessage.findMany({
+        where: {
+          material_id: data.materialId,
+          user_id: userId,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: parsedLimit,
+        skip: parsedOffset,
+      });
 
       this.logger.log(
-        colors.green(`✅ Conversation history sent via socket - ${history.conversationHistory.length} messages loaded`)
+        colors.green(`✅ Chat history loaded: ${messages.length} messages found for material ${data.materialId}`)
+      );
+
+      const conversationHistory = messages.map(message => ({
+        id: message.id,
+        content: message.content,
+        role: message.role,
+        conversationId: message.conversation_id,
+        materialId: message.material_id,
+        tokensUsed: message.tokens_used,
+        responseTimeMs: message.response_time_ms,
+        createdAt: message.createdAt.toISOString(),
+      }));
+
+      // Get usage limits
+      // if (!schoolId) {
+      //   this.logger.error(colors.red(`❌ School ID not found for user: ${user?.email}`));
+      //   throw new Error('School ID not found');
+      // }
+
+      const userData = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true }
+      });
+
+      // const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
+      //   where: { school_id: schoolId }
+      // });
+
+      // const usageLimits = await this.getUserUsageLimits(userId, schoolId, userData?.role || 'student', subscriptionPlan);
+
+      const history = {
+        conversationHistory,
+        // usageLimits,
+      };
+
+      this.logger.log(
+        colors.green(`✅ Chat history sent via socket - ${history.conversationHistory.length} messages loaded`)
       );
 
       client.emit('conversation:history', {
@@ -439,51 +815,6 @@ export class AiChatLatestGateway
       } as SocketErrorResponseDto);
     }
   }
-
-  /**
-   * Handle getting chat history by materialId
-   * Event: 'history:by-material'
-   */
-  // @SubscribeMessage('history:by-material')
-  // async handleGetHistoryByMaterial(
-  //   @MessageBody() data: { materialId: string; limit?: number; offset?: number },
-  //   @ConnectedSocket() client: Socket,
-  // ) {
-  //   try {
-  //     const user = client.data.user;
-  //     const userObj = await this.getUserWithSchoolId(client);
-
-  //     this.logger.log(
-  //       colors.blue(`📖 Loading conversation history by material via socket - Material: ${data.materialId}, User: ${user?.email || 'unknown'}`)
-  //     );
-
-  //     const history = await this.aiChatSocketService.getChatHistoryByMaterial(
-  //       userObj,
-  //       data.materialId,
-  //       data.limit || 50,
-  //       data.offset || 0,
-  //     );
-
-  //     this.logger.log(
-  //       colors.green(`✅ Conversation history by material sent via socket - ${history.conversationHistory.length} messages loaded (Total: ${history.totalMessages}, Has More: ${history.hasMore})`)
-  //     );
-
-  //     client.emit('history:by-material', {
-  //       success: true,
-  //       message: 'Chat history retrieved by material',
-  //       data: history,
-  //       event: 'history:by-material',
-  //     } as SocketSuccessResponseDto);
-  //   } catch (error) {
-  //     this.logger.error(colors.red(`❌ Error getting chat history by material: ${error.message}`));
-  //     client.emit('history:error', {
-  //       success: false,
-  //       message: 'Failed to retrieve chat history by material',
-  //       error: error.message,
-  //       event: 'history:error',
-  //     } as SocketErrorResponseDto);
-  //   }
-  // }
 
   /**
    * Handle getting user conversations
@@ -510,6 +841,393 @@ export class AiChatLatestGateway
         error: error.message,
         event: 'conversations:error',
       } as SocketErrorResponseDto);
+    }
+  }
+
+  /**
+   * Get or create conversation
+   */
+  private async getOrCreateConversation(
+    user: User,
+    conversationId?: string,
+    materialId?: string
+  ) {
+    const userId = user.id || (user as any).sub;
+    const schoolId = user.school_id || (user as any).school_id;
+
+    if (!userId || !schoolId) {
+      throw new Error('User ID or School ID not found');
+    }
+    
+    if (conversationId) {
+      const conversation = await this.prisma.chatConversation.findFirst({
+        where: {
+          id: conversationId,
+          user_id: userId,
+        },
+      });
+
+      if (conversation) {
+        return conversation;
+      }
+    }
+
+    // Validate material_id if provided
+    let validatedMaterialId: string | null = null;
+    
+    if (materialId) {
+      try {
+        const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
+          where: { id: materialId },
+          select: { id: true, schoolId: true },
+        });
+        
+        if (pdfMaterial && pdfMaterial.schoolId === schoolId) {
+          validatedMaterialId = pdfMaterial.id;
+          this.logger.log(colors.green(`✅ PDF Material validated: ${validatedMaterialId}`));
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ Material not found or not accessible, using general chat`));
+          validatedMaterialId = null;
+        }
+      } catch (error) {
+        this.logger.warn(colors.yellow(`⚠️ Error validating material: ${error.message}, using general chat`));
+        validatedMaterialId = null;
+      }
+    }
+
+    // Create new conversation
+    const conversation = await this.prisma.chatConversation.create({
+      data: {
+        user_id: userId,
+        school_id: schoolId,
+        material_id: validatedMaterialId,
+        title: materialId ? 'Document Chat' : 'General Chat',
+        system_prompt: validatedMaterialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
+        status: 'ACTIVE',
+        total_messages: 0,
+      },
+    });
+
+    return conversation;
+  }
+
+  /**
+   * Generate chat title based on first message
+   */
+  private async generateChatTitle(firstMessage: string): Promise<string> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Generate a short, descriptive title (max 5 words) for this conversation based on the user\'s first message. Return only the title, nothing else.'
+          },
+          {
+            role: 'user',
+            content: firstMessage
+          }
+        ],
+        max_tokens: 20,
+        temperature: 0.3,
+      });
+
+      const title = response.choices[0].message.content?.trim() || 'New Chat';
+      this.logger.log(colors.cyan(`📝 Generated chat title: "${title}"`));
+      return title;
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error generating chat title: ${error.message}`));
+      return 'New Chat';
+    }
+  }
+
+  /**
+   * Generate AI response using OpenAI
+   */
+  private async generateAIResponse(
+    userMessage: string,
+    contextChunks: any[],
+    systemPrompt: string,
+    conversationHistory: any[],
+    isMaterialChat: boolean
+  ): Promise<{ content: string; tokensUsed: number }> {
+    try {
+      // Build context from chunks
+      const context = contextChunks.length > 0 
+        ? `\n\nRelevant document context:\n${contextChunks.map(chunk => 
+            `- ${chunk.content.substring(0, 500)}...`
+          ).join('\n')}`
+        : '';
+
+      // Build conversation history
+      const history = conversationHistory.map(msg => 
+        `${msg.role}: ${msg.content}`
+      ).join('\n');
+
+      const messages = [
+        { role: 'system', content: systemPrompt + context },
+        ...(history ? [{ role: 'user', content: `Previous conversation:\n${history}` }] : []),
+        { role: 'user', content: userMessage },
+      ];
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: messages as any,
+        max_tokens: 4000,
+        temperature: isMaterialChat ? 0.25 : 0.7,
+      });
+
+      return {
+        content: response.choices[0].message.content || 'I apologize, but I could not generate a response.',
+        tokensUsed: response.usage?.total_tokens || 0,
+      };
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error generating AI response: ${error.message}`));
+      throw new Error(`Failed to generate AI response: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get conversation history for context
+   */
+  private async getConversationHistory(conversationId: string, limit: number, userId?: string) {
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { 
+        conversation_id: conversationId,
+        ...(userId && { user_id: userId })
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        role: true,
+        content: true,
+        createdAt: true,
+      },
+    });
+
+    return messages.reverse(); // Return in chronological order
+  }
+
+  /**
+   * Update user token usage counters
+   */
+  private async updateUserTokenUsage(userId: string, tokensUsed: number) {
+    try {
+      this.logger.log(colors.blue(`📊 Updating token usage for user: ${userId}, tokens: ${tokensUsed}`));
+
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          tokensUsedThisDay: true,
+          tokensUsedThisWeek: true,
+          tokensUsedAllTime: true,
+          lastTokenResetDateAllTime: true,
+        }
+      });
+
+      if (!user) {
+        this.logger.error(colors.red(`❌ User not found for token update: ${userId}`));
+        return;
+      }
+
+      const shouldResetDaily = user.lastTokenResetDateAllTime < startOfDay;
+      const shouldResetWeekly = user.lastTokenResetDateAllTime < startOfWeek;
+
+      const newDailyTokens = shouldResetDaily ? tokensUsed : (user.tokensUsedThisDay || 0) + tokensUsed;
+      const newWeeklyTokens = shouldResetWeekly ? tokensUsed : (user.tokensUsedThisWeek || 0) + tokensUsed;
+      const newAllTimeTokens = (user.tokensUsedAllTime || 0) + tokensUsed;
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          tokensUsedThisDay: newDailyTokens,
+          tokensUsedThisWeek: newWeeklyTokens,
+          tokensUsedAllTime: newAllTimeTokens,
+          lastTokenResetDateAllTime: today,
+        }
+      });
+
+      this.logger.log(colors.green(`✅ Updated token usage - Daily: ${newDailyTokens}, Weekly: ${newWeeklyTokens}, All-time: ${newAllTimeTokens}`));
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error updating token usage: ${error.message}`));
+    }
+  }
+
+  /**
+   * Refine tone to remove hedging and start decisively
+   */
+  private refineTone(text: string): string {
+    if (!text) return text;
+
+    let refined = text;
+
+    const hedges = [
+      /\bit looks like\s+/gi,
+      /\bit seems like\s+/gi,
+      /\bit appears that\s+/gi,
+      /\bit seems that\s+/gi,
+      /\bthis (document|workbook|chapter|material) (appears to|seems to|might be)\s+/gi,
+      /\b(it|this) (appears|seems|might|likely)\s+/gi,
+      /\bI (think|believe)\s+/gi,
+      /\bprobably\s+/gi,
+      /\bperhaps\s+/gi,
+      /\bmaybe\s+/gi,
+      /\bcould be\s+/gi,
+      /\bmight be\s+/gi,
+    ];
+    
+    for (const h of hedges) {
+      refined = refined.replace(h, '');
+    }
+
+    refined = refined.replace(/^\s*(it looks like|it seems like|it appears that|it seems that)\s+/i, '');
+    refined = refined.replace(/^\s*the (document|workbook|chapter|material) you provided\s+(is|appears to be|seems to be)\s*/iu, 'This material ');
+    refined = refined.replace(/^\s*the (document|workbook|chapter|material)\s+(appears|seems)\s+to\s+be\s*/iu, 'This material is ');
+    refined = refined.replace(/\b(you're referring to|you are referring to)\s+a\s+/gi, 'This ');
+    refined = refined.replace(/\bbased on the context provided\s*[,:]\s*/gi, '');
+    refined = refined.replace(/^\.\s*/, '');
+    refined = refined.replace(/^\s*,\s*/, '');
+    
+    if (refined.length > 0 && refined[0] === refined[0].toLowerCase()) {
+      refined = refined.charAt(0).toUpperCase() + refined.slice(1);
+    }
+
+    return refined.trim();
+  }
+
+  /**
+   * Save context relationships
+   */
+  private async saveContextRelationships(
+    messageId: string,
+    contextChunks: any[],
+    conversationId: string,
+    schoolId: string
+  ) {
+    try {
+      // Verify chunks exist in DocumentChunk table before saving relationships
+      // This prevents foreign key constraint violations for library material chunks
+      const validChunks: any[] = [];
+      
+      for (const chunk of contextChunks) {
+        try {
+          const dbChunk = await this.prisma.documentChunk.findUnique({
+            where: { id: chunk.id },
+            select: { id: true },
+          });
+          
+          if (dbChunk) {
+            validChunks.push(chunk);
+          } else {
+            this.logger.warn(colors.yellow(`⚠️ Chunk ${chunk.id} not found in DocumentChunk table, skipping context relationship`));
+          }
+        } catch (error) {
+          this.logger.warn(colors.yellow(`⚠️ Error checking chunk ${chunk.id}: ${error.message}`));
+        }
+      }
+
+      if (validChunks.length === 0) {
+        this.logger.warn(colors.yellow(`⚠️ No valid chunks found to save context relationships`));
+        return;
+      }
+
+      const contextData = validChunks.map((chunk, index) => ({
+        conversation_id: conversationId,
+        message_id: messageId,
+        chunk_id: chunk.id,
+        school_id: schoolId,
+        relevance_score: chunk.similarity,
+        context_type: 'semantic',
+        position_in_context: index,
+      }));
+
+      for (const context of contextData) {
+        await this.prisma.chatContext.create({ data: context });
+      }
+
+      this.logger.log(colors.green(`✅ Saved ${validChunks.length} context relationships`));
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error saving context relationships: ${error.message}`));
+    }
+  }
+
+  /**
+   * Get user's usage limits (merged with subscription plan limits)
+   */
+  private async getUserUsageLimits(
+    userId: string,
+    schoolId: string,
+    userRole: string,
+    subscriptionPlan: any
+  ): Promise<any> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          filesUploadedThisMonth: true,
+          totalFilesUploadedAllTime: true,
+          totalStorageUsedMB: true,
+          maxFilesPerMonth: true,
+          maxFileSizeMB: true,
+          maxStorageMB: true,
+          tokensUsedThisWeek: true,
+          tokensUsedThisDay: true,
+          tokensUsedAllTime: true,
+          maxTokensPerWeek: true,
+          maxTokensPerDay: true,
+          lastFileResetDate: true,
+          lastTokenResetDateAllTime: true,
+        }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      let maxDocumentUploadsPerDay: number;
+      if (subscriptionPlan) {
+        if (userRole === 'student') {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_student_per_day || 3;
+        } else if (userRole === 'teacher') {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+        } else {
+          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+        }
+      } else {
+        maxDocumentUploadsPerDay = userRole === 'student' ? 3 : 10;
+      }
+
+      const usageLimits = {
+        filesUploadedThisMonth: user.filesUploadedThisMonth,
+        totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
+        totalStorageUsedMB: user.totalStorageUsedMB,
+        maxFilesPerMonth: subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
+        maxFileSizeMB: subscriptionPlan?.max_file_size_mb ?? user.maxFileSizeMB,
+        maxStorageMB: subscriptionPlan?.max_storage_mb ?? user.maxStorageMB,
+        tokensUsedThisWeek: user.tokensUsedThisWeek,
+        tokensUsedThisDay: user.tokensUsedThisDay,
+        tokensUsedAllTime: user.tokensUsedAllTime,
+        maxTokensPerWeek: subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
+        maxTokensPerDay: subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
+        maxDocumentUploadsPerDay: maxDocumentUploadsPerDay,
+        lastFileResetDate: user.lastFileResetDate?.toISOString() || new Date().toISOString(),
+        lastTokenResetDate: user.lastTokenResetDateAllTime?.toISOString() || new Date().toISOString(),
+      };
+
+      return usageLimits;
+
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error fetching usage limits: ${error.message}`));
+      throw new Error(`Failed to fetch usage limits: ${error.message}`);
     }
   }
 }
