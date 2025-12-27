@@ -550,7 +550,13 @@ export class GeneralMaterialsService {
 
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
         where: { id: user.sub },
-        select: { platformId: true, email: true },
+        select: {
+          platformId: true,
+          email: true,
+          first_name: true,
+          last_name: true,
+          phone_number: true,
+        },
       });
 
       if (!libraryUser) {
@@ -573,6 +579,73 @@ export class GeneralMaterialsService {
         );
         thumbnailUrl = thumbResult.url;
         thumbnailS3Key = thumbResult.key;
+      }
+
+      // Get library platform to find/create corresponding Organisation
+      const libraryPlatform = await this.prisma.libraryPlatform.findUnique({
+        where: { id: libraryUser.platformId },
+        select: { id: true, name: true },
+      });
+
+      if (!libraryPlatform) {
+        this.logger.error(colors.red('Library platform not found'));
+        throw new NotFoundException('Library platform not found');
+      }
+
+      // Find or create Organisation with same name as LibraryPlatform
+      let organisation = await this.prisma.organisation.findUnique({
+        where: { name: libraryPlatform.name },
+      });
+
+      if (!organisation) {
+        organisation = await this.prisma.organisation.create({
+          data: {
+            name: libraryPlatform.name,
+            email: `${libraryPlatform.name.toLowerCase().replace(/\s+/g, '-')}@library.com`,
+          },
+        });
+        this.logger.log(colors.cyan(`Created Organisation for LibraryPlatform: ${organisation.id}`));
+      }
+
+      // Get or create a User record for the library user (PDFMaterial needs uploadedById to be a User, not LibraryResourceUser)
+      // Check if the library user email exists in User table
+      let pdfMaterialUploadedBy = await this.prisma.user.findUnique({
+        where: { email: libraryUser.email },
+        select: { id: true },
+      });
+
+      // If no User exists, create one from LibraryResourceUser data
+      if (!pdfMaterialUploadedBy) {
+        // Get or create the Library Chat school (same one used in gateway)
+        const librarySchool = await this.prisma.school.upsert({
+          where: { school_email: 'library-chat@system.com' },
+          update: {},
+          create: {
+            school_name: 'Library Chat System',
+            school_email: 'library-chat@system.com',
+            school_phone: '+000-000-0000',
+            school_address: 'System Default',
+            school_type: 'primary_and_secondary',
+            school_ownership: 'private',
+            status: 'approved',
+          },
+        });
+
+        // Create User record from LibraryResourceUser data
+        pdfMaterialUploadedBy = await this.prisma.user.create({
+          data: {
+            email: libraryUser.email,
+            password: 'library-user', // Placeholder - won't be used for authentication (library users use LibraryResourceUser table)
+            first_name: libraryUser.first_name,
+            last_name: libraryUser.last_name,
+            phone_number: libraryUser.phone_number || '+000-000-0000',
+            school_id: librarySchool.id,
+            role: 'super_admin', // Library users have elevated permissions
+          },
+          select: { id: true },
+        });
+        
+        this.logger.log(colors.cyan(`Created User record for LibraryResourceUser: ${pdfMaterialUploadedBy.id} (email: ${libraryUser.email})`));
       }
 
       const material = await this.prisma.libraryGeneralMaterial.create({
@@ -611,8 +684,33 @@ export class GeneralMaterialsService {
         },
       });
 
+      // Create corresponding PDFMaterial record
+      const pdfMaterial = await this.prisma.pDFMaterial.create({
+        data: {
+          title: payload.title,
+          description: payload.description ?? null,
+          url: uploadResult.url,
+          platformId: organisation.id,
+          uploadedById: pdfMaterialUploadedBy.id,
+          schoolId: null, // Library materials don't belong to a specific school
+          topic_id: null,
+          downloads: 0,
+          size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
+          status: 'published',
+          order: 1,
+          fileType: file.mimetype || 'application/pdf',
+          originalName: file.originalname,
+          materialId: material.id, // Link to LibraryGeneralMaterial
+        },
+      });
+
       this.logger.log(colors.green(`[GENERAL MATERIALS] Material created successfully: ${material.id}`));
-      return new ApiResponse(true, 'General material created successfully', material);
+      this.logger.log(colors.green(`[GENERAL MATERIALS] PDFMaterial created successfully: ${pdfMaterial.id} (linked to LibraryGeneralMaterial: ${material.id})`));
+      
+      return new ApiResponse(true, 'General material created successfully', {
+        ...material,
+        pdfMaterialId: pdfMaterial.id,
+      });
     } catch (error: any) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
@@ -1052,6 +1150,48 @@ export class GeneralMaterialsService {
           },
         });
 
+        // Validate platformId exists before creating PDFMaterial
+        if (!libraryUser.platformId) {
+          this.logger.error(colors.red(`❌ Library user ${libraryUser.id} does not have a platformId`));
+          throw new BadRequestException('Library user does not have a platform ID');
+        }
+
+        // Verify platform exists in Organisation table
+        const platform = await this.prisma.organisation.findUnique({
+          where: { id: libraryUser.platformId },
+          select: { id: true },
+        });
+
+        if (!platform) {
+          this.logger.error(colors.red(`❌ Platform with ID ${libraryUser.platformId} not found in Organisation table`));
+          throw new BadRequestException(`Platform with ID ${libraryUser.platformId} not found`);
+        }
+
+        // also save it under pdf material 
+        await this.prisma.pDFMaterial.create({
+          data: {
+            title: chapterFile.title,
+            description: chapterFile.description,
+            url: chapterFile.url,
+            platformId: libraryUser.platformId,
+            uploadedById: libraryUser.id,
+            schoolId: null,
+            topic_id: null,
+            downloads: 0,
+            size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
+            status: 'published',
+            order: 1,
+            fileType: file.mimetype || 'application/pdf',
+            originalName: file.originalname,
+            materialId: chapterFile.id,
+            chatAnalytics: {
+              connect: {
+                id: chapterFile.id,
+              },
+            },
+          },  
+        });
+
         this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter file uploaded successfully: ${chapterFile.id}`));
 
         // Process for AI chat by default (unless explicitly disabled)
@@ -1488,7 +1628,7 @@ export class GeneralMaterialsService {
       // Save to Pinecone
       await this.pineconeService.upsertChunks(pineconeChunks);
 
-      // Save chunks to database
+      // Save chunks to database (using UPSERT to handle duplicate IDs)
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const embedding = embeddings[i];
@@ -1506,6 +1646,23 @@ export class GeneralMaterialsService {
             ${chunk.tokenCount}, ${Math.ceil(chunk.content.split(' ').length)}, ${chunk.chunkIndex},
             ${[]}::text[], ${null}, NOW(), NOW()
           )
+          ON CONFLICT (id) DO UPDATE SET
+            "materialId" = EXCLUDED."materialId",
+            "chapterId" = EXCLUDED."chapterId",
+            "processingId" = EXCLUDED."processingId",
+            "platformId" = EXCLUDED."platformId",
+            content = EXCLUDED.content,
+            "chunkType" = EXCLUDED."chunkType",
+            "pageNumber" = EXCLUDED."pageNumber",
+            "sectionTitle" = EXCLUDED."sectionTitle",
+            embedding = EXCLUDED.embedding,
+            "embeddingModel" = EXCLUDED."embeddingModel",
+            "tokenCount" = EXCLUDED."tokenCount",
+            "wordCount" = EXCLUDED."wordCount",
+            "orderIndex" = EXCLUDED."orderIndex",
+            keywords = EXCLUDED.keywords,
+            summary = EXCLUDED.summary,
+            "updatedAt" = NOW()
         `;
       }
 

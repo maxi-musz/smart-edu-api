@@ -417,37 +417,71 @@ export class AiChatLatestGateway
       //   }
       // }
 
-      // Get or create conversation
-      let conversation = await this.getOrCreateConversation(
-        userObj,
-        data.conversationId,
-        data.materialId
-      );
+      const frontendMaterialId = data.materialId;
 
-      // Use conversation's material_id (validated - will be null for library materials)
-      // But always use the materialId from frontend for messages (ChatMessage.material_id is not a foreign key)
-      const validatedMaterialId = (conversation as any).material_id || null;
-      const messageMaterialId = data.materialId || validatedMaterialId;
-
-      if (!messageMaterialId) {
+      if (!frontendMaterialId) {
         this.logger.error(colors.red(`❌ Material ID is required but not provided`));
         throw new Error('Material ID is required');
       }
 
+      this.logger.log(colors.cyan(`✅ Frontend Material ID: ${frontendMaterialId}`));
+
+      // Check if this is a LibraryGeneralMaterialChapterFile or PDFMaterial
+      const existingMaterial = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+        where: { chapterId: frontendMaterialId },
+        select: { id: true, platformId: true },
+      });
+
+      if (existingMaterial) {
+        this.logger.log(colors.cyan(`📚 Detected LibraryGeneralMaterialChapterFile: ${frontendMaterialId}`));
+      } else {
+        this.logger.warn(colors.yellow(`⚠️ Material ID ${frontendMaterialId} not found in LibraryGeneralMaterialChapterFile tables`));
+        throw new Error(`Material with ID ${frontendMaterialId} not found`);
+      }
+
+      // Get or create conversation based on material type
+      let conversation: any;
+      if (existingMaterial) {
+        conversation = await this.getOrCreateConversation(
+          userObj,
+          data.conversationId,
+          frontendMaterialId
+        );
+      } else {
+        conversation = await this.getOrCreateConversation(
+          userObj,
+          data.conversationId,
+          frontendMaterialId
+        );
+      }
+
       // Save user message with error handling
-      let userMessage;
+      let userMessage: any;
+      this.logger.log("Saving user message to database");
       try {
-        userMessage = await this.prisma.chatMessage.create({
-          data: {
-            conversation_id: conversation.id,
-            user_id: userId,
-            school_id: finalSchoolId,
-            material_id: messageMaterialId, // Always use the materialId from frontend
-            role: 'USER',
-            content: data.message,
-            message_type: 'TEXT',
-          },
-        });
+        if (existingMaterial) {
+          userMessage = await this.prisma.libraryGeneralMaterialChatMessage.create({
+            data: {
+              conversationId: conversation.id,
+              userId: userId,
+              materialId: frontendMaterialId,
+              role: 'USER',
+              content: data.message,
+            },
+          });
+        } else {
+          userMessage = await this.prisma.chatMessage.create({
+            data: {
+              conversation_id: conversation.id,
+              user_id: userId,
+              school_id: finalSchoolId,
+              material_id: frontendMaterialId,
+              role: 'USER',
+              content: data.message,
+              message_type: 'TEXT',
+            },
+          });
+        }
         this.logger.log(colors.green(`✅ User message saved: ${userMessage.id}`));
       } catch (error) {
         this.logger.error(colors.red(`❌ Failed to save user message to database: ${error.message}`));
@@ -455,8 +489,10 @@ export class AiChatLatestGateway
       }
 
       // Get relevant context chunks if material is specified
+      // Use the original materialId from frontend for Pinecone search
+      // (could be LibraryGeneralMaterial ID or PDFMaterial ID, depending on how chunks were stored)
       let contextChunks: any[] = [];
-      const materialIdToSearch = messageMaterialId; // Use the materialId that will be saved
+      const materialIdToSearch = frontendMaterialId;
       
       if (materialIdToSearch) {
         try {
@@ -513,7 +549,7 @@ export class AiChatLatestGateway
             conversation_id: conversation.id,
             user_id: userId,
             school_id: finalSchoolId,
-            material_id: messageMaterialId, // Always use the materialId from frontend
+            material_id: frontendMaterialId,
             role: 'ASSISTANT',
             content: refinedContent,
             message_type: 'TEXT',
@@ -705,7 +741,6 @@ export class AiChatLatestGateway
       );
 
       const userId = userObj.id || (userObj as any).sub;
-      let schoolId = userObj.school_id || (userObj as any).school_id;
 
       if (!userId) {
         this.logger.error(colors.red(`❌ User ID not found for user: ${user?.email}`));
@@ -724,16 +759,20 @@ export class AiChatLatestGateway
       });
 
       // it can also be a library material
-      const libraryMaterial = await this.prisma.libraryGeneralMaterial.findUnique({
+      const libraryMaterialChapter = await this.prisma.libraryGeneralMaterialChapter.findUnique({
         where: { id: data.materialId },
-        select: { id: true, title: true, status: true },
+        select: { id: true, title: true },
       });
 
-      if (libraryMaterial) {
-        material = libraryMaterial;
+      if (libraryMaterialChapter) {
+        material = {
+          id: libraryMaterialChapter.id,
+          title: libraryMaterialChapter.title,
+          status: 'published',
+        };
       }
 
-      if (!material || !libraryMaterial) {
+      if (!material || !libraryMaterialChapter) {
         this.logger.error(colors.red(`❌ Material not found: ${data.materialId}`));
         throw new Error(`Material not found: ${data.materialId}`);
       }
@@ -783,13 +822,6 @@ export class AiChatLatestGateway
         where: { id: userId },
         select: { role: true }
       });
-
-      // const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
-      //   where: { school_id: schoolId }
-      // });
-
-      // const usageLimits = await this.getUserUsageLimits(userId, schoolId, userData?.role || 'student', subscriptionPlan);
-
       const history = {
         conversationHistory,
         // usageLimits,
@@ -868,6 +900,7 @@ export class AiChatLatestGateway
       });
 
       if (conversation) {
+        this.logger.log(colors.green(`✅ Conversation found: ${conversation.id}`));
         return conversation;
       }
     }
@@ -886,8 +919,15 @@ export class AiChatLatestGateway
           validatedMaterialId = pdfMaterial.id;
           this.logger.log(colors.green(`✅ PDF Material validated: ${validatedMaterialId}`));
         } else {
-          this.logger.warn(colors.yellow(`⚠️ Material not found or not accessible, using general chat`));
-          validatedMaterialId = null;
+          // search in library general material chapter file
+          const libraryMaterialChapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+            where: { chapterId: materialId },
+            select: { id: true, title: true },
+          });
+          if (libraryMaterialChapterFile) {
+            validatedMaterialId = libraryMaterialChapterFile.id;
+            this.logger.log(colors.green(`✅ Library General Material Chapter File validated: ${validatedMaterialId}`));
+          }
         }
       } catch (error) {
         this.logger.warn(colors.yellow(`⚠️ Error validating material: ${error.message}, using general chat`));
@@ -896,13 +936,14 @@ export class AiChatLatestGateway
     }
 
     // Create new conversation
+    this.logger.log(colors.green(`✅ Creating new conversation for material: ${materialId}`));
     const conversation = await this.prisma.chatConversation.create({
       data: {
         user_id: userId,
         school_id: schoolId,
-        material_id: validatedMaterialId,
+        material_id: materialId,
         title: materialId ? 'Document Chat' : 'General Chat',
-        system_prompt: validatedMaterialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
+        system_prompt: materialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
         status: 'ACTIVE',
         total_messages: 0,
       },
