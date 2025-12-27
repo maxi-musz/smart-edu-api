@@ -380,16 +380,43 @@ export class AiChatLatestGateway
       this.logger.log(colors.cyan(`✅ Frontend Material ID: ${frontendMaterialId}`));
 
       // Check if this is a LibraryGeneralMaterialChapterFile or PDFMaterial
+      // frontendMaterialId is a chapter ID, so we find chapter files belonging to that chapter
       const existingMaterial = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
         where: { chapterId: frontendMaterialId },
-        select: { id: true, platformId: true },
+        select: { 
+          id: true, 
+          platformId: true,
+          chapter: {
+            select: {
+              id: true,
+              materialId: true, // This is the LibraryGeneralMaterial.id we need for Pinecone
+            }
+          }
+        },
       });
 
+      let materialIdForPineconeSearch: string | null = null;
+
       if (existingMaterial) {
-        this.logger.log(colors.cyan(`📚 Detected LibraryGeneralMaterialChapterFile: ${frontendMaterialId}`));
+        this.logger.log(colors.cyan(`📚 Detected LibraryGeneralMaterialChapterFile for chapter: ${frontendMaterialId}`));
+        // Chunks are stored in Pinecone with material_id = LibraryGeneralMaterial.id
+        // So we need to use the chapter's materialId for Pinecone search
+        materialIdForPineconeSearch = existingMaterial.chapter.materialId;
+        this.logger.log(colors.cyan(`📚 Using LibraryGeneralMaterial ID for Pinecone search: ${materialIdForPineconeSearch}`));
       } else {
-        this.logger.warn(colors.yellow(`⚠️ Material ID ${frontendMaterialId} not found in LibraryGeneralMaterialChapterFile tables`));
-        throw new Error(`Material with ID ${frontendMaterialId} not found`);
+        // Check if it's a PDFMaterial
+        const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
+          where: { id: frontendMaterialId },
+          select: { id: true },
+        });
+        
+        if (pdfMaterial) {
+          this.logger.log(colors.cyan(`📄 Detected PDFMaterial: ${frontendMaterialId}`));
+          materialIdForPineconeSearch = frontendMaterialId;
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ Material ID ${frontendMaterialId} not found in LibraryGeneralMaterialChapterFile or PDFMaterial tables`));
+          throw new Error(`Material with ID ${frontendMaterialId} not found`);
+        }
       }
 
       // Get or create conversation based on material type
@@ -434,15 +461,14 @@ export class AiChatLatestGateway
       }
 
       // Get relevant context chunks if material is specified
-      // Use the original materialId from frontend for Pinecone search
-      // (could be LibraryGeneralMaterial ID or PDFMaterial ID, depending on how chunks were stored)
+      // For chapter files: chunks are stored with material_id = LibraryGeneralMaterial.id
+      // For PDFMaterials: chunks are stored with material_id = PDFMaterial.id
       let contextChunks: any[] = [];
-      const materialIdToSearch = frontendMaterialId;
       
-      if (materialIdToSearch) {
+      if (materialIdForPineconeSearch) {
         try {
           contextChunks = await this.documentProcessingService.searchRelevantChunks(
-            materialIdToSearch,
+            materialIdForPineconeSearch,
             data.message,
             5
           );
@@ -450,7 +476,7 @@ export class AiChatLatestGateway
           if (contextChunks.length > 0) {
             this.logger.log(colors.green(`✅ Found ${contextChunks.length} relevant chunks from material`));
           } else {
-            this.logger.log(colors.yellow(`⚠️ No chunks found for material: ${materialIdToSearch}`));
+            this.logger.log(colors.yellow(`⚠️ No chunks found for material: ${materialIdForPineconeSearch}`));
           }
         } catch (error) {
           this.logger.warn(colors.yellow(`⚠️ Could not search chunks: ${error.message}`));
