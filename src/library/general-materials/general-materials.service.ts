@@ -1242,6 +1242,7 @@ export class GeneralMaterialsService {
               file.buffer,
               fileTypeString,
               libraryUser.platformId,
+              pdfMaterial.id, // Pass PDFMaterial.id for Pinecone storage
             );
 
             // Update chapter status (in a separate transaction to avoid long-running transaction)
@@ -1332,6 +1333,7 @@ export class GeneralMaterialsService {
     fileBuffer: Buffer,
     fileType: string,
     platformId: string,
+    pdfMaterialId: string, // PDFMaterial.id to use for Pinecone storage (like ai-chat pattern)
   ): Promise<void> {
     const startTime = Date.now();
     this.logger.log(colors.cyan(`🔄 Processing chapter file for AI chat from buffer: ${chapterFile.fileName}`));
@@ -1392,9 +1394,12 @@ export class GeneralMaterialsService {
       }
 
       // Step 5: Save chunks and embeddings to Pinecone and database
-      this.logger.log(colors.blue(`💾 Saving chunks and embeddings...`));
+      // Use PDFMaterial.id for Pinecone storage (like ai-chat pattern)
+      // But use LibraryGeneralMaterial.id for database table (foreign key constraint)
+      this.logger.log(colors.blue(`💾 Saving chunks and embeddings with PDFMaterial ID: ${pdfMaterialId} for Pinecone, LibraryGeneralMaterial ID: ${chapter.materialId} for database...`));
       await this.saveLibraryChunksAndEmbeddings(
-        chapter.materialId,
+        pdfMaterialId, // PDFMaterial.id for Pinecone storage
+        chapter.materialId, // LibraryGeneralMaterial.id for database foreign key
         chapter.id,
         chunkingResult.chunks,
         embeddingResult.embeddings,
@@ -1522,9 +1527,14 @@ export class GeneralMaterialsService {
 
   /**
    * Save chunks and embeddings to Pinecone and database for library materials
+   * Uses PDFMaterial.id for Pinecone storage (like ai-chat pattern)
+   * Uses LibraryGeneralMaterial.id for database table (foreign key constraint)
+   * @param pdfMaterialId - PDFMaterial.id for Pinecone storage
+   * @param libraryMaterialId - LibraryGeneralMaterial.id for database foreign key
    */
   private async saveLibraryChunksAndEmbeddings(
-    materialId: string,
+    pdfMaterialId: string, // PDFMaterial.id for Pinecone storage
+    libraryMaterialId: string, // LibraryGeneralMaterial.id for database foreign key
     chapterId: string,
     chunks: any[],
     embeddings: any[],
@@ -1533,11 +1543,12 @@ export class GeneralMaterialsService {
   ): Promise<void> {
     try {
       // Convert chunks to Pinecone format
+      // Use PDFMaterial.id for Pinecone storage (like ai-chat pattern)
       const pineconeChunks = chunks.map((chunk, index) =>
         this.pineconeService.convertToPineconeChunk(
           chunk,
           embeddings[index]?.embedding || [],
-          materialId,
+          pdfMaterialId, // PDFMaterial.id stored in Pinecone
           platformId, // Using platformId as school_id equivalent
         )
       );
@@ -1556,7 +1567,7 @@ export class GeneralMaterialsService {
             "chunkType", "pageNumber", "sectionTitle", embedding, "embeddingModel",
             "tokenCount", "wordCount", "orderIndex", keywords, summary, "createdAt", "updatedAt"
           ) VALUES (
-            ${chunk.id}, ${materialId}, ${chapterId}, ${processingId}, ${platformId},
+            ${chunk.id}, ${libraryMaterialId}, ${chapterId}, ${processingId}, ${platformId},
             ${chunk.content.replace(/\0/g, '')}, ${this.mapChunkType(chunk.chunkType)}::"ChunkType",
             ${chunk.metadata.pageNumber || null}, ${chunk.metadata.sectionTitle?.replace(/\0/g, '') || null},
             ${embedding?.embedding || []}::vector, ${embedding?.model || 'text-embedding-3-small'},

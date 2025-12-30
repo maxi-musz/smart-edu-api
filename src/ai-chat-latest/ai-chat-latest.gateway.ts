@@ -386,12 +386,6 @@ export class AiChatLatestGateway
         select: { 
           id: true, 
           platformId: true,
-          chapter: {
-            select: {
-              id: true,
-              materialId: true, // This is the LibraryGeneralMaterial.id we need for Pinecone
-            }
-          }
         },
       });
 
@@ -399,10 +393,20 @@ export class AiChatLatestGateway
 
       if (existingMaterial) {
         this.logger.log(colors.cyan(`📚 Detected LibraryGeneralMaterialChapterFile for chapter: ${frontendMaterialId}`));
-        // Chunks are stored in Pinecone with material_id = LibraryGeneralMaterial.id
-        // So we need to use the chapter's materialId for Pinecone search
-        materialIdForPineconeSearch = existingMaterial.chapter.materialId;
-        this.logger.log(colors.cyan(`📚 Using LibraryGeneralMaterial ID for Pinecone search: ${materialIdForPineconeSearch}`));
+        // Chunks are now stored in Pinecone with material_id = PDFMaterial.id (like ai-chat pattern)
+        // Find the PDFMaterial that corresponds to this chapter file
+        const pdfMaterial = await this.prisma.pDFMaterial.findFirst({
+          where: { materialId: existingMaterial.id },
+          select: { id: true },
+        });
+        
+        if (pdfMaterial) {
+          materialIdForPineconeSearch = pdfMaterial.id;
+          this.logger.log(colors.cyan(`📚 Using PDFMaterial ID for Pinecone search: ${materialIdForPineconeSearch}`));
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ PDFMaterial not found for chapter file: ${existingMaterial.id}`));
+          materialIdForPineconeSearch = null;
+        }
       } else {
         // Check if it's a PDFMaterial
         const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
@@ -461,8 +465,9 @@ export class AiChatLatestGateway
       }
 
       // Get relevant context chunks if material is specified
-      // For chapter files: chunks are stored with material_id = LibraryGeneralMaterial.id
-      // For PDFMaterials: chunks are stored with material_id = PDFMaterial.id
+      // Chunks are stored in Pinecone with material_id = PDFMaterial.id (like ai-chat pattern)
+      // For chapter files: find the corresponding PDFMaterial and use its ID
+      // For PDFMaterials: use the PDFMaterial.id directly
       let contextChunks: any[] = [];
       
       if (materialIdForPineconeSearch) {
@@ -490,7 +495,7 @@ export class AiChatLatestGateway
         data.message,
         contextChunks,
         systemPrompt,
-        (conversation as any).material_id ? await this.getConversationHistory(conversation.id, 50, userId) : [],
+        (conversation as any).material_id ? await this.getConversationHistory((conversation as any).material_id, userId) : [],
         Boolean((conversation as any).material_id)
       );
 
@@ -723,44 +728,70 @@ export class AiChatLatestGateway
         throw new Error('Material ID is required');
       }
 
-      // Validate that the material exists in PDFMaterial table
-      let material = await this.prisma.pDFMaterial.findUnique({
-        where: { id: data.materialId },
-        select: { id: true, title: true, status: true },
+      // Resolve materialId to PDFMaterial.id (messages are saved with PDFMaterial.id)
+      // If data.materialId is a chapter ID, find the corresponding PDFMaterial
+      let materialIdForHistory: string | null = null;
+      let materialTitle: string = 'Unknown Material';
+
+      // Check if it's a chapter file (library material)
+      const chapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+        where: { chapterId: data.materialId },
+        select: { 
+          id: true,
+          chapter: {
+            select: {
+              id: true,
+              title: true,
+            }
+          }
+        },
       });
 
-      // it can also be a library material
-      const libraryMaterialChapter = await this.prisma.libraryGeneralMaterialChapter.findUnique({
-        where: { id: data.materialId },
-        select: { id: true, title: true },
-      });
-
-      if (libraryMaterialChapter) {
-        material = {
-          id: libraryMaterialChapter.id,
-          title: libraryMaterialChapter.title,
-          status: 'published',
-        };
+      if (chapterFile) {
+        // Find the PDFMaterial that corresponds to this chapter file
+        const pdfMaterial = await this.prisma.pDFMaterial.findFirst({
+          where: { materialId: chapterFile.id },
+          select: { id: true, title: true, status: true },
+        });
+        
+        if (pdfMaterial) {
+          materialIdForHistory = pdfMaterial.id;
+          materialTitle = pdfMaterial.title || chapterFile.chapter.title;
+          this.logger.log(colors.cyan(`📚 Found PDFMaterial for chapter file: ${pdfMaterial.id}`));
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ PDFMaterial not found for chapter file: ${chapterFile.id}`));
+        }
+      } else {
+        // Check if it's a PDFMaterial directly
+        const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
+          where: { id: data.materialId },
+          select: { id: true, title: true, status: true },
+        });
+        
+        if (pdfMaterial) {
+          materialIdForHistory = pdfMaterial.id;
+          materialTitle = pdfMaterial.title;
+          this.logger.log(colors.cyan(`📄 Found PDFMaterial: ${pdfMaterial.id}`));
+        } else {
+          this.logger.error(colors.red(`❌ Material not found: ${data.materialId}`));
+          throw new Error(`Material with ID ${data.materialId} not found`);
+        }
       }
 
-      if (!material || !libraryMaterialChapter) {
-        this.logger.error(colors.red(`❌ Material not found: ${data.materialId}`));
-        throw new Error(`Material not found: ${data.materialId}`);
-      }
-
-      if (material && material.status !== 'published') {
-        this.logger.warn(colors.yellow(`⚠️ Material is not published: ${data.materialId}, status: ${material.status}`));
+      if (!materialIdForHistory) {
+        this.logger.error(colors.red(`❌ Could not resolve material ID for chat history: ${data.materialId}`));
+        throw new Error(`Could not resolve material ID for chat history`);
       }
 
       const parsedLimit = parseInt((data.limit || 50).toString());
       const parsedOffset = parseInt((data.offset || 0).toString());
 
-      this.logger.log(colors.cyan(`📖 Loading chat history by material - Material: ${data.materialId} (${material.title}), User: ${userId}, Limit: ${parsedLimit}, Offset: ${parsedOffset}`));
+      this.logger.log(colors.cyan(`📖 Loading chat history by material - Material: ${materialIdForHistory} (${materialTitle}), User: ${userId}, Limit: ${parsedLimit}, Offset: ${parsedOffset}`));
 
-      // Get chat history by material_id and user_id
+      // Get chat history by material_id (PDFMaterial.id) and user_id
       const messages = await this.prisma.chatMessage.findMany({
         where: {
-          material_id: data.materialId,
+          material_id: materialIdForHistory, // Use PDFMaterial.id (not chapter ID)
           user_id: userId,
         },
         orderBy: { createdAt: 'desc' },
@@ -783,16 +814,7 @@ export class AiChatLatestGateway
         createdAt: message.createdAt.toISOString(),
       }));
 
-      // Get usage limits
-      // if (!schoolId) {
-      //   this.logger.error(colors.red(`❌ School ID not found for user: ${user?.email}`));
-      //   throw new Error('School ID not found');
-      // }
-
-      const userData = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true }
-      });
+     
       const history = {
         conversationHistory,
         // usageLimits,
