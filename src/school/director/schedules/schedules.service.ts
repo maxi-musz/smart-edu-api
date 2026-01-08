@@ -39,7 +39,7 @@ export class SchedulesService {
           equals: String(dto.class),
           mode: 'insensitive'
         },
-        schoolId: userData.school_id, // Filter by school
+        // schoolId: userData.school_id, // Filter by school
       },
       select: { 
         id: true,
@@ -98,6 +98,22 @@ export class SchedulesService {
       ],
     });
 
+    // Log timetable entries details
+    this.logger.log(colors.yellow(`Found ${timetable.length} entries for classId: ${classData.id}`));
+    if (timetable.length > 0) {
+      timetable.forEach((entry, index) => {
+        this.logger.log(colors.cyan(`Entry ${index + 1}:`));
+        this.logger.log(colors.green(`  ID: ${entry.id}`));
+        this.logger.log(colors.green(`  Day: ${entry.day_of_week}`));
+        this.logger.log(colors.green(`  Class: ${entry.class?.name || 'N/A'} (${entry.class_id})`));
+        this.logger.log(colors.green(`  Subject: ${entry.subject?.name || 'N/A'} (${entry.subject_id})`));
+        this.logger.log(colors.green(`  Teacher: ${entry.teacher?.first_name || ''} ${entry.teacher?.last_name || ''} (${entry.teacher_id})`));
+        this.logger.log(colors.green(`  Time Slot: ${entry.timeSlot?.label || 'N/A'} (${entry.timeSlotId}) - ${entry.timeSlot?.startTime || 'N/A'} to ${entry.timeSlot?.endTime || 'N/A'}`));
+        this.logger.log(colors.green(`  Room: ${entry.room || 'N/A'}`));
+        this.logger.log(colors.green(`  Notes: ${entry.notes || 'N/A'}`));
+      });
+    }
+
     // Create a structured timetable
     const formattedTimetable = {
       class: availableClasses.map(cls => ({
@@ -119,8 +135,6 @@ export class SchedulesService {
         FRIDAY: this.formatDaySchedule(timetable, 'FRIDAY', timeSlots),
       }
     };
-
-    this.logger.log(`Found ${timetable.length} entries for classId: ${classData.id}`);
     return new ApiResponse(
       true,
       `Timetable for ${dto.class} retrieved successfully`,
@@ -184,6 +198,8 @@ export class SchedulesService {
       ]);
 
       this.logger.log(colors.green(`Found ${classes.length} classes, ${teachers.length} teachers, ${subjects.length} subjects, ${timeSlots.length} time slots`));
+      // i want to log the classes found (name)
+      this.logger.log(colors.yellow(`Classes found: ${classes.map(cls => cls.name).join(', ')}`));
       
       return new ApiResponse(
         true,
