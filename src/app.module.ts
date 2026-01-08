@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HelloModule } from './hello/hello.module';
@@ -18,6 +18,7 @@ import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { UserModule } from './user/user.module';
 import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
+import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
 
 @Module({
   imports: [
@@ -50,4 +51,11 @@ import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply request logger to all routes
+    consumer
+      .apply(RequestLoggerMiddleware)
+      .forRoutes('*');
+  }
+}

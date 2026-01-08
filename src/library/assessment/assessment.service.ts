@@ -452,7 +452,7 @@ export class AssessmentService {
    */
   async createAssessment(createAssessmentDto: CreateLibraryAssessmentDto, user: any): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Creating New Library Assessment: ${createAssessmentDto.title}`));
+      this.logger.log(colors.cyan(`[LIBRARY ASSESSMENT] Creating New Library Assessment: ${createAssessmentDto.title}`));
 
       // Get library user to ensure they exist and get their platform
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -474,6 +474,7 @@ export class AssessmentService {
       });
 
       if (!subject) {
+        this.logger.error(colors.red(`Subject not found or does not belong to your Platform`));
         throw new NotFoundException('Subject not found or does not belong to your platform');
       }
 
@@ -488,6 +489,7 @@ export class AssessmentService {
         });
 
         if (!chapter) {
+          this.logger.error(colors.red(`Chapter not found or does not belong to this subject`));
           throw new NotFoundException('Chapter not found or does not belong to this subject');
         }
       }
@@ -503,11 +505,13 @@ export class AssessmentService {
         });
 
         if (!topic) {
+          this.logger.error(colors.red(`Topic not found or does not belong to this subject`));
           throw new NotFoundException('Topic not found or does not belong to this subject');
         }
 
         // If chapterId is also provided, verify topic belongs to that chapter
         if (createAssessmentDto.chapterId && topic.chapterId !== createAssessmentDto.chapterId) {
+          this.logger.error(colors.red(`Topic does not belong to the specified chapter`));
           throw new BadRequestException('Topic does not belong to the specified chapter');
         }
       }
@@ -603,6 +607,7 @@ export class AssessmentService {
       });
 
       if (!libraryUser) {
+        this.logger.error(colors.red(`Library user not found: ${userId}`));
         throw new NotFoundException('Library user not found');
       }
 
@@ -950,7 +955,7 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Found ${questions.length} questions for assessment: ${assessmentId}`));
+      this.logger.log(colors.green(`Found ${questions.length} question, Questions: ${JSON.stringify(questions, null, 2)}`));
 
       return new ApiResponse(
         true,

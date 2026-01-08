@@ -311,7 +311,7 @@ export class TopicService {
       }
 
       // Fetch all materials in parallel
-      const [videos, materials, links, assignments, comments] = await Promise.all([
+      const [videos, materials, links, assignments, comments, cbts] = await Promise.all([
         // Videos
         this.prisma.libraryVideoLesson.findMany({
           where: {
@@ -517,6 +517,114 @@ export class TopicService {
             createdAt: 'desc',
           },
         }) as any,
+
+        // CBT Assessments (only CBT type, with questions, options, and correct answers)
+        this.prisma.libraryAssessment.findMany({
+          where: {
+            topicId: topicId,
+            platformId: libraryUser.platformId,
+            assessmentType: 'CBT',
+          },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            instructions: true,
+            assessmentType: true,
+            gradingType: true,
+            status: true,
+            duration: true,
+            timeLimit: true,
+            startDate: true,
+            endDate: true,
+            maxAttempts: true,
+            allowReview: true,
+            autoSubmit: true,
+            totalPoints: true,
+            passingScore: true,
+            showCorrectAnswers: true,
+            showFeedback: true,
+            studentCanViewGrading: true,
+            shuffleQuestions: true,
+            shuffleOptions: true,
+            isPublished: true,
+            publishedAt: true,
+            isResultReleased: true,
+            resultReleasedAt: true,
+            tags: true,
+            order: true,
+            createdAt: true,
+            updatedAt: true,
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
+              },
+            },
+            questions: {
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                order: true,
+                points: true,
+                isRequired: true,
+                timeLimit: true,
+                imageUrl: true,
+                audioUrl: true,
+                videoUrl: true,
+                allowMultipleAttempts: true,
+                showHint: true,
+                hintText: true,
+                minLength: true,
+                maxLength: true,
+                minValue: true,
+                maxValue: true,
+                explanation: true,
+                difficultyLevel: true,
+                createdAt: true,
+                updatedAt: true,
+                options: {
+                  select: {
+                    id: true,
+                    optionText: true,
+                    order: true,
+                    isCorrect: true,
+                    imageUrl: true,
+                    audioUrl: true,
+                  },
+                  orderBy: {
+                    order: 'asc',
+                  },
+                },
+                correctAnswers: {
+                  select: {
+                    id: true,
+                    answerText: true,
+                    answerNumber: true,
+                    answerDate: true,
+                    optionIds: true,
+                    answerJson: true,
+                  },
+                },
+              },
+              orderBy: {
+                order: 'asc',
+              },
+            },
+            _count: {
+              select: {
+                questions: true,
+                attempts: true,
+              },
+            },
+          },
+          orderBy: {
+            order: 'asc',
+          },
+        }) as any,
       ]);
 
       // Build detailed statistics/analysis
@@ -557,7 +665,8 @@ export class TopicService {
         totalLinks: links.length,
         totalAssignments: assignments.length,
         totalComments: comments.length,
-        totalContent: videos.length + materials.length + links.length + assignments.length,
+        totalCbts: cbts.length,
+        totalContent: videos.length + materials.length + links.length + assignments.length + cbts.length,
         
         // Video analysis
         totalVideoViews,
@@ -583,6 +692,11 @@ export class TopicService {
         totalReplies,
         editedComments: comments.filter(c => c.isEdited).length,
         
+        // CBT analysis
+        totalCbtQuestions: cbts.reduce((sum, cbt) => sum + (cbt._count?.questions || 0), 0),
+        totalCbtAttempts: cbts.reduce((sum, cbt) => sum + (cbt._count?.attempts || 0), 0),
+        publishedCbts: cbts.filter(cbt => cbt.isPublished).length,
+        
         // Total size
         totalContentSize: totalVideoSize + totalMaterialSize,
         totalContentSizeFormatted: this.formatBytes(totalVideoSize + totalMaterialSize),
@@ -605,6 +719,7 @@ export class TopicService {
           links,
           assignments,
           comments,
+          cbts,
         },
       };
 
@@ -616,6 +731,7 @@ export class TopicService {
       this.logger.log(colors.cyan(`   - Links: ${statistics.totalLinks}`));
       this.logger.log(colors.cyan(`   - Assignments: ${statistics.totalAssignments}`));
       this.logger.log(colors.cyan(`   - Comments: ${statistics.totalComments} (${statistics.topLevelComments} top-level, ${statistics.totalReplies} replies)`));
+      this.logger.log(colors.cyan(`   - CBT Assessments: ${statistics.totalCbts} (${statistics.totalCbtQuestions} questions, ${statistics.totalCbtAttempts} attempts)`));
       this.logger.log(colors.cyan(`   - Total Content: ${statistics.totalContent} items (${statistics.totalContentSizeFormatted} total size)`));
       
       if (Object.keys(statistics.materialTypeBreakdown).length > 0) {
