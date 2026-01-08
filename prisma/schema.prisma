@@ -192,6 +192,9 @@ model User {
   generalMaterialPurchases         LibraryGeneralMaterialPurchase[]
   generalMaterialChatConversations LibraryGeneralMaterialChatConversation[]
   generalMaterialChatMessages      LibraryGeneralMaterialChatMessage[]
+  libraryAssessmentAttemptsGraded  LibraryAssessmentAttempt[]               @relation("LibraryAssessmentGrader")
+  libraryAssessmentAttempts        LibraryAssessmentAttempt[]
+  libraryAssessmentResponses       LibraryAssessmentResponse[]
 }
 
 model Teacher {
@@ -1949,6 +1952,7 @@ model LibraryPlatform {
   generalMaterialChapterFiles      LibraryGeneralMaterialChapterFile[]
   generalMaterialProcessings       LibraryGeneralMaterialProcessing[]
   generalMaterialChunks            LibraryGeneralMaterialChunk[]
+  assessments                      LibraryAssessment[]
 }
 
 /// Users who belong to a LibraryPlatform (e.g. content team members,
@@ -1979,6 +1983,7 @@ model LibraryResourceUser {
   comments                 LibraryComment[]
   uploadedGeneralMaterials LibraryGeneralMaterial[]
   uploadedChapterFiles     LibraryGeneralMaterialChapterFile[]
+  createdAssessments       LibraryAssessment[]
 
   @@index([platformId])
 }
@@ -2027,6 +2032,7 @@ model LibrarySubject {
   links            LibraryLink[]
   comments         LibraryComment[]
   generalMaterials LibraryGeneralMaterial[]
+  assessments      LibraryAssessment[]
 
   @@unique([platformId, code])
   @@index([platformId, name])
@@ -2049,9 +2055,10 @@ model LibraryChapter {
   platform LibraryPlatform @relation(fields: [platformId], references: [id])
   subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
 
-  topics   LibraryTopic[]
-  links    LibraryLink[]
-  comments LibraryComment[]
+  topics      LibraryTopic[]
+  links       LibraryLink[]
+  comments    LibraryComment[]
+  assessments LibraryAssessment[]
 
   @@index([platformId, subjectId])
   @@index([subjectId, order])
@@ -2081,6 +2088,7 @@ model LibraryTopic {
   assignments LibraryAssignment[]
   links       LibraryLink[]
   comments    LibraryComment[]
+  assessments LibraryAssessment[]
 
   @@index([platformId, subjectId])
   @@index([subjectId, chapterId])
@@ -2264,6 +2272,242 @@ model LibraryLink {
   @@index([topicId])
   @@index([uploadedById])
   @@index([status])
+}
+
+/// Assessments created by librarians for public library content.
+/// These assessments can be attached to a subject (whole), chapter, or topic.
+/// Any user can take these assessments regardless of their school.
+model LibraryAssessment {
+  id          String  @id @default(cuid())
+  platformId  String
+  subjectId   String // Required - always attached to a subject
+  chapterId   String? // Optional - for chapter-level assessments
+  topicId     String? // Optional - for topic-level assessments
+  createdById String // LibraryResourceUser who created this assessment
+
+  title        String
+  description  String?
+  instructions String?
+
+  // Assessment settings
+  assessmentType AssessmentType @default(CBT)
+  gradingType    GradingType    @default(AUTOMATIC)
+  status         QuizStatus     @default(DRAFT)
+
+  // Timing
+  duration  Int? // Duration in minutes
+  timeLimit Int? // Time limit in seconds
+  startDate DateTime?
+  endDate   DateTime?
+
+  // Attempt settings
+  maxAttempts Int     @default(1)
+  allowReview Boolean @default(true)
+  autoSubmit  Boolean @default(false)
+
+  // Grading settings
+  totalPoints           Float   @default(100.0)
+  passingScore          Float   @default(50.0)
+  showCorrectAnswers    Boolean @default(false)
+  showFeedback          Boolean @default(true)
+  studentCanViewGrading Boolean @default(true)
+
+  // Question settings
+  shuffleQuestions Boolean @default(false)
+  shuffleOptions   Boolean @default(false)
+
+  // Publishing
+  isPublished      Boolean   @default(false)
+  publishedAt      DateTime?
+  isResultReleased Boolean   @default(false)
+  resultReleasedAt DateTime?
+
+  // Metadata
+  tags  String[] @default([])
+  order Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  platform  LibraryPlatform     @relation(fields: [platformId], references: [id])
+  subject   LibrarySubject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  chapter   LibraryChapter?     @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  topic     LibraryTopic?       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  createdBy LibraryResourceUser @relation(fields: [createdById], references: [id])
+
+  // Assessment content
+  questions LibraryAssessmentQuestion[]
+  attempts  LibraryAssessmentAttempt[]
+  analytics LibraryAssessmentAnalytics?
+
+  @@index([platformId])
+  @@index([subjectId])
+  @@index([chapterId])
+  @@index([topicId])
+  @@index([createdById])
+  @@index([status])
+  @@index([isPublished])
+  @@index([assessmentType])
+  @@index([startDate, endDate])
+}
+
+/// Questions within a library assessment
+model LibraryAssessmentQuestion {
+  id                    String          @id @default(cuid())
+  assessmentId          String
+  questionText          String
+  questionType          QuestionType
+  order                 Int
+  points                Float           @default(1.0)
+  isRequired            Boolean         @default(true)
+  timeLimit             Int?
+  imageUrl              String?
+  imageS3Key            String?
+  audioUrl              String?
+  videoUrl              String?
+  allowMultipleAttempts Boolean         @default(false)
+  showHint              Boolean         @default(false)
+  hintText              String?
+  minLength             Int?
+  maxLength             Int?
+  minValue              Float?
+  maxValue              Float?
+  explanation           String?
+  difficultyLevel       DifficultyLevel @default(MEDIUM)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  assessment     LibraryAssessment                @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  correctAnswers LibraryAssessmentCorrectAnswer[]
+  options        LibraryAssessmentOption[]
+  responses      LibraryAssessmentResponse[]
+
+  @@index([assessmentId, order])
+  @@index([questionType])
+}
+
+/// Options for multiple choice questions in library assessments
+model LibraryAssessmentOption {
+  id         String   @id @default(cuid())
+  questionId String
+  optionText String
+  order      Int
+  isCorrect  Boolean  @default(false)
+  imageUrl   String?
+  audioUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  question  LibraryAssessmentQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  responses LibraryAssessmentResponse[] @relation("LibraryResponseOptions")
+
+  @@index([questionId, order])
+}
+
+/// Correct answers for library assessment questions
+model LibraryAssessmentCorrectAnswer {
+  id           String    @id @default(cuid())
+  questionId   String
+  answerText   String?
+  answerNumber Float?
+  answerDate   DateTime?
+  optionIds    String[]
+  answerJson   Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  question LibraryAssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+/// Attempts by users taking library assessments (public, not tied to school)
+model LibraryAssessmentAttempt {
+  id              String            @id @default(cuid())
+  assessmentId    String
+  userId          String // Regular User ID (can be from any school)
+  attemptNumber   Int               @default(1)
+  status          QuizAttemptStatus @default(NOT_STARTED)
+  startedAt       DateTime?
+  submittedAt     DateTime?
+  timeSpent       Int? // Time spent in seconds
+  totalScore      Float             @default(0)
+  maxScore        Float
+  percentage      Float             @default(0)
+  passed          Boolean           @default(false)
+  isGraded        Boolean           @default(false)
+  gradedAt        DateTime?
+  gradedBy        String? // User ID who graded (if manual)
+  overallFeedback String?
+  gradeLetter     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  assessment LibraryAssessment           @relation(fields: [assessmentId], references: [id])
+  user       User                        @relation(fields: [userId], references: [id])
+  grader     User?                       @relation("LibraryAssessmentGrader", fields: [gradedBy], references: [id])
+  responses  LibraryAssessmentResponse[]
+
+  @@unique([assessmentId, userId, attemptNumber])
+  @@index([assessmentId])
+  @@index([userId])
+  @@index([status])
+  @@index([submittedAt])
+}
+
+/// Responses to questions in library assessment attempts
+model LibraryAssessmentResponse {
+  id              String    @id @default(cuid())
+  attemptId       String
+  questionId      String
+  userId          String
+  textAnswer      String?
+  numericAnswer   Float?
+  dateAnswer      DateTime?
+  selectedOptions String[]
+  fileUrls        String[]
+  isCorrect       Boolean?
+  pointsEarned    Float     @default(0)
+  maxPoints       Float
+  timeSpent       Int?
+  feedback        String?
+  isGraded        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  attempt            LibraryAssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question           LibraryAssessmentQuestion @relation(fields: [questionId], references: [id])
+  user               User                      @relation(fields: [userId], references: [id])
+  selectedOptionRefs LibraryAssessmentOption[] @relation("LibraryResponseOptions")
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([userId])
+}
+
+/// Analytics for library assessments
+model LibraryAssessmentAnalytics {
+  id              String   @id @default(cuid())
+  assessmentId    String   @unique
+  totalAttempts   Int      @default(0)
+  totalUsers      Int      @default(0)
+  averageScore    Float    @default(0)
+  averageTime     Int      @default(0)
+  passRate        Float    @default(0)
+  questionStats   Json
+  dailyAttempts   Json
+  hourlyAttempts  Json
+  completionRate  Float    @default(0)
+  abandonmentRate Float    @default(0)
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assessment LibraryAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
 }
 
 /// Non-video study materials under each topic/subject in a library:
