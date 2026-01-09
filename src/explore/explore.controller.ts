@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { ExploreService } from './explore.service';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
 import { ExploreDocs } from './docs';
-import { JwtGuard } from '../school/auth/guard';
+import { JwtGuard, OptionalJwtGuard } from '../school/auth/guard';
 
 @ApiTags('Explore')
 @Controller('explore')
@@ -29,9 +29,15 @@ export class ExploreController {
   }
 
   @Get('topics/:subjectId')
+  @UseGuards(OptionalJwtGuard)
   @ExploreDocs.getTopicsBySubject()
-  async getTopicsBySubject(@Param('subjectId') subjectId: string) {
-    return this.exploreService.getTopicsBySubject(subjectId);
+  async getTopicsBySubject(
+    @Request() req: any,
+    @Param('subjectId') subjectId: string,
+  ) {
+    // Optional authentication - if user is logged in, include their submissions
+    const user = req.user || null;
+    return this.exploreService.getTopicsBySubject(subjectId, user);
   }
 
   @Get('videos/:videoId/play')

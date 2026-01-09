@@ -30,7 +30,7 @@ console.log(data.data.recentVideos); // 20 recent videos
 | `/explore` | GET | ❌ No | Main explore page data (classes, subjects, recent videos) |
 | `/explore/subjects` | GET | ❌ No | Filtered & paginated subjects |
 | `/explore/videos` | GET | ❌ No | Filtered & paginated videos |
-| `/explore/topics/:subjectId` | GET | ❌ No | Complete subject resources (chapters → topics → videos/materials/assessments) |
+| `/explore/topics/:subjectId` | GET | ⚠️ Optional | Complete subject resources with user submissions (if authenticated) |
 | `/explore/videos/:videoId/play` | GET | ✅ Yes | Play video with unique view tracking |
 
 ---
@@ -368,7 +368,9 @@ const searchVideos = async (searchTerm, page = 1) => {
 
 ### 4. GET `/explore/topics/:subjectId` - Complete Subject Resources
 
-**Description:** Returns comprehensive resources for a subject including all chapters, topics under each chapter, and complete materials (videos, PDF/DOC files, published assessments) for each topic. This is a complete, fully-loaded response for building rich subject detail pages.
+**Description:** Returns comprehensive resources for a subject including all chapters, topics under each chapter, and complete materials (videos, PDF/DOC files, published assessments) for each topic. If user is authenticated, also includes their assessment submissions for topics. This is a complete, fully-loaded response for building rich subject detail pages.
+
+**Authentication:** ⚠️ Optional - If authenticated, includes user's assessment submissions. Works without authentication but won't include submissions.
 
 **Path Parameters:**
 
@@ -383,10 +385,15 @@ GET /api/v1/explore/topics/subject_123
 
 **Frontend Usage:**
 ```javascript
-// Fetch complete subject resources
-const fetchSubjectResources = async (subjectId) => {
+// Fetch complete subject resources (with optional authentication)
+const fetchSubjectResources = async (subjectId, userToken = null) => {
+  const headers = userToken ? {
+    'Authorization': `Bearer ${userToken}`
+  } : {};
+  
   const response = await fetch(
-    `https://your-api-domain.com/api/v1/explore/topics/${subjectId}`
+    `https://your-api-domain.com/api/v1/explore/topics/${subjectId}`,
+    { headers }
   );
   
   if (!response.ok) {
@@ -400,7 +407,7 @@ const fetchSubjectResources = async (subjectId) => {
   return data.data; // { subject, chapters, statistics }
 };
 
-// Usage example
+// Usage example without authentication (no submissions)
 try {
   const { subject, chapters, statistics } = await fetchSubjectResources('subject_123');
   
@@ -414,6 +421,30 @@ try {
       console.log(`    - ${topic.videos.length} videos`);
       console.log(`    - ${topic.materials.length} materials`);
       console.log(`    - ${topic.assessments.length} assessments`);
+      console.log(`    - ${topic.submissions.length} submissions`); // Empty if not authenticated
+    });
+  });
+} catch (error) {
+  console.error(error.message);
+}
+
+// Usage example WITH authentication (includes submissions)
+try {
+  const userToken = localStorage.getItem('authToken');
+  const { subject, chapters } = await fetchSubjectResources('subject_123', userToken);
+  
+  chapters.forEach(chapter => {
+    chapter.topics.forEach(topic => {
+      if (topic.submissions.length > 0) {
+        console.log(`\n${topic.title} - Your Submissions:`);
+        topic.submissions.forEach(submission => {
+          console.log(`  - ${submission.assessmentTitle}`);
+          console.log(`    Date: ${submission.dateTaken}`);
+          console.log(`    Score: ${submission.userScore}/${submission.maxScore} (${submission.percentage}%)`);
+          console.log(`    Status: ${submission.passed ? 'PASSED ✅' : 'FAILED ❌'}`);
+          console.log(`    Time: ${Math.floor(submission.timeSpent / 60)} minutes`);
+        });
+      }
     });
   });
 } catch (error) {
@@ -525,6 +556,23 @@ try {
                 "updatedAt": "2025-01-01T00:00:00.000Z"
               }
             ],
+            "submissions": [
+              {
+                "id": "attempt_123",
+                "assessmentId": "assessment_123",
+                "assessmentTitle": "Algebraic Expressions Quiz",
+                "attemptNumber": 1,
+                "status": "SUBMITTED",
+                "dateTaken": "Wed, Jan 15 2025",
+                "totalQuestions": 10,
+                "maxScore": 100,
+                "userScore": 75,
+                "percentage": 75,
+                "passed": true,
+                "timeSpent": 1250,
+                "passingScore": 70
+              }
+            ],
             "statistics": {
               "videosCount": 3,
               "materialsCount": 5,
@@ -581,6 +629,13 @@ try {
 - **Only PUBLISHED assessments** (students can take)
 - Includes: title, description, duration, passing score, question count
 - Does NOT include actual questions (use assessment-taking endpoint)
+
+**Submissions:**
+- **Only included if user is authenticated** (empty array for public access)
+- Shows user's assessment attempt history for assessments in the topic
+- Includes: assessment title, date taken (formatted), scores, pass/fail status, time spent
+- Sorted by most recent first
+- Multiple attempts for same assessment are all included
 
 **Statistics Levels:**
 
@@ -946,6 +1001,7 @@ All endpoints follow the standard response format:
   videos: Video[]          // All published videos
   materials: Material[]     // All published materials
   assessments: Assessment[] // All published assessments
+  submissions: Submission[] // User's assessment attempts (only if authenticated, empty array otherwise)
   statistics: {
     videosCount: number
     materialsCount: number
@@ -1020,6 +1076,25 @@ All endpoints follow the standard response format:
     totalSize: number
     totalQuestions: number
   }
+}
+```
+
+### AssessmentSubmission
+```typescript
+{
+  id: string               // Attempt ID
+  assessmentId: string     // Assessment ID
+  assessmentTitle: string  // Assessment title
+  attemptNumber: number    // 1, 2, 3, etc.
+  status: string           // "SUBMITTED", "GRADED", etc.
+  dateTaken: string        // "Wed, Jan 15 2025" format
+  totalQuestions: number   // Total questions in assessment
+  maxScore: number         // Maximum possible score
+  userScore: number        // User's actual score
+  percentage: number       // Score percentage (0-100)
+  passed: boolean          // Whether user passed
+  timeSpent: number        // Time in seconds
+  passingScore: number     // Passing percentage threshold
 }
 ```
 
@@ -1573,6 +1648,7 @@ const SubjectResourcesPage = ({ subjectId }) => {
 - **Videos:** Requires authentication via `/explore/videos/:videoId/play` endpoint
 - **Materials:** Direct download via `material.url` (no additional auth needed for published materials)
 - **Assessments:** Only published assessments shown; use dedicated assessment-taking endpoint to access questions
+- **Submissions:** Only included in topic resources if user is authenticated; shows user's assessment attempt history
 - **Material Types:** PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, and more
 
 ### 🔍 Search Behavior

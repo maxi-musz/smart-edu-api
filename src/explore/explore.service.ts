@@ -373,8 +373,13 @@ export class ExploreService {
     }
   }
 
-  async getTopicsBySubject(subjectId: string) {
-    this.logger.log(colors.cyan(`📚 Fetching comprehensive topic resources for subject: ${subjectId}`));
+  async getTopicsBySubject(subjectId: string, user?: any) {
+    const userId = user?.sub || null;
+    this.logger.log(
+      colors.cyan(
+        `📚 Fetching comprehensive topic resources for subject: ${subjectId}${userId ? ` (User: ${userId})` : ' (Public)'}`,
+      ),
+    );
 
     try {
       // Fetch the subject with its platform and class
@@ -575,11 +580,74 @@ export class ExploreService {
 
               const totalQuestions = assessmentsWithCounts.reduce((sum, assessment) => sum + assessment.questionsCount, 0);
 
+              // Get user submissions for assessments in this topic (if user is authenticated)
+              let submissions: any[] = [];
+              if (userId && assessmentsWithCounts.length > 0) {
+                const assessmentIds = assessmentsWithCounts.map(a => a.id);
+                this.logger.log(colors.yellow(`🔍 Searching submissions for userId: ${userId}, assessmentIds: ${assessmentIds.join(', ')}`));
+                
+                const userAttempts = await this.prisma.libraryAssessmentAttempt.findMany({
+                  where: {
+                    userId: userId,
+                    assessmentId: { in: assessmentIds }
+                  },
+                  select: {
+                    id: true,
+                    assessmentId: true,
+                    attemptNumber: true,
+                    status: true,
+                    submittedAt: true,
+                    totalScore: true,
+                    maxScore: true,
+                    percentage: true,
+                    passed: true,
+                    timeSpent: true,
+                    assessment: {
+                      select: {
+                        id: true,
+                        title: true,
+                        totalPoints: true,
+                        passingScore: true,
+                        _count: {
+                          select: {
+                            questions: true
+                          }
+                        }
+                      }
+                    }
+                  },
+                  orderBy: {
+                    submittedAt: 'desc'
+                  }
+                });
+
+                this.logger.log(colors.yellow(`📦 Found ${userAttempts.length} attempts for topic: ${topic.title}`));
+
+                submissions = userAttempts.map(attempt => ({
+                  id: attempt.id,
+                  assessmentId: attempt.assessmentId,
+                  assessmentTitle: attempt.assessment.title,
+                  attemptNumber: attempt.attemptNumber,
+                  status: attempt.status,
+                  dateTaken: attempt.submittedAt ? this.formatDate(attempt.submittedAt) : null,
+                  totalQuestions: attempt.assessment._count.questions,
+                  maxScore: attempt.maxScore,
+                  userScore: attempt.totalScore,
+                  percentage: Math.round(attempt.percentage),
+                  passed: attempt.passed,
+                  timeSpent: attempt.timeSpent,
+                  passingScore: attempt.assessment.passingScore
+                }));
+              } else {
+                this.logger.log(colors.gray(`⚠️ No submissions check: userId=${userId}, assessmentsCount=${assessmentsWithCounts.length}`));
+              }
+
               return {
                 ...topic,
                 videos: videos,
                 materials: materials,
                 assessments: assessmentsWithCounts,
+                submissions: submissions,
                 statistics: {
                   videosCount: videos.length,
                   materialsCount: materials.length,
@@ -607,7 +675,9 @@ export class ExploreService {
             totalQuestions: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalQuestions, 0)
           };
 
-          this.logger.log(colors.green(`    ✅ ${chapter.title}: ${chapterStats.topicsCount} topics, ${chapterStats.videosCount} videos, ${chapterStats.materialsCount} materials, ${chapterStats.assessmentsCount} assessments`));
+          const submissionsCount = topicsWithResources.reduce((sum, topic) => sum + topic.submissions.length, 0);
+          const submissionsLog = userId ? `, ${submissionsCount} submissions` : '';
+          this.logger.log(colors.green(`    ✅ ${chapter.title}: ${chapterStats.topicsCount} topics, ${chapterStats.videosCount} videos, ${chapterStats.materialsCount} materials, ${chapterStats.assessmentsCount} assessments${submissionsLog}`));
 
           return {
             ...chapter,
@@ -636,8 +706,15 @@ export class ExploreService {
         statistics: subjectStats
       };
 
+      // Calculate total submissions across all chapters/topics
+      const totalSubmissions = chaptersWithResources.reduce(
+        (sum, chapter) => sum + chapter.topics.reduce((topicSum, topic) => topicSum + topic.submissions.length, 0),
+        0
+      );
+      const submissionsSummary = userId ? `, ${totalSubmissions} submissions` : '';
+
       this.logger.log(colors.green(`✅ Complete resources retrieved for "${subject.name}"`));
-      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.chaptersCount} chapters, ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials, ${subjectStats.assessmentsCount} assessments`));
+      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.chaptersCount} chapters, ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials, ${subjectStats.assessmentsCount} assessments${submissionsSummary}`));
 
       return ResponseHelper.success('Subject resources retrieved successfully', data);
     } catch (error) {
@@ -762,6 +839,22 @@ export class ExploreService {
       this.logger.error(colors.red(`❌ Error retrieving video for playback: ${error.message}`));
       throw error;
     }
+  }
+
+  /**
+   * Format date to "Wed, Jan 15 2025" format
+   */
+  private formatDate(date: Date): string {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const d = new Date(date);
+    const dayName = days[d.getDay()];
+    const monthName = months[d.getMonth()];
+    const day = d.getDate();
+    const year = d.getFullYear();
+    
+    return `${dayName}, ${monthName} ${day} ${year}`;
   }
 }
 
