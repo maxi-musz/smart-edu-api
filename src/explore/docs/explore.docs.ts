@@ -211,17 +211,17 @@ export class ExploreDocs {
   static getTopicsBySubject() {
     return applyDecorators(
       ApiOperation({
-        summary: 'Get topics under a subject with video analytics',
+        summary: 'Get complete subject resources (chapters → topics → videos/materials/assessments)',
         description:
-          'Returns all topics under a specific subject along with video analytics for each topic.',
+          'Returns comprehensive resources for a subject: all chapters, topics under each chapter, and complete materials (videos, PDFs/DOCs, published assessments) for each topic. Includes detailed statistics at all levels.',
       }),
       ApiResponse({
         status: 200,
-        description: 'Topics retrieved successfully',
+        description: 'Subject resources retrieved successfully',
         schema: {
           example: {
             success: true,
-            message: 'Topics retrieved successfully',
+            message: 'Subject resources retrieved successfully',
             data: {
               subject: {
                 id: 'subject_123',
@@ -234,33 +234,24 @@ export class ExploreDocs {
                   name: 'Access Study',
                 },
               },
-              topics: [
+              chapters: [
                 {
-                  id: 'topic_123',
-                  title: 'Algebraic Expressions',
-                  description: 'Learn about algebraic expressions',
-                  order: 1,
-                  chapter: {
-                    id: 'chapter_123',
-                    title: 'Introduction to Algebra',
-                    order: 1,
-                  },
-                  analytics: {
-                    videosCount: 12,
-                    totalViews: 3450,
-                    totalDuration: 14400,
-                  },
-                  recentVideos: [
+                  id: 'chapter_123',
+                  title: 'Introduction to Algebra',
+                  topics: [
                     {
-                      id: 'video_123',
-                      title: 'Introduction to Algebraic Expressions',
-                      thumbnailUrl: 'https://s3.amazonaws.com/...',
-                      durationSeconds: 1200,
-                      views: 150,
+                      id: 'topic_123',
+                      title: 'Algebraic Expressions',
+                      videos: [{ id: 'video_123', title: '...', videoUrl: '...', views: 150 }],
+                      materials: [{ id: 'material_123', title: '...', url: '...', materialType: 'PDF' }],
+                      assessments: [{ id: 'assessment_123', title: '...', questionsCount: 10, status: 'PUBLISHED' }],
+                      statistics: { videosCount: 3, materialsCount: 5, assessmentsCount: 2, totalViews: 450 },
                     },
                   ],
+                  statistics: { topicsCount: 4, videosCount: 12, materialsCount: 15, assessmentsCount: 5 },
                 },
               ],
+              statistics: { chaptersCount: 5, topicsCount: 20, videosCount: 45, materialsCount: 60, assessmentsCount: 15 },
             },
           },
         },
