@@ -13,6 +13,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse as SwaggerApiResponse, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -185,14 +186,14 @@ export class CBTController {
   }
 
   /**
-   * CREATE QUESTION
-   * POST /library/assessment/cbt/:id/questions
+   * DELETE ORPHANED IMAGE
+   * DELETE /library/assessment/cbt/:id/questions/orphaned-image
    */
-  @Post(':id/questions')
-  @HttpCode(HttpStatus.CREATED)
+  @Delete(':id/questions/orphaned-image')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ 
-    summary: 'Add a new question to a CBT assessment',
-    description: 'Create a new question in the CBT. Supports multiple question types: multiple choice (single/multiple), true/false, short answer, long answer, numeric, etc. For questions with images, upload the image first using the upload-image endpoint and use the returned imageUrl and imageS3Key. Questions are automatically ordered if order is not specified.'
+    summary: 'Delete an orphaned image (uploaded but not attached to any question)',
+    description: 'Clean up images that were uploaded but never used because the user cancelled question creation. This endpoint deletes the image from S3 using the S3 key. Use this when a user uploads an image but then cancels/closes the modal before creating the question.'
   })
   @ApiParam({ 
     name: 'id', 
@@ -200,16 +201,93 @@ export class CBTController {
     example: 'cmjb9cbt123'
   })
   @ApiBody({ 
-    type: CreateLibraryCBTQuestionDto,
-    description: 'Question data including question text, type, options (for MCQ), correct answers, points, etc. For multiple choice questions, you can mark correct options using isCorrect: true in the options array, or provide correctAnswers with optionIds.'
+    description: 'S3 key of the orphaned image to delete',
+    schema: {
+      type: 'object',
+      properties: {
+        imageS3Key: {
+          type: 'string',
+          description: 'S3 key returned from upload-image endpoint',
+          example: 'library-assessment-images/platforms/123/assessments/456/question_1234567890_image.jpg'
+        }
+      },
+      required: ['imageS3Key']
+    }
   })
   @SwaggerApiResponse({ 
-    status: 201, 
-    description: 'Question created successfully. Returns the created question with all its options and correct answers.' 
+    status: 200, 
+    description: 'Orphaned image deleted successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Orphaned image deleted successfully',
+        data: {
+          assessmentId: 'cmjb9cbt123',
+          imageS3Key: 'library-assessment-images/platforms/123/assessments/456/question_1234567890_image.jpg',
+          imageDeleted: true
+        }
+      }
+    }
   })
   @SwaggerApiResponse({ 
     status: 400, 
-    description: 'Bad request - Invalid question data (e.g., missing required fields, invalid question type, missing options for MCQ)' 
+    description: 'Bad request - Failed to delete image from S3' 
+  })
+  @SwaggerApiResponse({ 
+    status: 404, 
+    description: 'Not found - CBT assessment not found or access denied' 
+  })
+  async deleteOrphanedImage(
+    @Param('id') assessmentId: string,
+    @Body('imageS3Key') imageS3Key: string,
+    @Request() req: any,
+  ) {
+    return await this.cbtService.deleteOrphanedImage(assessmentId, imageS3Key, req.user.sub);
+  }
+
+  /**
+   * CREATE QUESTION
+   * POST /library/assessment/cbt/:id/questions
+   */
+  @Post(':id/questions')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ 
+    summary: 'Add a new question to a CBT assessment (with optional image upload)',
+    description: 'Create a new question in the CBT with inline image upload. Send as multipart/form-data with "questionData" (JSON string) and optional "image" file. The image will be automatically uploaded to S3 during question creation, eliminating orphaned images. Questions are automatically ordered if order is not specified.'
+  })
+  @ApiParam({ 
+    name: 'id', 
+    description: 'ID of the CBT assessment',
+    example: 'cmjb9cbt123'
+  })
+  @ApiBody({ 
+    description: 'Send as multipart/form-data with "questionData" as JSON string and optional "image" file (max 5MB, JPEG/PNG/GIF/WEBP)',
+    schema: {
+      type: 'object',
+      properties: {
+        questionData: {
+          type: 'string',
+          description: 'JSON string of question data (see CreateLibraryCBTQuestionDto)',
+          example: '{"questionText":"What is 2+2?","questionType":"MULTIPLE_CHOICE_SINGLE","points":1,"options":[{"optionText":"3","order":1,"isCorrect":false},{"optionText":"4","order":2,"isCorrect":true}]}'
+        },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Optional image file for the question (max 5MB)'
+        }
+      },
+      required: ['questionData']
+    }
+  })
+  @SwaggerApiResponse({ 
+    status: 201, 
+    description: 'Question created successfully with image uploaded to S3 (if provided)' 
+  })
+  @SwaggerApiResponse({ 
+    status: 400, 
+    description: 'Bad request - Invalid question data or image format' 
   })
   @SwaggerApiResponse({ 
     status: 404, 
@@ -217,10 +295,19 @@ export class CBTController {
   })
   async createQuestion(
     @Param('id') assessmentId: string,
-    @Body() createQuestionDto: CreateLibraryCBTQuestionDto,
+    @Body('questionData') questionDataString: string,
+    @UploadedFile() image: Express.Multer.File,
     @Request() req: any,
   ) {
-    return await this.cbtService.createQuestion(assessmentId, createQuestionDto, req.user.sub);
+    // Parse the questionData JSON string
+    let createQuestionDto: CreateLibraryCBTQuestionDto;
+    try {
+      createQuestionDto = JSON.parse(questionDataString);
+    } catch (error) {
+      throw new BadRequestException('Invalid questionData JSON format');
+    }
+
+    return await this.cbtService.createQuestion(assessmentId, createQuestionDto, req.user.sub, image);
   }
 
   /**

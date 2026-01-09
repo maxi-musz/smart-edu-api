@@ -54,13 +54,18 @@ export class CBTService {
     assessmentId: string,
     createQuestionDto: CreateLibraryCBTQuestionDto,
     userId: string,
+    imageFile?: Express.Multer.File,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[LIBRARY CBT] Creating question in CBT: ${assessmentId}`));
+    
+    if (imageFile) {
+      this.logger.log(colors.cyan(`Image file attached: ${imageFile.originalname} (${(imageFile.size / 1024).toFixed(2)} KB)`));
+    }
     
     // Convert question field names from camelCase to snake_case for service compatibility
     const serviceQuestionDto = this.convertQuestionDtoToServiceFormat(createQuestionDto);
     
-    return await this.assessmentService.createQuestion(assessmentId, serviceQuestionDto, userId);
+    return await this.assessmentService.createQuestion(assessmentId, serviceQuestionDto, userId, imageFile);
   }
 
   /**
@@ -92,6 +97,18 @@ export class CBTService {
       userId,
       imageFile,
     );
+  }
+
+  /**
+   * Delete orphaned image (uploaded but not attached to any question)
+   */
+  async deleteOrphanedImage(
+    assessmentId: string,
+    imageS3Key: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY CBT] Deleting orphaned image: ${imageS3Key}`));
+    return await this.assessmentService.deleteOrphanedImage(assessmentId, imageS3Key, userId);
   }
 
   /**
