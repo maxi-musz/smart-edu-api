@@ -568,7 +568,7 @@ export class ContentService {
   }
 
   /**
-   * Get video for playback (tracks view)
+   * Get video for playback (tracks unique views like YouTube)
    */
   async getVideoForPlayback(user: any, videoId: string): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[LIBRARY CONTENT] Getting video for playback: ${videoId} for library user: ${user.email}`));
@@ -633,28 +633,52 @@ export class ContentService {
         throw new NotFoundException('Video not found or does not belong to your platform');
       }
 
-    //   log video url 
-    this.logger.log(colors.blue(`Video URL: ${video.videoUrl}`));
+      this.logger.log(colors.blue(`Video URL: ${video.videoUrl}`));
 
-      // Increment view count
-      const updatedVideo = await (this.prisma.libraryVideoLesson.update({
-        where: { id: videoId },
-        data: {
-          views: {
-            increment: 1,
+      // Check if user has already viewed this video (unique view tracking like YouTube)
+      const existingView = await this.prisma.libraryVideoView.findUnique({
+        where: {
+          videoId_userId: {
+            videoId: videoId,
+            userId: user.sub,
           },
         },
-        select: {
-          views: true,
-        },
-      }) as any);
+      });
+
+      let updatedViews = video.views;
+
+      // Only increment view count if this is a new unique view
+      if (!existingView) {
+        await this.prisma.$transaction([
+          // Increment view count
+          this.prisma.libraryVideoLesson.update({
+            where: { id: videoId },
+            data: {
+              views: { increment: 1 },
+            },
+          }),
+          // Record the view
+          this.prisma.libraryVideoView.create({
+            data: {
+              videoId: videoId,
+              userId: user.sub,
+            },
+          }),
+        ]);
+
+        updatedViews = video.views + 1;
+        this.logger.log(colors.green(`✅ New unique view recorded for video: ${video.title} by user: ${user.sub} (Total views: ${updatedViews})`));
+      } else {
+        this.logger.log(colors.yellow(`⚠️ User ${user.sub} has already viewed video: ${video.title} (View not counted)`));
+      }
 
       const responseData = {
         ...video,
-        views: updatedVideo.views,
+        views: updatedViews,
+        hasViewedBefore: !!existingView,
       };
 
-      this.logger.log(colors.green(`Video retrieved for playback: ${video.title} (Views: ${updatedVideo.views})`));
+      this.logger.log(colors.green(`Video retrieved for playback: ${video.title} (Total unique views: ${updatedViews})`));
       return new ApiResponse(true, 'Video retrieved successfully', responseData);
     } catch (error) {
       if (error instanceof NotFoundException) {

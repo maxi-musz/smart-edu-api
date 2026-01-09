@@ -19,6 +19,7 @@ import { memoryStorage } from 'multer';
 import { UserModule } from './user/user.module';
 import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
+import { ExploreModule } from './explore/explore.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { RequestLoggerMiddleware } from './shared/middleware/request-logger.midd
     LibraryModule,
     DeveloperModule,
     AiChatLatestModule,
+    ExploreModule,
   ],
   controllers: [AppController],
   providers: [AppService],
