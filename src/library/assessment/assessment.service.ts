@@ -672,7 +672,12 @@ export class AssessmentService {
   /**
    * Create a new question for an assessment
    */
-  async createQuestion(assessmentId: string, createQuestionDto: CreateLibraryAssessmentQuestionDto, userId: string): Promise<ApiResponse<any>> {
+  async createQuestion(
+    assessmentId: string, 
+    createQuestionDto: CreateLibraryAssessmentQuestionDto, 
+    userId: string,
+    imageFile?: Express.Multer.File
+  ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Creating question for assessment: ${assessmentId} by user: ${userId}`));
 
@@ -704,15 +709,25 @@ export class AssessmentService {
         throw new BadRequestException('Cannot add questions to a closed or archived assessment');
       }
 
-      // Extract image_url and image_s3_key from DTO if provided
-      let imageUrl: string | undefined = createQuestionDto.imageUrl;
-      let imageS3Key: string | undefined = createQuestionDto.imageS3Key;
+      // Handle image upload if file is provided
+      let imageUrl: string | undefined;
+      let imageS3Key: string | undefined;
 
-      // If image_s3_key not provided but image_url is, try to extract it from the URL
-      if (imageUrl && !imageS3Key) {
-        const s3UrlMatch = imageUrl.match(/https:\/\/[^/]+\.s3\.[^/]+\/(.+)$/);
-        if (s3UrlMatch) {
-          imageS3Key = s3UrlMatch[1];
+      if (imageFile) {
+        this.logger.log(colors.cyan(`Image file provided, uploading to S3...`));
+        try {
+          const timestamp = Date.now();
+          const s3Folder = `library-assessment-images/platforms/${libraryUser.platformId}/assessments/${assessmentId}`;
+          const fileName = `question_${timestamp}_${imageFile.originalname}`;
+          
+          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+
+          imageUrl = uploadResult.url;
+          imageS3Key = uploadResult.key;
+          this.logger.log(colors.green(`✅ Image uploaded successfully to S3: ${imageS3Key}`));
+        } catch (uploadError) {
+          this.logger.error(colors.red(`Error uploading image to S3: ${uploadError.message}`), uploadError.stack);
+          throw new InternalServerErrorException('Failed to upload image to S3');
         }
       }
 
@@ -1316,6 +1331,60 @@ export class AssessmentService {
       );
     } catch (error) {
       this.logger.error(colors.red(`Error updating question: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an orphaned image by S3 key (for images uploaded but never attached to a question)
+   */
+  async deleteOrphanedImage(assessmentId: string, imageS3Key: string, userId: string): Promise<ApiResponse<any>> {
+    try {
+      this.logger.log(colors.cyan(`Deleting orphaned image: ${imageS3Key} for assessment: ${assessmentId}`));
+
+      // Get library user
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: userId },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify the assessment exists and the user has access to it
+      const assessment = await this.prisma.libraryAssessment.findFirst({
+        where: {
+          id: assessmentId,
+          platformId: libraryUser.platformId,
+          createdById: userId,
+        },
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Delete the image from S3
+      try {
+        await this.storageService.deleteFile(imageS3Key);
+        this.logger.log(colors.green(`✅ Orphaned image deleted from S3: ${imageS3Key}`));
+      } catch (s3Error) {
+        this.logger.error(colors.red(`Failed to delete orphaned image from S3: ${s3Error.message}`));
+        throw new BadRequestException(`Failed to delete image from S3: ${s3Error.message}`);
+      }
+
+      return new ApiResponse(
+        true,
+        'Orphaned image deleted successfully',
+        {
+          assessmentId: assessmentId,
+          imageS3Key: imageS3Key,
+          imageDeleted: true,
+        }
+      );
+    } catch (error) {
+      this.logger.error(colors.red(`Error deleting orphaned image: ${error.message}`));
       throw error;
     }
   }

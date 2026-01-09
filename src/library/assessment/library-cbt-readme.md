@@ -11,17 +11,16 @@ This document provides complete API documentation for Library CBT (Computer-Base
 
 ## Table of Contents
 1. [Create CBT Assessment](#1-create-cbt-assessment)
-2. [Upload Question Image](#2-upload-question-image)
-3. [Create Question](#3-create-question)
-4. [Get CBT Questions](#4-get-cbt-questions)
-5. [Update Question](#5-update-question)
-6. [Delete Question Image](#6-delete-question-image)
-7. [Delete Question](#7-delete-question)
-8. [Update CBT](#8-update-cbt)
-9. [Delete CBT](#9-delete-cbt)
-10. [Publish CBT](#10-publish-cbt)
-11. [Unpublish CBT](#11-unpublish-cbt)
-12. [Get CBT by ID](#12-get-cbt-by-id)
+2. [Create Question (with optional image upload)](#2-create-question-with-optional-image-upload)
+3. [Get CBT Questions](#3-get-cbt-questions)
+4. [Update Question](#4-update-question)
+5. [Delete Question Image](#5-delete-question-image)
+6. [Delete Question](#6-delete-question)
+7. [Update CBT](#7-update-cbt)
+8. [Delete CBT](#8-delete-cbt)
+9. [Publish CBT](#9-publish-cbt)
+10. [Unpublish CBT](#10-unpublish-cbt)
+11. [Get CBT by ID](#11-get-cbt-by-id)
 
 ---
 
@@ -120,69 +119,12 @@ interface CreateCBTResponse {
 
 ---
 
-## 2. Upload Question Image
+## 2. Create Question (with optional image upload)
 
-Upload an image for a question (must be done BEFORE creating the question).
+Add a new question to a CBT assessment. **Images are uploaded inline** - no separate upload step needed! This prevents orphaned images when users cancel question creation.
 
-**Endpoint**: `POST /library/assessment/cbt/:id/questions/upload-image`  
+**Endpoint**: `POST /library/assessment/cbt/:id/questions`  
 **Content-Type**: `multipart/form-data`
-
-### Request
-
-- **URL Parameter**: `id` (CBT assessment ID)
-- **Form Data**: `image` (image file)
-  - Supported formats: JPEG, PNG, GIF, WEBP
-  - Max size: 5MB
-
-### Example (using FormData)
-
-```typescript
-const formData = new FormData();
-formData.append('image', imageFile); // imageFile is a File object
-
-const response = await fetch('/library/assessment/cbt/cmjb9cbt123/questions/upload-image', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-  },
-  body: formData,
-});
-```
-
-### Response
-
-```typescript
-interface UploadImageResponse {
-  success: boolean;
-  message: string;
-  data: {
-    imageUrl: string;        // Full S3 URL
-    imageS3Key: string;      // S3 key for reference
-  };
-  statusCode: 201;
-}
-```
-
-**Example Response:**
-```json
-{
-  "success": true,
-  "message": "Question image uploaded successfully",
-  "data": {
-    "imageUrl": "https://s3.amazonaws.com/bucket/library-assessment-images/platforms/123/assessments/456/question_1736339267_image.jpg",
-    "imageS3Key": "library-assessment-images/platforms/123/assessments/456/question_1736339267_image.jpg"
-  },
-  "statusCode": 201
-}
-```
-
----
-
-## 3. Create Question
-
-Add a new question to a CBT assessment.
-
-**Endpoint**: `POST /library/assessment/cbt/:id/questions`
 
 ### Question Types
 
@@ -202,10 +144,17 @@ type QuestionType =
   | 'RATING_SCALE';             // Rating scale
 ```
 
-### Request Body
+### Request Structure
+
+Send as `multipart/form-data` with two fields:
+
+1. **`questionData`** (required): JSON string containing question details
+2. **`image`** (optional): Image file (max 5MB, JPEG/PNG/GIF/WEBP)
+
+### Question Data Structure (sent as JSON string in `questionData` field)
 
 ```typescript
-interface CreateQuestionRequest {
+interface QuestionData {
   // Required fields
   questionText: string;                           // Question text/prompt
   questionType: QuestionType;                     // Type of question
@@ -216,9 +165,7 @@ interface CreateQuestionRequest {
   isRequired?: boolean;                           // Is required (default: true)
   timeLimit?: number;                             // Time limit in seconds (min: 10)
   
-  // Media URLs (use imageUrl from upload-image endpoint)
-  imageUrl?: string;                              // Question image URL
-  imageS3Key?: string;                            // S3 key from upload-image
+  // Media URLs (for audio/video - images are uploaded via the 'image' file field)
   audioUrl?: string;                              // Audio URL
   videoUrl?: string;                              // Video URL
   
@@ -259,73 +206,121 @@ interface CreateQuestionRequest {
 }
 ```
 
-### Example Request (Multiple Choice Single)
+### Example Request (Multiple Choice Single - No Image)
 
-```json
-{
-  "questionText": "What is the capital of France?",
-  "questionType": "MULTIPLE_CHOICE_SINGLE",
-  "points": 2,
-  "isRequired": true,
-  "explanation": "Paris is the capital and largest city of France.",
-  "difficultyLevel": "EASY",
-  "options": [
-    { "optionText": "Paris", "order": 1, "isCorrect": true },
-    { "optionText": "London", "order": 2, "isCorrect": false },
-    { "optionText": "Berlin", "order": 3, "isCorrect": false },
-    { "optionText": "Madrid", "order": 4, "isCorrect": false }
+```typescript
+const formData = new FormData();
+
+const questionData = {
+  questionText: "What is the capital of France?",
+  questionType: "MULTIPLE_CHOICE_SINGLE",
+  points: 2,
+  isRequired: true,
+  explanation: "Paris is the capital and largest city of France.",
+  difficultyLevel: "EASY",
+  options: [
+    { optionText: "Paris", order: 1, isCorrect: true },
+    { optionText: "London", order: 2, isCorrect: false },
+    { optionText: "Berlin", order: 3, isCorrect: false },
+    { optionText: "Madrid", order: 4, isCorrect: false }
   ]
-}
-```
+};
 
-### Example Request (True/False)
+formData.append('questionData', JSON.stringify(questionData));
 
-```json
-{
-  "questionText": "The Earth is flat.",
-  "questionType": "TRUE_FALSE",
-  "points": 1,
-  "explanation": "The Earth is approximately spherical in shape.",
-  "difficultyLevel": "EASY",
-  "options": [
-    { "optionText": "True", "order": 1, "isCorrect": false },
-    { "optionText": "False", "order": 2, "isCorrect": true }
-  ]
-}
+const response = await fetch('/library/assessment/cbt/cmjb9cbt123/questions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+  },
+  body: formData,
+});
 ```
 
 ### Example Request (With Image)
 
-```json
-{
-  "questionText": "Identify the shape shown in the image:",
-  "questionType": "MULTIPLE_CHOICE_SINGLE",
-  "points": 2,
-  "imageUrl": "https://s3.amazonaws.com/bucket/library-assessment-images/.../question_image.jpg",
-  "imageS3Key": "library-assessment-images/.../question_image.jpg",
-  "options": [
-    { "optionText": "Circle", "order": 1, "isCorrect": false },
-    { "optionText": "Square", "order": 2, "isCorrect": true },
-    { "optionText": "Triangle", "order": 3, "isCorrect": false }
+```typescript
+const formData = new FormData();
+
+const questionData = {
+  questionText: "Identify the shape shown in the image:",
+  questionType: "MULTIPLE_CHOICE_SINGLE",
+  points: 2,
+  explanation: "This is a square with equal sides and right angles.",
+  options: [
+    { optionText: "Circle", order: 1, isCorrect: false },
+    { optionText: "Square", order: 2, isCorrect: true },
+    { optionText: "Triangle", order: 3, isCorrect: false }
   ]
-}
+};
+
+formData.append('questionData', JSON.stringify(questionData));
+formData.append('image', imageFile); // imageFile is a File object
+
+const response = await fetch('/library/assessment/cbt/cmjb9cbt123/questions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+  },
+  body: formData,
+});
+```
+
+### Example Request (True/False)
+
+```typescript
+const formData = new FormData();
+
+const questionData = {
+  questionText: "The Earth is flat.",
+  questionType: "TRUE_FALSE",
+  points: 1,
+  explanation: "The Earth is approximately spherical in shape.",
+  difficultyLevel: "EASY",
+  options: [
+    { optionText: "True", order: 1, isCorrect: false },
+    { optionText: "False", order: 2, isCorrect: true }
+  ]
+};
+
+formData.append('questionData', JSON.stringify(questionData));
+
+const response = await fetch('/library/assessment/cbt/cmjb9cbt123/questions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+  },
+  body: formData,
+});
 ```
 
 ### Example Request (Short Answer)
 
-```json
-{
-  "questionText": "What is the chemical formula for water?",
-  "questionType": "SHORT_ANSWER",
-  "points": 1,
-  "minLength": 2,
-  "maxLength": 10,
-  "explanation": "Water is H2O - two hydrogen atoms bonded to one oxygen atom.",
-  "correctAnswers": [
-    { "answerText": "H2O" },
-    { "answerText": "h2o" }
+```typescript
+const formData = new FormData();
+
+const questionData = {
+  questionText: "What is the chemical formula for water?",
+  questionType: "SHORT_ANSWER",
+  points: 1,
+  minLength: 2,
+  maxLength: 10,
+  explanation: "Water is H2O - two hydrogen atoms bonded to one oxygen atom.",
+  correctAnswers: [
+    { answerText: "H2O" },
+    { answerText: "h2o" }
   ]
-}
+};
+
+formData.append('questionData', JSON.stringify(questionData));
+
+const response = await fetch('/library/assessment/cbt/cmjb9cbt123/questions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+  },
+  body: formData,
+});
 ```
 
 ### Response
@@ -335,13 +330,30 @@ interface CreateQuestionResponse {
   success: boolean;
   message: string;
   data: {
-    id: string;
-    questionText: string;
-    questionType: string;
-    order: number;
-    points: number;
-    isRequired: boolean;
-    // ... all other fields
+    question: {
+      id: string;
+      questionText: string;
+      questionType: string;
+      order: number;
+      points: number;
+      isRequired: boolean;
+      timeLimit: number | null;
+      imageUrl: string | null;        // S3 URL if image was uploaded
+      imageS3Key: string | null;      // S3 key if image was uploaded
+      audioUrl: string | null;
+      videoUrl: string | null;
+      allowMultipleAttempts: boolean;
+      showHint: boolean;
+      hintText: string | null;
+      minLength: number | null;
+      maxLength: number | null;
+      minValue: number | null;
+      maxValue: number | null;
+      explanation: string | null;
+      difficultyLevel: string;
+      createdAt: string;
+      updatedAt: string;
+    };
     options: Array<{
       id: string;
       optionText: string;
@@ -358,16 +370,51 @@ interface CreateQuestionResponse {
       optionIds: string[];
       answerJson: any | null;
     }>;
-    createdAt: string;
-    updatedAt: string;
+    assessment: {
+      id: string;
+      title: string;
+      totalPoints: number;
+    };
   };
   statusCode: 201;
 }
 ```
 
+**Example Response:**
+```json
+{
+  "success": true,
+  "message": "Question created successfully",
+  "data": {
+    "question": {
+      "id": "cmjb9q123",
+      "questionText": "Identify the shape shown in the image:",
+      "questionType": "MULTIPLE_CHOICE_SINGLE",
+      "order": 1,
+      "points": 2,
+      "imageUrl": "https://s3.amazonaws.com/bucket/library-assessment-images/platforms/123/assessments/456/question_1736339267_shape.jpg",
+      "imageS3Key": "library-assessment-images/platforms/123/assessments/456/question_1736339267_shape.jpg",
+      "explanation": "This is a square with equal sides and right angles.",
+      "difficultyLevel": "EASY"
+    },
+    "options": [
+      { "id": "opt1", "optionText": "Circle", "order": 1, "isCorrect": false },
+      { "id": "opt2", "optionText": "Square", "order": 2, "isCorrect": true },
+      { "id": "opt3", "optionText": "Triangle", "order": 3, "isCorrect": false }
+    ],
+    "correctAnswers": [],
+    "assessment": {
+      "id": "cmjb9cbt123",
+      "title": "Geometry Quiz",
+      "totalPoints": 10
+    }
+  }
+}
+```
+
 ---
 
-## 4. Get CBT Questions
+## 3. Get CBT Questions
 
 Retrieve all questions for a CBT assessment.
 
@@ -413,7 +460,7 @@ interface GetQuestionsResponse {
 
 ---
 
-## 5. Update Question
+## 4. Update Question
 
 Update an existing question in a CBT.
 
@@ -494,7 +541,7 @@ Same structure as Create Question response.
 
 ---
 
-## 6. Delete Question Image
+## 5. Delete Question Image
 
 Delete the image from a question.
 
@@ -519,7 +566,7 @@ interface DeleteImageResponse {
 
 ---
 
-## 7. Delete Question
+## 6. Delete Question
 
 Delete a question from a CBT.
 
@@ -546,7 +593,7 @@ interface DeleteQuestionResponse {
 
 ---
 
-## 8. Update CBT
+## 7. Update CBT
 
 Update a CBT assessment.
 
@@ -598,7 +645,7 @@ Returns the updated CBT assessment object.
 
 ---
 
-## 9. Delete CBT
+## 8. Delete CBT
 
 Delete a CBT assessment.
 
@@ -623,7 +670,7 @@ interface DeleteCBTResponse {
 
 ---
 
-## 10. Publish CBT
+## 9. Publish CBT
 
 Publish a CBT to make it available to users.
 
@@ -650,7 +697,7 @@ interface PublishCBTResponse {
 
 ---
 
-## 11. Unpublish CBT
+## 10. Unpublish CBT
 
 Unpublish a CBT to hide it from users.
 
@@ -675,7 +722,7 @@ interface UnpublishCBTResponse {
 
 ---
 
-## 12. Get CBT by ID
+## 11. Get CBT by ID
 
 Retrieve a specific CBT assessment.
 
@@ -796,9 +843,16 @@ interface ErrorResponse {
 - Include in header: `Authorization: Bearer <token>`
 
 ### Image Upload Workflow
-1. Upload image using `/cbt/:id/questions/upload-image`
-2. Get `imageUrl` and `imageS3Key` from response
-3. Use these values when creating/updating question
+Images are now uploaded **inline** during question creation! Simply:
+1. Create a FormData object
+2. Add your question data as a JSON string in the `questionData` field
+3. Add your image file (if any) in the `image` field
+4. Send the request - image will be automatically uploaded to S3
+
+**Benefits:**
+- No orphaned images if user cancels question creation
+- Simpler workflow - one request instead of two
+- Automatic cleanup if question creation fails
 
 ### Question Types
 - **Multiple Choice (Single/Multiple)**: Requires `options` array
@@ -923,57 +977,45 @@ const createCBTResponse = await fetch('/library/assessment/cbt', {
 const cbt = await createCBTResponse.json();
 const cbtId = cbt.data.id;
 
-// 2. Upload image for question 1
-const imageFormData = new FormData();
-imageFormData.append('image', questionImageFile);
+// 2. Create question 1 WITH IMAGE (inline upload)
+const formData1 = new FormData();
+formData1.append('questionData', JSON.stringify({
+  questionText: 'Solve for x: 2x + 5 = 15',
+  questionType: 'MULTIPLE_CHOICE_SINGLE',
+  points: 2,
+  options: [
+    { optionText: 'x = 5', order: 1, isCorrect: true },
+    { optionText: 'x = 10', order: 2, isCorrect: false },
+    { optionText: 'x = 7.5', order: 3, isCorrect: false },
+  ],
+}));
+formData1.append('image', questionImageFile); // Image uploaded inline!
 
-const imageResponse = await fetch(`/library/assessment/cbt/${cbtId}/questions/upload-image`, {
+await fetch(`/library/assessment/cbt/${cbtId}/questions`, {
   method: 'POST',
   headers: { 'Authorization': `Bearer ${token}` },
-  body: imageFormData,
+  body: formData1,
 });
-const imageData = await imageResponse.json();
 
-// 3. Create question 1 with image
+// 3. Create question 2 (no image)
+const formData2 = new FormData();
+formData2.append('questionData', JSON.stringify({
+  questionText: 'Is 2 + 2 = 4?',
+  questionType: 'TRUE_FALSE',
+  points: 1,
+  options: [
+    { optionText: 'True', order: 1, isCorrect: true },
+    { optionText: 'False', order: 2, isCorrect: false },
+  ],
+}));
+
 await fetch(`/library/assessment/cbt/${cbtId}/questions`, {
   method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    questionText: 'Solve for x: 2x + 5 = 15',
-    questionType: 'MULTIPLE_CHOICE_SINGLE',
-    points: 2,
-    imageUrl: imageData.data.imageUrl,
-    imageS3Key: imageData.data.imageS3Key,
-    options: [
-      { optionText: 'x = 5', order: 1, isCorrect: true },
-      { optionText: 'x = 10', order: 2, isCorrect: false },
-      { optionText: 'x = 7.5', order: 3, isCorrect: false },
-    ],
-  }),
+  headers: { 'Authorization': `Bearer ${token}` },
+  body: formData2,
 });
 
-// 4. Create question 2 (no image)
-await fetch(`/library/assessment/cbt/${cbtId}/questions`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    questionText: 'Is 2 + 2 = 4?',
-    questionType: 'TRUE_FALSE',
-    points: 1,
-    options: [
-      { optionText: 'True', order: 1, isCorrect: true },
-      { optionText: 'False', order: 2, isCorrect: false },
-    ],
-  }),
-});
-
-// 5. Publish CBT
+// 4. Publish CBT
 await fetch(`/library/assessment/cbt/${cbtId}/publish`, {
   method: 'POST',
   headers: { 'Authorization': `Bearer ${token}` },
