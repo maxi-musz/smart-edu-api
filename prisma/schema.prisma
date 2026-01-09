@@ -2131,12 +2131,29 @@ model LibraryVideoLesson {
   subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
   topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
   uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
+  videoViews LibraryVideoView[]
 
   @@index([platformId])
   @@index([subjectId])
   @@index([topicId])
   @@index([uploadedById])
   @@index([status])
+}
+
+/// Track unique video views per user (like YouTube)
+/// Ensures each user is counted only once per video
+model LibraryVideoView {
+  id       String   @id @default(cuid())
+  videoId  String
+  userId   String // User.id or LibraryResourceUser.id who viewed
+  viewedAt DateTime @default(now())
+
+  video LibraryVideoLesson @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, userId])
+  @@index([videoId])
+  @@index([userId])
+  @@index([viewedAt])
 }
 
 /// Comments on library content (subjects, chapters, or topics).
