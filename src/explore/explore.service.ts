@@ -374,10 +374,10 @@ export class ExploreService {
   }
 
   async getTopicsBySubject(subjectId: string) {
-    this.logger.log(colors.cyan(`📖 Fetching topics for subject: ${subjectId}`));
+    this.logger.log(colors.cyan(`📚 Fetching comprehensive topic resources for subject: ${subjectId}`));
 
     try {
-      // Check if subject exists
+      // Fetch the subject with its platform and class
       const subject = await this.prisma.librarySubject.findUnique({
         where: { id: subjectId },
         select: {
@@ -388,6 +388,8 @@ export class ExploreService {
           color: true,
           thumbnailUrl: true,
           thumbnailKey: true,
+          createdAt: true,
+          updatedAt: true,
           platform: {
             select: {
               id: true,
@@ -408,19 +410,18 @@ export class ExploreService {
       });
 
       if (!subject) {
+        this.logger.error(colors.red(`❌ Subject not found: ${subjectId}`));
         throw new NotFoundException(`Subject with ID ${subjectId} not found`);
       }
 
-      // Get all topics with their chapters and video analytics
-      const topics = await this.prisma.libraryTopic.findMany({
+      this.logger.log(colors.yellow(`📖 Subject: ${subject.name} (${subject.code})`));
+
+      // Get all chapters for this subject
+      const chapters = await this.prisma.libraryChapter.findMany({
         where: {
-          subjectId,
+          subjectId: subjectId,
           is_active: true
         },
-        orderBy: [
-          { chapter: { order: 'asc' } },
-          { order: 'asc' }
-        ],
         select: {
           id: true,
           title: true,
@@ -428,80 +429,222 @@ export class ExploreService {
           order: true,
           is_active: true,
           createdAt: true,
-          chapter: {
+          updatedAt: true
+        },
+        orderBy: {
+          order: 'asc'
+        }
+      });
+
+      this.logger.log(colors.yellow(`📑 Found ${chapters.length} chapters`));
+
+      // For each chapter, get topics and their complete resources
+      const chaptersWithResources = await Promise.all(
+        chapters.map(async (chapter) => {
+          this.logger.log(colors.cyan(`  📂 Processing chapter: ${chapter.title}`));
+
+          // Get all topics for this chapter
+          const topics = await this.prisma.libraryTopic.findMany({
+            where: {
+              chapterId: chapter.id,
+              subjectId: subjectId,
+              is_active: true
+            },
             select: {
               id: true,
               title: true,
               description: true,
-              order: true
-            }
-          },
-          videos: {
-            where: {
-              status: 'published'
+              order: true,
+              is_active: true,
+              createdAt: true,
+              updatedAt: true
             },
-            take: 3,
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              title: true,
-              thumbnailUrl: true,
-              durationSeconds: true,
-              views: true,
-              createdAt: true
-            }
-          },
-          _count: {
-            select: {
-              videos: {
-                where: { status: 'published' }
-              }
-            }
-          }
-        }
-      });
-
-      // Calculate video analytics for each topic
-      const topicsWithAnalytics = await Promise.all(
-        topics.map(async (topic) => {
-          const videoStats = await this.prisma.libraryVideoLesson.aggregate({
-            where: {
-              topicId: topic.id,
-              status: 'published'
-            },
-            _sum: {
-              views: true,
-              durationSeconds: true
+            orderBy: {
+              order: 'asc'
             }
           });
 
+          // For each topic, get all resources (videos, materials, assessments)
+          const topicsWithResources = await Promise.all(
+            topics.map(async (topic) => {
+              const [videos, materials, assessments] = await Promise.all([
+                // Get published video lessons
+                this.prisma.libraryVideoLesson.findMany({
+                  where: {
+                    topicId: topic.id,
+                    status: 'published'
+                  },
+                  select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    videoUrl: true,
+                    thumbnailUrl: true,
+                    durationSeconds: true,
+                    sizeBytes: true,
+                    views: true,
+                    order: true,
+                    status: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    uploadedBy: {
+                      select: {
+                        id: true,
+                        email: true,
+                        first_name: true,
+                        last_name: true
+                      }
+                    }
+                  },
+                  orderBy: {
+                    order: 'asc'
+                  }
+                }),
+                // Get all materials (PDF, DOC, etc.)
+                this.prisma.libraryMaterial.findMany({
+                  where: {
+                    topicId: topic.id,
+                    status: 'published'
+                  },
+                  select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    url: true,
+                    s3Key: true,
+                    materialType: true,
+                    sizeBytes: true,
+                    pageCount: true,
+                    status: true,
+                    order: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    uploadedBy: {
+                      select: {
+                        id: true,
+                        email: true,
+                        first_name: true,
+                        last_name: true
+                      }
+                    }
+                  },
+                  orderBy: {
+                    order: 'asc'
+                  }
+                }),
+                // Get ONLY published assessments
+                this.prisma.libraryAssessment.findMany({
+                  where: {
+                    topicId: topic.id,
+                    status: 'ACTIVE' // Only published assessments
+                  },
+                  select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    duration: true,
+                    passingScore: true,
+                    status: true,
+                    createdAt: true,
+                    updatedAt: true
+                  },
+                  orderBy: {
+                    createdAt: 'desc'
+                  }
+                })
+              ]);
+
+              // Calculate statistics
+              const totalViews = videos.reduce((sum, video) => sum + video.views, 0);
+              const totalDuration = videos.reduce((sum, video) => sum + (video.durationSeconds || 0), 0);
+              const totalVideoSize = videos.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
+              const totalMaterialSize = materials.reduce((sum, material) => sum + (material.sizeBytes || 0), 0);
+
+              // Get question counts for assessments
+              const assessmentsWithCounts = await Promise.all(
+                assessments.map(async (assessment) => {
+                  const questionCount = await this.prisma.libraryAssessmentQuestion.count({
+                    where: { assessmentId: assessment.id }
+                  });
+                  return {
+                    ...assessment,
+                    questionsCount: questionCount
+                  };
+                })
+              );
+
+              const totalQuestions = assessmentsWithCounts.reduce((sum, assessment) => sum + assessment.questionsCount, 0);
+
+              return {
+                ...topic,
+                videos: videos,
+                materials: materials,
+                assessments: assessmentsWithCounts,
+                statistics: {
+                  videosCount: videos.length,
+                  materialsCount: materials.length,
+                  assessmentsCount: assessments.length,
+                  totalViews: totalViews,
+                  totalDuration: totalDuration,
+                  totalVideoSize: totalVideoSize,
+                  totalMaterialSize: totalMaterialSize,
+                  totalSize: totalVideoSize + totalMaterialSize,
+                  totalQuestions: totalQuestions
+                }
+              };
+            })
+          );
+
+          // Calculate chapter-level statistics
+          const chapterStats = {
+            topicsCount: topics.length,
+            videosCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.videosCount, 0),
+            materialsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.materialsCount, 0),
+            assessmentsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.assessmentsCount, 0),
+            totalViews: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalViews, 0),
+            totalDuration: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalDuration, 0),
+            totalSize: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalSize, 0),
+            totalQuestions: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalQuestions, 0)
+          };
+
+          this.logger.log(colors.green(`    ✅ ${chapter.title}: ${chapterStats.topicsCount} topics, ${chapterStats.videosCount} videos, ${chapterStats.materialsCount} materials, ${chapterStats.assessmentsCount} assessments`));
+
           return {
-            id: topic.id,
-            title: topic.title,
-            description: topic.description,
-            order: topic.order,
-            is_active: topic.is_active,
-            createdAt: topic.createdAt,
-            chapter: topic.chapter,
-            analytics: {
-              videosCount: topic._count.videos,
-              totalViews: videoStats._sum.views || 0,
-              totalDuration: videoStats._sum.durationSeconds || 0
-            },
-            recentVideos: topic.videos
+            ...chapter,
+            topics: topicsWithResources,
+            statistics: chapterStats
           };
         })
       );
 
-      const data = {
-        subject,
-        topics: topicsWithAnalytics
+      // Calculate subject-level statistics
+      const subjectStats = {
+        chaptersCount: chapters.length,
+        topicsCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.topicsCount, 0),
+        videosCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.videosCount, 0),
+        materialsCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.materialsCount, 0),
+        assessmentsCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.assessmentsCount, 0),
+        totalViews: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalViews, 0),
+        totalDuration: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalDuration, 0),
+        totalSize: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalSize, 0),
+        totalQuestions: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalQuestions, 0)
       };
 
-      this.logger.log(colors.green(`✅ Topics retrieved: ${topicsWithAnalytics.length} topics for subject "${subject.name}"`));
-      return ResponseHelper.success('Topics retrieved successfully', data);
+      const data = {
+        subject,
+        chapters: chaptersWithResources,
+        statistics: subjectStats
+      };
+
+      this.logger.log(colors.green(`✅ Complete resources retrieved for "${subject.name}"`));
+      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.chaptersCount} chapters, ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials, ${subjectStats.assessmentsCount} assessments`));
+
+      return ResponseHelper.success('Subject resources retrieved successfully', data);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching topics: ${error.message}`));
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(colors.red(`❌ Error fetching subject resources: ${error.message}`));
       throw error;
     }
   }
