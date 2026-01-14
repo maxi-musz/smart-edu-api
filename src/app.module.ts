@@ -20,6 +20,7 @@ import { UserModule } from './user/user.module';
 import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
 import { ExploreModule } from './explore/explore.module';
+import { ExamPracticeModule } from './exam-practice/exam-practice.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ExploreModule } from './explore/explore.module';
     DeveloperModule,
     AiChatLatestModule,
     ExploreModule,
+    ExamPracticeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

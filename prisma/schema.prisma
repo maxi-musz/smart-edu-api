@@ -195,6 +195,9 @@ model User {
   libraryAssessmentAttemptsGraded  LibraryAssessmentAttempt[]               @relation("LibraryAssessmentGrader")
   libraryAssessmentAttempts        LibraryAssessmentAttempt[]
   libraryAssessmentResponses       LibraryAssessmentResponse[]
+  examBodyAssessmentAttempts       ExamBodyAssessmentAttempt[]
+  examBodyAssessmentResponses      ExamBodyAssessmentResponse[]
+  libraryVideoViews                LibraryVideoView[]
 }
 
 model Teacher {
@@ -1867,6 +1870,12 @@ enum LibraryPlatformStatus {
   archived
 }
 
+enum ExamBodyStatus {
+  active
+  inactive
+  archived
+}
+
 enum LibraryUserRole {
   admin
   manager
@@ -1953,6 +1962,261 @@ model LibraryPlatform {
   generalMaterialProcessings       LibraryGeneralMaterialProcessing[]
   generalMaterialChunks            LibraryGeneralMaterialChunk[]
   assessments                      LibraryAssessment[]
+}
+
+/// Nigerian Examination Bodies (WAEC, JAMB, NECO, etc.)
+/// These bodies can create assessments/past questions for students
+model ExamBody {
+  id          String         @id @default(cuid())
+  name        String         @unique // e.g., "WAEC", "JAMB", "NECO"
+  fullName    String // e.g., "West African Examinations Council"
+  code        String         @unique // e.g., "WAEC", "JAMB"
+  description String?
+  logoUrl     String? // Optional logo for the exam body
+  websiteUrl  String? // Official website
+  status      ExamBodyStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  subjects    ExamBodySubject[]
+  years       ExamBodyYear[]
+  assessments ExamBodyAssessment[]
+}
+
+/// Subjects under an exam body (e.g., WAEC Mathematics, JAMB English)
+model ExamBodySubject {
+  id          String         @id @default(cuid())
+  examBodyId  String
+  name        String // e.g., "Mathematics", "English Language"
+  code        String // e.g., "MATH", "ENG"
+  description String?
+  iconUrl     String? // Optional icon for the subject
+  order       Int            @default(0)
+  status      ExamBodyStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  examBody    ExamBody             @relation(fields: [examBodyId], references: [id], onDelete: Cascade)
+  assessments ExamBodyAssessment[]
+
+  @@unique([examBodyId, code])
+  @@index([examBodyId])
+  @@index([status])
+}
+
+/// Academic years for exam body past questions (e.g., "2024/2025", "2022/2023")
+model ExamBodyYear {
+  id          String         @id @default(cuid())
+  examBodyId  String
+  year        String // e.g., "2024/2025", "2022/2023"
+  description String? // e.g., "First Session", "Second Session"
+  startDate   DateTime? // Optional start date of exam period
+  endDate     DateTime? // Optional end date of exam period
+  order       Int            @default(0) // For sorting (most recent first)
+  status      ExamBodyStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  examBody    ExamBody             @relation(fields: [examBodyId], references: [id], onDelete: Cascade)
+  assessments ExamBodyAssessment[]
+
+  @@unique([examBodyId, year])
+  @@index([examBodyId])
+  @@index([status])
+}
+
+/// Past question assessments for exam bodies
+model ExamBodyAssessment {
+  id           String  @id @default(cuid())
+  examBodyId   String
+  subjectId    String
+  yearId       String
+  title        String // e.g., "WAEC Mathematics 2024/2025"
+  description  String?
+  instructions String? @db.Text
+
+  // Assessment settings
+  assessmentType AssessmentType @default(CBT)
+  duration       Int? // Duration in minutes
+  totalPoints    Float          @default(0)
+  passingScore   Float          @default(50) // Percentage
+
+  // Attempt settings
+  maxAttempts      Int     @default(999) // Users can take many times
+  allowReview      Boolean @default(true)
+  shuffleQuestions Boolean @default(true)
+  shuffleOptions   Boolean @default(true)
+
+  // Display settings
+  showCorrectAnswers Boolean @default(true)
+  showFeedback       Boolean @default(true)
+  showExplanation    Boolean @default(true)
+
+  // Status
+  status      ExamBodyStatus @default(active)
+  isPublished Boolean        @default(false)
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  examBody  ExamBody                     @relation(fields: [examBodyId], references: [id], onDelete: Cascade)
+  subject   ExamBodySubject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  year      ExamBodyYear                 @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  questions ExamBodyAssessmentQuestion[]
+  attempts  ExamBodyAssessmentAttempt[]
+
+  @@unique([examBodyId, subjectId, yearId])
+  @@index([examBodyId])
+  @@index([subjectId])
+  @@index([yearId])
+  @@index([status])
+  @@index([isPublished])
+}
+
+/// Questions for exam body assessments
+model ExamBodyAssessmentQuestion {
+  id           String       @id @default(cuid())
+  assessmentId String
+  questionText String       @db.Text
+  questionType QuestionType @default(MULTIPLE_CHOICE_SINGLE)
+
+  // Media attachments
+  imageUrl String?
+  audioUrl String?
+  videoUrl String?
+
+  // Settings
+  points      Float   @default(1)
+  order       Int     @default(0)
+  isRequired  Boolean @default(true)
+  explanation String? @db.Text // Explanation for the correct answer
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assessment     ExamBodyAssessment                @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options        ExamBodyAssessmentOption[]
+  correctAnswers ExamBodyAssessmentCorrectAnswer[]
+  responses      ExamBodyAssessmentResponse[]
+
+  @@index([assessmentId])
+  @@index([questionType])
+}
+
+/// Options for exam body assessment questions
+model ExamBodyAssessmentOption {
+  id         String  @id @default(cuid())
+  questionId String
+  optionText String  @db.Text
+  order      Int     @default(0)
+  isCorrect  Boolean @default(false) // For auto-generating correct answers
+
+  // Media attachments
+  imageUrl String?
+  audioUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  question ExamBodyAssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+/// Correct answers for exam body assessment questions
+model ExamBodyAssessmentCorrectAnswer {
+  id         String @id @default(cuid())
+  questionId String
+
+  // Different answer types
+  answerText   String? // For short answer, fill in blank
+  answerNumber Float? // For numeric questions
+  answerDate   DateTime? // For date questions
+  optionIds    String[] // For multiple choice (array of option IDs)
+  answerJson   Json? // For complex answers (matching, ordering, etc.)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  question ExamBodyAssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+/// User attempts for exam body assessments
+model ExamBodyAssessmentAttempt {
+  id            String            @id @default(cuid())
+  assessmentId  String
+  userId        String // From main User model
+  attemptNumber Int               @default(1)
+  status        QuizAttemptStatus @default(IN_PROGRESS)
+
+  // Timing
+  startedAt   DateTime?
+  submittedAt DateTime?
+  timeSpent   Int? // Time spent in seconds
+
+  // Scoring
+  totalScore Float   @default(0)
+  maxScore   Float   @default(0)
+  percentage Float   @default(0)
+  passed     Boolean @default(false)
+
+  // Grading
+  isGraded Boolean   @default(false)
+  gradedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assessment ExamBodyAssessment           @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user       User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responses  ExamBodyAssessmentResponse[]
+
+  @@unique([assessmentId, userId, attemptNumber])
+  @@index([assessmentId])
+  @@index([userId])
+  @@index([status])
+}
+
+/// User responses for exam body assessment questions
+model ExamBodyAssessmentResponse {
+  id         String @id @default(cuid())
+  attemptId  String
+  questionId String
+  userId     String // From main User model
+
+  // Answer data (flexible for different question types)
+  textAnswer      String? // For short/long answer
+  numericAnswer   Float? // For numeric questions
+  dateAnswer      DateTime? // For date questions
+  selectedOptions String[] // For multiple choice (array of option IDs)
+  fileUrls        String[] // For file upload questions
+  answerJson      Json? // For complex answers
+
+  // Grading
+  isCorrect    Boolean? // null if not graded yet
+  pointsEarned Float    @default(0)
+  maxPoints    Float    @default(0)
+  feedback     String?  @db.Text
+  isGraded     Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempt  ExamBodyAssessmentAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question ExamBodyAssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([userId])
 }
 
 /// Users who belong to a LibraryPlatform (e.g. content team members,
@@ -2149,6 +2413,7 @@ model LibraryVideoView {
   viewedAt DateTime @default(now())
 
   video LibraryVideoLesson @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User               @relation(fields: [userId], references: [id])
 
   @@unique([videoId, userId])
   @@index([videoId])
