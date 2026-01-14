@@ -805,7 +805,7 @@ export class AssessmentService {
           );
         }
 
-        // Create correct answers if provided
+        // Create correct answers if provided explicitly
         let correctAnswers: any[] = [];
         if (createQuestionDto.correctAnswers && createQuestionDto.correctAnswers.length > 0) {
           correctAnswers = await Promise.all(
@@ -822,6 +822,25 @@ export class AssessmentService {
               });
             })
           );
+        } else if (options.length > 0) {
+          // AUTO-GENERATE correct answers from options marked as isCorrect
+          const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
+          
+          if (correctOptionIds.length > 0) {
+            this.logger.log(colors.yellow(`🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options`));
+            
+            const correctAnswer = await prisma.libraryAssessmentCorrectAnswer.create({
+              data: {
+                questionId: question.id,
+                optionIds: correctOptionIds,
+              },
+            });
+            correctAnswers = [correctAnswer];
+            
+            this.logger.log(colors.green(`✅ Correct answer auto-generated with optionIds: [${correctOptionIds.join(', ')}]`));
+          } else {
+            this.logger.warn(colors.red(`⚠️ No options marked as correct and no correctAnswers provided for question: ${question.questionText}`));
+          }
         }
 
         return { question, options, correctAnswers };

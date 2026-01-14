@@ -83,5 +83,31 @@ export class ExploreAssessmentDocs {
       }),
     );
   }
+
+  static getAttemptResults() {
+    return applyDecorators(
+      ApiOperation({
+        summary: 'Get detailed results for a specific assessment attempt',
+        description:
+          'Retrieves comprehensive results including all questions, user answers, correct answers (if allowed), scores, and feedback. Users can only view their own attempts.',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Attempt results retrieved successfully',
+      }),
+      ApiResponse({
+        status: 401,
+        description: 'Unauthorized - Authentication required',
+      }),
+      ApiResponse({
+        status: 403,
+        description: 'Forbidden - Cannot view other users\' attempts',
+      }),
+      ApiResponse({
+        status: 404,
+        description: 'Attempt not found',
+      }),
+    );
+  }
 }
 
