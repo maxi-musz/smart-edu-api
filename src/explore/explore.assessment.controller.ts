@@ -51,5 +51,17 @@ export class ExploreAssessmentController {
       submitDto,
     );
   }
+
+  @Get('attempts/:attemptId')
+  @ExploreAssessmentDocs.getAttemptResults()
+  async getAttemptResults(
+    @Request() req: any,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.exploreAssessmentService.getAttemptResults(
+      req.user,
+      attemptId,
+    );
+  }
 }
 

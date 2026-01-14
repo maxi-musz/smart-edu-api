@@ -8,6 +8,17 @@ Authorization: Bearer <token>
 
 ---
 
+## Endpoints Summary
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/explore/assessments/:assessmentId` | GET | Get assessment details with user progress |
+| `/explore/assessments/:assessmentId/questions` | GET | Get all questions for an assessment |
+| `/explore/assessments/:assessmentId/submit` | POST | Submit assessment answers for grading |
+| `/explore/assessments/attempts/:attemptId` | GET | Get detailed results for a specific attempt |
+
+---
+
 ## Endpoints
 
 ### 1. GET `/explore/assessments/:assessmentId`
@@ -312,6 +323,158 @@ Submit assessment answers for automatic grading.
 
 ---
 
+### 4. GET `/explore/assessments/attempts/:attemptId`
+Get detailed results for a specific assessment attempt.
+
+**Path Parameters:**
+- `attemptId` (string, required) - Assessment attempt ID
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Attempt results retrieved successfully",
+  "data": {
+    "attempt": {
+      "id": "attempt_123",
+      "attemptNumber": 1,
+      "status": "SUBMITTED",
+      "startedAt": "2025-01-09T10:00:00.000Z",
+      "submittedAt": "2025-01-09T10:25:00.000Z",
+      "timeSpent": 1250,
+      "totalScore": 75,
+      "maxScore": 100,
+      "percentage": 75,
+      "passed": true,
+      "isGraded": true,
+      "gradedAt": "2025-01-09T10:25:30.000Z",
+      "grade": "C"
+    },
+    "assessment": {
+      "id": "assessment_123",
+      "title": "Mathematics Chapter 1 Assessment",
+      "description": "Test your understanding of algebraic expressions",
+      "totalPoints": 100,
+      "passingScore": 70,
+      "subject": {
+        "id": "subject_123",
+        "name": "Mathematics",
+        "code": "MATH"
+      },
+      "chapter": {
+        "id": "chapter_123",
+        "title": "Introduction to Algebra"
+      },
+      "topic": {
+        "id": "topic_123",
+        "title": "Algebraic Expressions"
+      }
+    },
+    "summary": {
+      "totalQuestions": 20,
+      "correctAnswers": 15,
+      "incorrectAnswers": 5,
+      "ungradedQuestions": 0
+    },
+    "responses": [
+      {
+        "questionId": "question_123",
+        "questionText": "What is the capital of France?",
+        "questionType": "MULTIPLE_CHOICE_SINGLE",
+        "points": 5,
+        "imageUrl": null,
+        "audioUrl": null,
+        "videoUrl": null,
+        "order": 1,
+        "options": [
+          {
+            "id": "option_1",
+            "optionText": "London",
+            "imageUrl": null,
+            "order": 1
+          },
+          {
+            "id": "option_2",
+            "optionText": "Paris",
+            "imageUrl": null,
+            "order": 2
+          },
+          {
+            "id": "option_3",
+            "optionText": "Berlin",
+            "imageUrl": null,
+            "order": 3
+          }
+        ],
+        "userAnswer": {
+          "textAnswer": null,
+          "numericAnswer": null,
+          "dateAnswer": null,
+          "selectedOptions": ["option_2"],
+          "fileUrls": []
+        },
+        "isCorrect": true,
+        "pointsEarned": 5,
+        "maxPoints": 5,
+        "feedback": "Correct!",
+        "timeSpent": 45,
+        "correctAnswer": {
+          "text": null,
+          "number": null,
+          "date": null,
+          "optionIds": ["option_2"]
+        },
+        "explanation": "Paris is the capital and largest city of France."
+      },
+      {
+        "questionId": "question_124",
+        "questionText": "Solve: 2x + 5 = 15",
+        "questionType": "SHORT_ANSWER",
+        "points": 10,
+        "imageUrl": null,
+        "audioUrl": null,
+        "videoUrl": null,
+        "order": 2,
+        "options": [],
+        "userAnswer": {
+          "textAnswer": "5",
+          "numericAnswer": null,
+          "dateAnswer": null,
+          "selectedOptions": [],
+          "fileUrls": []
+        },
+        "isCorrect": true,
+        "pointsEarned": 10,
+        "maxPoints": 10,
+        "feedback": "Correct!",
+        "timeSpent": 120,
+        "correctAnswer": {
+          "text": "5",
+          "number": null,
+          "date": null,
+          "optionIds": []
+        },
+        "explanation": "Subtract 5 from both sides: 2x = 10, then divide by 2: x = 5"
+      }
+    ]
+  }
+}
+```
+
+**Notes:**
+- Only the user who submitted the attempt can view its results
+- `correctAnswer` and `explanation` are only included if the assessment settings allow it (`showCorrectAnswers` and `showFeedback`)
+- Questions are returned in their original order
+- All response data includes user's answers and grading results
+
+**Status Codes:**
+- `200` - Success
+- `401` - Unauthorized (not logged in)
+- `403` - Forbidden (attempting to view another user's results)
+- `404` - Not found (attempt doesn't exist)
+
+---
+
 ## Frontend Usage
 
 ### Get Assessment Details
@@ -408,6 +571,64 @@ if (result.results.passed) {
 }
 ```
 
+### Get Attempt Results (View Graded Submission)
+```javascript
+const getAttemptResults = async (attemptId) => {
+  const response = await fetch(
+    `https://api.example.com/api/v1/explore/assessments/attempts/${attemptId}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+  
+  if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('You can only view your own attempts');
+    }
+    throw new Error('Failed to load attempt results');
+  }
+  
+  const data = await response.json();
+  return data.data;
+};
+
+// Usage Example - Display results after clicking on a submission
+const displayResults = async (attemptId) => {
+  try {
+    const { attempt, assessment, summary, responses } = await getAttemptResults(attemptId);
+    
+    console.log(`Assessment: ${assessment.title}`);
+    console.log(`Score: ${attempt.totalScore}/${attempt.maxScore} (${attempt.percentage}%)`);
+    console.log(`Grade: ${attempt.grade}`);
+    console.log(`Status: ${attempt.passed ? 'PASSED ✅' : 'FAILED ❌'}`);
+    console.log(`Time Spent: ${Math.floor(attempt.timeSpent / 60)} minutes`);
+    
+    // Display each question with user's answer vs correct answer
+    responses.forEach((response, index) => {
+      console.log(`\n${index + 1}. ${response.questionText}`);
+      console.log(`   Your answer:`, response.userAnswer);
+      console.log(`   Correct: ${response.isCorrect ? '✅' : '❌'}`);
+      console.log(`   Points: ${response.pointsEarned}/${response.maxPoints}`);
+      
+      if (response.correctAnswer) {
+        console.log(`   Correct answer:`, response.correctAnswer);
+      }
+      
+      if (response.explanation) {
+        console.log(`   Explanation: ${response.explanation}`);
+      }
+    });
+  } catch (error) {
+    console.error(error.message);
+  }
+};
+
+// Example: User clicks on a submission from the submissions list
+displayResults('attempt_123');
+```
+
 ---
 
 ## Assessment Flow
@@ -432,6 +653,13 @@ if (result.results.passed) {
    → Get immediate results
    → View score, correct answers (if enabled)
    → See remaining attempts
+
+4. User clicks on a previous submission (from submissions list)
+   GET /explore/assessments/attempts/:attemptId
+   → View detailed results for that attempt
+   → See all questions with user's answers vs correct answers
+   → Review explanations and feedback
+   → Check score breakdown and grading
 ```
 
 ---
