@@ -16,7 +16,7 @@ async function bootstrap() {
 
   const allowedOrigins = corsOriginsEnv
     ? corsOriginsEnv.split(',').map((o) => o.trim())
-    : ['*'];
+    : ['https://smart-edu-hub-dusky.vercel.app'];
 
   app.enableCors({
     origin: (origin, callback) => {
