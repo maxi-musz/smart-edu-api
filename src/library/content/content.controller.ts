@@ -37,7 +37,7 @@ export class ContentController {
     description: 'Starts a video upload session and returns a sessionId. Use the progress endpoint to track upload status.',
   })
   @ApiBody({
-    description: 'Video upload data with optional thumbnail',
+    description: 'Video upload data with optional thumbnail (duration is auto-extracted from video file)',
     schema: {
       type: 'object',
       properties: {

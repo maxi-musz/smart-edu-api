@@ -9,6 +9,11 @@ import { UploadLibraryMaterialDto } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
 import { UpdateLibraryVideoDto } from './dto/update-video.dto';
 import * as colors from 'colors';
+import * as ffmpeg from 'fluent-ffmpeg';
+import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
 export class ContentService {
@@ -164,6 +169,10 @@ export class ContentService {
 
       this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
 
+      // Extract video duration
+      this.logger.log(colors.cyan(`🎬 Extracting video duration...`));
+      const durationSeconds = await this.extractVideoDuration(videoFile);
+
       // Get next order
       const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
         where: { topicId: uploadDto.topicId, platformId: libraryUser.platformId },
@@ -189,6 +198,7 @@ export class ContentService {
             thumbnailUrl: thumbnailUrl,
             thumbnailS3Key: thumbnailS3KeyResult,
             sizeBytes: videoFile.size,
+            durationSeconds: durationSeconds,
             order: nextOrder,
             status: 'published',
           },
@@ -1279,6 +1289,48 @@ export class ContentService {
       default:
         return 'OTHER';
     }
+  }
+
+  /**
+   * Helper: Extract video duration from video file buffer
+   */
+  private async extractVideoDuration(videoFile: Express.Multer.File): Promise<number | null> {
+    return new Promise((resolve) => {
+      try {
+        // Create a temporary file from the buffer
+        const tempDir = os.tmpdir();
+        const tempFilePath = path.join(tempDir, `temp_video_${Date.now()}_${videoFile.originalname}`);
+        
+        fs.writeFileSync(tempFilePath, videoFile.buffer);
+        
+        // Use ffprobe to get video metadata
+        ffmpeg.ffprobe(tempFilePath, (err, metadata) => {
+          // Clean up temp file
+          try {
+            fs.unlinkSync(tempFilePath);
+          } catch (cleanupErr) {
+            this.logger.warn(colors.yellow(`⚠️ Failed to clean up temp file: ${cleanupErr.message}`));
+          }
+
+          if (err) {
+            this.logger.warn(colors.yellow(`⚠️ Could not extract video duration: ${err.message}`));
+            return resolve(null);
+          }
+
+          const duration = metadata?.format?.duration;
+          if (duration && !isNaN(duration)) {
+            this.logger.log(colors.cyan(`📹 Video duration: ${Math.floor(duration)} seconds`));
+            return resolve(Math.floor(duration));
+          }
+
+          this.logger.warn(colors.yellow(`⚠️ Video duration not found in metadata`));
+          return resolve(null);
+        });
+      } catch (error) {
+        this.logger.warn(colors.yellow(`⚠️ Error extracting video duration: ${error.message}`));
+        return resolve(null);
+      }
+    });
   }
 }
 
