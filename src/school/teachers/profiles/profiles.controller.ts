@@ -18,6 +18,7 @@ export class ProfilesController {
    * Protected endpoint
    */
   @Get()
+  
   @HttpCode(HttpStatus.OK)
   @GetTeacherProfileDocs.bearerAuth
   @GetTeacherProfileDocs.operation
