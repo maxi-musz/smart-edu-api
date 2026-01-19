@@ -395,6 +395,41 @@ export class AssessmentService {
 
       this.logger.log(colors.green(`Found ${questions.length} questions for assessment: ${assessmentId}`));
 
+      // Log detailed question information
+      // questions.forEach((question, index) => {
+      //   this.logger.log(colors.cyan(`\n📝 Question ${index + 1}:`));
+      //   this.logger.log(colors.white(`   ID: ${question.id}`));
+      //   this.logger.log(colors.white(`   Text: ${question.question_text}`));
+      //   this.logger.log(colors.white(`   Type: ${question.question_type}`));
+      //   this.logger.log(colors.white(`   Points: ${question.points}`));
+      //   this.logger.log(colors.white(`   Order: ${question.order}`));
+      //   this.logger.log(colors.white(`   Required: ${question.is_required}`));
+      //   this.logger.log(colors.white(`   Difficulty: ${question.difficulty_level}`));
+        
+      //   // Always show media fields (even if null)
+      //   this.logger.log(colors.blue(`   Image URL: ${question.image_url || 'null'}`));
+      //   if (question.audio_url) {
+      //     this.logger.log(colors.blue(`   Audio URL: ${question.audio_url}`));
+      //   }
+      //   if (question.video_url) {
+      //     this.logger.log(colors.blue(`   Video URL: ${question.video_url}`));
+      //   }
+        
+      //   if (question.options.length > 0) {
+      //     this.logger.log(colors.yellow(`   Options (${question.options.length}):`));
+      //     question.options.forEach((option, optIdx) => {
+      //       const correctMarker = option.is_correct ? '✓' : '✗';
+      //       this.logger.log(colors.white(`      ${optIdx + 1}. ${option.option_text} [${correctMarker}]`));
+      //     });
+      //   }
+        
+      //   if (question.correct_answers.length > 0) {
+      //     this.logger.log(colors.green(`   Correct Answers: ${JSON.stringify(question.correct_answers)}`));
+      //   }
+        
+      //   this.logger.log(colors.white(`   Total Responses: ${question._count.responses}`));
+      // });
+
       return ResponseHelper.success(
         'Assessment questions retrieved successfully',
         {
@@ -523,6 +558,117 @@ export class AssessmentService {
       }
     } catch (error) {
       this.logger.error(colors.red(`Error uploading question image: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Create question with image in a single atomic operation (RECOMMENDED)
+   * Uploads image, creates question, and rolls back image if question creation fails
+   * @param assessmentId - ID of the assessment
+   * @param questionDataString - JSON string of question data
+   * @param imageFile - Optional image file
+   * @param userId - ID of the teacher
+   */
+  async createQuestionWithImage(
+    assessmentId: string, 
+    questionDataString: string, 
+    imageFile: Express.Multer.File | undefined,
+    userId: string
+  ) {
+    let uploadedImageKey: string | undefined;
+    
+    try {
+      this.logger.log(colors.cyan(`Creating question with image for assessment: ${assessmentId}`));
+      
+      // Parse question data from JSON string
+      let createQuestionDto: CreateAssessmentQuestionDto;
+      try {
+        createQuestionDto = JSON.parse(questionDataString);
+      } catch (parseError) {
+        throw new BadRequestException('Invalid JSON in questionData field');
+      }
+      
+      // Verify assessment exists and teacher has access
+      const assessment = await this.prisma.assessment.findFirst({
+        where: {
+          id: assessmentId,
+          created_by: userId
+        },
+        include: {
+          school: {
+            select: {
+              id: true
+            }
+          }
+        }
+      });
+
+      if (!assessment) {
+        throw new NotFoundException('Assessment not found or you do not have access to it');
+      }
+
+      // Check if assessment allows modifications
+      if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
+        throw new BadRequestException('Cannot add questions to a closed or archived assessment');
+      }
+      
+      // Upload image to S3 if provided
+      if (imageFile) {
+        this.logger.log(colors.blue(`📤 Uploading image: ${imageFile.originalname}`));
+        
+        // Validate image
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedMimeTypes.includes(imageFile.mimetype)) {
+          throw new BadRequestException('Invalid image file type. Allowed: JPEG, PNG, GIF, WEBP');
+        }
+        
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (imageFile.size > maxSize) {
+          throw new BadRequestException('Image file size exceeds 5MB limit');
+        }
+        
+        // Upload to S3
+        const s3Folder = `assessment-images/schools/${assessment.school.id}/assessments/${assessmentId}`;
+        const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        
+        try {
+          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+          uploadedImageKey = uploadResult.key;
+          
+          // Add image data to DTO
+          createQuestionDto.image_url = uploadResult.url;
+          createQuestionDto.image_s3_key = uploadResult.key;
+          
+          this.logger.log(colors.green(`✅ Image uploaded: ${uploadResult.key}`));
+        } catch (uploadError) {
+          this.logger.error(colors.red(`❌ Image upload failed: ${uploadError.message}`));
+          throw new BadRequestException(`Failed to upload image: ${uploadError.message}`);
+        }
+      }
+      
+      // Create question in database
+      try {
+        const question = await this.createQuestion(assessmentId, createQuestionDto, userId);
+        this.logger.log(colors.green(`✅ Question created successfully with image`));
+        return question;
+      } catch (questionError) {
+        // Question creation failed - rollback image upload
+        if (uploadedImageKey) {
+          this.logger.warn(colors.yellow(`⚠️  Question creation failed. Rolling back image upload: ${uploadedImageKey}`));
+          try {
+            await this.storageService.deleteFile(uploadedImageKey);
+            this.logger.log(colors.green(`✅ Orphaned image deleted from S3`));
+          } catch (deleteError) {
+            this.logger.error(colors.red(`❌ Failed to delete orphaned image: ${deleteError.message}`));
+            // Continue throwing the original error
+          }
+        }
+        throw questionError;
+      }
+      
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Error in createQuestionWithImage: ${error.message}`));
       throw error;
     }
   }
