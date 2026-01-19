@@ -787,12 +787,10 @@ export class ExploreService {
       }
 
       // Check if user has already viewed this video (unique view tracking like YouTube)
-      const existingView = await this.prisma.libraryVideoView.findUnique({
+      const existingView = await this.prisma.libraryVideoView.findFirst({
         where: {
-          videoId_userId: {
-            videoId: videoId,
-            userId: user.sub, // JWT payload uses 'sub' for user ID
-          },
+          videoId: videoId,
+          userId: user.sub, // JWT payload uses 'sub' for user ID
         },
       });
 

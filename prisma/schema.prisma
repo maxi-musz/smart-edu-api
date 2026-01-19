@@ -198,6 +198,7 @@ model User {
   examBodyAssessmentAttempts       ExamBodyAssessmentAttempt[]
   examBodyAssessmentResponses      ExamBodyAssessmentResponse[]
   libraryVideoViews                LibraryVideoView[]
+  libraryVideoWatchHistory         LibraryVideoWatchHistory[]
 }
 
 model Teacher {
@@ -2248,6 +2249,8 @@ model LibraryResourceUser {
   uploadedGeneralMaterials LibraryGeneralMaterial[]
   uploadedChapterFiles     LibraryGeneralMaterialChapterFile[]
   createdAssessments       LibraryAssessment[]
+  videoViews               LibraryVideoView[]
+  videoWatchHistory        LibraryVideoWatchHistory[]
 
   @@index([platformId])
 }
@@ -2391,11 +2394,12 @@ model LibraryVideoLesson {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
-  subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
-  topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
-  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
-  videoViews LibraryVideoView[]
+  platform     LibraryPlatform            @relation(fields: [platformId], references: [id])
+  subject      LibrarySubject             @relation(fields: [subjectId], references: [id])
+  topic        LibraryTopic?              @relation(fields: [topicId], references: [id])
+  uploadedBy   LibraryResourceUser        @relation(fields: [uploadedById], references: [id])
+  videoViews   LibraryVideoView[]
+  watchHistory LibraryVideoWatchHistory[]
 
   @@index([platformId])
   @@index([subjectId])
@@ -2404,21 +2408,94 @@ model LibraryVideoLesson {
   @@index([status])
 }
 
-/// Track unique video views per user (like YouTube)
-/// Ensures each user is counted only once per video
+/// Track unique video views per user (like YouTube view counter)
+/// Ensures each user is counted only once per video for view count display
+/// This is for quick metrics like "1.2M views" - NOT for watch history
 model LibraryVideoView {
-  id       String   @id @default(cuid())
-  videoId  String
-  userId   String // User.id or LibraryResourceUser.id who viewed
+  id      String @id @default(cuid())
+  videoId String
+
+  // Polymorphic user reference - only ONE should be set
+  userId                String? // Regular User (student/teacher)
+  libraryResourceUserId String? // Library content creator/admin
+
   viewedAt DateTime @default(now())
 
-  video LibraryVideoLesson @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  user  User               @relation(fields: [userId], references: [id])
+  video               LibraryVideoLesson   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user                User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libraryResourceUser LibraryResourceUser? @relation(fields: [libraryResourceUserId], references: [id], onDelete: Cascade)
 
-  @@unique([videoId, userId])
+  @@unique([videoId, userId, libraryResourceUserId])
   @@index([videoId])
   @@index([userId])
+  @@index([libraryResourceUserId])
   @@index([viewedAt])
+}
+
+/// Complete watch history tracking (like YouTube watch history)
+/// Tracks every watch event with detailed metadata for analytics and user history
+model LibraryVideoWatchHistory {
+  id      String @id @default(cuid())
+  videoId String
+
+  // Polymorphic user reference - only ONE should be set
+  userId                String? // Regular User (student/teacher)
+  libraryResourceUserId String? // Library content creator/admin
+
+  // User context (for analytics)
+  schoolId String? // Which school the user belongs to
+  classId  String? // Which class the student is in (if applicable)
+  userRole String? // Role: student, teacher, school_director, libraryresourceowner, etc.
+
+  // Watch session metadata
+  watchedAt            DateTime @default(now())
+  watchDurationSeconds Int? // How long they actually watched (in seconds)
+  videoDurationSeconds Int? // Total video duration at time of watch
+  completionPercentage Float?   @default(0) // 0-100, calculated as (watchDuration / videoDuration) * 100
+
+  // Engagement tracking
+  isCompleted       Boolean @default(false) // True if watched > 90% of video
+  lastWatchPosition Int?    @default(0) // Last position in seconds (for resume functionality)
+  watchCount        Int     @default(1) // Number of times watched in this session
+
+  // Device & Platform info
+  deviceType String? // mobile, tablet, desktop, tv
+  platform   String? // ios, android, web
+  userAgent  String? // Browser/app user agent
+  ipAddress  String? // For geo-analytics (optional, privacy consideration)
+
+  // Source tracking (how they arrived at the video)
+  referrerSource String? // direct, search, recommendation, related_video, playlist, etc.
+  referrerUrl    String? // Previous page URL
+
+  // Quality metrics
+  videoQuality    String? // 360p, 480p, 720p, 1080p, etc.
+  bufferingEvents Int?    @default(0) // Number of buffering interruptions
+  playbackSpeed   Float?  @default(1.0) // 0.5x, 1x, 1.25x, 1.5x, 2x
+
+  // Session tracking
+  sessionId String? // Group multiple watches in same session
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  video               LibraryVideoLesson   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user                User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libraryResourceUser LibraryResourceUser? @relation(fields: [libraryResourceUserId], references: [id], onDelete: Cascade)
+
+  @@index([videoId]) // Query: "Who watched this video?"
+  @@index([userId]) // Query: "What did this user watch?"
+  @@index([libraryResourceUserId]) // Query: "What did this library user watch?"
+  @@index([schoolId]) // Query: "Watch history by school"
+  @@index([classId]) // Query: "Watch history by class"
+  @@index([watchedAt]) // Query: "Recent watches"
+  @@index([isCompleted]) // Query: "Completed videos"
+  @@index([completionPercentage]) // Query: "Videos with high/low completion"
+  @@index([sessionId]) // Query: "Group watches by session"
+  @@index([videoId, userId]) // Query: "This user's watches of this video"
+  @@index([videoId, schoolId]) // Query: "School's watches of this video"
+  @@index([userId, watchedAt]) // Query: "User's watch history chronologically"
 }
 
 /// Comments on library content (subjects, chapters, or topics).
