@@ -645,13 +645,47 @@ export class ContentService {
 
       this.logger.log(colors.blue(`Video URL: ${video.videoUrl}`));
 
-      // Check if user has already viewed this video (unique view tracking like YouTube)
-      const existingView = await this.prisma.libraryVideoView.findUnique({
+      // Extract userId and determine user type
+      const userId = user.sub || user.id;
+      let isLibraryUser = false;
+      
+      if (!userId) {
+        this.logger.error(colors.red(`❌ No valid user ID found in token. user.sub: ${user.sub}, user.id: ${user.id}`));
+        throw new BadRequestException('Invalid user session. Please log in again.');
+      }
+
+      // Determine which table the user belongs to
+      const regularUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true }
+      });
+
+      if (!regularUser) {
+        // Check library resource users table
+        const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+          where: { id: userId },
+          select: { id: true }
+        });
+
+        if (!libraryUser) {
+          this.logger.error(colors.red(`❌ User not found in any table: ${userId}`));
+          throw new NotFoundException('User not found');
+        }
+        
+        isLibraryUser = true;
+        this.logger.log(colors.blue(`📚 Library resource user detected: ${userId}`));
+      } else {
+        this.logger.log(colors.blue(`👤 Regular user detected: ${userId}`));
+      }
+
+      // Check if user has already viewed this video (unique view tracking)
+      const existingView = await this.prisma.libraryVideoView.findFirst({
         where: {
-          videoId_userId: {
-            videoId: videoId,
-            userId: user.sub,
-          },
+          videoId: videoId,
+          ...(isLibraryUser 
+            ? { libraryResourceUserId: userId }
+            : { userId: userId }
+          ),
         },
       });
 
@@ -659,27 +693,34 @@ export class ContentService {
 
       // Only increment view count if this is a new unique view
       if (!existingView) {
-        await this.prisma.$transaction([
-          // Increment view count
-          this.prisma.libraryVideoLesson.update({
-            where: { id: videoId },
-            data: {
-              views: { increment: 1 },
-            },
-          }),
-          // Record the view
-          this.prisma.libraryVideoView.create({
-            data: {
-              videoId: videoId,
-              userId: user.sub,
-            },
-          }),
-        ]);
+        try {
+          await this.prisma.$transaction([
+            // Increment view count
+            this.prisma.libraryVideoLesson.update({
+              where: { id: videoId },
+              data: { views: { increment: 1 } },
+            }),
+            // Record the unique view
+            this.prisma.libraryVideoView.create({
+              data: {
+                videoId: videoId,
+                userId: !isLibraryUser ? userId : null,
+                libraryResourceUserId: isLibraryUser ? userId : null,
+              },
+            }),
+          ]);
 
-        updatedViews = video.views + 1;
-        this.logger.log(colors.green(`✅ New unique view recorded for video: ${video.title} by user: ${user.sub} (Total views: ${updatedViews})`));
+          updatedViews = video.views + 1;
+          const userType = isLibraryUser ? 'library user' : 'user';
+          this.logger.log(colors.green(`✅ New unique view recorded for video: ${video.title} by ${userType}: ${userId} (Total views: ${updatedViews})`));
+        } catch (viewError) {
+          // If view tracking fails, log error but still return video
+          this.logger.error(colors.red(`❌ Failed to track view: ${viewError.message}`));
+          this.logger.warn(colors.yellow(`⚠️ Video playback will continue despite view tracking failure`));
+          // Don't throw - allow video playback to continue
+        }
       } else {
-        this.logger.log(colors.yellow(`⚠️ User ${user.sub} has already viewed video: ${video.title} (View not counted)`));
+        this.logger.log(colors.yellow(`⚠️ User ${userId} has already viewed video: ${video.title} (View not counted)`));
       }
 
       const responseData = {
@@ -697,6 +738,287 @@ export class ContentService {
 
       this.logger.error(colors.red(`Error getting video for playback: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to retrieve video');
+    }
+  }
+
+  /**
+   * Track detailed video watch history (YouTube-like tracking)
+   * Call this method when user stops watching or at regular intervals
+   */
+  async trackVideoWatch(
+    user: any,
+    videoId: string,
+    watchData: {
+      watchDurationSeconds?: number;
+      lastWatchPosition?: number;
+      deviceType?: string;
+      platform?: string;
+      referrerSource?: string;
+      videoQuality?: string;
+      playbackSpeed?: number;
+      bufferingEvents?: number;
+      sessionId?: string;
+      userAgent?: string;
+    }
+  ): Promise<ApiResponse<any>> {
+    try {
+      // Extract userId and determine user type
+      const userId = user.sub || user.id;
+      let isLibraryUser = false;
+      
+      if (!userId) {
+        throw new BadRequestException('Invalid user session');
+      }
+
+      // Determine user type
+      const regularUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          school_id: true,
+          role: true,
+          student: { select: { current_class_id: true } }
+        }
+      });
+
+      if (!regularUser) {
+        const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+          where: { id: userId },
+          select: { id: true }
+        });
+
+        if (!libraryUser) {
+          throw new NotFoundException('User not found');
+        }
+        
+        isLibraryUser = true;
+      }
+
+      // Get video details
+      const video = await this.prisma.libraryVideoLesson.findUnique({
+        where: { id: videoId },
+        select: { id: true, title: true, durationSeconds: true }
+      });
+
+      if (!video) {
+        throw new NotFoundException('Video not found');
+      }
+
+      // Calculate completion percentage
+      const completionPercentage = video.durationSeconds && watchData.watchDurationSeconds
+        ? Math.min(100, (watchData.watchDurationSeconds / video.durationSeconds) * 100)
+        : 0;
+
+      const isCompleted = completionPercentage >= 90; // Consider 90%+ as completed
+
+      // Prepare watch history data
+      const watchHistoryData: any = {
+        videoId,
+        userId: !isLibraryUser ? userId : null,
+        libraryResourceUserId: isLibraryUser ? userId : null,
+        schoolId: regularUser?.school_id || null,
+        classId: regularUser?.student?.current_class_id || null,
+        userRole: regularUser?.role || null,
+        watchDurationSeconds: watchData.watchDurationSeconds,
+        videoDurationSeconds: video.durationSeconds,
+        completionPercentage: Math.round(completionPercentage * 10) / 10, // Round to 1 decimal
+        isCompleted,
+        lastWatchPosition: watchData.lastWatchPosition || 0,
+        watchCount: 1,
+        deviceType: watchData.deviceType,
+        platform: watchData.platform,
+        referrerSource: watchData.referrerSource,
+        videoQuality: watchData.videoQuality,
+        bufferingEvents: watchData.bufferingEvents || 0,
+        playbackSpeed: watchData.playbackSpeed || 1.0,
+        sessionId: watchData.sessionId,
+        userAgent: watchData.userAgent,
+      };
+
+      // Create watch history record
+      const watchHistory = await this.prisma.libraryVideoWatchHistory.create({
+        data: watchHistoryData
+      });
+
+      this.logger.log(colors.green(
+        `📺 Watch tracked: ${video.title} | User: ${userId} | ` +
+        `Completion: ${completionPercentage.toFixed(1)}% | ` +
+        `Duration: ${watchData.watchDurationSeconds}s | ` +
+        `Completed: ${isCompleted ? 'Yes ✓' : 'No'}`
+      ));
+
+      return new ApiResponse(
+        true,
+        'Watch history tracked successfully',
+        {
+          watchId: watchHistory.id,
+          completionPercentage: watchHistory.completionPercentage,
+          isCompleted: watchHistory.isCompleted
+        }
+      );
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Failed to track watch history: ${error.message}`));
+      // Don't throw - tracking failure shouldn't block video playback
+      return new ApiResponse(false, 'Failed to track watch history', null);
+    }
+  }
+
+  /**
+   * Get user's watch history (chronological)
+   */
+  async getUserWatchHistory(
+    user: any,
+    options: { page?: number; limit?: number } = {}
+  ): Promise<ApiResponse<any>> {
+    try {
+      const { page = 1, limit = 20 } = options;
+      const skip = (page - 1) * limit;
+
+      const userId = user.sub || user.id;
+      let isLibraryUser = false;
+
+      // Determine user type
+      const regularUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true }
+      });
+
+      if (!regularUser) {
+        const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+          where: { id: userId },
+          select: { id: true }
+        });
+
+        if (!libraryUser) {
+          throw new NotFoundException('User not found');
+        }
+        
+        isLibraryUser = true;
+      }
+
+      // Get watch history
+      const [history, total] = await Promise.all([
+        this.prisma.libraryVideoWatchHistory.findMany({
+          where: isLibraryUser
+            ? { libraryResourceUserId: userId }
+            : { userId },
+          include: {
+            video: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                thumbnailUrl: true,
+                durationSeconds: true,
+                views: true,
+                subject: {
+                  select: { id: true, name: true, code: true, color: true }
+                },
+                topic: {
+                  select: { id: true, title: true }
+                }
+              }
+            }
+          },
+          orderBy: { watchedAt: 'desc' },
+          take: limit,
+          skip
+        }),
+        this.prisma.libraryVideoWatchHistory.count({
+          where: isLibraryUser
+            ? { libraryResourceUserId: userId }
+            : { userId }
+        })
+      ]);
+
+      this.logger.log(colors.blue(`📋 Watch history retrieved: ${history.length} records for user: ${userId}`));
+
+      return new ApiResponse(true, 'Watch history retrieved successfully', {
+        history,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      this.logger.error(colors.red(`Error retrieving watch history: ${error.message}`));
+      throw new InternalServerErrorException('Failed to retrieve watch history');
+    }
+  }
+
+  /**
+   * Get "Continue Watching" videos (10-90% completion)
+   */
+  async getContinueWatching(user: any): Promise<ApiResponse<any>> {
+    try {
+      const userId = user.sub || user.id;
+      let isLibraryUser = false;
+
+      // Determine user type
+      const regularUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true }
+      });
+
+      if (!regularUser) {
+        const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+          where: { id: userId },
+          select: { id: true }
+        });
+
+        if (!libraryUser) {
+          throw new NotFoundException('User not found');
+        }
+        
+        isLibraryUser = true;
+      }
+
+      // Get videos with partial completion
+      const continueWatching = await this.prisma.libraryVideoWatchHistory.findMany({
+        where: {
+          ...(isLibraryUser
+            ? { libraryResourceUserId: userId }
+            : { userId }
+          ),
+          completionPercentage: { gte: 10, lte: 90 },
+          isCompleted: false
+        },
+        distinct: ['videoId'],
+        include: {
+          video: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              thumbnailUrl: true,
+              durationSeconds: true,
+              subject: { select: { name: true, color: true } },
+              topic: { select: { title: true } }
+            }
+          }
+        },
+        orderBy: { watchedAt: 'desc' },
+        take: 10
+      });
+
+      const enriched = continueWatching.map(watch => ({
+        ...watch.video,
+        watchProgress: {
+          lastPosition: watch.lastWatchPosition,
+          completionPercentage: watch.completionPercentage,
+          lastWatched: watch.watchedAt,
+          watchDuration: watch.watchDurationSeconds
+        }
+      }));
+
+      this.logger.log(colors.blue(`▶️ Continue watching: ${enriched.length} videos for user: ${userId}`));
+
+      return new ApiResponse(true, 'Continue watching videos retrieved', enriched);
+    } catch (error) {
+      this.logger.error(colors.red(`Error retrieving continue watching: ${error.message}`));
+      throw new InternalServerErrorException('Failed to retrieve continue watching');
     }
   }
 
