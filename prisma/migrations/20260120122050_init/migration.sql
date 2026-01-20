@@ -933,6 +933,9 @@ CREATE TABLE "AssignmentGrade" (
     CONSTRAINT "AssignmentGrade_pkey" PRIMARY KEY ("id")
 );
 
+-- Ensure pgvector extension is available for vector column types
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- CreateTable
 CREATE TABLE "MaterialProcessing" (
     "id" TEXT NOT NULL,
@@ -1566,10 +1569,43 @@ CREATE TABLE "LibraryVideoLesson" (
 CREATE TABLE "LibraryVideoView" (
     "id" TEXT NOT NULL,
     "videoId" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
+    "userId" TEXT,
+    "libraryResourceUserId" TEXT,
     "viewedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "LibraryVideoView_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "LibraryVideoWatchHistory" (
+    "id" TEXT NOT NULL,
+    "videoId" TEXT NOT NULL,
+    "userId" TEXT,
+    "libraryResourceUserId" TEXT,
+    "schoolId" TEXT,
+    "classId" TEXT,
+    "userRole" TEXT,
+    "watchedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "watchDurationSeconds" INTEGER,
+    "videoDurationSeconds" INTEGER,
+    "completionPercentage" DOUBLE PRECISION DEFAULT 0,
+    "isCompleted" BOOLEAN NOT NULL DEFAULT false,
+    "lastWatchPosition" INTEGER DEFAULT 0,
+    "watchCount" INTEGER NOT NULL DEFAULT 1,
+    "deviceType" TEXT,
+    "platform" TEXT,
+    "userAgent" TEXT,
+    "ipAddress" TEXT,
+    "referrerSource" TEXT,
+    "referrerUrl" TEXT,
+    "videoQuality" TEXT,
+    "bufferingEvents" INTEGER DEFAULT 0,
+    "playbackSpeed" DOUBLE PRECISION DEFAULT 1.0,
+    "sessionId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LibraryVideoWatchHistory_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -2800,10 +2836,49 @@ CREATE INDEX "LibraryVideoView_videoId_idx" ON "LibraryVideoView"("videoId");
 CREATE INDEX "LibraryVideoView_userId_idx" ON "LibraryVideoView"("userId");
 
 -- CreateIndex
+CREATE INDEX "LibraryVideoView_libraryResourceUserId_idx" ON "LibraryVideoView"("libraryResourceUserId");
+
+-- CreateIndex
 CREATE INDEX "LibraryVideoView_viewedAt_idx" ON "LibraryVideoView"("viewedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "LibraryVideoView_videoId_userId_key" ON "LibraryVideoView"("videoId", "userId");
+CREATE UNIQUE INDEX "LibraryVideoView_videoId_userId_libraryResourceUserId_key" ON "LibraryVideoView"("videoId", "userId", "libraryResourceUserId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_videoId_idx" ON "LibraryVideoWatchHistory"("videoId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_userId_idx" ON "LibraryVideoWatchHistory"("userId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_libraryResourceUserId_idx" ON "LibraryVideoWatchHistory"("libraryResourceUserId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_schoolId_idx" ON "LibraryVideoWatchHistory"("schoolId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_classId_idx" ON "LibraryVideoWatchHistory"("classId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_watchedAt_idx" ON "LibraryVideoWatchHistory"("watchedAt");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_isCompleted_idx" ON "LibraryVideoWatchHistory"("isCompleted");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_completionPercentage_idx" ON "LibraryVideoWatchHistory"("completionPercentage");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_sessionId_idx" ON "LibraryVideoWatchHistory"("sessionId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_videoId_userId_idx" ON "LibraryVideoWatchHistory"("videoId", "userId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_videoId_schoolId_idx" ON "LibraryVideoWatchHistory"("videoId", "schoolId");
+
+-- CreateIndex
+CREATE INDEX "LibraryVideoWatchHistory_userId_watchedAt_idx" ON "LibraryVideoWatchHistory"("userId", "watchedAt");
 
 -- CreateIndex
 CREATE INDEX "LibraryComment_platformId_idx" ON "LibraryComment"("platformId");
@@ -3628,7 +3703,19 @@ ALTER TABLE "LibraryVideoLesson" ADD CONSTRAINT "LibraryVideoLesson_uploadedById
 ALTER TABLE "LibraryVideoView" ADD CONSTRAINT "LibraryVideoView_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "LibraryVideoLesson"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LibraryVideoView" ADD CONSTRAINT "LibraryVideoView_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LibraryVideoView" ADD CONSTRAINT "LibraryVideoView_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LibraryVideoView" ADD CONSTRAINT "LibraryVideoView_libraryResourceUserId_fkey" FOREIGN KEY ("libraryResourceUserId") REFERENCES "LibraryResourceUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LibraryVideoWatchHistory" ADD CONSTRAINT "LibraryVideoWatchHistory_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "LibraryVideoLesson"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LibraryVideoWatchHistory" ADD CONSTRAINT "LibraryVideoWatchHistory_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LibraryVideoWatchHistory" ADD CONSTRAINT "LibraryVideoWatchHistory_libraryResourceUserId_fkey" FOREIGN KEY ("libraryResourceUserId") REFERENCES "LibraryResourceUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "LibraryComment" ADD CONSTRAINT "LibraryComment_parentCommentId_fkey" FOREIGN KEY ("parentCommentId") REFERENCES "LibraryComment"("id") ON DELETE SET NULL ON UPDATE CASCADE;

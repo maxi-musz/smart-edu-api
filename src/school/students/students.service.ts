@@ -458,11 +458,23 @@ export class StudentsService {
       const skip = (page - 1) * limit;
 
       // Get subjects for the student's class in current academic session
+      // Use OR: either directly linked via classId OR has timetable entries for this class
       const subjects = await this.prisma.subject.findMany({
         where: {
           schoolId: student.school_id,
           academic_session_id: currentSession.id,
-          classId: studentClass.id
+          OR: [
+            { classId: studentClass.id },
+            {
+              timetableEntries: {
+                some: {
+                  class_id: studentClass.id,
+                  academic_session_id: currentSession.id,
+                  isActive: true
+                }
+              }
+            }
+          ]
         },
         include: {
           timetableEntries: {
@@ -521,7 +533,18 @@ export class StudentsService {
         where: {
           schoolId: student.school_id,
           academic_session_id: currentSession.id,
-          classId: studentClass.id
+          OR: [
+            { classId: studentClass.id },
+            {
+              timetableEntries: {
+                some: {
+                  class_id: studentClass.id,
+                  academic_session_id: currentSession.id,
+                  isActive: true
+                }
+              }
+            }
+          ]
         }
       });
 
