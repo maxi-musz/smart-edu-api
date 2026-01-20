@@ -4,8 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // @ts-ignore - Prisma 6.8.2 syntax (correct for v6, warning is for v7)
-  url      = env("DATABASE_URL")
 }
 
 model AcademicSession {

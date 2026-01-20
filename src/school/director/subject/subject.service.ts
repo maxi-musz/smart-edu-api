@@ -47,9 +47,9 @@ export class SubjectService {
     // Add search filter
     if (search) {
       where.OR = [
-        { name: { contains: search.toLowerCase() } },
-        { code: { contains: search.toUpperCase() } },
-        { description: { contains: search.toLowerCase() } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
       ];
     }
 
