@@ -72,7 +72,8 @@ export class SubjectsService {
   }
 
   async getAllSubjects(
-    schoolId: string, 
+    schoolId: string,
+    user: any,
     query: {
       page?: number;
       limit?: number;
@@ -106,10 +107,19 @@ export class SubjectsService {
       sortOrder = 'asc'
     } = query;
 
-    this.logger.log(colors.cyan(`Fetching subjects for school: ${schoolId} with pagination and filters`));
+    // Get teacher ID from user
+    const teacherId = await this.getTeacherIdFromUser(user);
+    this.logger.log(colors.cyan(`Fetching subjects for teacher: ${teacherId} in school: ${schoolId} with pagination and filters`));
 
-    // Build where clause
-    const where: any = { schoolId };
+    // Build where clause - filter by teacher assignments
+    const where: any = {
+      schoolId,
+      teacherSubjects: {
+        some: {
+          teacherId: teacherId
+        }
+      }
+    };
     
     if (academicSessionId) {
       where.academic_session_id = academicSessionId;
@@ -124,10 +134,14 @@ export class SubjectsService {
     }
     
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+      where.AND = [
+        {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { code: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } }
+          ]
+        }
       ];
     }
 
@@ -656,6 +670,26 @@ export class SubjectsService {
     });
 
     return teacherSubjects.map(ts => ts.teacher);
+  }
+
+  private async getTeacherIdFromUser(user: any): Promise<string> {
+    const userId = (user as any).sub || user.id;
+    const teacher = await this.prisma.teacher.findFirst({
+      where: {
+        OR: [
+          { user_id: userId },
+          { email: user.email }
+        ],
+        school_id: user.school_id
+      },
+      select: { id: true }
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    return teacher.id;
   }
 
   private mapToResponseDto(subject: any): SubjectResponseDto {

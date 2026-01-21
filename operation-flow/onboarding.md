@@ -21,6 +21,10 @@ When the database is empty, onboarding can start with **either**:
 }
 ```
 
+- **DB Writes**
+  - New record in `LibraryPlatform`
+  - New record in `LibraryResourceUser` (owner/admin for that platform)
+
 ### Library Platform Admin Onboarding
 
 - **Endpoint**
@@ -39,6 +43,9 @@ When the database is empty, onboarding can start with **either**:
 }
 ```
 
+- **DB Writes**
+  - New record in `LibraryResourceUser` (linked to existing `LibraryPlatform`)
+
 ### School Onboarding
 
 - **Endpoint**
@@ -51,5 +58,15 @@ When the database is empty, onboarding can start with **either**:
     - `utility_bill` (file)
     - `tax_cert` (file)
     - `academic_year`, `current_term`, `term_start_date`
+
+- **DB Writes**
+  - New record in `School`
+  - New `Document` records for:
+    - `cac` (linked to `School`)
+    - `utility_bill` (linked to `School`)
+    - `tax_clearance` (linked to `School`)
+  - New `PlatformSubscriptionPlan` record for the school (copied from Free template or created with defaults)
+  - New `AcademicSession` record (initial, marked as current)
+  - New `User` record for the school director (role: `school_director`, linked to `School`)
 
 More flows will be added here as they are defined.

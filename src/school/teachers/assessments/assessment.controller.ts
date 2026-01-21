@@ -28,6 +28,7 @@ import { AssessmentService } from './assessment.service';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
 import { CreateAssessmentDto, UpdateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentQuestionDto } from './cbt-dto';
+import { AssessmentDocs } from './docs/assessment.docs';
 
 @ApiTags('Teachers - Assessments')
 @ApiBearerAuth()
@@ -182,43 +183,14 @@ export class AssessmentController {
 
   @Post(':id/questions/with-image')
   @UseInterceptors(FileInterceptor('image'))
-  @ApiOperation({ 
-    summary: 'Create question with image in single request (RECOMMENDED)',
-    description: 'Upload image and create question atomically. If question creation fails, image is automatically deleted from S3. This prevents orphaned images.'
-  })
-  @ApiParam({ name: 'id', description: 'ID of the assessment' })
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Question data as JSON string + optional image file',
-    schema: {
-      type: 'object',
-      properties: {
-        image: {
-          type: 'string',
-          format: 'binary',
-          description: 'Optional image file (JPEG, PNG, GIF, WEBP, max 5MB)'
-        },
-        questionData: {
-          type: 'string',
-          description: 'JSON string of question data (CreateAssessmentQuestionDto)',
-          example: JSON.stringify({
-            question_text: "What is shown in the image?",
-            question_type: "MULTIPLE_CHOICE_SINGLE",
-            points: 2,
-            options: [
-              { option_text: "Triangle", order: 1, is_correct: true },
-              { option_text: "Square", order: 2, is_correct: false }
-            ]
-          })
-        }
-      },
-      required: ['questionData']
-    }
-  })
-  @ApiResponse({ status: 201, description: 'Question created successfully with image' })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid data or image' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment not found' })
-  @ApiResponse({ status: 403, description: 'Forbidden - No access to assessment' })
+  @AssessmentDocs.createQuestionWithImage.operation
+  @AssessmentDocs.createQuestionWithImage.param
+  @AssessmentDocs.createQuestionWithImage.consumes
+  @AssessmentDocs.createQuestionWithImage.body
+  @AssessmentDocs.createQuestionWithImage.response201
+  @AssessmentDocs.createQuestionWithImage.response400
+  @AssessmentDocs.createQuestionWithImage.response404
+  @AssessmentDocs.createQuestionWithImage.response403
   async createQuestionWithImage(
     @Param('id') assessmentId: string,
     @UploadedFile() imageFile: Express.Multer.File,

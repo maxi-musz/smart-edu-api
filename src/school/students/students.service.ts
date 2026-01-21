@@ -458,23 +458,12 @@ export class StudentsService {
       const skip = (page - 1) * limit;
 
       // Get subjects for the student's class in current academic session
-      // Use OR: either directly linked via classId OR has timetable entries for this class
+      // Only return subjects where classId matches the student's class (enrolled subjects)
       const subjects = await this.prisma.subject.findMany({
         where: {
           schoolId: student.school_id,
           academic_session_id: currentSession.id,
-          OR: [
-            { classId: studentClass.id },
-            {
-              timetableEntries: {
-                some: {
-                  class_id: studentClass.id,
-                  academic_session_id: currentSession.id,
-                  isActive: true
-                }
-              }
-            }
-          ]
+          classId: studentClass.id, // Only subjects directly assigned to the student's class
         },
         include: {
           timetableEntries: {
@@ -533,18 +522,7 @@ export class StudentsService {
         where: {
           schoolId: student.school_id,
           academic_session_id: currentSession.id,
-          OR: [
-            { classId: studentClass.id },
-            {
-              timetableEntries: {
-                some: {
-                  class_id: studentClass.id,
-                  academic_session_id: currentSession.id,
-                  isActive: true
-                }
-              }
-            }
-          ]
+          classId: studentClass.id, // Only subjects directly assigned to the student's class
         }
       });
 
@@ -1530,7 +1508,8 @@ export class StudentsService {
     limit: number = 10,
     search?: string,
     assessmentType?: string,
-    status?: string
+    status?: string,
+    subjectId?: string
   ) {
     this.logger.log(colors.cyan(`Fetching assessments for student: ${user.email}`));
 
@@ -1608,7 +1587,7 @@ export class StudentsService {
       const where: any = {
         // school_id: student.school_id,
         academic_session_id: currentSession.id,
-        subject_id: {
+        subject_id: subjectId ? subjectId : {
           in: subjectIds
         },
         is_published: true, // Only published assessments for students
@@ -1693,9 +1672,7 @@ export class StudentsService {
           }
         },
         orderBy: [
-          { assessment_type: 'asc' },
-          { status: 'asc' },
-          { createdAt: 'desc' }
+          { createdAt: 'desc' } // Most recent first
         ],
         skip,
         take: limit
@@ -1799,6 +1776,98 @@ export class StudentsService {
       const hasNext = page < totalPages;
       const hasPrev = page > 1;
 
+      // Get subject statistics
+      const subjectsWithStats = await Promise.all(
+        studentClass.subjects.map(async (subject) => {
+          // Get full subject details
+          const fullSubject = await this.prisma.subject.findUnique({
+            where: { id: subject.id },
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              color: true,
+              description: true
+            }
+          });
+
+          // Count total assessments for this subject
+          const totalAssessments = await this.prisma.assessment.count({
+            where: {
+              subject_id: subject.id,
+              academic_session_id: currentSession.id,
+              is_published: true,
+              status: {
+                in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+              }
+            }
+          });
+
+          // Get all assessment IDs for this subject
+          const subjectAssessments = await this.prisma.assessment.findMany({
+            where: {
+              subject_id: subject.id,
+              academic_session_id: currentSession.id,
+              is_published: true,
+              status: {
+                in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+              }
+            },
+            select: {
+              id: true
+            }
+          });
+
+          const assessmentIds = subjectAssessments.map(a => a.id);
+
+          // Count attempted/completed assessments
+          const attemptedAssessments = await this.prisma.assessmentAttempt.groupBy({
+            by: ['assessment_id'],
+            where: {
+              student_id: user.sub,
+              assessment_id: {
+                in: assessmentIds
+              }
+            },
+            _count: {
+              assessment_id: true
+            }
+          });
+
+          const totalAttempted = attemptedAssessments.length;
+          const totalNotAttempted = totalAssessments - totalAttempted;
+
+          // Count completed (submitted) assessments
+          const completedCount = await this.prisma.assessmentAttempt.groupBy({
+            by: ['assessment_id'],
+            where: {
+              student_id: user.sub,
+              assessment_id: {
+                in: assessmentIds
+              },
+              status: 'SUBMITTED'
+            },
+            _count: {
+              assessment_id: true
+            }
+          });
+
+          return {
+            id: fullSubject?.id,
+            name: fullSubject?.name,
+            code: fullSubject?.code,
+            color: fullSubject?.color,
+            description: fullSubject?.description,
+            assessment_stats: {
+              total_assessments: totalAssessments,
+              attempted: totalAttempted,
+              completed: completedCount.length,
+              not_attempted: totalNotAttempted
+            }
+          };
+        })
+      );
+
       const responseData = {
         pagination: {
             page,
@@ -1811,7 +1880,8 @@ export class StudentsService {
           filters: {
             search: search || '',
             assessment_type: assessmentType || 'all',
-            status: status || 'all'
+            status: status || 'all',
+            subject_id: subjectId || 'all'
           },
         general_info: {
           current_session: {
@@ -1819,6 +1889,7 @@ export class StudentsService {
             term: currentSession.term
           }
         },
+        subjects: subjectsWithStats,
         assessments: formattedAssessments,
         grouped_assessments: groupedArray,
         
@@ -1826,6 +1897,10 @@ export class StudentsService {
 
       this.logger.log(colors.green(`✅ Successfully retrieved ${formattedAssessments.length} assessments for student`));
       this.logger.log(colors.green(`✅ Grouped into ${groupedArray.length} groups`));
+      this.logger.log(colors.green(`✅ Subject stats generated for ${subjectsWithStats.length} subjects`));
+      if (subjectId) {
+        this.logger.log(colors.yellow(`🔍 Filtered by subject: ${subjectId}`));
+      }
 
       return new ApiResponse(
         true,

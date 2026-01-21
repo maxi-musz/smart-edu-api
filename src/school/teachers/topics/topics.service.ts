@@ -19,6 +19,8 @@ import * as child_process from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as ffmpeg from 'fluent-ffmpeg';
 const exec = util.promisify(child_process.exec);
 
 @Injectable()
@@ -152,7 +154,7 @@ export class TopicsService {
     );
   }
 
-  async getAllTopics(user: any, subjectId?: string, academicSessionId?: string): Promise<TopicResponseDto[]> {
+  async getAllTopics(user: any, subjectId?: string, academicSessionId?: string) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
@@ -214,10 +216,14 @@ export class TopicsService {
       ],
     });
 
-    return topics.map(topic => this.mapToResponseDto(topic));
+    const data = topics.map(topic => this.mapToResponseDto(topic));
+    return ResponseHelper.success(
+      'Topics retrieved successfully',
+      data
+    );
   }
 
-  async getTopicById(topicId: string, user: any): Promise<TopicResponseDto> {
+  async getTopicById(topicId: string, user: any) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
@@ -230,7 +236,7 @@ export class TopicsService {
 
     const schoolId = dbUser.school_id;
 
-    this.logger.log(colors.cyan(`Fetching topic: ${topicId}`));
+    this.logger.log(colors.cyan(`Fetching topic for teacher: ${topicId}`));
 
     const topic = await this.prisma.topic.findFirst({
       where: {
@@ -274,10 +280,13 @@ export class TopicsService {
       throw new NotFoundException('Topic not found');
     }
 
-    return this.mapToResponseDto(topic);
+    return ResponseHelper.success(
+      'Topic retrieved successfully',
+      this.mapToResponseDto(topic)
+    );
   }
 
-  async updateTopic(topicId: string, updateTopicDto: UpdateTopicDto, user: any): Promise<TopicResponseDto> {
+  async updateTopic(topicId: string, updateTopicDto: UpdateTopicDto, user: any) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
@@ -364,7 +373,10 @@ export class TopicsService {
     });
 
     this.logger.log(colors.green(`Topic updated successfully: ${topicId}`));
-    return this.mapToResponseDto(updatedTopic);
+    return ResponseHelper.success(
+      'Topic updated successfully',
+      this.mapToResponseDto(updatedTopic)
+    );
   }
 
   async deleteTopic(topicId: string, user: any): Promise<void> {
@@ -638,7 +650,7 @@ export class TopicsService {
     return new ApiResponse(true, 'Topic moved successfully', null);
   }
 
-  async getTopicsBySubject(subjectId: string, user: any): Promise<TopicResponseDto[]> {
+  async getTopicsBySubject(subjectId: string, user: any) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
@@ -695,7 +707,11 @@ export class TopicsService {
       },
     });
 
-    return topics.map(topic => this.mapToResponseDto(topic));
+    const data = topics.map(topic => this.mapToResponseDto(topic));
+    return ResponseHelper.success(
+      'Topics retrieved successfully',
+      data
+    );
   }
 
   private mapToResponseDto(topic: any): TopicResponseDto {
@@ -1196,6 +1212,7 @@ export class TopicsService {
           }
         }
       }, tickMs);
+      // Upload video to S3 - store key for potential rollback
       const videoUploadResult = await this.s3Service.uploadFile(
         videoFile,
         `lecture-videos/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
@@ -1204,9 +1221,12 @@ export class TopicsService {
           lastKnownLoaded = Math.min(loaded, videoFile.size);
         }
       );
+      const videoS3Key = videoUploadResult.key;
+      this.logger.log(colors.blue(`📤 Video uploaded to S3: ${videoS3Key}`));
 
-      // Optional thumbnail
+      // Optional thumbnail - store key for potential rollback
       let thumbnailResult: any = null;
+      let thumbnailS3Key: string | null = null;
       if (thumbnailFile) {
         const thumbRes = await this.s3Service.uploadFile(
           thumbnailFile,
@@ -1216,17 +1236,81 @@ export class TopicsService {
             lastKnownLoaded = Math.min(videoFile.size + loaded, totalBytes);
           }
         );
+        thumbnailS3Key = thumbRes.key;
         thumbnailResult = { secure_url: thumbRes.url, public_id: thumbRes.key };
+        this.logger.log(colors.blue(`📤 Thumbnail uploaded to S3: ${thumbnailS3Key}`));
       }
 
       this.uploadProgressService.updateProgress(sessionId, 'processing');
-      // Remux/transcode to MP4 if needed, then replace URL
-      const processed = await this.ensureMp4FromUrl(videoUploadResult.url, uploadDto.title);
-      const finalVideoUrl = processed?.url || videoUploadResult.url;
-      const videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
-      const videoDuration = await this.extractVideoDuration(videoFile);
+      
+      // Process video (remux/transcode) and extract metadata
+      let finalVideoUrl: string;
+      let videoSize: string;
+      let videoDuration: string;
+      
+      try {
+        // Remux/transcode to MP4 if needed, then replace URL
+        const processed = await this.ensureMp4FromUrl(videoUploadResult.url, uploadDto.title);
+        finalVideoUrl = processed?.url || videoUploadResult.url;
+        videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
+        videoDuration = await this.extractVideoDuration(videoFile);
+      } catch (processingError) {
+        // Rollback: Delete S3 files if processing fails
+        this.logger.error(colors.red(`❌ Video processing failed, rolling back S3 uploads...`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, `Video processing failed: ${processingError.message}`);
+        
+        try {
+          await this.s3Service.deleteFile(videoS3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`));
+          
+          if (thumbnailS3Key) {
+            await this.s3Service.deleteFile(thumbnailS3Key);
+            this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`));
+          }
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 files: ${deleteError.message}`));
+          this.logger.error(colors.red(`⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`));
+        }
+        
+        throw processingError;
+      }
 
       this.uploadProgressService.updateProgress(sessionId, 'saving');
+      this.logger.log(colors.blue(`💾 Saving video lesson to database...`));
+
+      // Get or create S3 platform Organisation (same as material upload)
+      this.logger.log(colors.blue(`🏢 Getting or creating S3 platform...`));
+      let s3Platform;
+      try {
+        s3Platform = await this.prisma.organisation.upsert({
+          where: { name: 'AWS S3' },
+          update: {},
+          create: {
+            name: 'AWS S3',
+            email: 's3@smart-edu.com'
+          }
+        });
+        this.logger.log(colors.green(`✅ S3 platform ready: ${s3Platform.id}`));
+      } catch (platformError) {
+        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, `Platform setup failed: ${platformError.message}`);
+        
+        // Rollback: Delete S3 files if platform setup fails
+        try {
+          await this.s3Service.deleteFile(videoS3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`));
+          
+          if (thumbnailS3Key) {
+            await this.s3Service.deleteFile(thumbnailS3Key);
+            this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`));
+          }
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 files: ${deleteError.message}`));
+          this.logger.error(colors.red(`⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`));
+        }
+        
+        throw new BadRequestException(`Failed to get/create S3 platform: ${platformError.message}`);
+      }
 
       // Next order
       const lastVideo = await this.prisma.videoContent.findFirst({
@@ -1236,29 +1320,63 @@ export class TopicsService {
       });
       const nextOrder = (lastVideo?.order || 0) + 1;
 
-      const videoContent = await this.prisma.videoContent.create({
-        data: {
-          title: uploadDto.title.toLowerCase(),
-          description: uploadDto.description?.toLowerCase(),
-          topic_id: uploadDto.topic_id,
-          schoolId,
-          platformId: 's3-platform-001',
-          uploadedById: userId,
-          order: nextOrder,
-          url: finalVideoUrl,
-          duration: videoDuration,
-          size: videoSize,
-          thumbnail: thumbnailResult ? {
-            secure_url: thumbnailResult.secure_url,
-            public_id: thumbnailResult.public_id
-          } : undefined,
-          status: 'published',
-          views: 0
-        },
-        include: {
-          topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
+      // Save to database with rollback logic
+      let videoContent;
+      try {
+        videoContent = await this.prisma.videoContent.create({
+          data: {
+            title: uploadDto.title.toLowerCase(),
+            description: uploadDto.description?.toLowerCase(),
+            topic_id: uploadDto.topic_id,
+            schoolId,
+            platformId: s3Platform.id, // Use the actual platform ID
+            uploadedById: userId,
+            order: nextOrder,
+            url: finalVideoUrl,
+            duration: videoDuration,
+            size: videoSize,
+            thumbnail: thumbnailResult ? {
+              secure_url: thumbnailResult.secure_url,
+              public_id: thumbnailResult.public_id
+            } : undefined,
+            status: 'published',
+            views: 0
+          },
+          include: {
+            topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
+          }
+        });
+        this.logger.log(colors.green(`✅ Video saved to database: ${videoContent.id}`));
+      } catch (dbError) {
+        // Rollback: Delete S3 files if DB save fails
+        this.logger.error(colors.red(`❌ Database save failed, rolling back S3 uploads...`));
+        this.logger.error(colors.red(`   Error details: ${dbError.message}`));
+        this.logger.error(colors.red(`   Error code: ${(dbError as any).code || 'N/A'}`));
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, `Database save failed: ${dbError.message}`);
+        
+        try {
+          // Delete video from S3
+          await this.s3Service.deleteFile(videoS3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`));
+          
+          // Delete thumbnail from S3 if it exists
+          if (thumbnailS3Key) {
+            try {
+              await this.s3Service.deleteFile(thumbnailS3Key);
+              this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`));
+            } catch (thumbDeleteError) {
+              this.logger.error(colors.red(`❌ Failed to delete thumbnail: ${thumbDeleteError.message}`));
+            }
+          } else {
+            this.logger.log(colors.yellow(`ℹ️ No thumbnail to rollback`));
+          }
+        } catch (deleteError) {
+          this.logger.error(colors.red(`❌ Failed to rollback S3 files: ${deleteError.message}`));
+          this.logger.error(colors.red(`⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`));
         }
-      });
+        
+        throw dbError;
+      }
 
       // Ensure final state is 100%
       lastKnownLoaded = totalBytes;
@@ -1266,7 +1384,24 @@ export class TopicsService {
       this.uploadProgressService.updateProgress(sessionId, 'processing', emittedLoaded);
       this.uploadProgressService.updateProgress(sessionId, 'saving', emittedLoaded);
       clearInterval(smoother);
-      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, videoContent.id);
+      
+      // Mark as completed with 100% progress and video ID
+      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, 'Upload completed successfully!', undefined, videoContent.id);
+      
+      // Comprehensive success logging
+      this.logger.log(colors.green(`🎉 Video lesson "${uploadDto.title}" uploaded successfully!`));
+      this.logger.log(colors.blue(`📊 Upload Summary:`));
+      this.logger.log(colors.blue(`   - Session ID: ${sessionId}`));
+      this.logger.log(colors.blue(`   - Video ID: ${videoContent.id}`));
+      this.logger.log(colors.blue(`   - Title: ${uploadDto.title}`));
+      this.logger.log(colors.blue(`   - Size: ${videoSize}`));
+      this.logger.log(colors.blue(`   - Duration: ${videoDuration}`));
+      this.logger.log(colors.blue(`   - S3 Video Key: ${videoS3Key}`));
+      if (thumbnailS3Key) {
+        this.logger.log(colors.blue(`   - S3 Thumbnail Key: ${thumbnailS3Key}`));
+      }
+      this.logger.log(colors.blue(`   - Topic: ${videoContent.topic.title}`));
+      this.logger.log(colors.blue(`   - Subject: ${videoContent.topic.subject.name}`));
 
       return {
         id: videoContent.id,
@@ -1324,22 +1459,77 @@ export class TopicsService {
     if (!progress) {
       throw new BadRequestException('Upload session not found');
     }
+    
+    // Log the progress for debugging
+    this.logger.log(colors.cyan(`📊 Upload progress for ${sessionId}: stage=${progress.stage}, progress=${progress.progress}%`));
+    
+    // Ensure progress is 100% when stage is completed
+    const finalProgress = {
+      ...progress,
+      progress: progress.stage === 'completed' ? 100 : progress.progress
+    };
+    
     return {
       success: true,
       message: 'Upload status retrieved',
-      data: progress,
+      data: finalProgress,
       statusCode: 200
     };
   }
 
   /**
-   * Extract video duration from uploaded file
-   * Note: This is a simplified implementation. For production, you might want to use ffmpeg or similar
+   * Extract video duration from uploaded file using fluent-ffmpeg
+   * Industry standard approach - uses fluent-ffmpeg library for safe, reliable video metadata extraction
    */
   private async extractVideoDuration(videoFile: Express.Multer.File): Promise<string> {
-    // This is a placeholder. In production, you'd use ffmpeg or a video processing library
-    // For now, we'll return a default duration
-    return '00:00:00';
+    return new Promise((resolve) => {
+      try {
+        // Use OS temp directory (better practice than project directory)
+        const tempDir = os.tmpdir();
+        const tempFilePath = path.join(tempDir, `temp_video_${Date.now()}_${Math.random().toString(36).substring(7)}_${videoFile.originalname}`);
+        
+        // Write buffer to temp file
+        fs.writeFileSync(tempFilePath, videoFile.buffer);
+        
+        // Use fluent-ffmpeg's ffprobe for safe metadata extraction
+        ffmpeg.ffprobe(tempFilePath, (err, metadata) => {
+          // Always clean up temp file
+          try {
+            if (fs.existsSync(tempFilePath)) {
+              fs.unlinkSync(tempFilePath);
+            }
+          } catch (cleanupErr) {
+            this.logger.warn(colors.yellow(`⚠️ Failed to clean up temp file: ${cleanupErr.message}`));
+          }
+
+          if (err) {
+            this.logger.warn(colors.yellow(`⚠️ Could not extract video duration: ${err.message}`));
+            return resolve('00:00:00');
+          }
+
+          const durationSeconds = metadata?.format?.duration;
+          
+          if (!durationSeconds || isNaN(durationSeconds) || durationSeconds <= 0) {
+            this.logger.warn(colors.yellow(`⚠️ Video duration not found in metadata or invalid`));
+            return resolve('00:00:00');
+          }
+
+          // Convert seconds to HH:MM:SS format
+          const hours = Math.floor(durationSeconds / 3600);
+          const minutes = Math.floor((durationSeconds % 3600) / 60);
+          const seconds = Math.floor(durationSeconds % 60);
+          
+          const formattedDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          
+          this.logger.log(colors.blue(`📹 Extracted video duration: ${formattedDuration} (${durationSeconds.toFixed(2)}s)`));
+          
+          return resolve(formattedDuration);
+        });
+      } catch (error) {
+        this.logger.error(colors.red(`❌ Error extracting video duration: ${error.message}`));
+        return resolve('00:00:00');
+      }
+    });
   }
 
   /**

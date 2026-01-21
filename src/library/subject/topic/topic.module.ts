@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TopicController } from './topic.controller';
 import { TopicService } from './topic.service';
-import { PrismaModule } from '../../../../prisma/prisma.module';
-import { LibraryAuthModule } from '../../../library-auth/library-auth.module';
+import { PrismaModule } from '../../../prisma/prisma.module';
+import { LibraryAuthModule } from '../../library-auth/library-auth.module';
 
 @Module({
   imports: [PrismaModule, LibraryAuthModule],
@@ -11,4 +11,3 @@ import { LibraryAuthModule } from '../../../library-auth/library-auth.module';
   exports: [TopicService],
 })
 export class TopicModule {}
-

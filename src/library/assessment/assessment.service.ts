@@ -52,12 +52,6 @@ export class AssessmentService {
               code: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
         },
       });
 
@@ -108,12 +102,6 @@ export class AssessmentService {
               code: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           _count: {
             select: {
               questions: true,
@@ -134,7 +122,6 @@ export class AssessmentService {
           title: topic.title,
           description: topic.description,
           subject: topic.subject,
-          chapter: topic.chapter,
         },
         assessments,
         totalCount: assessments.length,
@@ -385,12 +372,6 @@ export class AssessmentService {
                   code: true,
                 },
               },
-              chapter: {
-                select: {
-                  id: true,
-                  title: true,
-                },
-              },
               topic: {
                 select: {
                   id: true,
@@ -478,23 +459,7 @@ export class AssessmentService {
         throw new NotFoundException('Subject not found or does not belong to your platform');
       }
 
-      // If chapterId is provided, verify it exists and belongs to the subject
-      if (createAssessmentDto.chapterId) {
-        const chapter = await this.prisma.libraryChapter.findFirst({
-          where: {
-            id: createAssessmentDto.chapterId,
-            subjectId: createAssessmentDto.subjectId,
-            platformId: libraryUser.platformId,
-          },
-        });
-
-        if (!chapter) {
-          this.logger.error(colors.red(`Chapter not found or does not belong to this subject`));
-          throw new NotFoundException('Chapter not found or does not belong to this subject');
-        }
-      }
-
-      // If topicId is provided, verify it exists and belongs to the chapter/subject
+      // If topicId is provided, verify it exists and belongs to the subject
       if (createAssessmentDto.topicId) {
         const topic = await this.prisma.libraryTopic.findFirst({
           where: {
@@ -507,12 +472,6 @@ export class AssessmentService {
         if (!topic) {
           this.logger.error(colors.red(`Topic not found or does not belong to this subject`));
           throw new NotFoundException('Topic not found or does not belong to this subject');
-        }
-
-        // If chapterId is also provided, verify topic belongs to that chapter
-        if (createAssessmentDto.chapterId && topic.chapterId !== createAssessmentDto.chapterId) {
-          this.logger.error(colors.red(`Topic does not belong to the specified chapter`));
-          throw new BadRequestException('Topic does not belong to the specified chapter');
         }
       }
 
@@ -544,10 +503,7 @@ export class AssessmentService {
         isPublished: false,
       };
 
-      // Only add chapterId and topicId if provided
-      if (createAssessmentDto.chapterId) {
-        createData.chapterId = createAssessmentDto.chapterId;
-      }
+      // Only add topicId if provided
       if (createAssessmentDto.topicId) {
         createData.topicId = createAssessmentDto.topicId;
       }
@@ -561,12 +517,6 @@ export class AssessmentService {
               id: true,
               name: true,
               code: true,
-            },
-          },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
             },
           },
           topic: {
@@ -947,12 +897,6 @@ export class AssessmentService {
               code: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           topic: {
             select: {
               id: true,
@@ -1004,7 +948,6 @@ export class AssessmentService {
             totalPoints: assessment.totalPoints,
             duration: assessment.duration,
             subject: assessment.subject,
-            chapter: assessment.chapter,
             topic: assessment.topic,
           },
           questions: questions.map(question => ({
@@ -1681,21 +1624,6 @@ export class AssessmentService {
         }
       }
 
-      // If chapter is being changed, verify access
-      if (updateAssessmentDto.chapterId && updateAssessmentDto.chapterId !== existingAssessment.chapterId) {
-        const chapter = await this.prisma.libraryChapter.findFirst({
-          where: {
-            id: updateAssessmentDto.chapterId,
-            subjectId: updateAssessmentDto.subjectId || existingAssessment.subjectId,
-            platformId: libraryUser.platformId,
-          },
-        });
-
-        if (!chapter) {
-          throw new NotFoundException('Chapter not found or does not belong to this subject');
-        }
-      }
-
       // If topic is being changed, verify access
       if (updateAssessmentDto.topicId && updateAssessmentDto.topicId !== existingAssessment.topicId) {
         const topic = await this.prisma.libraryTopic.findFirst({
@@ -1754,7 +1682,6 @@ export class AssessmentService {
       // Map DTO field names to Prisma field names
       const mappedData: any = {};
       if (updateData.subjectId !== undefined) mappedData.subjectId = updateData.subjectId;
-      if (updateData.chapterId !== undefined) mappedData.chapterId = updateData.chapterId;
       if (updateData.topicId !== undefined) mappedData.topicId = updateData.topicId;
       if (updateData.title !== undefined) mappedData.title = updateData.title;
       if (updateData.description !== undefined) mappedData.description = updateData.description;
@@ -1788,12 +1715,6 @@ export class AssessmentService {
               id: true,
               name: true,
               code: true,
-            },
-          },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
             },
           },
           topic: {
@@ -1930,12 +1851,6 @@ export class AssessmentService {
               code: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           topic: {
             select: {
               id: true,
@@ -2060,12 +1975,6 @@ export class AssessmentService {
               code: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           topic: {
             select: {
               id: true,
@@ -2112,12 +2021,6 @@ export class AssessmentService {
               id: true,
               name: true,
               code: true,
-            },
-          },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
             },
           },
           topic: {

@@ -1,6 +1,6 @@
 # Teacher Attendance API Documentation
 
-**Base URL:** `/teachers/attendance`
+**Base URL:** `/api/v1/teachers/attendance`
 
 **Authentication:** All endpoints require Bearer token authentication (JWT)
 
@@ -9,12 +9,13 @@
 ---
 
 ## Table of Contents
-1. [Get Session Details and Classes](#1-get-session-details-and-classes)
-2. [Get Students for Class](#2-get-students-for-class)
-3. [Get Attendance for Date](#3-get-attendance-for-date)
-4. [Submit Attendance](#4-submit-attendance)
-5. [Update Attendance](#5-update-attendance)
-6. [Get Student Attendance](#6-get-student-attendance)
+1. [Integration Flow Overview](#integration-flow-overview)
+2. [Get Session Details and Classes](#1-get-session-details-and-classes)
+3. [Get Students for Class](#2-get-students-for-class)
+4. [Get Attendance for Date](#3-get-attendance-for-date)
+5. [Submit Attendance](#4-submit-attendance)
+6. [Update Attendance](#5-update-attendance)
+7. [Get Student Attendance](#6-get-student-attendance)
 
 ---
 
@@ -34,11 +35,38 @@
 
 ---
 
+## Integration Flow Overview
+
+**Recommended flow for frontend integration:**
+
+1. **First Call** - Get session details and classes:
+   - `GET /api/v1/teachers/attendance/getsessiondetailsandclasses`
+   - Use this to populate the attendance dashboard with available classes
+
+2. **Second Call** - Get students for selected class:
+   - `GET /api/v1/teachers/attendance/classes/{classId}/students`
+   - Load the student list for the class you want to mark attendance for
+
+3. **Third Call** - Check existing attendance for date (optional but recommended):
+   - `GET /api/v1/teachers/attendance/classes/{classId}/date/{date}`
+   - Check if attendance already exists for the selected date
+   - If `session_id` is null → use POST to create new attendance
+   - If `session_id` exists → use PATCH to update existing attendance
+
+4. **Fourth Call** - Submit or Update attendance:
+   - **New attendance:** `POST /api/v1/teachers/attendance/submit`
+   - **Update existing:** `PATCH /api/v1/teachers/attendance/update`
+
+5. **Optional** - View student attendance history:
+   - `GET /api/v1/teachers/attendance/students/{studentId}?year=YYYY&month=MM`
+
+---
+
 ## 1. Get Session Details and Classes
 
 Get current academic session details and classes assigned to the teacher for attendance management.
 
-**Endpoint:** `GET /teachers/attendance/getsessiondetailsandclasses`
+**Endpoint:** `GET /api/v1/teachers/attendance/getsessiondetailsandclasses`
 
 **Headers:**
 ```json
@@ -49,7 +77,7 @@ Get current academic session details and classes assigned to the teacher for att
 
 **Example Request:**
 ```
-GET /teachers/attendance/getsessiondetailsandclasses
+GET /api/v1/teachers/attendance/getsessiondetailsandclasses
 ```
 
 **Success Response (200):**
@@ -189,7 +217,7 @@ GET /teachers/attendance/getsessiondetailsandclasses
 
 Get paginated list of students in a specific class for attendance marking.
 
-**Endpoint:** `GET /teachers/attendance/classes/:classId/students`
+**Endpoint:** `GET /api/v1/teachers/attendance/classes/:classId/students`
 
 **Headers:**
 ```json
@@ -213,7 +241,7 @@ Get paginated list of students in a specific class for attendance marking.
 
 **Example Request:**
 ```
-GET /teachers/attendance/classes/class-uuid-1/students?page=1&limit=10
+GET /api/v1/teachers/attendance/classes/class-uuid-1/students?page=1&limit=10
 ```
 
 **Success Response (200):**
@@ -378,7 +406,7 @@ GET /teachers/attendance/classes/class-uuid-1/students?page=1&limit=10
 
 Get attendance records for a specific class on a specific date.
 
-**Endpoint:** `GET /teachers/attendance/classes/:classId/date/:date`
+**Endpoint:** `GET /api/v1/teachers/attendance/classes/:classId/date/:date`
 
 **Headers:**
 ```json
@@ -396,7 +424,7 @@ Get attendance records for a specific class on a specific date.
 
 **Example Request:**
 ```
-GET /teachers/attendance/classes/class-uuid-1/date/2024-01-15
+GET /api/v1/teachers/attendance/classes/class-uuid-1/date/2024-01-15
 ```
 
 **Success Response (200):**
@@ -579,7 +607,7 @@ GET /teachers/attendance/classes/class-uuid-1/date/2024-01-15
 
 Submit attendance records for a class on a specific date.
 
-**Endpoint:** `POST /teachers/attendance/submit`
+**Endpoint:** `POST /api/v1/teachers/attendance/submit`
 
 **Headers:**
 ```json
@@ -695,7 +723,7 @@ Submit attendance records for a class on a specific date.
 
 **Important Notes:**
 
-1. **All Students Required:** Must include attendance record for every student in the class
+1. **Student Validation:** All student IDs in `attendance_records` must be valid students in the specified class
 2. **Duplicate Prevention:** Cannot submit attendance if it already exists for the date (use PATCH to update)
 3. **Transaction:** All records are created in a database transaction (all or nothing)
 4. **Statistics:** Automatically calculated and stored with the session
@@ -742,16 +770,16 @@ Submit attendance records for a class on a specific date.
 ```json
 {
   "success": false,
-  "message": "Attendance session already exists for this date. Use update endpoint to modify.",
+  "message": "Attendance for this date has already been submitted",
   "data": null
 }
 ```
 
-**400 Bad Request - Missing Students:**
+**400 Bad Request - Invalid Student IDs:**
 ```json
 {
   "success": false,
-  "message": "Attendance records must be provided for all students in the class",
+  "message": "Some student IDs are invalid for this class",
   "data": null
 }
 ```
@@ -780,7 +808,7 @@ Submit attendance records for a class on a specific date.
 
 Update attendance records for specific students (partial update).
 
-**Endpoint:** `PATCH /teachers/attendance/update`
+**Endpoint:** `PATCH /api/v1/teachers/attendance/update`
 
 **Headers:**
 ```json
@@ -951,7 +979,7 @@ Update attendance records for specific students (partial update).
 
 Get attendance history and summary for a specific student for a given month.
 
-**Endpoint:** `GET /teachers/attendance/students/:studentId`
+**Endpoint:** `GET /api/v1/teachers/attendance/students/:studentId`
 
 **Headers:**
 ```json
@@ -975,7 +1003,7 @@ Get attendance history and summary for a specific student for a given month.
 
 **Example Request:**
 ```
-GET /teachers/attendance/students/student-uuid-1?year=2024&month=9
+GET /api/v1/teachers/attendance/students/student-uuid-1?year=2024&month=9
 ```
 
 **Success Response (200):**
@@ -1249,16 +1277,16 @@ enum SessionType {
 ### 2. Attendance Submission
 
 **First Time Submission (POST):**
-- Must include ALL students in the class
+- All student IDs in `attendance_records` must be valid students in the specified class
 - Creates new attendance session
-- Cannot submit if session already exists for the date
-- All records created in a transaction
+- Cannot submit if session already exists for the date (returns error: "Attendance for this date has already been submitted")
+- All records created in a database transaction (all or nothing)
 
 **Updates (PATCH):**
 - Only updates specified students
 - Other students remain unchanged
-- Session must exist before updating
-- Statistics automatically recalculated
+- Session must exist before updating (returns error: "No attendance session found for this date. Please submit attendance first.")
+- Statistics automatically recalculated after update
 
 ### 3. Statistics Calculation
 
@@ -1295,7 +1323,7 @@ attendance_rate = ((present_count + late_count) / total_students) * 100
 ```typescript
 const fetchAttendanceOverview = async () => {
   try {
-    const response = await fetch('/teachers/attendance/getsessiondetailsandclasses', {
+    const response = await fetch('/api/v1/teachers/attendance/getsessiondetailsandclasses', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -1335,7 +1363,7 @@ const fetchStudentsForAttendance = async (classId, page = 1, limit = 30) => {
     });
 
     const response = await fetch(
-      `/teachers/attendance/classes/${classId}/students?${params}`,
+      `/api/v1/teachers/attendance/classes/${classId}/students?${params}`,
       {
         method: 'GET',
         headers: {
@@ -1371,7 +1399,7 @@ const fetchStudentsForAttendance = async (classId, page = 1, limit = 30) => {
 const checkAttendanceForDate = async (classId, date) => {
   try {
     const response = await fetch(
-      `/teachers/attendance/classes/${classId}/date/${date}`,
+      `/api/v1/teachers/attendance/classes/${classId}/date/${date}`,
       {
         method: 'GET',
         headers: {
@@ -1417,7 +1445,7 @@ const checkAttendanceForDate = async (classId, date) => {
 ```typescript
 const submitAttendance = async (classId, date, attendanceRecords, notes = '') => {
   try {
-    const response = await fetch('/teachers/attendance/submit', {
+    const response = await fetch('/api/v1/teachers/attendance/submit', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -1449,7 +1477,7 @@ const submitAttendance = async (classId, date, attendanceRecords, notes = '') =>
       showToast('error', result.message);
       
       // Handle specific errors
-      if (result.message.includes('already exists')) {
+      if (result.message.includes('already been submitted')) {
         console.log('Use update endpoint to modify attendance');
       }
       
@@ -1468,7 +1496,7 @@ const submitAttendance = async (classId, date, attendanceRecords, notes = '') =>
 ```typescript
 const updateAttendance = async (classId, date, updates, notes = '') => {
   try {
-    const response = await fetch('/teachers/attendance/update', {
+    const response = await fetch('/api/v1/teachers/attendance/update', {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -1516,7 +1544,7 @@ const fetchStudentAttendanceHistory = async (studentId, year, month) => {
     if (month) params.append('month', month.toString());
 
     const response = await fetch(
-      `/teachers/attendance/students/${studentId}?${params}`,
+      `/api/v1/teachers/attendance/students/${studentId}?${params}`,
       {
         method: 'GET',
         headers: {
@@ -1595,19 +1623,19 @@ const fetchStudentAttendanceHistory = async (studentId, year, month) => {
 
 ```bash
 # Get session details and classes
-curl -X GET "/teachers/attendance/getsessiondetailsandclasses" \
+curl -X GET "/api/v1/teachers/attendance/getsessiondetailsandclasses" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 
 # Get students for class
-curl -X GET "/teachers/attendance/classes/class-uuid-1/students?page=1&limit=30" \
+curl -X GET "/api/v1/teachers/attendance/classes/class-uuid-1/students?page=1&limit=30" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 
 # Check attendance for date
-curl -X GET "/teachers/attendance/classes/class-uuid-1/date/2024-01-15" \
+curl -X GET "/api/v1/teachers/attendance/classes/class-uuid-1/date/2024-01-15" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 
 # Submit attendance
-curl -X POST "/teachers/attendance/submit" \
+curl -X POST "/api/v1/teachers/attendance/submit" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1629,7 +1657,7 @@ curl -X POST "/teachers/attendance/submit" \
   }'
 
 # Update attendance
-curl -X PATCH "/teachers/attendance/update" \
+curl -X PATCH "/api/v1/teachers/attendance/update" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1646,7 +1674,7 @@ curl -X PATCH "/teachers/attendance/update" \
   }'
 
 # Get student attendance
-curl -X GET "/teachers/attendance/students/student-uuid-1?year=2024&month=9" \
+curl -X GET "/api/v1/teachers/attendance/students/student-uuid-1?year=2024&month=9" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
 
@@ -1671,5 +1699,5 @@ curl -X GET "/teachers/attendance/students/student-uuid-1?year=2024&month=9" \
 
 For questions or issues, contact the backend development team.
 
-**Last Updated:** January 16, 2026
+**Last Updated:** January 21, 2026
 

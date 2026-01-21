@@ -66,13 +66,6 @@ export class ExploreAssessmentService {
               thumbnailUrl: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-              order: true,
-            },
-          },
           topic: {
             select: {
               id: true,
@@ -911,12 +904,6 @@ export class ExploreAssessmentService {
                   code: true,
                 },
               },
-              chapter: {
-                select: {
-                  id: true,
-                  title: true,
-                },
-              },
               topic: {
                 select: {
                   id: true,
@@ -1074,7 +1061,6 @@ export class ExploreAssessmentService {
           totalPoints: attempt.assessment.totalPoints,
           passingScore: attempt.assessment.passingScore,
           subject: attempt.assessment.subject,
-          chapter: attempt.assessment.chapter,
           topic: attempt.assessment.topic,
         },
         summary: {

@@ -5,11 +5,11 @@ export const CreateTopicDocs = {
   operation: ApiOperation({
     summary: 'Create a new topic',
     description:
-      'Create a new topic under a specific library chapter for the authenticated library user\'s platform. ' +
-      'The topic will be associated with the user\'s platform, the specified chapter, and subject. ' +
-      'Topics are the smallest organizational unit and can contain video lessons and materials. ' +
+      'Create a new topic under a specific library subject for the authenticated library user\'s platform. ' +
+      'The topic will be associated with the user\'s platform and the specified subject. ' +
+      'Topics are the organizational unit that can contain video lessons and materials. ' +
       'Requires a valid JWT token in the Authorization header. ' +
-      'Response is wrapped in { success, message, data } where data contains the created topic with chapter and subject information.',
+      'Response is wrapped in { success, message, data } where data contains the created topic with subject information.',
   }),
 
   body: ApiBody({
@@ -34,7 +34,7 @@ export const CreateTopicDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - library user not found, chapter not found, or subject not found/does not belong to user\'s platform',
+    description: 'Not found - library user not found, or subject not found/does not belong to user\'s platform',
   }),
 
   response500: ApiResponse({
@@ -50,7 +50,7 @@ export const UpdateTopicDocs = {
       'Update topic details (title, description, order, is_active) for the authenticated library user\'s platform. ' +
       'Only provided fields will be updated. ' +
       'Requires a valid JWT token in the Authorization header. ' +
-      'Response is wrapped in { success, message, data } where data contains the updated topic with chapter and subject information.',
+      'Response is wrapped in { success, message, data } where data contains the updated topic with subject information.',
   }),
 
   body: ApiBody({
@@ -119,4 +119,3 @@ export const GetTopicMaterialsDocs = {
     description: 'Internal server error',
   }),
 };
-

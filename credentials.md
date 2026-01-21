@@ -1,6 +1,5 @@
 school_director
-- dada.ngozi1@bestacademy.edu.ng
-- nkem.obi2@bestacademy.edu.ng
+- bernardmayowaa@gmail.com
 
 teacher
 - tope.rasheedat1@bestacademy.edu.ng

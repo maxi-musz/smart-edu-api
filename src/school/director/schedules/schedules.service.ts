@@ -368,20 +368,50 @@ export class SchedulesService {
     }
 
     // Verify teacher exists and belongs to school
-    const teacherExists = await this.prisma.teacher.findFirst({
+    let teacherRecord = await this.prisma.teacher.findFirst({
       where: {
-        id: dto.teacher_id,
+        id: dto.teacher_id,           // case 1: frontend sends Teacher.id
         school_id: existingSchool.id,
       },
     });
 
-    if (!teacherExists) {
-      this.logger.log(colors.red(`Specified teacher not found or is not a teacher`));
-      return new ApiResponse(
-        false,
-        'Specified teacher not found or is not a teacher',
-        null
-      );
+    if (!teacherRecord) {
+      // case 2: frontend sends User.id of a teacher
+      const teacherUser = await this.prisma.user.findFirst({
+        where: {
+          id: dto.teacher_id,
+          school_id: existingSchool.id,
+          role: 'teacher',
+        },
+      });
+
+      if (!teacherUser) {
+        this.logger.log(colors.red(`Specified teacher not found or user is not a teacher`));
+        return new ApiResponse(
+          false,
+          'Specified teacher not found or is not a teacher',
+          null
+        );
+      }
+
+      teacherRecord = await this.prisma.teacher.findFirst({
+        where: {
+          user_id: teacherUser.id,
+          school_id: existingSchool.id,
+        },
+      });
+
+      if (!teacherRecord) {
+        this.logger.log(colors.red(`Teacher profile not found for specified user`));
+        return new ApiResponse(
+          false,
+          'Specified teacher not found or is not a teacher',
+          null
+        );
+      }
+
+      // normalize to Teacher.id so timetable uses correct foreign key
+      dto.teacher_id = teacherRecord.id;
     }
 
     // Verify time slot exists and belongs to school

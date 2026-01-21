@@ -21,6 +21,7 @@ import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
 import { ExploreModule } from './explore/explore.module';
 import { ExamPracticeModule } from './exam-practice/exam-practice.module';
+import { VideoModule } from './video/video.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { ExamPracticeModule } from './exam-practice/exam-practice.module';
     AiChatLatestModule,
     ExploreModule,
     ExamPracticeModule,
+    VideoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

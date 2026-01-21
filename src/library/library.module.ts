@@ -7,12 +7,13 @@ import { ProfileModule } from './profile/profile.module';
 import { SchoolsModule } from './schools/schools.module';
 import { ResourcesModule } from './resources/resources.module';
 import { SubjectModule } from './subject/subject.module';
+import { TopicModule } from './subject/topic/topic.module';
 import { ContentModule } from './content/content.module';
 import { GeneralMaterialsModule } from './general-materials/general-materials.module';
 import { AssessmentModule } from './assessment/assessment.module';
 
 @Module({
-  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule, ResourcesModule, SubjectModule, ContentModule, GeneralMaterialsModule, AssessmentModule],
+  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule, ResourcesModule, SubjectModule, TopicModule, ContentModule, GeneralMaterialsModule, AssessmentModule],
   controllers: [LibraryController],
   providers: [LibraryService],
   exports: [LibraryService],

@@ -24,6 +24,7 @@ import { StudentsService } from './students.service';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { GetUser } from '../auth/decorator/get-user-decorator';
 import { StudentAttendanceExtendedResponseDto } from '../teachers/attendance-teacher/dto/student-attendance.dto';
+import { StudentsDocs } from './docs/students.docs';
 
 @ApiTags('Students')
 @ApiBearerAuth()
@@ -164,6 +165,7 @@ export class StudentsController {
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Search in assessment title or description' })
   @ApiQuery({ name: 'assessmentType', required: false, type: String, description: 'Filter by assessment type' })
   @ApiQuery({ name: 'status', required: false, type: String, description: 'Filter by assessment status' })
+  @ApiQuery({ name: 'subject_id', required: false, type: String, description: 'Filter by subject ID' })
   @ApiResponse({ status: 200, description: 'Assessments retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Student not found' })
@@ -173,7 +175,8 @@ export class StudentsController {
     @Query('limit') limit?: number,
     @Query('search') search?: string,
     @Query('assessmentType') assessmentType?: string,
-    @Query('status') status?: string
+    @Query('status') status?: string,
+    @Query('subject_id') subjectId?: string
   ) {
     const pageNum = page ? parseInt(page.toString(), 10) : 1;
     const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
@@ -183,7 +186,8 @@ export class StudentsController {
       limitNum, 
       search, 
       assessmentType, 
-      status
+      status,
+      subjectId
     );
   }
 
@@ -212,51 +216,13 @@ export class StudentsController {
    */
   @Post('assessments/:id/submit')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Submit assessment answers and auto-grade' })
-  @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiBody({
-    description: 'Assessment submission data',
-    schema: {
-      type: 'object',
-      properties: {
-        assessment_id: { type: 'string' },
-        student_id: { type: 'string' },
-        submission_time: { type: 'string', format: 'date-time' },
-        time_taken: { type: 'number' },
-        answers: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              question_id: { type: 'string' },
-              question_type: { type: 'string', enum: ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'NUMERIC', 'DATE'] },
-              selected_options: { type: 'array', items: { type: 'string' } },
-              text_answer: { type: 'string' },
-              points_earned: { type: 'number' }
-            }
-          }
-        },
-        total_questions: { type: 'number' },
-        questions_answered: { type: 'number' },
-        questions_skipped: { type: 'number' },
-        total_points_possible: { type: 'number' },
-        total_points_earned: { type: 'number' },
-        submission_status: { type: 'string', enum: ['COMPLETED', 'IN_PROGRESS', 'ABANDONED'] },
-        device_info: {
-          type: 'object',
-          properties: {
-            platform: { type: 'string' },
-            app_version: { type: 'string' },
-            device_model: { type: 'string' }
-          }
-        }
-      }
-    }
-  })
-  @ApiResponse({ status: 200, description: 'Assessment submitted successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Assessment not found' })
-  @ApiResponse({ status: 403, description: 'Access denied or maximum attempts reached' })
+  @StudentsDocs.submitAssessment.operation
+  @StudentsDocs.submitAssessment.param
+  @StudentsDocs.submitAssessment.body
+  @StudentsDocs.submitAssessment.response200
+  @StudentsDocs.submitAssessment.response401
+  @StudentsDocs.submitAssessment.response404
+  @StudentsDocs.submitAssessment.response403
   submitAssessment(
     @Param('id') assessmentId: string,
     @Body() submissionData: any,

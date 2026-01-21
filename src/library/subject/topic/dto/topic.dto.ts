@@ -4,15 +4,7 @@ import { Type } from 'class-transformer';
 
 export class CreateTopicDto {
   @ApiProperty({
-    description: 'ID of the library chapter to create this topic under',
-    example: 'cmjbnj4zw0002vlevol2u657f',
-  })
-  @IsString()
-  @IsNotEmpty()
-  chapterId: string;
-
-  @ApiProperty({
-    description: 'ID of the library subject (for validation)',
+    description: 'ID of the library subject to create this topic under',
     example: 'cmjbnj4zw0002vlevol2u657f',
   })
   @IsString()
@@ -98,4 +90,3 @@ export class UpdateTopicDto {
   @Type(() => Boolean)
   is_active?: boolean;
 }
-

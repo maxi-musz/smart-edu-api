@@ -84,7 +84,7 @@ export class TopicsController {
     @GetUser() user: any,
     @Query('subjectId') subjectId?: string,
     @Query('academicSessionId') academicSessionId?: string,
-  ): Promise<TopicResponseDto[]> {
+  ) {
     return this.topicsService.getAllTopics(user, subjectId, academicSessionId);
   }
 
@@ -126,7 +126,7 @@ export class TopicsController {
   async getTopicsBySubject(
     @Param('subjectId') subjectId: string,
     @GetUser() user: any,
-  ): Promise<TopicResponseDto[]> {
+  ) {
     return this.topicsService.getTopicsBySubject(subjectId, user);
   }
 
@@ -142,7 +142,7 @@ export class TopicsController {
   async getTopicById(
     @Param('id') id: string,
     @GetUser() user: any,
-  ): Promise<TopicResponseDto> {
+  ) {
     return this.topicsService.getTopicById(id, user);
   }
 
@@ -160,7 +160,7 @@ export class TopicsController {
     @Param('id') id: string,
     @Body() updateTopicDto: UpdateTopicDto,
     @GetUser() user: any,
-  ): Promise<TopicResponseDto> {
+  ) {
     return this.topicsService.updateTopic(id, updateTopicDto, user);
   }
 
@@ -316,8 +316,15 @@ export class TopicsController {
 
   // Polling-friendly progress (for Postman)
   @Get('video-upload-progress/:sessionId')
-  @ApiOperation({ summary: 'Get current upload progress (polling)' })
+  @ApiOperation({ summary: 'Get current video upload progress (polling)' })
   async getVideoUploadStatus(@Param('sessionId') sessionId: string) {
+    return this.topicsService.getVideoUploadStatus(sessionId);
+  }
+
+  // Material upload progress (uses same service, just different route for clarity)
+  @Get('material-upload-progress/:sessionId')
+  @ApiOperation({ summary: 'Get current material upload progress (polling)' })
+  async getMaterialUploadStatus(@Param('sessionId') sessionId: string) {
     return this.topicsService.getVideoUploadStatus(sessionId);
   }
 
