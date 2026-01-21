@@ -182,10 +182,63 @@ export class AssessmentService {
         throw new BadRequestException('subject_id is required');
       }
 
-      // Get teacher record to access academic session ID
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      // Get user to check role and school_id
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          role: true,
+          school_id: true
+        }
+      });
+
+      if (!user || !user.school_id) {
+        throw new NotFoundException('User not found or missing school data');
+      }
+
+      // Check if user is a director
+      const isDirector = user.role === 'school_director';
+
+      // Get teacher record (for teachers) or use user data (for directors)
+      let schoolId: string;
+      let currentSessionId: any;
+
+      if (isDirector) {
+        this.logger.log(colors.cyan(`✅ User is a director - fetching all assessments for school: ${user.school_id}`));
+        schoolId = user.school_id;
+        
+        // Get current academic session for the school
+        currentSessionId = await this.prisma.academicSession.findFirst({
+          where: {
+            school_id: schoolId,
+            is_current: true
+          }
+        });
+
+        if (!currentSessionId) {
+          this.logger.error(colors.red(`Current academic session not found for school: ${schoolId}`));
+          throw new NotFoundException('Current academic session not found');
+        }
+      } else {
+        // For teachers, get teacher record to access academic session ID
+        const teacher = await this.getTeacherByUserId(userId);
+        if (!teacher) {
+          throw new NotFoundException('Teacher not found');
+        }
+        schoolId = teacher.school_id;
+
+        // get current academic session id
+        currentSessionId = await this.prisma.academicSession.findFirst({
+          where: {
+            school_id: schoolId,
+            is_current: true
+          }
+        });
+
+        if (!currentSessionId) {
+          this.logger.error(colors.red(`Current academic session not found: ${schoolId}`));
+          throw new NotFoundException('Current academic session not found');
+        }
       }
 
       const {
@@ -201,25 +254,18 @@ export class AssessmentService {
       const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
       const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
 
-      // get currrent academic session id
-      const currentSessionId = await this.prisma.academicSession.findFirst({
-        where: {
-          school_id: teacher.school_id,
-          is_current: true
-        }
-      });
-
-      
-      if (!currentSessionId) {
-        this.logger.error(colors.red(`Current academic session not found: ${teacher.school_id}`));
-        throw new NotFoundException('Current academic session not found');
-      }
-      
       // Build base where clause - include current academic session
+      // Directors can see all assessments in the school, teachers only see their own
       const baseWhere: any = {
-        created_by: userId,
-        academic_session_id: currentSessionId.id, 
+        academic_session_id: currentSessionId.id,
+        school_id: schoolId,
+        subject_id: subjectId, // Always filter by subject_id
       };
+
+      // Only filter by created_by for teachers (directors see all)
+      if (!isDirector) {
+        baseWhere.created_by = userId;
+      }
 
       // Add optional filters to base where
       if (status) {

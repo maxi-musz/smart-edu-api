@@ -486,17 +486,11 @@ export class ContentService {
         select: {
           id: true,
           title: true,
-          chapterId: true,
         },
       });
 
       if (!topic) {
         throw new NotFoundException('Topic not found or does not belong to your platform');
-      }
-
-      // Validate chapter if provided
-      if (payload.chapterId && topic.chapterId !== payload.chapterId) {
-        throw new BadRequestException('Chapter ID does not match the topic\'s chapter');
       }
 
       // Extract domain from URL
@@ -521,7 +515,6 @@ export class ContentService {
         data: {
           platformId: libraryUser.platformId,
           subjectId: payload.subjectId,
-          chapterId: payload.chapterId ?? null,
           topicId: payload.topicId,
           uploadedById: user.sub,
           title: payload.title,
@@ -543,12 +536,6 @@ export class ContentService {
             select: {
               id: true,
               name: true,
-            },
-          },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
             },
           },
         },

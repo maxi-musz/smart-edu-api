@@ -18,14 +18,6 @@ export class CreateLibraryLinkDto {
   @IsNotEmpty()
   subjectId: string;
 
-  @ApiPropertyOptional({
-    description: 'ID of the library chapter (optional)',
-    example: 'cmjbnj4zw0002vlevol2u657f',
-  })
-  @IsString()
-  @IsOptional()
-  chapterId?: string;
-
   @ApiProperty({
     description: 'Title of the link',
     example: 'Khan Academy - Algebra Basics',

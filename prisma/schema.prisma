@@ -197,6 +197,8 @@ model User {
   examBodyAssessmentResponses      ExamBodyAssessmentResponse[]
   libraryVideoViews                LibraryVideoView[]
   libraryVideoWatchHistory         LibraryVideoWatchHistory[]
+  schoolVideoViews                 SchoolVideoView[]
+  schoolVideoWatchHistory          SchoolVideoWatchHistory[]
 }
 
 model Teacher {
@@ -636,6 +638,8 @@ model VideoContent {
   school       School?      @relation(fields: [schoolId], references: [id])
   topic        Topic?       @relation(fields: [topic_id], references: [id])
   uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  videoViews   SchoolVideoView[]
+  watchHistory SchoolVideoWatchHistory[]
 
   @@index([schoolId])
   @@index([platformId])
@@ -1952,7 +1956,6 @@ model LibraryPlatform {
   assignments                      LibraryAssignment[]
   links                            LibraryLink[]
   comments                         LibraryComment[]
-  LibraryChapter                   LibraryChapter[]
   generalMaterials                 LibraryGeneralMaterial[]
   generalMaterialPurchases         LibraryGeneralMaterialPurchase[]
   generalMaterialChatConversations LibraryGeneralMaterialChatConversation[]
@@ -2289,7 +2292,6 @@ model LibrarySubject {
 
   platform         LibraryPlatform          @relation(fields: [platformId], references: [id])
   class            LibraryClass?            @relation(fields: [classId], references: [id])
-  chapters         LibraryChapter[]
   topics           LibraryTopic[]
   videos           LibraryVideoLesson[]
   materials        LibraryMaterial[]
@@ -2303,38 +2305,12 @@ model LibrarySubject {
   @@index([platformId, name])
 }
 
-/// Chapters within a library subject (e.g. "Chapter 1: Algebra Basics").
-model LibraryChapter {
-  id         String @id @default(cuid())
-  platformId String
-  subjectId  String
-
-  title       String
-  description String?
-  order       Int     @default(1)
-  is_active   Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  platform LibraryPlatform @relation(fields: [platformId], references: [id])
-  subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
-
-  topics      LibraryTopic[]
-  links       LibraryLink[]
-  comments    LibraryComment[]
-  assessments LibraryAssessment[]
-
-  @@index([platformId, subjectId])
-  @@index([subjectId, order])
-}
-
-/// Topics within a library chapter (e.g. "Introduction to Algebra").
+/// Topics within a library subject (e.g. "Introduction to Algebra").
+/// Topics are directly under subjects, matching the teacher structure (Subject → Topic → Content).
 model LibraryTopic {
   id         String @id @default(cuid())
   platformId String
   subjectId  String
-  chapterId  String
 
   title       String
   description String?
@@ -2346,7 +2322,6 @@ model LibraryTopic {
 
   platform LibraryPlatform @relation(fields: [platformId], references: [id])
   subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
-  chapter  LibraryChapter  @relation(fields: [chapterId], references: [id])
 
   videos      LibraryVideoLesson[]
   materials   LibraryMaterial[]
@@ -2356,8 +2331,7 @@ model LibraryTopic {
   assessments LibraryAssessment[]
 
   @@index([platformId, subjectId])
-  @@index([subjectId, chapterId])
-  @@index([chapterId, order])
+  @@index([subjectId, order])
 }
 
 // -------------------------------------------------------------------
@@ -2496,16 +2470,93 @@ model LibraryVideoWatchHistory {
   @@index([userId, watchedAt]) // Query: "User's watch history chronologically"
 }
 
-/// Comments on library content (subjects, chapters, or topics).
+/// Track unique video views for school videos (VideoContent)
+/// Ensures each user is counted only once per video (YouTube-style)
+model SchoolVideoView {
+  id      String @id @default(cuid())
+  videoId String
+  userId  String
+
+  viewedAt DateTime @default(now())
+
+  video VideoContent @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, userId])
+  @@index([videoId])
+  @@index([userId])
+  @@index([viewedAt])
+}
+
+/// Complete watch history tracking for school videos (VideoContent)
+/// Tracks every watch event with detailed metadata for analytics and resume functionality
+model SchoolVideoWatchHistory {
+  id      String @id @default(cuid())
+  videoId String
+  userId  String
+
+  // User context (for analytics)
+  schoolId String? // Which school the user belongs to
+  classId  String? // Which class the student is in (if applicable)
+  userRole String? // Role: student, teacher, school_director
+
+  // Watch session metadata
+  watchedAt            DateTime @default(now())
+  watchDurationSeconds Int? // How long they actually watched (in seconds)
+  videoDurationSeconds Int? // Total video duration at time of watch
+  completionPercentage Float?   @default(0) // 0-100, calculated as (watchDuration / videoDuration) * 100
+
+  // Engagement tracking
+  isCompleted       Boolean @default(false) // True if watched > 90% of video
+  lastWatchPosition Int?    @default(0) // Last position in seconds (for resume functionality)
+  watchCount        Int     @default(1) // Number of times watched in this session
+
+  // Device & Platform info
+  deviceType String? // mobile, tablet, desktop, tv
+  platform   String? // ios, android, web
+  userAgent  String? // Browser/app user agent
+
+  // Source tracking (how they arrived at the video)
+  referrerSource String? // direct, search, recommendation, related_video, playlist, etc.
+  referrerUrl    String? // Previous page URL
+
+  // Quality metrics
+  videoQuality    String? // 360p, 480p, 720p, 1080p, etc.
+  bufferingEvents Int?    @default(0) // Number of buffering interruptions
+  playbackSpeed   Float?  @default(1.0) // 0.5x, 1x, 1.25x, 1.5x, 2x
+
+  // Session tracking
+  sessionId String? // Group multiple watches in same session
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  video VideoContent @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([videoId]) // Query: "Who watched this video?"
+  @@index([userId]) // Query: "What did this user watch?"
+  @@index([schoolId]) // Query: "Watch history by school"
+  @@index([classId]) // Query: "Watch history by class"
+  @@index([watchedAt]) // Query: "Recent watches"
+  @@index([isCompleted]) // Query: "Completed videos"
+  @@index([completionPercentage]) // Query: "Videos with high/low completion"
+  @@index([sessionId]) // Query: "Group watches by session"
+  @@index([videoId, userId]) // Query: "This user's watches of this video"
+  @@index([videoId, schoolId]) // Query: "School's watches of this video"
+  @@index([userId, watchedAt]) // Query: "User's watch history chronologically"
+}
+
+/// Comments on library content (subjects or topics).
 /// Users/students can leave comments and replies on library content.
 model LibraryComment {
   id         String @id @default(cuid())
   platformId String
 
-  // Polymorphic relation - comment can be on subject, chapter, or topic
+  // Polymorphic relation - comment can be on subject or topic
   // Only one of these should be set
   subjectId String?
-  chapterId String?
   topicId   String?
 
   // User who made the comment (can be LibraryResourceUser or regular User/Student)
@@ -2534,14 +2585,12 @@ model LibraryComment {
 
   platform    LibraryPlatform      @relation(fields: [platformId], references: [id])
   subject     LibrarySubject?      @relation(fields: [subjectId], references: [id])
-  chapter     LibraryChapter?      @relation(fields: [chapterId], references: [id])
   topic       LibraryTopic?        @relation(fields: [topicId], references: [id])
   commentedBy LibraryResourceUser? @relation(fields: [commentedById], references: [id])
   user        User?                @relation(fields: [userId], references: [id])
 
   @@index([platformId])
   @@index([subjectId])
-  @@index([chapterId])
   @@index([topicId])
   @@index([commentedById])
   @@index([userId])
@@ -2591,13 +2640,12 @@ model LibraryAssignment {
   @@index([dueDate])
 }
 
-/// External links attached to library content (subjects, chapters, or topics).
+/// External links attached to library content (subjects or topics).
 /// Course owners can add helpful external links like reference materials, videos, articles, etc.
 model LibraryLink {
   id         String  @id @default(cuid())
   platformId String
   subjectId  String
-  chapterId  String? // Optional - can be attached to chapter
   topicId    String? // Optional - can be attached to topic
 
   uploadedById String // Tracks which library user added this link
@@ -2619,26 +2667,23 @@ model LibraryLink {
 
   platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
   subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
-  chapter    LibraryChapter?     @relation(fields: [chapterId], references: [id])
   topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
   uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
 
   @@index([platformId])
   @@index([subjectId])
-  @@index([chapterId])
   @@index([topicId])
   @@index([uploadedById])
   @@index([status])
 }
 
 /// Assessments created by librarians for public library content.
-/// These assessments can be attached to a subject (whole), chapter, or topic.
+/// These assessments can be attached to a subject (whole) or topic.
 /// Any user can take these assessments regardless of their school.
 model LibraryAssessment {
   id          String  @id @default(cuid())
   platformId  String
   subjectId   String // Required - always attached to a subject
-  chapterId   String? // Optional - for chapter-level assessments
   topicId     String? // Optional - for topic-level assessments
   createdById String // LibraryResourceUser who created this assessment
 
@@ -2689,7 +2734,6 @@ model LibraryAssessment {
   // Relations
   platform  LibraryPlatform     @relation(fields: [platformId], references: [id])
   subject   LibrarySubject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  chapter   LibraryChapter?     @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   topic     LibraryTopic?       @relation(fields: [topicId], references: [id], onDelete: Cascade)
   createdBy LibraryResourceUser @relation(fields: [createdById], references: [id])
 
@@ -2700,7 +2744,6 @@ model LibraryAssessment {
 
   @@index([platformId])
   @@index([subjectId])
-  @@index([chapterId])
   @@index([topicId])
   @@index([createdById])
   @@index([status])

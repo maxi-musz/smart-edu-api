@@ -1,12 +1,12 @@
 import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param, Get } from '@nestjs/common';
 import { TopicService } from './topic.service';
 import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
-import { LibraryJwtGuard } from '../../../library-auth/guard/library-jwt.guard';
+import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
 import { CreateTopicDocs, UpdateTopicDocs, GetTopicMaterialsDocs } from './docs/topic.docs';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Library Topic')
-@Controller('library/subject/chapter/topic')
+@Controller('library/subject/topic')
 export class TopicController {
   constructor(private readonly topicService: TopicService) {}
 
@@ -64,4 +64,3 @@ export class TopicController {
     return await this.topicService.getTopicMaterials(req.user, topicId);
   }
 }
-

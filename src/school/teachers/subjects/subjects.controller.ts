@@ -47,7 +47,7 @@ export class SubjectsController {
     @GetUser() user: any,
     @Query() query: QuerySubjectsDto,
   ): Promise<PaginatedSubjectsResponseDto> {
-    return this.subjectsService.getAllSubjects(user.school_id, query);
+    return this.subjectsService.getAllSubjects(user.school_id, user, query);
   }
 
   @Get(':id')

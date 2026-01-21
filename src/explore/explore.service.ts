@@ -91,14 +91,7 @@ export class ExploreService {
               id: true,
               title: true,
               description: true,
-              order: true,
-              chapter: {
-                select: {
-                  id: true,
-                  title: true,
-                  order: true
-                }
-              }
+              order: true
             }
           },
           subject: {
@@ -321,14 +314,7 @@ export class ExploreService {
               id: true,
               title: true,
               description: true,
-              order: true,
-              chapter: {
-                select: {
-                  id: true,
-                  title: true,
-                  order: true
-                }
-              }
+              order: true
             }
           },
           subject: {
@@ -421,40 +407,12 @@ export class ExploreService {
 
       this.logger.log(colors.yellow(`📖 Subject: ${subject.name} (${subject.code})`));
 
-      // Get all chapters for this subject
-      const chapters = await this.prisma.libraryChapter.findMany({
+      // Get all topics for this subject directly (no chapters)
+      const topics = await this.prisma.libraryTopic.findMany({
         where: {
           subjectId: subjectId,
           is_active: true
         },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          order: true,
-          is_active: true,
-          createdAt: true,
-          updatedAt: true
-        },
-        orderBy: {
-          order: 'asc'
-        }
-      });
-
-      this.logger.log(colors.yellow(`📑 Found ${chapters.length} chapters`));
-
-      // For each chapter, get topics and their complete resources
-      const chaptersWithResources = await Promise.all(
-        chapters.map(async (chapter) => {
-          this.logger.log(colors.cyan(`  📂 Processing chapter: ${chapter.title}`));
-
-          // Get all topics for this chapter
-          const topics = await this.prisma.libraryTopic.findMany({
-            where: {
-              chapterId: chapter.id,
-              subjectId: subjectId,
-              is_active: true
-            },
             select: {
               id: true,
               title: true,
@@ -469,9 +427,12 @@ export class ExploreService {
             }
           });
 
-          // For each topic, get all resources (videos, materials, assessments)
-          const topicsWithResources = await Promise.all(
-            topics.map(async (topic) => {
+      this.logger.log(colors.yellow(`📑 Found ${topics.length} topics`));
+
+      // For each topic, get all resources (videos, materials, assessments)
+      const topicsWithResources = await Promise.all(
+        topics.map(async (topic) => {
+          this.logger.log(colors.cyan(`  📂 Processing topic: ${topic.title}`));
               const [videos, materials, assessments] = await Promise.all([
                 // Get published video lessons
                 this.prisma.libraryVideoLesson.findMany({
@@ -663,58 +624,33 @@ export class ExploreService {
             })
           );
 
-          // Calculate chapter-level statistics
-          const chapterStats = {
-            topicsCount: topics.length,
-            videosCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.videosCount, 0),
-            materialsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.materialsCount, 0),
-            assessmentsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.assessmentsCount, 0),
-            totalViews: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalViews, 0),
-            totalDuration: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalDuration, 0),
-            totalSize: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalSize, 0),
-            totalQuestions: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalQuestions, 0)
-          };
-
-          const submissionsCount = topicsWithResources.reduce((sum, topic) => sum + topic.submissions.length, 0);
-          const submissionsLog = userId ? `, ${submissionsCount} submissions` : '';
-          this.logger.log(colors.green(`    ✅ ${chapter.title}: ${chapterStats.topicsCount} topics, ${chapterStats.videosCount} videos, ${chapterStats.materialsCount} materials, ${chapterStats.assessmentsCount} assessments${submissionsLog}`));
-
-          return {
-            ...chapter,
-            topics: topicsWithResources,
-            statistics: chapterStats
-          };
-        })
-      );
-
       // Calculate subject-level statistics
       const subjectStats = {
-        chaptersCount: chapters.length,
-        topicsCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.topicsCount, 0),
-        videosCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.videosCount, 0),
-        materialsCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.materialsCount, 0),
-        assessmentsCount: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.assessmentsCount, 0),
-        totalViews: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalViews, 0),
-        totalDuration: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalDuration, 0),
-        totalSize: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalSize, 0),
-        totalQuestions: chaptersWithResources.reduce((sum, chapter) => sum + chapter.statistics.totalQuestions, 0)
+        topicsCount: topics.length,
+        videosCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.videosCount, 0),
+        materialsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.materialsCount, 0),
+        assessmentsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.assessmentsCount, 0),
+        totalViews: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalViews, 0),
+        totalDuration: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalDuration, 0),
+        totalSize: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalSize, 0),
+        totalQuestions: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalQuestions, 0)
       };
 
       const data = {
         subject,
-        chapters: chaptersWithResources,
+        topics: topicsWithResources,
         statistics: subjectStats
       };
 
-      // Calculate total submissions across all chapters/topics
-      const totalSubmissions = chaptersWithResources.reduce(
-        (sum, chapter) => sum + chapter.topics.reduce((topicSum, topic) => topicSum + topic.submissions.length, 0),
+      // Calculate total submissions across all topics
+      const totalSubmissions = topicsWithResources.reduce(
+        (sum, topic) => sum + topic.submissions.length,
         0
       );
       const submissionsSummary = userId ? `, ${totalSubmissions} submissions` : '';
 
       this.logger.log(colors.green(`✅ Complete resources retrieved for "${subject.name}"`));
-      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.chaptersCount} chapters, ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials, ${subjectStats.assessmentsCount} assessments${submissionsSummary}`));
+      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials, ${subjectStats.assessmentsCount} assessments${submissionsSummary}`));
 
       return ResponseHelper.success('Subject resources retrieved successfully', data);
     } catch (error) {
@@ -753,12 +689,6 @@ export class ExploreService {
               id: true,
               title: true,
               description: true,
-              chapter: {
-                select: {
-                  id: true,
-                  title: true
-                }
-              }
             }
           },
           subject: {

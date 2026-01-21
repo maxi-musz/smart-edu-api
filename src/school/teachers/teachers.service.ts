@@ -945,7 +945,8 @@ export class TeachersService {
         where: { id: userId },
         select: { 
           id: true, 
-          school_id: true
+          school_id: true,
+          role: true
         }
       });
 
@@ -961,34 +962,229 @@ export class TeachersService {
       }
       const currentSession = currentSessionResponse.data;
 
-      // 3. Get teacher data using user_id from User model
-      this.logger.log(colors.yellow(`🔍 Searching for teacher with user_id: ${fullUser.id}, school_id: ${fullUser.school_id}`));
+      // 3. Check if user is a director - directors have unrestricted access to all subjects
+      const isDirector = fullUser.role === 'school_director';
       
-      // First, check if teacher exists at all for this user
-      const teacherExists = await this.prisma.teacher.findFirst({
-        where: {
-          user_id: fullUser.id
-        },
-        select: {
-          id: true,
-          user_id: true,
-          school_id: true,
-          academic_session_id: true,
-          email: true
-        }
-      });
+      if (isDirector) {
+        this.logger.log(colors.cyan(`✅ User is a director - fetching all subjects for school: ${fullUser.school_id}`));
+        
+        // For directors, fetch all subjects in the school
+        const allSubjects = await this.prisma.subject.findMany({
+          where: {
+            schoolId: fullUser.school_id,
+            academic_session_id: currentSession.id
+          },
+          include: {
+            timetableEntries: {
+              include: {
+                class: true,
+                timeSlot: true
+              }
+            },
+            teacherSubjects: {
+              include: {
+                teacher: {
+                  select: {
+                    id: true,
+                    first_name: true,
+                    last_name: true,
+                    email: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: {
+            name: 'asc'
+          }
+        });
 
-      if (teacherExists) {
-        this.logger.log(colors.cyan(`✅ Found teacher record: ${JSON.stringify(teacherExists)}`));
-      } else {
-        this.logger.log(colors.red(`❌ No teacher record found for user_id: ${fullUser.id}`));
+        // Get stats for director
+        const totalSubjects = allSubjects.length;
+        const totalClasses = await this.prisma.class.count({
+          where: {
+            schoolId: fullUser.school_id,
+            academic_session_id: currentSession.id
+          }
+        });
+        
+        // Count all videos and materials in the school
+        const totalVideos = await this.prisma.videoContent.count({
+          where: {
+            schoolId: fullUser.school_id
+          }
+        });
+
+        const totalMaterials = await this.prisma.pDFMaterial.count({
+          where: {
+            schoolId: fullUser.school_id
+          }
+        });
+
+        const stats = {
+          totalSubjects,
+          totalVideos,
+          totalMaterials,
+          totalClasses
+        };
+
+        // Format academic session
+        const academicSession = {
+          id: currentSession.id,
+          academic_year: currentSession.academic_year,
+          term: currentSession.term
+        };
+
+        // Format subjects with content counts for director
+        let filteredSubjects = await Promise.all(allSubjects.map(async (subject) => {
+          // Get classes taking this subject (deduplicated by class id)
+          const classesTakingSubject = this.uniqueById(
+            subject.timetableEntries.map(entry => ({
+              id: entry.class.id,
+              name: entry.class.name
+            }))
+          );
+
+          // Get teachers teaching this subject
+          const teachers = subject.teacherSubjects.map(ts => ({
+            id: ts.teacher.id,
+            name: `${ts.teacher.first_name} ${ts.teacher.last_name}`,
+            email: ts.teacher.email
+          }));
+
+          // Count topics, videos, and materials for this subject
+          // First get all topic IDs for this subject
+          const subjectTopics = await this.prisma.topic.findMany({
+            where: {
+              subject_id: subject.id,
+              academic_session_id: currentSession.id
+            },
+            select: { id: true }
+          });
+          const topicIds = subjectTopics.map(t => t.id);
+
+          const [topicsCount, videosCount, materialsCount] = await Promise.all([
+            Promise.resolve(subjectTopics.length),
+            this.prisma.videoContent.count({
+              where: {
+                topic_id: { in: topicIds },
+                schoolId: fullUser.school_id
+              }
+            }),
+            this.prisma.pDFMaterial.count({
+              where: {
+                topic_id: { in: topicIds },
+                schoolId: fullUser.school_id
+              }
+            })
+          ]);
+
+          return {
+            id: subject.id,
+            name: subject.name,
+            code: subject.code,
+            color: subject.color,
+            description: subject.description,
+            thumbnail: subject.thumbnail,
+            classes: classesTakingSubject,
+            teachers: teachers,
+            topicsCount,
+            videosCount,
+            materialsCount,
+            totalContent: topicsCount + videosCount + materialsCount
+          };
+        }));
+
+        // Apply search filter if provided
+        if (query.search) {
+          const searchLower = query.search.toLowerCase();
+          filteredSubjects = filteredSubjects.filter(subject =>
+            subject.name.toLowerCase().includes(searchLower) ||
+            subject.code?.toLowerCase().includes(searchLower) ||
+            subject.description?.toLowerCase().includes(searchLower)
+          );
+        }
+
+        // Apply class filter if provided
+        if (query.class_id) {
+          filteredSubjects = filteredSubjects.filter(subject =>
+            subject.classes.some(cls => cls.id === query.class_id)
+          );
+        }
+
+        // Apply sorting
+        if (query.sort_by) {
+          const sortOrder = query.sort_order || 'asc';
+          filteredSubjects.sort((a, b) => {
+            let aVal: any, bVal: any;
+            
+            switch (query.sort_by) {
+              case 'name':
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+              case 'code':
+                aVal = a.code?.toLowerCase() || '';
+                bVal = b.code?.toLowerCase() || '';
+                break;
+              case 'topicsCount':
+                aVal = a.topicsCount;
+                bVal = b.topicsCount;
+                break;
+              case 'videosCount':
+                aVal = a.videosCount;
+                bVal = b.videosCount;
+                break;
+              case 'materialsCount':
+                aVal = a.materialsCount;
+                bVal = b.materialsCount;
+                break;
+              case 'totalContent':
+                aVal = a.totalContent;
+                bVal = b.totalContent;
+                break;
+              default:
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+            }
+
+            if (sortOrder === 'asc') {
+              return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+            } else {
+              return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+            }
+          });
+        }
+
+        // Apply pagination
+        const total = filteredSubjects.length;
+        const page = query.page || 1;
+        const limit = query.limit || 10;
+        const skip = (page - 1) * limit;
+        const paginatedSubjects = filteredSubjects.slice(skip, skip + limit);
+
+        return new ApiResponse(true, 'Subjects retrieved successfully for director', {
+          academicSession,
+          stats,
+          subjects: paginatedSubjects,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasNext: skip + limit < total,
+            hasPrev: page > 1
+          }
+        });
       }
 
+      // 4. For teachers, use existing logic
+      this.logger.log(colors.yellow(`🔍 Searching for teacher with user_id: ${fullUser.id}, school_id: ${fullUser.school_id}`));
+      
       const teacher = await this.prisma.teacher.findFirst({
         where: {
-          user_id: fullUser.id, // Use user_id from User model
+          user_id: fullUser.id,
           school_id: fullUser.school_id,
-          // academic_session_id: currentSession.id
         },
         include: {
           subjectsTeaching: {
@@ -1011,18 +1207,10 @@ export class TeachersService {
 
       if (!teacher) {
         this.logger.error(colors.red(`❌ Teacher not found for user: ${user.email} with user_id: ${fullUser.id}, school_id: ${fullUser.school_id}`));
-        // Try to find any teacher with this user_id to see what's different
-        const anyTeacher = await this.prisma.teacher.findFirst({
-          where: { user_id: fullUser.id },
-          select: { id: true, user_id: true, school_id: true, academic_session_id: true, email: true }
-        });
-        if (anyTeacher) {
-          this.logger.log(colors.yellow(`⚠️ Found teacher with different school_id: ${JSON.stringify(anyTeacher)}`));
-        }
         return new ApiResponse(false, 'Teacher not found', null);
       }
 
-      // 4. Get stats (always get total counts regardless of pagination)
+      // 5. Get stats (always get total counts regardless of pagination)
       const totalSubjects = teacher.subjectsTeaching.length;
       const totalClasses = teacher.classesManaging.length;
       

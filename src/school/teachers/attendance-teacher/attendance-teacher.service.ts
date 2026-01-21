@@ -349,13 +349,18 @@ export class AttendanceTeacherService {
       // Transform students data
       const students: StudentInfoDto[] = paginatedStudents.map((student, index) => ({
         id: student.id,
+        user_id: student.user_id,
         name: `${student.user.first_name} ${student.user.last_name}`,
+        first_name: student.user.first_name,
+        last_name: student.user.last_name,
         display_picture: student.user.display_picture ? JSON.stringify(student.user.display_picture) : null,
         email: student.user.email,
-        phone: student.user.phone_number,
+        phone_number: student.user.phone_number,
         gender: student.user.gender,
         student_id: student.student_id,
-        roll_number: String(skip + index + 1).padStart(3, '0') // Generate roll number based on global order
+        admission_number: student.admission_number,
+        roll_number: String(skip + index + 1).padStart(3, '0'), // Generate roll number based on global order
+        status: student.status
       }));
 
       // Prepare class info
@@ -603,7 +608,26 @@ export class AttendanceTeacherService {
         attendance_rate: attendanceSession?.attendance_rate || 0
       };
 
-      this.logger.log(`✅ Attendance retrieved successfully for class ${classId} on ${date}. Status: ${attendanceStatus}`);
+      const isMarked = !!attendanceSession;
+      const presentCount = attendanceSession?.present_count || 0;
+      const absentCount = attendanceSession?.absent_count || 0;
+      const totalStudents = attendanceSession?.total_students || 0;
+      
+      this.logger.log(
+        `✅ Attendance retrieved successfully for class ${classId} on ${date}. ` +
+        `Status: ${attendanceStatus}, ` +
+        `Marked: ${isMarked ? 'Yes' : 'No'}, ` +
+        `Present: ${presentCount}, ` +
+        `Absent: ${absentCount}${totalStudents > 0 ? ` (Total: ${totalStudents})` : ''}`
+      );
+      
+      // Log the complete data structure being returned to frontend
+      this.logger.log('═══════════════════════════════════════════════════════════════');
+      this.logger.log('📤 DATA BEING SENT TO FRONTEND:');
+      this.logger.log('═══════════════════════════════════════════════════════════════');
+      console.log(JSON.stringify(data, null, 2));
+      this.logger.log('═══════════════════════════════════════════════════════════════');
+      
       return new ApiResponse(true, 'Attendance retrieved successfully', data);
 
     } catch (error) {

@@ -273,12 +273,6 @@ export class CBTService {
               code: true,
             },
           },
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
           topic: {
             select: {
               id: true,

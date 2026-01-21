@@ -344,11 +344,11 @@ export class ResourcesService {
         },
       });
 
-      // For each subject, get chapters, then topics and their materials
+      // For each subject, get topics and their materials directly (no chapters)
       const subjectsWithResources = await Promise.all(
         subjects.map(async (subject) => {
-          // Get all chapters for this subject
-          const chapters = await this.prisma.libraryChapter.findMany({
+          // Get all topics for this subject
+          const topics = await this.prisma.libraryTopic.findMany({
             where: {
               subjectId: subject.id,
               platformId: libraryUser.platformId,
@@ -367,104 +367,68 @@ export class ResourcesService {
             },
           });
 
-          // For each chapter, get topics and their materials
-          const chaptersWithResources = await Promise.all(
-            chapters.map(async (chapter) => {
-              // Get all topics for this chapter
-              const topics = await this.prisma.libraryTopic.findMany({
-                where: {
-                  chapterId: chapter.id,
-                  subjectId: subject.id,
-                  platformId: libraryUser.platformId,
-                },
-                select: {
-                  id: true,
-                  title: true,
-                  description: true,
-                  order: true,
-                  is_active: true,
-                  createdAt: true,
-                  updatedAt: true,
-                },
-                orderBy: {
-                  order: 'asc',
-                },
-              });
-
-              // For each topic, get materials and videos
-              const topicsWithResources = await Promise.all(
-                topics.map(async (topic) => {
-                  const [materials, videos] = await Promise.all([
-                    this.prisma.libraryMaterial.findMany({
-                      where: {
-                        topicId: topic.id,
-                        platformId: libraryUser.platformId,
+          // For each topic, get materials and videos
+          const topicsWithResources = await Promise.all(
+            topics.map(async (topic) => {
+              const [materials, videos] = await Promise.all([
+                this.prisma.libraryMaterial.findMany({
+                  where: {
+                    topicId: topic.id,
+                    platformId: libraryUser.platformId,
+                  },
+                  include: {
+                    uploadedBy: {
+                      select: {
+                        id: true,
+                        email: true,
+                        first_name: true,
+                        last_name: true,
                       },
-                      include: {
-                        uploadedBy: {
-                          select: {
-                            id: true,
-                            email: true,
-                            first_name: true,
-                            last_name: true,
-                          },
-                        },
+                    },
+                  },
+                  orderBy: {
+                    order: 'asc',
+                  },
+                }) as any,
+                this.prisma.libraryVideoLesson.findMany({
+                  where: {
+                    topicId: topic.id,
+                    platformId: libraryUser.platformId,
+                  },
+                  include: {
+                    uploadedBy: {
+                      select: {
+                        id: true,
+                        email: true,
+                        first_name: true,
+                        last_name: true,
                       },
-                      orderBy: {
-                        order: 'asc',
-                      },
-                    }) as any,
-                    this.prisma.libraryVideoLesson.findMany({
-                      where: {
-                        topicId: topic.id,
-                        platformId: libraryUser.platformId,
-                      },
-                      include: {
-                        uploadedBy: {
-                          select: {
-                            id: true,
-                            email: true,
-                            first_name: true,
-                            last_name: true,
-                          },
-                        },
-                      },
-                      orderBy: {
-                        order: 'asc',
-                      },
-                    }) as any,
-                  ]);
-
-                  return {
-                    ...topic,
-                    materials: materials,
-                    videos: videos,
-                    materialsCount: materials.length,
-                    videosCount: videos.length,
-                  };
-                }),
-              );
+                    },
+                  },
+                  orderBy: {
+                    order: 'asc',
+                  },
+                }) as any,
+              ]);
 
               return {
-                ...chapter,
-                topics: topicsWithResources,
-                topicsCount: topics.length,
-                totalMaterials: topicsWithResources.reduce((sum, topic) => sum + topic.materialsCount, 0),
-                totalVideos: topicsWithResources.reduce((sum, topic) => sum + topic.videosCount, 0),
+                ...topic,
+                materials: materials,
+                videos: videos,
+                materialsCount: materials.length,
+                videosCount: videos.length,
               };
             }),
           );
 
           // Calculate totals for the subject
-          const totalTopics = chaptersWithResources.reduce((sum, chapter) => sum + chapter.topicsCount, 0);
-          const totalMaterials = chaptersWithResources.reduce((sum, chapter) => sum + chapter.totalMaterials, 0);
-          const totalVideos = chaptersWithResources.reduce((sum, chapter) => sum + chapter.totalVideos, 0);
+          const totalMaterials = topicsWithResources.reduce((sum, topic) => sum + topic.materialsCount, 0);
+          const totalVideos = topicsWithResources.reduce((sum, topic) => sum + topic.videosCount, 0);
 
           return {
             ...subject,
-            chapters: chaptersWithResources,
-            chaptersCount: chapters.length,
-            topicsCount: totalTopics,
+            topics: topicsWithResources,
+            topicsCount: topics.length,
             totalMaterials: totalMaterials,
             totalVideos: totalVideos,
           };
@@ -483,7 +447,6 @@ export class ResourcesService {
         subjects: subjectsWithResources,
         statistics: {
           totalSubjects: subjectsWithResources.length,
-          totalChapters: subjectsWithResources.reduce((sum, subject) => sum + subject.chaptersCount, 0),
           totalTopics: subjectsWithResources.reduce((sum, subject) => sum + subject.topicsCount, 0),
           totalMaterials: subjectsWithResources.reduce((sum, subject) => sum + subject.totalMaterials, 0),
           totalVideos: subjectsWithResources.reduce((sum, subject) => sum + subject.totalVideos, 0),

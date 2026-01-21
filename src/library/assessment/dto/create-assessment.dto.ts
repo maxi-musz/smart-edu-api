@@ -52,14 +52,6 @@ export class CreateLibraryAssessmentDto {
   subjectId: string;
 
   @ApiPropertyOptional({
-    description: 'Library Chapter ID for chapter-level assessment (optional)',
-    example: 'chapter_123'
-  })
-  @IsString()
-  @IsOptional()
-  chapterId?: string;
-
-  @ApiPropertyOptional({
     description: 'Library Topic ID for topic-specific assessment (optional)',
     example: 'topic_123'
   })

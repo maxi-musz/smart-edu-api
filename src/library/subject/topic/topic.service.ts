@@ -1,6 +1,6 @@
 import { Injectable, Logger, InternalServerErrorException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../../../prisma/prisma.service';
-import { ApiResponse } from '../../../../shared/helper-functions/response';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { ApiResponse } from '../../../shared/helper-functions/response';
 import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
 import * as colors from 'colors';
 
@@ -27,56 +27,37 @@ export class TopicService {
         throw new NotFoundException('Library user not found');
       }
 
-      // Verify the chapter exists and belongs to the user's platform
-      const chapter = await this.prisma.libraryChapter.findFirst({
+      // Verify the subject exists and belongs to the user's platform
+      const subject = await this.prisma.librarySubject.findFirst({
         where: {
-          id: payload.chapterId,
+          id: payload.subjectId,
           platformId: libraryUser.platformId,
         },
         select: {
           id: true,
-          title: true,
-          subjectId: true,
-          subject: {
+          name: true,
+          code: true,
+          platformId: true,
+          class: {
             select: {
               id: true,
               name: true,
-              code: true,
-              platformId: true,
-              class: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
             },
           },
         },
       });
 
-      if (!chapter) {
-        this.logger.error(colors.red(`Chapter not found or does not belong to user's platform: ${payload.chapterId}`));
-        throw new NotFoundException('Chapter not found or does not belong to your platform');
+      if (!subject) {
+        this.logger.error(colors.red(`Subject not found or does not belong to user's platform: ${payload.subjectId}`));
+        throw new NotFoundException('Subject not found or does not belong to your platform');
       }
 
-      // Verify the subject matches the chapter's subject
-      if (chapter.subjectId !== payload.subjectId) {
-        this.logger.error(colors.red(`Subject ID mismatch: chapter belongs to subject ${chapter.subjectId}, but ${payload.subjectId} was provided`));
-        throw new BadRequestException('Subject ID does not match the chapter\'s subject');
-      }
-
-      // Verify the subject belongs to the user's platform
-      if (chapter.subject.platformId !== libraryUser.platformId) {
-        this.logger.error(colors.red(`Subject does not belong to user's platform`));
-        throw new NotFoundException('Subject does not belong to your platform');
-      }
-
-      // If order is not provided, get the next order number for this chapter
+      // If order is not provided, get the next order number for this subject
       let order = payload.order;
       if (!order) {
         const lastTopic = await this.prisma.libraryTopic.findFirst({
           where: {
-            chapterId: payload.chapterId,
+            subjectId: payload.subjectId,
             platformId: libraryUser.platformId,
           },
           orderBy: {
@@ -96,20 +77,12 @@ export class TopicService {
           data: {
             platformId: libraryUser.platformId,
             subjectId: payload.subjectId,
-            chapterId: payload.chapterId,
             title: payload.title,
             description: payload.description ?? null,
             order: order!,
             is_active: payload.is_active ?? true,
           },
           include: {
-            chapter: {
-              select: {
-                id: true,
-                title: true,
-                order: true,
-              },
-            },
             subject: {
               select: {
                 id: true,
@@ -185,13 +158,6 @@ export class TopicService {
         const topic = await this.prisma.libraryTopic.findUnique({
           where: { id: topicId },
           include: {
-            chapter: {
-              select: {
-                id: true,
-                title: true,
-                order: true,
-              },
-            },
             subject: {
               select: {
                 id: true,
@@ -216,13 +182,6 @@ export class TopicService {
           where: { id: topicId },
           data: updateData,
           include: {
-            chapter: {
-              select: {
-                id: true,
-                title: true,
-                order: true,
-              },
-            },
             subject: {
               select: {
                 id: true,
@@ -282,13 +241,6 @@ export class TopicService {
           description: true,
           order: true,
           is_active: true,
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-              order: true,
-            },
-          },
           subject: {
             select: {
               id: true,
@@ -709,7 +661,6 @@ export class TopicService {
           description: topic.description,
           order: topic.order,
           is_active: topic.is_active,
-          chapter: topic.chapter,
           subject: topic.subject,
         },
         statistics,
@@ -790,4 +741,3 @@ export class TopicService {
     }
   }
 }
-

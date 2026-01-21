@@ -5,6 +5,8 @@ import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { User } from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
 import { AcademicSessionService } from '../../../academic-session/academic-session.service';
+import { UpdateSchoolOwnerProfileDto } from './dto/update-school-owner-profile.dto';
+import { StorageService } from 'src/shared/services/providers/storage.service';
 
 @Injectable()
 export class ProfilesService {
@@ -12,7 +14,8 @@ export class ProfilesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService
+    private readonly academicSessionService: AcademicSessionService,
+    private readonly storageService: StorageService
   ) {}
 
   /**
@@ -294,6 +297,133 @@ export class ProfilesService {
       
       throw new NotFoundException('Failed to fetch school owner profile');
     }
+  }
+
+  /**
+   * Update school owner profile (only editable fields, email is not editable)
+   */
+  async updateSchoolOwnerProfile(
+    user: User,
+    dto: UpdateSchoolOwnerProfileDto,
+    displayPictureFile?: Express.Multer.File,
+    schoolLogoFile?: Express.Multer.File
+  ) {
+    this.logger.log(colors.cyan(`Updating school owner profile for: ${user.email}`));
+
+    const director = await this.prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        school_id: true,
+      },
+    });
+
+    if (!director) {
+      this.logger.error(colors.red(`❌ User not found: ${user.email}`));
+      throw new NotFoundException('User not found');
+    }
+
+    const school = await this.prisma.school.findUnique({
+      where: { id: director.school_id },
+      select: { id: true, school_name: true, school_icon: true },
+    });
+
+    if (!school) {
+      throw new NotFoundException('School not found');
+    }
+
+    const userUpdateData: any = {};
+    if (dto.first_name !== undefined) userUpdateData.first_name = dto.first_name;
+    if (dto.last_name !== undefined) userUpdateData.last_name = dto.last_name;
+    if (dto.phone_number !== undefined) userUpdateData.phone_number = dto.phone_number;
+    if (dto.gender !== undefined) userUpdateData.gender = dto.gender;
+
+    // Handle display picture upload
+    if (displayPictureFile) {
+      const folder = `schools/${school.school_name.toLowerCase().replace(/\s+/g, '_')}/profiles/display_pictures`;
+      const fileName = `display_picture_${Date.now()}.${displayPictureFile.originalname.split('.').pop()}`;
+      
+      const uploadResult = await this.storageService.uploadFile(displayPictureFile, folder, fileName);
+      userUpdateData.display_picture = {
+        url: uploadResult.url,
+        key: uploadResult.key,
+        ...(uploadResult.bucket && { bucket: uploadResult.bucket }),
+        ...(uploadResult.etag && { etag: uploadResult.etag }),
+        uploaded_at: new Date().toISOString()
+      };
+      this.logger.log(colors.green(`✅ Display picture uploaded successfully`));
+    }
+
+    // Handle school logo upload
+    let schoolUpdateData: any = {};
+    if (schoolLogoFile) {
+      const folder = `schools/${school.school_name.toLowerCase().replace(/\s+/g, '_')}/profiles/school_logos`;
+      const fileName = `school_logo_${Date.now()}.${schoolLogoFile.originalname.split('.').pop()}`;
+      
+      const uploadResult = await this.storageService.uploadFile(schoolLogoFile, folder, fileName);
+      schoolUpdateData.school_icon = {
+        url: uploadResult.url,
+        key: uploadResult.key,
+        ...(uploadResult.bucket && { bucket: uploadResult.bucket }),
+        ...(uploadResult.etag && { etag: uploadResult.etag }),
+        uploaded_at: new Date().toISOString()
+      };
+      this.logger.log(colors.green(`✅ School logo uploaded successfully`));
+    }
+
+    const settingsUpdateData: any = {};
+    const settingKeys: (keyof UpdateSchoolOwnerProfileDto)[] = [
+      'push_notifications',
+      'email_notifications',
+      'assessment_reminders',
+      'grade_notifications',
+      'announcement_notifications',
+      'dark_mode',
+      'sound_effects',
+      'haptic_feedback',
+      'auto_save',
+      'offline_mode',
+      'profile_visibility',
+      'show_contact_info',
+      'show_academic_progress',
+      'data_sharing',
+    ];
+
+    for (const key of settingKeys) {
+      if (dto[key] !== undefined) {
+        settingsUpdateData[key] = dto[key];
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(userUpdateData).length > 0) {
+        await tx.user.update({
+          where: { id: director.id },
+          data: userUpdateData,
+        });
+      }
+
+      if (Object.keys(schoolUpdateData).length > 0) {
+        await tx.school.update({
+          where: { id: school.id },
+          data: schoolUpdateData,
+        });
+      }
+
+      if (Object.keys(settingsUpdateData).length > 0) {
+        await tx.userSettings.upsert({
+          where: { user_id: director.id },
+          create: {
+            user_id: director.id,
+            school_id: director.school_id,
+            ...settingsUpdateData,
+          },
+          update: settingsUpdateData,
+        });
+      }
+    });
+
+    return this.getSchoolOwnerProfile(user);
   }
 }
 
