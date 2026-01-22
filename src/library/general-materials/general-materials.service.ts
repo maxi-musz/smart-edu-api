@@ -1254,6 +1254,445 @@ export class GeneralMaterialsService {
   }
 
   /**
+   * Start chapter upload session with progress tracking
+   */
+  async startChapterUploadSession(
+    user: any,
+    materialId: string,
+    payload: CreateChapterWithFileDto,
+    file: Express.Multer.File,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Starting chapter upload session for material: ${materialId}`));
+
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    const validationResult = FileValidationHelper.validateMaterialFile(file);
+    if (!validationResult.isValid) {
+      this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
+      throw new BadRequestException(validationResult.error);
+    }
+
+    const sessionId = this.uploadProgressService.createUploadSession(
+      user.sub,
+      `library-chapter-${materialId}`,
+      file.size,
+    );
+
+    this.uploadChapterWithFileWithProgress(user, materialId, payload, file, sessionId).catch((err) => {
+      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message);
+    });
+
+    return new ApiResponse(true, 'Chapter upload started successfully', {
+      sessionId,
+      progressEndpoint: `/api/v1/library/general-materials/upload-progress/${sessionId}`,
+    });
+  }
+
+  /**
+   * Upload chapter with file with progress tracking (background task)
+   */
+  private async uploadChapterWithFileWithProgress(
+    user: any,
+    materialId: string,
+    payload: CreateChapterWithFileDto,
+    file: Express.Multer.File,
+    sessionId: string,
+  ) {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Uploading chapter with progress for material: ${materialId}`));
+
+    let s3Key: string | undefined;
+    let uploadSucceeded = false;
+    let smoother: NodeJS.Timeout | null = null;
+
+    try {
+      this.uploadProgressService.updateProgress(sessionId, 'validating', 0);
+
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { id: true, platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Library user not found');
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify material exists and belongs to the user's platform
+      const material = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          isAiEnabled: true,
+        },
+      });
+
+      if (!material) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'General material not found or does not belong to your platform');
+        throw new NotFoundException('General material not found or does not belong to your platform');
+      }
+
+      if (!material.isAiEnabled) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Material does not have AI chat enabled');
+        throw new BadRequestException('Material does not have AI chat enabled. Please enable AI chat for the material first.');
+      }
+
+      const totalBytes = file.size;
+      let lastKnownLoaded = 0;
+      let emittedLoaded = 0;
+      let lastPercent = -1;
+      const onePercent = Math.max(1, Math.floor(totalBytes / 100));
+      const tickMs = 300;
+
+      this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
+      smoother = setInterval(() => {
+        if (emittedLoaded < lastKnownLoaded) {
+          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
+          emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
+          const percent = Math.floor((emittedLoaded / totalBytes) * 100);
+          if (percent > lastPercent) {
+            lastPercent = percent;
+            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
+          }
+        }
+      }, tickMs);
+
+      // Upload file to S3
+      const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}`;
+      const documentTitle = payload.fileTitle || file.originalname.replace(/\.[^/.]+$/, '');
+      const fileName = `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${file.originalname.split('.').pop()}`;
+      
+      const uploadResult = await this.s3Service.uploadFile(
+        file,
+        uploadFolder,
+        fileName,
+        (loaded) => {
+          lastKnownLoaded = Math.min(loaded, totalBytes);
+        },
+      );
+
+      s3Key = uploadResult.key;
+      uploadSucceeded = true;
+
+      // Calculate document size
+      const documentSize = FileValidationHelper.formatFileSize(file.size);
+
+      this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
+
+      // Get library platform to find/create corresponding Organisation
+      const libraryPlatform = await this.prisma.libraryPlatform.findUnique({
+        where: { id: libraryUser.platformId },
+        select: { id: true, name: true },
+      });
+
+      if (!libraryPlatform) {
+        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Library platform not found');
+        throw new NotFoundException('Library platform not found');
+      }
+
+      // Find or create Organisation
+      let organisation = await this.prisma.organisation.findUnique({
+        where: { name: libraryPlatform.name },
+        select: { id: true },
+      });
+
+      if (!organisation) {
+        organisation = await this.prisma.organisation.create({
+          data: {
+            name: libraryPlatform.name,
+            email: `${libraryPlatform.name.toLowerCase().replace(/\s+/g, '-')}@library.com`,
+          },
+        });
+      }
+
+      // Get or create Library System school
+      const librarySchool = await this.prisma.school.upsert({
+        where: { school_email: 'library-chat@system.com' },
+        update: {},
+        create: {
+          school_name: 'Library Chat System',
+          school_email: 'library-chat@system.com',
+          school_phone: '+000-000-0000',
+          school_address: 'System Default',
+          school_type: 'primary_and_secondary',
+          school_ownership: 'private',
+          status: 'approved',
+        },
+        select: { id: true },
+      });
+
+      // Get or create User record for PDFMaterial
+      let pdfMaterialUploadedBy = await this.prisma.user.findUnique({
+        where: { email: libraryUser.email },
+        select: { id: true, school_id: true },
+      });
+
+      if (!pdfMaterialUploadedBy) {
+        pdfMaterialUploadedBy = await this.prisma.user.create({
+          data: {
+            email: libraryUser.email,
+            password: 'library-user',
+            first_name: libraryUser.email.split('@')[0],
+            last_name: 'Library',
+            phone_number: '+000-000-0000',
+            school_id: librarySchool.id,
+            role: 'super_admin',
+          },
+          select: { id: true, school_id: true },
+        });
+      }
+
+      // Determine file type
+      let fileType: LibraryMaterialType = payload.fileType || LibraryMaterialType.PDF;
+      if (!payload.fileType) {
+        const ext = file.originalname.split('.').pop()?.toLowerCase();
+        if (ext === 'doc' || ext === 'docx') fileType = LibraryMaterialType.DOC;
+        else if (ext === 'ppt' || ext === 'pptx') fileType = LibraryMaterialType.PPT;
+        else if (ext === 'pdf') fileType = LibraryMaterialType.PDF;
+        else if (ext === 'mp4' || ext === 'mov' || ext === 'avi') fileType = LibraryMaterialType.VIDEO;
+        else fileType = LibraryMaterialType.NOTE;
+      }
+
+      // Get next order for chapter
+      const lastChapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
+        where: {
+          materialId: materialId,
+          platformId: libraryUser.platformId,
+          chapterStatus: 'active',
+        },
+        orderBy: { order: 'desc' },
+        select: { order: true },
+      });
+
+      const nextChapterOrder = (lastChapter?.order || 0) + 1;
+      const shouldEnableAiChat = true;
+
+      this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
+
+      // Create chapter and file in a transaction
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Create chapter
+        const chapter = await tx.libraryGeneralMaterialChapter.create({
+          data: {
+            materialId: materialId,
+            platformId: libraryUser.platformId,
+            title: payload.title,
+            description: payload.description ?? null,
+            pageStart: payload.pageStart ?? null,
+            pageEnd: payload.pageEnd ?? null,
+            isAiEnabled: true,
+            order: nextChapterOrder,
+          },
+        });
+
+        // Create PDFMaterial for backward compatibility
+        const pdfMaterial = await tx.pDFMaterial.create({
+          data: {
+            title: payload.fileTitle || file.originalname,
+            description: payload.fileDescription ?? null,
+            url: uploadResult.url,
+            platformId: organisation.id,
+            uploadedById: pdfMaterialUploadedBy.id,
+            schoolId: librarySchool.id,
+            topic_id: null,
+            downloads: 0,
+            size: documentSize,
+            status: 'published',
+            order: payload.fileOrder || 1,
+            fileType: file.originalname.split('.').pop()?.toLowerCase() || 'pdf',
+            originalName: file.originalname,
+            materialId: chapter.id,
+          },
+        });
+
+        // Create chapter file
+        const chapterFile = await tx.libraryGeneralMaterialChapterFile.create({
+          data: {
+            chapterId: chapter.id,
+            platformId: libraryUser.platformId,
+            uploadedById: user.sub,
+            fileName: file.originalname,
+            fileType: fileType,
+            url: uploadResult.url,
+            s3Key: uploadResult.key,
+            sizeBytes: file.size,
+            pageCount: null,
+            title: payload.fileTitle || null,
+            description: payload.fileDescription ?? null,
+            order: payload.fileOrder || 1,
+          },
+        });
+
+        return { chapter, chapterFile, pdfMaterial };
+      });
+
+      // Process for AI chat if enabled (must succeed or rollback everything)
+      if (shouldEnableAiChat) {
+        this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded, 'Processing document for AI chat...');
+        
+        try {
+          const schoolIdForProcessing = librarySchool.id;
+
+          // Create material processing record
+          const materialProcessing = await this.prisma.materialProcessing.create({
+            data: {
+              material_id: result.pdfMaterial.id,
+              school_id: schoolIdForProcessing,
+              status: 'PENDING',
+              total_chunks: 0,
+              processed_chunks: 0,
+              failed_chunks: 0,
+              embedding_model: 'text-embedding-3-small',
+            },
+          });
+
+          // Process document synchronously using file buffer directly
+          const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || 'pdf';
+          const processingFileType = fileExtension === 'docx' ? 'doc' : fileExtension;
+          
+          const processingResult = await this.documentProcessingService.processDocumentFromBuffer(
+            result.pdfMaterial.id,
+            file.buffer,
+            processingFileType
+          );
+          
+          if (!processingResult.success) {
+            const errorMessage = processingResult.error || 'Document processing failed with unknown error';
+            throw new Error(`Document processing failed: ${errorMessage}`);
+          }
+
+          // Update chapter status
+          await this.prisma.libraryGeneralMaterialChapter.update({
+            where: { id: result.chapter.id },
+            data: {
+              isAiEnabled: true,
+            },
+          });
+        } catch (aiProcessingError: any) {
+          // Comprehensive rollback on AI processing failure
+          const rollbackErrors: string[] = [];
+
+          // Delete Pinecone chunks
+          if (result?.pdfMaterial?.id) {
+            try {
+              await this.pineconeService.deleteChunksByMaterial(result.pdfMaterial.id);
+            } catch (deletePineconeError: any) {
+              rollbackErrors.push(`Failed to delete Pinecone chunks: ${deletePineconeError.message}`);
+            }
+          }
+
+          // Delete database chunks
+          if (result?.pdfMaterial?.id) {
+            try {
+              await this.prisma.documentChunk.deleteMany({
+                where: { material_id: result.pdfMaterial.id },
+              });
+            } catch (deleteChunksError: any) {
+              rollbackErrors.push(`Failed to delete database chunks: ${deleteChunksError.message}`);
+            }
+          }
+
+          // Delete MaterialProcessing record
+          if (result?.pdfMaterial?.id) {
+            try {
+              await this.prisma.materialProcessing.deleteMany({
+                where: { material_id: result.pdfMaterial.id },
+              });
+            } catch (deleteProcessingError: any) {
+              rollbackErrors.push(`Failed to delete MaterialProcessing record: ${deleteProcessingError.message}`);
+            }
+          }
+
+          // Delete from S3
+          if (uploadSucceeded && s3Key) {
+            try {
+              await this.s3Service.deleteFile(s3Key);
+            } catch (deleteError: any) {
+              rollbackErrors.push(`Failed to delete file from S3: ${deleteError.message}`);
+            }
+          }
+
+          // Delete database records
+          try {
+            await this.prisma.$transaction(async (tx) => {
+              if (result?.pdfMaterial?.id) {
+                await tx.pDFMaterial.delete({ where: { id: result.pdfMaterial.id } });
+              }
+              if (result?.chapterFile?.id) {
+                await tx.libraryGeneralMaterialChapterFile.delete({ where: { id: result.chapterFile.id } });
+              }
+              if (result?.chapter?.id) {
+                await tx.libraryGeneralMaterialChapter.delete({ where: { id: result.chapter.id } });
+              }
+            });
+          } catch (deleteDbError: any) {
+            rollbackErrors.push(`Failed to delete database records: ${deleteDbError.message}`);
+          }
+
+          const rollbackStatus = rollbackErrors.length > 0 
+            ? ` Some rollback operations failed: ${rollbackErrors.join('; ')}`
+            : ' All changes have been rolled back successfully.';
+          
+          throw new Error(`AI processing failed: ${aiProcessingError.message}.${rollbackStatus}`);
+        }
+      }
+
+      if (smoother) clearInterval(smoother);
+      
+      // Fetch complete chapter with file
+      const completeChapter = await this.prisma.libraryGeneralMaterialChapter.findUnique({
+        where: { id: result.chapter.id },
+        include: {
+          files: {
+            select: {
+              id: true,
+              fileName: true,
+              fileType: true,
+              url: true,
+              sizeBytes: true,
+              title: true,
+              description: true,
+              order: true,
+              createdAt: true,
+            },
+            orderBy: { order: 'asc' },
+          },
+        },
+      });
+
+      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, result.chapter.id);
+      this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter uploaded successfully: ${result.chapter.id}`));
+      
+      return completeChapter;
+    } catch (error: any) {
+      if (smoother) clearInterval(smoother);
+
+      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
+
+      if (uploadSucceeded && s3Key) {
+        try {
+          await this.s3Service.deleteFile(s3Key);
+          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted chapter file from storage`));
+        } catch (deleteError: any) {
+          this.logger.error(colors.red(`❌ Failed to rollback chapter file: ${deleteError.message}`));
+        }
+      }
+
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error uploading chapter with progress: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to upload chapter');
+    }
+  }
+
+  /**
    * Create a new chapter under a general material
    */
   // async createGeneralMaterialChapter(
@@ -1628,10 +2067,27 @@ export class GeneralMaterialsService {
 
           this.logger.log(colors.green(`✅ Material processing record created with ID: ${materialProcessing.id}`));
 
-          // Auto-start processing in background using explore chat DocumentProcessingService
-          this.logger.log(colors.blue(`🔄 Starting document processing in background...`));
-          this.documentProcessingService.processDocument(result.pdfMaterial.id);
-          this.logger.log(colors.green(`✅ Document processing started`));
+          // Process document synchronously using file buffer directly (no S3 download needed)
+          // MUST succeed or rollback everything
+          this.logger.log(colors.blue(`🔄 Starting document processing from buffer (synchronous, blocking)...`));
+          
+          // Determine file type for processing (extract from filename or use validation result)
+          const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || 'pdf';
+          const processingFileType = fileExtension === 'docx' ? 'doc' : fileExtension;
+          
+          const processingResult = await this.documentProcessingService.processDocumentFromBuffer(
+            result.pdfMaterial.id,
+            file.buffer,
+            processingFileType
+          );
+          
+          if (!processingResult.success) {
+            const errorMessage = processingResult.error || 'Document processing failed with unknown error';
+            this.logger.error(colors.red(`❌ Document processing failed: ${errorMessage}`));
+            throw new Error(`Document processing failed: ${errorMessage}`);
+          }
+
+          this.logger.log(colors.green(`✅ Document processing completed successfully`));
 
           // Update chapter status (isProcessed will be determined by MaterialProcessing.status)
           await this.prisma.libraryGeneralMaterialChapter.update({
@@ -1645,38 +2101,97 @@ export class GeneralMaterialsService {
 
           this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing setup completed for chapter: ${result.chapter.id}`));
         } catch (aiProcessingError: any) {
-          // If AI processing setup fails, rollback EVERYTHING (S3 + Database)
-          this.logger.error(colors.red(`❌ AI processing setup failed, rolling back all changes: ${aiProcessingError.message}`));
+          // If AI processing fails, rollback EVERYTHING (Pinecone + Database chunks + S3 + Database records)
+          this.logger.error(colors.red(`❌ AI processing failed, rolling back all changes: ${aiProcessingError.message}`));
           
-          // Delete from S3
-          if (uploadSucceeded && s3Key) {
+          // Comprehensive rollback in reverse order of creation
+          const rollbackErrors: string[] = [];
+
+          // 1. Delete Pinecone chunks (if any were created)
+          if (result?.pdfMaterial?.id) {
             try {
-              await this.s3Service.deleteFile(s3Key);
-              this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
-            } catch (deleteError: any) {
-              this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
+              this.logger.log(colors.yellow(`🗑️ Rollback: Deleting Pinecone chunks for material: ${result.pdfMaterial.id}...`));
+              await this.pineconeService.deleteChunksByMaterial(result.pdfMaterial.id);
+              this.logger.log(colors.yellow('✅ Rollback: Deleted Pinecone chunks'));
+            } catch (deletePineconeError: any) {
+              const errorMsg = `Failed to delete Pinecone chunks: ${deletePineconeError.message}`;
+              rollbackErrors.push(errorMsg);
+              this.logger.error(colors.red(`❌ Rollback: ${errorMsg}`));
             }
           }
 
-          // Delete database records
+          // 2. Delete database chunks (DocumentChunk records)
+          if (result?.pdfMaterial?.id) {
+            try {
+              this.logger.log(colors.yellow(`🗑️ Rollback: Deleting database chunks for material: ${result.pdfMaterial.id}...`));
+              await this.prisma.documentChunk.deleteMany({
+                where: { material_id: result.pdfMaterial.id },
+              });
+              this.logger.log(colors.yellow('✅ Rollback: Deleted database chunks'));
+            } catch (deleteChunksError: any) {
+              const errorMsg = `Failed to delete database chunks: ${deleteChunksError.message}`;
+              rollbackErrors.push(errorMsg);
+              this.logger.error(colors.red(`❌ Rollback: ${errorMsg}`));
+            }
+          }
+
+          // 3. Delete MaterialProcessing record
+          if (result?.pdfMaterial?.id) {
+            try {
+              this.logger.log(colors.yellow(`🗑️ Rollback: Deleting MaterialProcessing record...`));
+              await this.prisma.materialProcessing.deleteMany({
+                where: { material_id: result.pdfMaterial.id },
+              });
+              this.logger.log(colors.yellow('✅ Rollback: Deleted MaterialProcessing record'));
+            } catch (deleteProcessingError: any) {
+              const errorMsg = `Failed to delete MaterialProcessing record: ${deleteProcessingError.message}`;
+              rollbackErrors.push(errorMsg);
+              this.logger.error(colors.red(`❌ Rollback: ${errorMsg}`));
+            }
+          }
+
+          // 4. Delete from S3
+          if (uploadSucceeded && s3Key) {
+            try {
+              this.logger.log(colors.yellow(`🗑️ Rollback: Deleting uploaded file from S3...`));
+              await this.s3Service.deleteFile(s3Key);
+              this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
+            } catch (deleteError: any) {
+              const errorMsg = `Failed to delete file from S3: ${deleteError.message}`;
+              rollbackErrors.push(errorMsg);
+              this.logger.error(colors.red(`❌ Rollback: ${errorMsg}`));
+            }
+          }
+
+          // 5. Delete database records (PDFMaterial, ChapterFile, Chapter)
           try {
+            this.logger.log(colors.yellow(`🗑️ Rollback: Deleting database records...`));
             await this.prisma.$transaction(async (tx) => {
-              if (result.pdfMaterial?.id) {
+              if (result?.pdfMaterial?.id) {
                 await tx.pDFMaterial.delete({ where: { id: result.pdfMaterial.id } });
               }
-              if (result.chapterFile?.id) {
+              if (result?.chapterFile?.id) {
                 await tx.libraryGeneralMaterialChapterFile.delete({ where: { id: result.chapterFile.id } });
               }
-              if (result.chapter?.id) {
+              if (result?.chapter?.id) {
                 await tx.libraryGeneralMaterialChapter.delete({ where: { id: result.chapter.id } });
               }
             });
             this.logger.log(colors.yellow('✅ Rollback: Deleted all database records'));
           } catch (deleteDbError: any) {
-            this.logger.error(colors.red(`❌ Failed to delete database records during rollback: ${deleteDbError.message}`));
+            const errorMsg = `Failed to delete database records: ${deleteDbError.message}`;
+            rollbackErrors.push(errorMsg);
+            this.logger.error(colors.red(`❌ Rollback: ${errorMsg}`));
           }
 
-          throw new InternalServerErrorException(`AI processing setup failed: ${aiProcessingError.message}. All changes have been rolled back.`);
+          // Build error message with rollback status
+          const rollbackStatus = rollbackErrors.length > 0 
+            ? ` Some rollback operations failed: ${rollbackErrors.join('; ')}`
+            : ' All changes have been rolled back successfully.';
+          
+          throw new InternalServerErrorException(
+            `AI processing failed: ${aiProcessingError.message}.${rollbackStatus}`
+          );
         }
       }
 

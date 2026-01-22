@@ -122,6 +122,21 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.createChapterWithFile(req.user, materialId, payload, file);
   }
 
+  // 6.1) Start chapter upload with progress tracking (recommended for large files)
+  @Post(':materialId/chapters/upload/start')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  async startChapterUpload(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+    @Body() payload: CreateChapterWithFileDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.generalMaterialsService.startChapterUploadSession(req.user, materialId, payload, file);
+  }
+
   // 5) Create new general material (full file upload)
   @Post()
   @HttpCode(HttpStatus.CREATED)

@@ -147,6 +147,10 @@ export class DocumentProcessingService {
       // Ensure a processing record exists (so polling doesn't 404)
       await this.ensureProcessingRecord(materialId);
 
+      // Note: For new document uploads, we don't delete old chunks since there are none.
+      // This cleanup is only needed for reprocessing existing materials (retry scenarios).
+      // For new uploads, use processDocumentFromBuffer() which doesn't perform cleanup.
+
       // Step 1: Get material from database
       const material = await this.getMaterial(materialId);
       if (!material) {
