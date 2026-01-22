@@ -2267,10 +2267,10 @@ model LibraryClass {
   name  String
   order Int    @default(1)
 
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
   subjects         LibrarySubject[]
-  generalMaterials LibraryGeneralMaterial[]
+  materialClasses  LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryGeneralMaterial
 }
 
 /// Subjects under a library class (e.g. "Mathematics", "Physics").
@@ -2979,7 +2979,7 @@ model LibraryGeneralMaterial {
   isAvailable Boolean @default(true) // For inventory/visibility management
 
   // Optional Educational Attachment (for categorization)
-  classId   String? // Optional - can be attached to a class for organization
+  // classId removed - now using many-to-many relationship via LibraryGeneralMaterialClass
   subjectId String? // Optional - can be attached to a subject for organization
 
   // AI Chat Support
@@ -2999,8 +2999,8 @@ model LibraryGeneralMaterial {
   // Relations
   platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
   uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
-  class      LibraryClass?       @relation(fields: [classId], references: [id])
   subject    LibrarySubject?     @relation(fields: [subjectId], references: [id])
+  classes    LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryClass
 
   // Chapters for AI chunking
   chapters LibraryGeneralMaterialChapter[]
@@ -3019,11 +3019,27 @@ model LibraryGeneralMaterial {
 
   @@index([platformId])
   @@index([uploadedById])
-  @@index([classId])
   @@index([subjectId])
   @@index([status])
   @@index([isAiEnabled])
   @@index([price])
+  @@index([createdAt])
+}
+
+/// Junction table for many-to-many relationship between LibraryGeneralMaterial and LibraryClass
+model LibraryGeneralMaterialClass {
+  id         String @id @default(cuid())
+  materialId String
+  classId    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  material LibraryGeneralMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  class    LibraryClass           @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, classId])
+  @@index([materialId])
+  @@index([classId])
   @@index([createdAt])
 }
 
