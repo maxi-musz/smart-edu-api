@@ -7,6 +7,7 @@ import {
   EmbeddingService,
   PineconeService,
   DocumentProcessingService,
+  TextToSpeechService,
 } from './services';
 
 @Module({
@@ -17,6 +18,7 @@ import {
     EmbeddingService,
     PineconeService,
     DocumentProcessingService,
+    TextToSpeechService,
   ],
   exports: [
     DocumentProcessingService,
@@ -24,6 +26,7 @@ import {
     DocumentChunkingService,
     EmbeddingService,
     PineconeService,
+    TextToSpeechService,
   ],
 })
 export class ExploreChatServicesModule {}

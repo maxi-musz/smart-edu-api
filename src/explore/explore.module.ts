@@ -10,15 +10,18 @@ import { ExploreAiBooksService } from './explore-aibooks.service';
 import { ExploreChatGateway } from './socket/explore-chat.gateway';
 import { ExploreChatSocketJwtGuard } from './socket/socket-jwt.guard';
 import { ChatService } from './chat/chat.service';
+import { ChatTTSController } from './chat/chat-tts.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LibraryAuthModule } from '../library/library-auth/library-auth.module';
 import { AiChatModule } from '../school/ai-chat/ai-chat.module';
+import { ExploreChatServicesModule } from './chat/explore-chat-services.module';
 
 @Module({
   imports: [
     PrismaModule,
     LibraryAuthModule,
     AiChatModule, // Import to use DocumentProcessingService for Pinecone chunk searching
+    ExploreChatServicesModule, // Import to use TextToSpeechService
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (config: ConfigService) => {
@@ -35,7 +38,7 @@ import { AiChatModule } from '../school/ai-chat/ai-chat.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [ExploreController, ExploreAssessmentController, ExploreAiBooksController],
+  controllers: [ExploreController, ExploreAssessmentController, ExploreAiBooksController, ChatTTSController],
   providers: [
     ExploreService,
     ExploreAssessmentService,
