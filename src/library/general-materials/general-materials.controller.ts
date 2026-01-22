@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   UseGuards,
   Request,
@@ -19,8 +20,7 @@ import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
-import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
-import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
+
 import { CreateChapterWithFileDto } from './dto/create-chapter-with-file.dto';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
@@ -30,8 +30,6 @@ import {
   GetGeneralMaterialsDashboardDocs,
   GetAllGeneralMaterialsDocs,
   CreateGeneralMaterialDocs,
-  CreateGeneralMaterialChapterDocs,
-  UploadChapterFileDocs,
   StartGeneralMaterialUploadDocs,
   GeneralMaterialUploadProgressSseDocs,
   GeneralMaterialUploadProgressPollDocs,
@@ -109,6 +107,21 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.getGeneralMaterialById(req.user, materialId);
   }
 
+  // 6) Create chapter with file upload (combined endpoint) - MUST come before generic @Post()
+  @Post(':materialId/chapters/with-file')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  async createChapterWithFile(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+    @Body() payload: CreateChapterWithFileDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.generalMaterialsService.createChapterWithFile(req.user, materialId, payload, file);
+  }
+
   // 5) Create new general material (full file upload)
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -128,78 +141,19 @@ export class GeneralMaterialsController {
       { name: 'thumbnail', maxCount: 1 },
     ]),
   )
-  async createGeneralMaterial(
-    @Request() req: any,
-    @Body() payload: CreateGeneralMaterialDto,
-    @UploadedFiles()
-    files: {
-      file?: Express.Multer.File[];
-      thumbnail?: Express.Multer.File[];
-    },
-  ) {
-    const materialFile = files.file?.[0];
-    const thumbnailFile = files.thumbnail?.[0];
-    return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, materialFile, thumbnailFile);
-  }
-
-  // 6) Create chapter with file upload (combined endpoint)
-  @Post(':materialId/chapters/with-file')
-  @HttpCode(HttpStatus.CREATED)
-  @UseGuards(LibraryJwtGuard)
-  @ApiBearerAuth()
-  @UseInterceptors(FileInterceptor('file'))
-  async createChapterWithFile(
-    @Request() req: any,
-    @Param('materialId') materialId: string,
-    @Body() payload: CreateChapterWithFileDto,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    return await this.generalMaterialsService.createChapterWithFile(req.user, materialId, payload, file);
-  }
-
-  // 6.1) Create chapter for a general material (without file)
-  @Post(':materialId/chapters')
-  @HttpCode(HttpStatus.CREATED)
-  @UseGuards(LibraryJwtGuard)
-  @ApiBearerAuth()
-  @CreateGeneralMaterialChapterDocs.operation
-  @CreateGeneralMaterialChapterDocs.body
-  @CreateGeneralMaterialChapterDocs.response201
-  @CreateGeneralMaterialChapterDocs.response400
-  @CreateGeneralMaterialChapterDocs.response401
-  @CreateGeneralMaterialChapterDocs.response404
-  @CreateGeneralMaterialChapterDocs.response500
-  async createGeneralMaterialChapter(
-    @Request() req: any,
-    @Param('materialId') materialId: string,
-    @Body() payload: CreateGeneralMaterialChapterDto,
-  ) {
-    return await this.generalMaterialsService.createGeneralMaterialChapter(req.user, materialId, payload);
-  }
-
-  // 7) Upload file for a chapter
-  @Post(':materialId/chapters/:chapterId/files')
-  @HttpCode(HttpStatus.CREATED)
-  @UseGuards(LibraryJwtGuard)
-  @ApiBearerAuth()
-  @UploadChapterFileDocs.consumes
-  @UploadChapterFileDocs.operation
-  @UploadChapterFileDocs.body
-  @UploadChapterFileDocs.response201
-  @UploadChapterFileDocs.response400
-  @UploadChapterFileDocs.response401
-  @UploadChapterFileDocs.response404
-  @UploadChapterFileDocs.response500
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadChapterFile(
-    @Request() req: any,
-    @Param('materialId') materialId: string,
-    @Param('chapterId') chapterId: string,
-    @Body() payload: UploadChapterFileDto,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    return await this.generalMaterialsService.uploadChapterFile(req.user, materialId, chapterId, payload, file);
-  }
+  // async createGeneralMaterial(
+  //   @Request() req: any,
+  //   @Body() payload: CreateGeneralMaterialDto,
+  //   @UploadedFiles()
+  //   files: {
+  //     file?: Express.Multer.File[];
+  //     thumbnail?: Express.Multer.File[];
+  //   },
+  // ) {
+  //   const materialFile = files.file?.[0];
+  //   const thumbnailFile = files.thumbnail?.[0];
+  //   return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, materialFile, thumbnailFile);
+  // }
 
   // 8) Start general material upload with progress tracking
   @Post('upload/start')
@@ -262,5 +216,30 @@ export class GeneralMaterialsController {
   @GeneralMaterialUploadProgressPollDocs.response500
   async getUploadProgressPoll(@Param('sessionId') sessionId: string) {
     return await this.generalMaterialsService.getUploadProgress(sessionId);
+  }
+
+  // 11) Retry processing for a chapter (by chapter.id) - waits for completion
+  @Post(':chapterId/retry-processing')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  async retryProcessing(
+    @Request() req: any,
+    @Param('chapterId') chapterId: string, // Chapter.id (frontend sends chapter ID)
+  ) {
+    return await this.generalMaterialsService.retryProcessing(req.user, chapterId);
+  }
+
+  // 12) Delete a chapter (soft delete - sets status to deleted)
+  @Delete(':materialId/chapters/:chapterId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  async deleteChapter(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+    @Param('chapterId') chapterId: string,
+  ) {
+    return await this.generalMaterialsService.deleteChapter(req.user, materialId, chapterId);
   }
 }

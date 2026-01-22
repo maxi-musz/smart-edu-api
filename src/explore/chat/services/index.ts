@@ -1,6 +1,6 @@
 export * from './text-extraction.service';
 export * from './document-chunking.service';
 export * from './embedding.service';
-// PineconeService exported from explore/chat/services/pinecone.service
+export * from './pinecone.service';
 export * from './document-processing.service';
 export * from './chat.service';

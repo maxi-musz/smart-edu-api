@@ -222,6 +222,8 @@ export class ExploreAiBooksService {
       // Build where clause for chapters
       const chapterWhere: any = {
         materialId: bookId,
+        isProcessed: true,
+        chapterStatus: 'active', // Only return active chapters (soft delete support)
       };
 
       // If library user exists, filter by their platform
@@ -231,7 +233,7 @@ export class ExploreAiBooksService {
 
       // Fetch chapters
       const chapters = await this.prisma.libraryGeneralMaterialChapter.findMany({
-        where: chapterWhere,
+        where: chapterWhere,        
         select: {
           id: true,
           title: true,

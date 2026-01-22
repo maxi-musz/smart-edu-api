@@ -1124,17 +1124,17 @@ model MaterialProcessing {
   school_id               String
   status                  MaterialProcessingStatus @default(PENDING)
   total_chunks            Int                      @default(0)
-  processed_chunks        Int                      @default(0)
   failed_chunks           Int                      @default(0)
   processing_started_at   DateTime?
   processing_completed_at DateTime?
-  error_message           String?
   retry_count             Int                      @default(0)
   vector_database_id      String?
   embedding_model         String?
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   chunks                  DocumentChunk[]
+  error_message           String?
+  processed_chunks        Int                      @default(0)
   material                PDFMaterial              @relation(fields: [material_id], references: [id], onDelete: Cascade)
   school                  School                   @relation(fields: [school_id], references: [id])
 
@@ -1899,6 +1899,11 @@ enum LibraryContentStatus {
   draft
   published
   archived
+}
+
+enum ChapterStatus {
+  active
+  deleted
 }
 
 enum LibraryMaterialType {
@@ -3055,6 +3060,9 @@ model LibraryGeneralMaterialChapter {
   pageEnd     Int? // Ending page number
   order       Int     @default(1)
 
+  // Status (soft delete)
+  chapterStatus ChapterStatus @default(active) // active = visible, deleted = soft deleted (hidden but kept for chat history)
+
   // AI Processing
   isAiEnabled Boolean @default(false) // Whether AI chat is enabled for this chapter
   isProcessed Boolean @default(false) // Whether the chapter has been processed/chunked for AI
@@ -3072,6 +3080,7 @@ model LibraryGeneralMaterialChapter {
   @@index([platformId])
   @@index([order])
   @@index([isAiEnabled])
+  @@index([chapterStatus])
 }
 
 /// Files attached to general material chapters

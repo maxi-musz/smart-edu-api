@@ -52,14 +52,14 @@ export class PineconeService {
     const nodeEnv = process.env.NODE_ENV || 'development';
     switch (nodeEnv.toLowerCase()) {
       case 'production':
-        this.indexName = 'sm-ai-chat-chunks-production';
+        this.indexName = 'smeh-prod';
         break;
       case 'staging':
-        this.indexName = 'sm-ai-chat-chunks-staging';
+        this.indexName = 'smeh-stag';
         break;
       case 'development':
       default:
-        this.indexName = 'sm-ai-chat-chunks-development';
+        this.indexName = 'smeh-dev';
         break;
     }
 
@@ -101,6 +101,22 @@ export class PineconeService {
         this.logger.log(colors.green(`✅ Pinecone index created: ${this.indexName}`));
       } else {
         this.logger.log(colors.blue(`📋 Pinecone index already exists: ${this.indexName}`));
+        
+        // Verify index dimension matches
+        const indexDescription = await this.pinecone.describeIndex(this.indexName);
+        const indexDimension = indexDescription.dimension;
+        
+        if (indexDimension !== 1536) {
+          this.logger.error(colors.red(`❌ Pinecone index dimension mismatch!`));
+          this.logger.error(colors.red(`   Index dimension: ${indexDimension}`));
+          this.logger.error(colors.red(`   Required dimension: 1536 (text-embedding-3-small)`));
+          this.logger.error(colors.yellow(`   ⚠️  You need to either:`));
+          this.logger.error(colors.yellow(`   1. Delete the existing index and let it recreate with correct dimension`));
+          this.logger.error(colors.yellow(`   2. Or use a different index name`));
+          throw new Error(`Pinecone index dimension mismatch: index has ${indexDimension} dimensions but embeddings are 1536. Please delete the index '${this.indexName}' and restart to recreate it with the correct dimension.`);
+        }
+        
+        this.logger.log(colors.green(`✅ Index dimension verified: ${indexDimension}`));
       }
     } catch (error) {
       this.logger.error(colors.red(`❌ Error initializing Pinecone index: ${error.message}`));
