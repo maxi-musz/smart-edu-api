@@ -21,6 +21,7 @@ import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
 import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
+import { CreateChapterWithFileDto } from './dto/create-chapter-with-file.dto';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
@@ -58,7 +59,16 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.getDashboard(req.user);
   }
 
-  // 2) All general materials with pagination/filter/search
+  // 2) Get all available library classes (for dropdown selection)
+  @Get('classes')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  async getAllClasses(@Request() req: any) {
+    return await this.generalMaterialsService.getAllLibraryClasses();
+  }
+
+  // 3) All general materials with pagination/filter/search
   @Get('all')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryJwtGuard)
@@ -75,7 +85,7 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.getAllGeneralMaterials(req.user, query);
   }
 
-  // 2.1) Get chapters for a material (must come before :materialId to avoid route conflicts)
+  // 4.1) Get chapters for a material (must come before :materialId to avoid route conflicts)
   @Get(':materialId/chapters')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryJwtGuard)
@@ -87,7 +97,7 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.getMaterialChapters(req.user, materialId);
   }
 
-  // 2.2) Get single general material by ID
+  // 4.2) Get single general material by ID
   @Get(':materialId')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryJwtGuard)
@@ -99,7 +109,7 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.getGeneralMaterialById(req.user, materialId);
   }
 
-  // 3) Create new general material (full file upload)
+  // 5) Create new general material (full file upload)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(LibraryJwtGuard)
@@ -132,7 +142,22 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, materialFile, thumbnailFile);
   }
 
-  // 4) Create chapter for a general material
+  // 6) Create chapter with file upload (combined endpoint)
+  @Post(':materialId/chapters/with-file')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  async createChapterWithFile(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+    @Body() payload: CreateChapterWithFileDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.generalMaterialsService.createChapterWithFile(req.user, materialId, payload, file);
+  }
+
+  // 6.1) Create chapter for a general material (without file)
   @Post(':materialId/chapters')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(LibraryJwtGuard)
@@ -152,7 +177,7 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.createGeneralMaterialChapter(req.user, materialId, payload);
   }
 
-  // 5) Upload file for a chapter
+  // 7) Upload file for a chapter
   @Post(':materialId/chapters/:chapterId/files')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(LibraryJwtGuard)
@@ -176,7 +201,7 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.uploadChapterFile(req.user, materialId, chapterId, payload, file);
   }
 
-  // 6) Start general material upload with progress tracking
+  // 8) Start general material upload with progress tracking
   @Post('upload/start')
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(LibraryJwtGuard)
@@ -209,7 +234,7 @@ export class GeneralMaterialsController {
     return await this.generalMaterialsService.startGeneralMaterialUploadSession(payload, materialFile, thumbnailFile, req.user);
   }
 
-  // 6) Upload progress (SSE)
+  // 9) Upload progress (SSE)
   @Get('upload-progress/:sessionId')
   @Sse('upload-progress/:sessionId')
   @GeneralMaterialUploadProgressSseDocs.operation
@@ -229,7 +254,7 @@ export class GeneralMaterialsController {
     });
   }
 
-  // 7) Upload progress (polling)
+  // 10) Upload progress (polling)
   @Get('upload-progress/:sessionId/poll')
   @GeneralMaterialUploadProgressPollDocs.operation
   @GeneralMaterialUploadProgressPollDocs.response200

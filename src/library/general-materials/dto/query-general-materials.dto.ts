@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsNumber, Min, IsBoolean } from 'class-validator';
+import { IsOptional, IsString, IsNumber, Min, IsBoolean, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class QueryGeneralMaterialsDto {
@@ -28,10 +28,16 @@ export class QueryGeneralMaterialsDto {
   @IsBoolean()
   isAiEnabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Filter by class ID', example: 'class_123' })
+  @ApiPropertyOptional({ description: 'Filter by class ID (single class)', example: 'class_123' })
   @IsString()
   @IsOptional()
   classId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by multiple class IDs (array)', example: ['class_123', 'class_456'], type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  classIds?: string[];
 
   @ApiPropertyOptional({ description: 'Filter by subject ID', example: 'subject_123' })
   @IsString()

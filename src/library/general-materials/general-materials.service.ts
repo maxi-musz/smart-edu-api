@@ -8,7 +8,8 @@ import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
 import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
-import { LibraryMaterialType } from '@prisma/client';
+import { CreateChapterWithFileDto } from './dto/create-chapter-with-file.dto';
+import { LibraryMaterialType, Prisma } from '@prisma/client';
 import { TextExtractionService } from '../../school/ai-chat/services/text-extraction.service';
 import { DocumentChunkingService } from '../../school/ai-chat/services/document-chunking.service';
 import { EmbeddingService } from '../../school/ai-chat/services/embedding.service';
@@ -28,6 +29,34 @@ export class GeneralMaterialsService {
     private readonly embeddingService: EmbeddingService,
     private readonly pineconeService: PineconeService,
   ) {}
+
+  /**
+   * Get all available library classes (for dropdown selection)
+   */
+  async getAllLibraryClasses(): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Fetching all library classes`));
+
+    try {
+      const libraryClasses = await this.prisma.libraryClass.findMany({
+        select: {
+          id: true,
+          name: true,
+          order: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      });
+
+      this.logger.log(colors.green(`[GENERAL MATERIALS] Retrieved ${libraryClasses.length} library classes`));
+      return new ApiResponse(true, 'Library classes retrieved successfully', libraryClasses);
+    } catch (error: any) {
+      this.logger.error(colors.red(`Error fetching library classes: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to retrieve library classes');
+    }
+  }
 
   /**
    * Get general materials dashboard for the user's platform
@@ -56,7 +85,7 @@ export class GeneralMaterialsService {
         throw new NotFoundException('Library platform not found');
       }
 
-      const [recentMaterials, allChapters, totalMaterialsCount, aiEnabledCount, statusCounts] = await Promise.all([
+      const [recentMaterials, allChapters, totalMaterialsCount, aiEnabledCount, statusCounts, libraryClasses] = await Promise.all([
         this.prisma.libraryGeneralMaterial.findMany({
           where: { platformId: libraryUser.platformId },
           select: {
@@ -81,6 +110,17 @@ export class GeneralMaterialsService {
                 last_name: true,
               },
             },
+            classes: {
+              include: {
+                class: {
+                  select: {
+                    id: true,
+                    name: true,
+                    order: true,
+                  },
+                },
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -102,6 +142,18 @@ export class GeneralMaterialsService {
           by: ['status'],
           where: { platformId: libraryUser.platformId },
           _count: true,
+        }),
+        this.prisma.libraryClass.findMany({
+          select: {
+            id: true,
+            name: true,
+            order: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: {
+            order: 'asc',
+          },
         }),
       ]);
 
@@ -125,6 +177,12 @@ export class GeneralMaterialsService {
         },
       };
 
+      // Format materials to include classes as array
+      const formattedMaterials = recentMaterials.map((material: any) => ({
+        ...material,
+        classes: material.classes?.map((mc: any) => mc.class) || [],
+      }));
+
       const responseData = {
         platform: {
           id: platform.id,
@@ -134,7 +192,8 @@ export class GeneralMaterialsService {
           materialsCount: totalMaterialsCount,
         },
         statistics,
-        materials: recentMaterials,
+        materials: formattedMaterials,
+        libraryClasses,
       };
 
       this.logger.log(colors.green(`[GENERAL MATERIALS] Dashboard fetched for platform: ${platform.name}`));
@@ -224,13 +283,40 @@ export class GeneralMaterialsService {
         }
       }
 
-      if (query.classId) {
-        where.classId = query.classId;
+      // Handle class filtering - support both single classId and multiple classIds (many-to-many)
+      if (query.classIds && query.classIds.length > 0) {
+        // Filter materials that have at least one of the specified classes
+        where.classes = {
+          some: {
+            classId: { in: query.classIds },
+          },
+        };
+      } else if (query.classId) {
+        // Filter by single classId
+        where.classes = {
+          some: {
+            classId: query.classId,
+          },
+        };
       }
 
       if (query.subjectId) {
         where.subjectId = query.subjectId;
       }
+
+      // Fetch all library classes for the response
+      const libraryClasses = await this.prisma.libraryClass.findMany({
+        select: {
+          id: true,
+          name: true,
+          order: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      });
 
       const [totalItems, items] = await Promise.all([
         this.prisma.libraryGeneralMaterial.count({ where }),
@@ -255,10 +341,15 @@ export class GeneralMaterialsService {
                 chapters: true,
               },
             },
-            class: {
-              select: {
-                id: true,
-                name: true,
+            classes: {
+              include: {
+                class: {
+                  select: {
+                    id: true,
+                    name: true,
+                    order: true,
+                  },
+                },
               },
             },
             subject: {
@@ -287,15 +378,17 @@ export class GeneralMaterialsService {
 
       const totalPages = Math.ceil(totalItems / limit) || 1;
 
-      // Map items to include chapter count
+      // Map items to include chapter count and format classes as array
       const itemsWithChapterCount = items.map((item: any) => ({
         ...item,
         chapterCount: item._count?.chapters || 0,
+        classes: item.classes?.map((mc: any) => mc.class) || [],
         _count: undefined, // Remove _count from response
       }));
 
       const responseData = {
         items: itemsWithChapterCount,
+        libraryClasses,
         meta: {
           totalItems,
           totalPages,
@@ -358,10 +451,15 @@ export class GeneralMaterialsService {
           downloads: true,
           createdAt: true,
           updatedAt: true,
-          class: {
-            select: {
-              id: true,
-              name: true,
+          classes: {
+            include: {
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  order: true,
+                },
+              },
             },
           },
           subject: {
@@ -421,8 +519,14 @@ export class GeneralMaterialsService {
         throw new NotFoundException('Material not found or does not belong to your platform');
       }
 
+      // Format classes as array
+      const formattedMaterial = {
+        ...material,
+        classes: material.classes?.map((mc: any) => mc.class) || [],
+      };
+
       this.logger.log(colors.green(`[GENERAL MATERIALS] Material retrieved successfully: ${material.id}`));
-      return new ApiResponse(true, 'General material retrieved successfully', material);
+      return new ApiResponse(true, 'General material retrieved successfully', formattedMaterial);
     } catch (error: any) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
@@ -564,21 +668,54 @@ export class GeneralMaterialsService {
         throw new NotFoundException('Library user not found');
       }
 
-      const uploadFolder = `library/general-materials/platforms/${libraryUser.platformId}`;
-      const uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+      // Upload files to S3 first (before database operations)
+      let uploadResult: any;
+      let thumbResult: any;
+      let mainFileS3Key: string | undefined;
+      let thumbnailS3Key: string | undefined;
+      let uploadSucceeded = false;
+      let thumbnailUploadSucceeded = false;
+
+      try {
+        const uploadFolder = `library/general-materials/platforms/${libraryUser.platformId}`;
+        uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+        mainFileS3Key = uploadResult.key;
+        uploadSucceeded = true;
+        this.logger.log(colors.green(`✅ Main file uploaded to S3: ${mainFileS3Key}`));
+      } catch (s3Error: any) {
+        this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
+        throw new InternalServerErrorException('Failed to upload file to cloud storage');
+      }
 
       let thumbnailUrl: string | null = null;
-      let thumbnailS3Key: string | null = null;
+      let thumbnailS3KeyValue: string | null = null;
 
       if (thumbnailFile) {
-        const thumbFolder = `library/general-materials/thumbnails/platforms/${libraryUser.platformId}`;
-        const thumbResult = await this.s3Service.uploadFile(
-          thumbnailFile,
-          thumbFolder,
-          `${payload.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
-        );
-        thumbnailUrl = thumbResult.url;
-        thumbnailS3Key = thumbResult.key;
+        try {
+          const thumbFolder = `library/general-materials/thumbnails/platforms/${libraryUser.platformId}`;
+          thumbResult = await this.s3Service.uploadFile(
+            thumbnailFile,
+            thumbFolder,
+            `${payload.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
+          );
+          thumbnailUrl = thumbResult.url;
+          thumbnailS3KeyValue = thumbResult.key;
+          thumbnailS3Key = thumbResult.key;
+          thumbnailUploadSucceeded = true;
+          this.logger.log(colors.green(`✅ Thumbnail uploaded to S3: ${thumbnailS3Key}`));
+        } catch (thumbError: any) {
+          // If thumbnail upload fails, rollback main file
+          this.logger.error(colors.red(`❌ Thumbnail upload failed, rolling back main file: ${thumbError.message}`));
+          if (uploadSucceeded && mainFileS3Key) {
+            try {
+              await this.s3Service.deleteFile(mainFileS3Key);
+              this.logger.log(colors.yellow('✅ Rollback: Deleted main file from S3'));
+            } catch (deleteError: any) {
+              this.logger.error(colors.red(`❌ Failed to delete main file from S3 during rollback: ${deleteError.message}`));
+            }
+          }
+          throw new InternalServerErrorException('Failed to upload thumbnail to cloud storage');
+        }
       }
 
       // Get library platform to find/create corresponding Organisation
@@ -648,69 +785,150 @@ export class GeneralMaterialsService {
         this.logger.log(colors.cyan(`Created User record for LibraryResourceUser: ${pdfMaterialUploadedBy.id} (email: ${libraryUser.email})`));
       }
 
-      const material = await this.prisma.libraryGeneralMaterial.create({
-        data: {
-          platformId: libraryUser.platformId,
-          uploadedById: user.sub,
-          title: payload.title,
-          description: payload.description ?? null,
-          author: payload.author ?? null,
-          isbn: payload.isbn ?? null,
-          publisher: payload.publisher ?? null,
-          materialType: 'PDF' as any,
-          url: uploadResult.url,
-          s3Key: uploadResult.key,
-          sizeBytes: file.size,
-          pageCount: null,
-          thumbnailUrl,
-          thumbnailS3Key,
-          price: null,
-          currency: null,
-          isFree: false,
-          isAvailable: true,
-          classId: null,
-          subjectId: null,
-          isAiEnabled: false,
-        },
-        include: {
-          uploadedBy: {
-            select: {
-              id: true,
-              email: true,
-              first_name: true,
-              last_name: true,
-            },
+      // Validate classIds if provided
+      if (payload.classIds && payload.classIds.length > 0) {
+        // Validate that all classIds exist
+        const existingClasses = await this.prisma.libraryClass.findMany({
+          where: {
+            id: { in: payload.classIds },
           },
-        },
-      });
+          select: { id: true },
+        });
 
-      // Create corresponding PDFMaterial record
-      const pdfMaterial = await this.prisma.pDFMaterial.create({
-        data: {
-          title: payload.title,
-          description: payload.description ?? null,
-          url: uploadResult.url,
-          platformId: organisation.id,
-          uploadedById: pdfMaterialUploadedBy.id,
-          schoolId: null, // Library materials don't belong to a specific school
-          topic_id: null,
-          downloads: 0,
-          size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
-          status: 'published',
-          order: 1,
-          fileType: file.mimetype || 'application/pdf',
-          originalName: file.originalname,
-          materialId: material.id, // Link to LibraryGeneralMaterial
-        },
-      });
+        if (existingClasses.length !== payload.classIds.length) {
+          const foundIds = existingClasses.map((c) => c.id);
+          const missingIds = payload.classIds.filter((id) => !foundIds.includes(id));
+          throw new BadRequestException(`Invalid class IDs: ${missingIds.join(', ')}`);
+        }
+      }
+
+      // Create material and PDFMaterial in a transaction
+      let material: any;
+      let pdfMaterial: any;
+      let dbSucceeded = false;
+
+      try {
+        const result = await this.prisma.$transaction(async (tx) => {
+          // Create material
+          const createdMaterial = await tx.libraryGeneralMaterial.create({
+            data: {
+              platformId: libraryUser.platformId,
+              uploadedById: user.sub,
+              title: payload.title,
+              description: payload.description ?? null,
+              author: payload.author ?? null,
+              isbn: payload.isbn ?? null,
+              publisher: payload.publisher ?? null,
+              materialType: 'PDF' as any,
+              url: uploadResult.url,
+              s3Key: uploadResult.key,
+              sizeBytes: file.size,
+              pageCount: null,
+              thumbnailUrl,
+              thumbnailS3Key: thumbnailS3KeyValue,
+              price: null,
+              currency: null,
+              isFree: false,
+              isAvailable: true,
+              subjectId: null,
+              isAiEnabled: true, // AI chat enabled by default for all materials
+              // Create many-to-many relationships with classes
+              classes: payload.classIds && payload.classIds.length > 0
+                ? {
+                    create: payload.classIds.map((classId) => ({
+                      classId,
+                    })),
+                  }
+                : undefined,
+            },
+            include: {
+              uploadedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+              classes: {
+                include: {
+                  class: {
+                    select: {
+                      id: true,
+                      name: true,
+                      order: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          // Create corresponding PDFMaterial record
+          const createdPdfMaterial = await tx.pDFMaterial.create({
+            data: {
+              title: payload.title,
+              description: payload.description ?? null,
+              url: uploadResult.url,
+              platformId: organisation.id,
+              uploadedById: pdfMaterialUploadedBy.id,
+              schoolId: null, // Library materials don't belong to a specific school
+              topic_id: null,
+              downloads: 0,
+              size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
+              status: 'published',
+              order: 1,
+              fileType: file.mimetype || 'application/pdf',
+              originalName: file.originalname,
+              materialId: createdMaterial.id, // Link to LibraryGeneralMaterial
+            },
+          });
+
+          return { material: createdMaterial, pdfMaterial: createdPdfMaterial };
+        });
+
+        material = result.material;
+        pdfMaterial = result.pdfMaterial;
+        dbSucceeded = true;
+        this.logger.log(colors.green(`✅ Database records created successfully`));
+      } catch (dbError: any) {
+        // If database transaction fails, rollback S3 uploads
+        this.logger.error(colors.red(`❌ Database transaction failed, rolling back S3 uploads: ${dbError.message}`));
+        
+        // Delete thumbnail from S3
+        if (thumbnailUploadSucceeded && thumbnailS3Key) {
+          try {
+            await this.s3Service.deleteFile(thumbnailS3Key);
+            this.logger.log(colors.yellow('✅ Rollback: Deleted thumbnail from S3'));
+          } catch (deleteError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete thumbnail from S3 during rollback: ${deleteError.message}`));
+          }
+        }
+
+        // Delete main file from S3
+        if (uploadSucceeded && mainFileS3Key) {
+          try {
+            await this.s3Service.deleteFile(mainFileS3Key);
+            this.logger.log(colors.yellow('✅ Rollback: Deleted main file from S3'));
+          } catch (deleteError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete main file from S3 during rollback: ${deleteError.message}`));
+          }
+        }
+
+        throw dbError;
+      }
 
       this.logger.log(colors.green(`[GENERAL MATERIALS] Material created successfully: ${material.id}`));
       this.logger.log(colors.green(`[GENERAL MATERIALS] PDFMaterial created successfully: ${pdfMaterial.id} (linked to LibraryGeneralMaterial: ${material.id})`));
       
-      return new ApiResponse(true, 'General material created successfully', {
+      // Format classes as array
+      const formattedMaterial = {
         ...material,
+        classes: material.classes?.map((mc: any) => mc.class) || [],
         pdfMaterialId: pdfMaterial.id,
-      });
+      };
+      
+      return new ApiResponse(true, 'General material created successfully', formattedMaterial);
     } catch (error: any) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
@@ -853,6 +1071,22 @@ export class GeneralMaterialsService {
       this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
       this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
 
+      // Validate classIds if provided
+      if (payload.classIds && payload.classIds.length > 0) {
+        const existingClasses = await this.prisma.libraryClass.findMany({
+          where: {
+            id: { in: payload.classIds },
+          },
+          select: { id: true },
+        });
+
+        if (existingClasses.length !== payload.classIds.length) {
+          const foundIds = existingClasses.map((c) => c.id);
+          const missingIds = payload.classIds.filter((id) => !foundIds.includes(id));
+          throw new BadRequestException(`Invalid class IDs: ${missingIds.join(', ')}`);
+        }
+      }
+
       const material = await this.prisma.libraryGeneralMaterial.create({
         data: {
           platformId: libraryUser.platformId,
@@ -873,9 +1107,16 @@ export class GeneralMaterialsService {
           currency: null,
           isFree: false,
           isAvailable: true,
-          classId: null,
           subjectId: null,
-          isAiEnabled: false,
+          isAiEnabled: true, // AI chat enabled by default for all materials
+          // Create many-to-many relationships with classes
+          classes: payload.classIds && payload.classIds.length > 0
+            ? {
+                create: payload.classIds.map((classId) => ({
+                  classId,
+                })),
+              }
+            : undefined,
         },
         include: {
           uploadedBy: {
@@ -884,6 +1125,17 @@ export class GeneralMaterialsService {
               email: true,
               first_name: true,
               last_name: true,
+            },
+          },
+          classes: {
+            include: {
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  order: true,
+                },
+              },
             },
           },
         },
@@ -1023,6 +1275,346 @@ export class GeneralMaterialsService {
   }
 
   /**
+   * Create a chapter with file upload in one step
+   */
+  async createChapterWithFile(
+    user: any,
+    materialId: string,
+    payload: CreateChapterWithFileDto,
+    file: Express.Multer.File,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Creating chapter with file for material: ${materialId} by user: ${user.email}`));
+
+    try {
+      if (!file) {
+        throw new BadRequestException('File is required');
+      }
+
+      const validationResult = FileValidationHelper.validateMaterialFile(file);
+      if (!validationResult.isValid) {
+        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
+        throw new BadRequestException(validationResult.error);
+      }
+
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { id: true, platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify material exists and belongs to the user's platform
+      const material = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          isAiEnabled: true, // Select the field value, not filter
+        },
+      });
+
+      if (!material) {
+        this.logger.error(colors.red(`General material not found or does not belong to your platform: ${materialId}`));
+        throw new NotFoundException('General material not found or does not belong to your platform');
+      }
+
+      // Get next order for chapter
+      const lastChapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
+        where: {
+          materialId: materialId,
+          platformId: libraryUser.platformId,
+        },
+        orderBy: {
+          order: 'desc',
+        },
+        select: {
+          order: true,
+        },
+      });
+
+      const nextChapterOrder = (lastChapter?.order || 0) + 1;
+
+      // AI chat is always enabled for chapters created with files
+      // Verify material has isAiEnabled=true
+      if (!material.isAiEnabled) {
+        this.logger.error(colors.red('Material does not have AI chat enabled'));
+        throw new BadRequestException('Material does not have AI chat enabled. Please enable AI chat for the material first.');
+      }
+
+      // AI processing is always enabled for chapter files
+      const shouldEnableAiChat = true;
+
+      // Get library platform to find/create corresponding Organisation
+      const libraryPlatform = await this.prisma.libraryPlatform.findUnique({
+        where: { id: libraryUser.platformId },
+        select: { id: true, name: true },
+      });
+
+      if (!libraryPlatform) {
+        this.logger.error(colors.red('Library platform not found'));
+        throw new NotFoundException('Library platform not found');
+      }
+
+      // Find or create Organisation
+      let organisation = await this.prisma.organisation.findUnique({
+        where: { name: libraryPlatform.name },
+        select: { id: true },
+      });
+
+      if (!organisation) {
+        organisation = await this.prisma.organisation.create({
+          data: {
+            name: libraryPlatform.name,
+            email: `${libraryPlatform.name.toLowerCase().replace(/\s+/g, '-')}@library.com`,
+          },
+        });
+        this.logger.log(colors.cyan(`Created Organisation for LibraryPlatform: ${organisation.id}`));
+      }
+
+      // Get or create User record for PDFMaterial
+      let pdfMaterialUploadedBy = await this.prisma.user.findUnique({
+        where: { email: libraryUser.email },
+        select: { id: true },
+      });
+
+      if (!pdfMaterialUploadedBy) {
+        const librarySchool = await this.prisma.school.upsert({
+          where: { school_email: 'library-chat@system.com' },
+          update: {},
+          create: {
+            school_name: 'Library Chat System',
+            school_email: 'library-chat@system.com',
+            school_phone: '+000-000-0000',
+            school_address: 'System Default',
+            school_type: 'primary_and_secondary',
+            school_ownership: 'private',
+            status: 'approved',
+          },
+        });
+
+        pdfMaterialUploadedBy = await this.prisma.user.create({
+          data: {
+            email: libraryUser.email,
+            password: 'library-user',
+            first_name: libraryUser.email.split('@')[0],
+            last_name: 'Library',
+            phone_number: '+000-000-0000',
+            school_id: librarySchool.id,
+            role: 'super_admin',
+          },
+          select: { id: true },
+        });
+      }
+
+      // Determine file type
+      let fileType: LibraryMaterialType = payload.fileType || LibraryMaterialType.PDF;
+      if (!payload.fileType) {
+        const ext = file.originalname.split('.').pop()?.toLowerCase();
+        if (ext === 'doc' || ext === 'docx') fileType = LibraryMaterialType.DOC;
+        else if (ext === 'ppt' || ext === 'pptx') fileType = LibraryMaterialType.PPT;
+        else if (ext === 'pdf') fileType = LibraryMaterialType.PDF;
+        else if (ext === 'mp4' || ext === 'mov' || ext === 'avi') fileType = LibraryMaterialType.VIDEO;
+        else fileType = LibraryMaterialType.NOTE;
+      }
+
+      // Upload file to S3 first (before database operations)
+      let uploadResult: any;
+      let s3Key: string | undefined;
+      let uploadSucceeded = false;
+
+      try {
+        const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}`;
+        uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+        s3Key = uploadResult.key;
+        uploadSucceeded = true;
+        this.logger.log(colors.green(`✅ File uploaded to S3: ${s3Key}`));
+      } catch (s3Error: any) {
+        this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
+        throw new InternalServerErrorException('Failed to upload file to cloud storage');
+      }
+
+      // Create chapter and file in a transaction
+      let result: any;
+      let dbSucceeded = false;
+
+      try {
+        result = await this.prisma.$transaction(async (tx) => {
+          // Create chapter
+          const chapter = await tx.libraryGeneralMaterialChapter.create({
+            data: {
+              materialId: materialId,
+              platformId: libraryUser.platformId,
+              title: payload.title,
+              description: payload.description ?? null,
+            pageStart: payload.pageStart ?? null,
+            pageEnd: payload.pageEnd ?? null,
+            isAiEnabled: true, // Always enabled when created with file
+            order: nextChapterOrder,
+            },
+          });
+
+          // Create PDFMaterial for backward compatibility
+          const pdfMaterial = await tx.pDFMaterial.create({
+            data: {
+              title: payload.fileTitle || file.originalname,
+              description: payload.fileDescription ?? null,
+              url: uploadResult.url,
+              platformId: organisation.id,
+              uploadedById: pdfMaterialUploadedBy.id,
+              schoolId: null,
+              topic_id: null,
+              downloads: 0,
+              size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
+              status: 'published',
+              order: payload.fileOrder || 1,
+              fileType: fileType,
+              originalName: file.originalname,
+              materialId: chapter.id, // Link to chapter
+            },
+          });
+
+          // Create chapter file
+          const chapterFile = await tx.libraryGeneralMaterialChapterFile.create({
+            data: {
+              chapterId: chapter.id,
+              platformId: libraryUser.platformId,
+              uploadedById: user.sub,
+              fileName: file.originalname,
+              fileType: fileType,
+              url: uploadResult.url,
+              s3Key: uploadResult.key,
+              sizeBytes: file.size,
+              pageCount: null,
+              title: payload.fileTitle || null,
+              description: payload.fileDescription ?? null,
+              order: payload.fileOrder || 1,
+            },
+          });
+
+          return { chapter, chapterFile, pdfMaterial };
+        });
+
+        dbSucceeded = true;
+        this.logger.log(colors.green(`✅ Database records created successfully`));
+      } catch (dbError: any) {
+        // If database transaction fails, rollback S3 upload
+        this.logger.error(colors.red(`❌ Database transaction failed, rolling back S3 upload: ${dbError.message}`));
+        
+        if (uploadSucceeded && s3Key) {
+          try {
+            await this.s3Service.deleteFile(s3Key);
+            this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
+          } catch (deleteError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
+          }
+        }
+
+        throw dbError;
+      }
+
+      // Process for AI chat if enabled (must succeed or rollback everything)
+      if (shouldEnableAiChat) {
+        this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${result.chapterFile.id}`));
+        
+        try {
+          const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
+          await this.processChapterFileForAiChatFromBuffer(
+            result.chapterFile,
+            result.chapter,
+            file.buffer,
+            fileTypeString,
+            libraryUser.platformId,
+            result.pdfMaterial.id,
+          );
+
+          // Update chapter status
+          await this.prisma.libraryGeneralMaterialChapter.update({
+            where: { id: result.chapter.id },
+            data: {
+              isAiEnabled: true,
+              isProcessed: true,
+            },
+          });
+
+          this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter: ${result.chapter.id}`));
+        } catch (aiProcessingError: any) {
+          // If AI processing fails, rollback EVERYTHING (S3 + Database)
+          this.logger.error(colors.red(`❌ AI processing failed, rolling back all changes: ${aiProcessingError.message}`));
+          
+          // Delete from S3
+          if (uploadSucceeded && s3Key) {
+            try {
+              await this.s3Service.deleteFile(s3Key);
+              this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
+            } catch (deleteError: any) {
+              this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
+            }
+          }
+
+          // Delete database records
+          try {
+            await this.prisma.$transaction(async (tx) => {
+              if (result.pdfMaterial?.id) {
+                await tx.pDFMaterial.delete({ where: { id: result.pdfMaterial.id } });
+              }
+              if (result.chapterFile?.id) {
+                await tx.libraryGeneralMaterialChapterFile.delete({ where: { id: result.chapterFile.id } });
+              }
+              if (result.chapter?.id) {
+                await tx.libraryGeneralMaterialChapter.delete({ where: { id: result.chapter.id } });
+              }
+            });
+            this.logger.log(colors.yellow('✅ Rollback: Deleted all database records'));
+          } catch (deleteDbError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete database records during rollback: ${deleteDbError.message}`));
+          }
+
+          throw new InternalServerErrorException(`AI processing failed: ${aiProcessingError.message}. All changes have been rolled back.`);
+        }
+      }
+
+      // Fetch complete chapter with file
+      const completeChapter = await this.prisma.libraryGeneralMaterialChapter.findUnique({
+        where: { id: result.chapter.id },
+        include: {
+          files: {
+            select: {
+              id: true,
+              fileName: true,
+              fileType: true,
+              url: true,
+              sizeBytes: true,
+              title: true,
+              description: true,
+              order: true,
+              createdAt: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          },
+        },
+      });
+
+      this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter with file created successfully: ${result.chapter.id}`));
+      return new ApiResponse(true, 'Chapter with file created successfully', completeChapter);
+    } catch (error: any) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error creating chapter with file: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to create chapter with file');
+    }
+  }
+
+  /**
    * Upload a file for a general material chapter
    */
   async uploadChapterFile(
@@ -1155,12 +1747,17 @@ export class GeneralMaterialsService {
         else fileType = LibraryMaterialType.NOTE;
       }
 
-      // Upload file to S3 (only after all validations pass)
+      // Upload file to S3 first (before database operations)
       const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}/${chapterId}`;
       let uploadResult: any;
+      let s3Key: string | undefined;
+      let uploadSucceeded = false;
       
       try {
         uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+        s3Key = uploadResult.key;
+        uploadSucceeded = true;
+        this.logger.log(colors.green(`✅ File uploaded to S3: ${s3Key}`));
       } catch (s3Error: any) {
         this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
         throw new InternalServerErrorException('Failed to upload file to storage');
@@ -1170,6 +1767,7 @@ export class GeneralMaterialsService {
       // If any operation fails, everything will be rolled back automatically
       let chapterFile: any;
       let pdfMaterial: any;
+      let dbSucceeded = false;
       
       try {
         const result = await this.prisma.$transaction(async (tx) => {
@@ -1226,86 +1824,16 @@ export class GeneralMaterialsService {
 
         chapterFile = result.chapterFile;
         pdfMaterial = result.pdfMaterial;
+        dbSucceeded = true;
 
-        this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter file and PDFMaterial created successfully: ${chapterFile.id}`));
-
-        // Process for AI chat (happens outside transaction since it involves external services)
-        // If this fails, we'll rollback the transaction by deleting what was created
-        if (shouldEnableAiChat) {
-          this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${chapterFile.id}`));
-          
-          try {
-            const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
-            await this.processChapterFileForAiChatFromBuffer(
-              chapterFile,
-              chapter,
-              file.buffer,
-              fileTypeString,
-              libraryUser.platformId,
-              pdfMaterial.id, // Pass PDFMaterial.id for Pinecone storage
-            );
-
-            // Update chapter status (in a separate transaction to avoid long-running transaction)
-            await this.prisma.libraryGeneralMaterialChapter.update({
-              where: { id: chapterId },
-              data: {
-                isAiEnabled: true,
-                isProcessed: true,
-              },
-            });
-
-            this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter file: ${chapterFile.id}`));
-          } catch (aiProcessingError: any) {
-            // If AI processing fails, rollback everything
-            this.logger.error(colors.red(`❌ AI processing failed, rolling back all changes: ${aiProcessingError.message}`));
-            
-            // Delete from S3
-            if (uploadResult.key) {
-              try {
-                await this.s3Service.deleteFile(uploadResult.key);
-                this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
-              } catch (deleteError: any) {
-                this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
-              }
-            }
-
-            // Delete database records
-            try {
-              await this.prisma.$transaction(async (tx) => {
-                if (pdfMaterial?.id) {
-                  await tx.pDFMaterial.delete({ where: { id: pdfMaterial.id } });
-                }
-                if (chapterFile?.id) {
-                  await tx.libraryGeneralMaterialChapterFile.delete({ where: { id: chapterFile.id } });
-                }
-              });
-              this.logger.log(colors.yellow('✅ Rollback: Deleted all database records'));
-            } catch (deleteDbError: any) {
-              this.logger.error(colors.red(`❌ Failed to delete database records during rollback: ${deleteDbError.message}`));
-            }
-
-            throw aiProcessingError;
-          }
-        }
-
-        return new ApiResponse(
-          true,
-          shouldEnableAiChat
-            ? 'Chapter file uploaded successfully and AI chat processing completed'
-            : 'Chapter file uploaded successfully',
-          {
-            ...chapterFile,
-            aiChatProcessed: shouldEnableAiChat,
-          }
-        );
+        this.logger.log(colors.green(`✅ Database records created successfully: ${chapterFile.id}`));
       } catch (dbError: any) {
-        // If transaction fails, delete the uploaded file from S3
-        this.logger.error(colors.red(`❌ Database transaction failed, rolling back: ${dbError.message}`));
+        // If database transaction fails, rollback S3 upload
+        this.logger.error(colors.red(`❌ Database transaction failed, rolling back S3 upload: ${dbError.message}`));
         
-        // Delete from S3
-        if (uploadResult.key) {
+        if (uploadSucceeded && s3Key) {
           try {
-            await this.s3Service.deleteFile(uploadResult.key);
+            await this.s3Service.deleteFile(s3Key);
             this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
           } catch (deleteError: any) {
             this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
@@ -1314,6 +1842,76 @@ export class GeneralMaterialsService {
 
         throw dbError;
       }
+
+      // Process for AI chat (happens outside transaction since it involves external services)
+      // If this fails, we'll rollback EVERYTHING (S3 + Database)
+      if (shouldEnableAiChat) {
+        this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${chapterFile.id}`));
+        
+        try {
+          const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
+          await this.processChapterFileForAiChatFromBuffer(
+            chapterFile,
+            chapter,
+            file.buffer,
+            fileTypeString,
+            libraryUser.platformId,
+            pdfMaterial.id, // Pass PDFMaterial.id for Pinecone storage
+          );
+
+          // Update chapter status (in a separate transaction to avoid long-running transaction)
+          await this.prisma.libraryGeneralMaterialChapter.update({
+            where: { id: chapterId },
+            data: {
+              isAiEnabled: true,
+              isProcessed: true,
+            },
+          });
+
+          this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter file: ${chapterFile.id}`));
+        } catch (aiProcessingError: any) {
+          // If AI processing fails, rollback EVERYTHING (S3 + Database)
+          this.logger.error(colors.red(`❌ AI processing failed, rolling back all changes: ${aiProcessingError.message}`));
+          
+          // Delete from S3
+          if (uploadSucceeded && s3Key) {
+            try {
+              await this.s3Service.deleteFile(s3Key);
+              this.logger.log(colors.yellow('✅ Rollback: Deleted uploaded file from S3'));
+            } catch (deleteError: any) {
+              this.logger.error(colors.red(`❌ Failed to delete file from S3 during rollback: ${deleteError.message}`));
+            }
+          }
+
+          // Delete database records
+          try {
+            await this.prisma.$transaction(async (tx) => {
+              if (pdfMaterial?.id) {
+                await tx.pDFMaterial.delete({ where: { id: pdfMaterial.id } });
+              }
+              if (chapterFile?.id) {
+                await tx.libraryGeneralMaterialChapterFile.delete({ where: { id: chapterFile.id } });
+              }
+            });
+            this.logger.log(colors.yellow('✅ Rollback: Deleted all database records'));
+          } catch (deleteDbError: any) {
+            this.logger.error(colors.red(`❌ Failed to delete database records during rollback: ${deleteDbError.message}`));
+          }
+
+          throw new InternalServerErrorException(`AI processing failed: ${aiProcessingError.message}. All changes have been rolled back.`);
+        }
+      }
+
+      return new ApiResponse(
+        true,
+        shouldEnableAiChat
+          ? 'Chapter file uploaded successfully and AI chat processing completed'
+          : 'Chapter file uploaded successfully',
+        {
+          ...chapterFile,
+          aiChatProcessed: shouldEnableAiChat,
+        }
+      );
     } catch (error: any) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
@@ -1560,19 +2158,25 @@ export class GeneralMaterialsService {
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const embedding = embeddings[i];
+        
+        // Format embedding array as PostgreSQL vector string: [0.1, 0.2, 0.3]
+        const embeddingArray = embedding?.embedding || [];
+        const embeddingString = `[${embeddingArray.join(',')}]`;
+        
+        // Escape single quotes in content and section title for SQL
+        const escapedContent = chunk.content.replace(/\0/g, '').replace(/'/g, "''");
+        const escapedSectionTitle = chunk.metadata.sectionTitle?.replace(/\0/g, '').replace(/'/g, "''") || null;
+        const sectionTitleValue = escapedSectionTitle ? `'${escapedSectionTitle}'` : 'NULL';
 
-        await this.prisma.$executeRaw`
+        await this.prisma.$executeRawUnsafe(`
           INSERT INTO "LibraryGeneralMaterialChunk" (
             id, "materialId", "chapterId", "processingId", "platformId", content,
             "chunkType", "pageNumber", "sectionTitle", embedding, "embeddingModel",
             "tokenCount", "wordCount", "orderIndex", keywords, summary, "createdAt", "updatedAt"
           ) VALUES (
-            ${chunk.id}, ${libraryMaterialId}, ${chapterId}, ${processingId}, ${platformId},
-            ${chunk.content.replace(/\0/g, '')}, ${this.mapChunkType(chunk.chunkType)}::"ChunkType",
-            ${chunk.metadata.pageNumber || null}, ${chunk.metadata.sectionTitle?.replace(/\0/g, '') || null},
-            ${embedding?.embedding || []}::vector, ${embedding?.model || 'text-embedding-3-small'},
-            ${chunk.tokenCount}, ${Math.ceil(chunk.content.split(' ').length)}, ${chunk.chunkIndex},
-            ${[]}::text[], ${null}, NOW(), NOW()
+            $1, $2, $3, $4, $5, $6,
+            $7::"ChunkType", $8, ${sectionTitleValue}, '${embeddingString}'::vector, $9,
+            $10, $11, $12, $13::text[], $14, NOW(), NOW()
           )
           ON CONFLICT (id) DO UPDATE SET
             "materialId" = EXCLUDED."materialId",
@@ -1591,7 +2195,22 @@ export class GeneralMaterialsService {
             keywords = EXCLUDED.keywords,
             summary = EXCLUDED.summary,
             "updatedAt" = NOW()
-        `;
+        `,
+          chunk.id,
+          libraryMaterialId,
+          chapterId,
+          processingId,
+          platformId,
+          escapedContent,
+          this.mapChunkType(chunk.chunkType),
+          chunk.metadata.pageNumber || null,
+          embedding?.model || 'text-embedding-3-small',
+          chunk.tokenCount,
+          Math.ceil(chunk.content.split(' ').length),
+          chunk.chunkIndex,
+          [],
+          null
+        );
       }
 
       this.logger.log(colors.green(`✅ Saved ${chunks.length} chunks to Pinecone and database`));
