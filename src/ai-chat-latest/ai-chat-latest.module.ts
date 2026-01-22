@@ -6,6 +6,7 @@ import { AiChatSocketService } from './services/ai-chat-socket.service';
 import { SocketJwtGuard } from './guards/socket-jwt.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AiChatModule } from '../school/ai-chat/ai-chat.module';
+import { S3Module } from '../shared/services/s3.module';
 
 /**
  * AI Chat Latest Module
@@ -14,6 +15,7 @@ import { AiChatModule } from '../school/ai-chat/ai-chat.module';
 @Module({
   imports: [
     PrismaModule,
+    S3Module, // Required for DocumentProcessingService
     AiChatModule, // Import existing AI chat module to reuse services
     JwtModule.registerAsync({
       imports: [ConfigModule],

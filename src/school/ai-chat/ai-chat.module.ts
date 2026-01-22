@@ -6,15 +6,15 @@ import {
   TextExtractionService, 
   DocumentChunkingService, 
   EmbeddingService, 
-  PineconeService,
   DocumentProcessingService,
   ChatService
 } from './services';
+import { ExploreChatServicesModule } from '../../explore/chat/explore-chat-services.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { S3Module } from '../../shared/services/s3.module';
 
 @Module({
-  imports: [PrismaModule, S3Module],
+  imports: [PrismaModule, S3Module, ExploreChatServicesModule],
   controllers: [AiChatController],
   providers: [
     AiChatService, 
@@ -23,7 +23,6 @@ import { S3Module } from '../../shared/services/s3.module';
     TextExtractionService,
     DocumentChunkingService,
     EmbeddingService,
-    PineconeService,
     DocumentProcessingService,
     ChatService,
   ],
@@ -35,7 +34,6 @@ import { S3Module } from '../../shared/services/s3.module';
     TextExtractionService,
     DocumentChunkingService,
     EmbeddingService,
-    PineconeService,
     ChatService,
   ]
 })

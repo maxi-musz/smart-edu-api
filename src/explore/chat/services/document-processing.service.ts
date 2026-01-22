@@ -4,7 +4,7 @@ import { S3Service } from '../../../shared/services/s3.service';
 import { TextExtractionService, ExtractedText } from './text-extraction.service';
 import { DocumentChunkingService, DocumentChunk, ChunkingResult } from './document-chunking.service';
 import { EmbeddingService, EmbeddingResult, BatchEmbeddingResult } from './embedding.service';
-import { PineconeService, PineconeChunk } from '../../../explore/chat/services/pinecone.service';
+import { PineconeService, PineconeChunk } from './pinecone.service';
 import * as colors from 'colors';
 
 export interface ProcessingResult {
@@ -150,6 +150,7 @@ export class DocumentProcessingService {
       // Step 1: Get material from database
       const material = await this.getMaterial(materialId);
       if (!material) {
+        this.logger.error(colors.red(`❌ Material not found: ${materialId}`));
         throw new Error(`Material not found: ${materialId}`);
       }
 
@@ -388,19 +389,37 @@ export class DocumentProcessingService {
       // Save basic chunk info to database
       this.logger.log(colors.blue(`💾 Saving ${chunkData.length} chunks to database...`));
       for (const chunk of chunkData) {
-        await this.prisma.$executeRaw`
+        const embedding = embeddings[chunkData.indexOf(chunk)]?.embedding || [];
+        // Format embedding array as PostgreSQL vector string: [0.1, 0.2, 0.3]
+        const embeddingString = `[${embedding.join(',')}]`;
+        
+        await this.prisma.$executeRawUnsafe(`
           INSERT INTO "DocumentChunk" (
             id, material_processing_id, material_id, school_id, content, chunk_type, 
             page_number, section_title, embedding, embedding_model, token_count, 
             word_count, order_index, keywords, summary, "createdAt", "updatedAt"
           ) VALUES (
-            ${chunk.id}, ${chunk.material_processing_id}, ${chunk.material_id}, ${chunk.school_id}, 
-            ${chunk.content}, ${chunk.chunk_type}::"ChunkType", ${chunk.page_number}, 
-            ${chunk.section_title}, ${embeddings[chunkData.indexOf(chunk)]?.embedding || []}::vector, 
-            ${chunk.embedding_model}, ${chunk.token_count}, ${chunk.word_count}, ${chunk.order_index},
-            ${chunk.keywords || []}::text[], ${chunk.summary || null}, NOW(), NOW()
+            $1, $2, $3, $4, $5, $6::"ChunkType", $7, 
+            $8, $9::vector, $10, $11, $12, $13,
+            $14::text[], $15, NOW(), NOW()
           )
-        `;
+        `,
+          chunk.id,
+          chunk.material_processing_id,
+          chunk.material_id,
+          chunk.school_id,
+          chunk.content,
+          chunk.chunk_type,
+          chunk.page_number,
+          chunk.section_title,
+          embeddingString, // Formatted as [1,2,3] string
+          chunk.embedding_model,
+          chunk.token_count,
+          chunk.word_count,
+          chunk.order_index,
+          chunk.keywords || [],
+          chunk.summary || null
+        );
       }
 
       this.logger.log(colors.green(`✅ Saved ${chunkData.length} chunks to Pinecone and database`));
@@ -431,7 +450,7 @@ export class DocumentProcessingService {
           total_chunks: data?.totalChunks || 0,
           processed_chunks: data?.processedChunks || 0,
           failed_chunks: data?.failedChunks || 0,
-          error_message: data?.error || null,
+          // error_message: data?.error || null,
           updatedAt: new Date(),
         },
       });
@@ -487,6 +506,7 @@ export class DocumentProcessingService {
         processed_chunks: true,
         failed_chunks: true,
         error_message: true,
+        embedding_model: true,
         createdAt: true,
         updatedAt: true,
       },

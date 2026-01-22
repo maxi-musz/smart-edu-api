@@ -9,11 +9,12 @@ import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 import { CreateGeneralMaterialChapterDto } from './dto/create-general-material-chapter.dto';
 import { UploadChapterFileDto } from './dto/upload-chapter-file.dto';
 import { CreateChapterWithFileDto } from './dto/create-chapter-with-file.dto';
-import { LibraryMaterialType, Prisma } from '@prisma/client';
+import { LibraryMaterialType, Prisma, MaterialProcessingStatus } from '@prisma/client';
 import { TextExtractionService } from '../../school/ai-chat/services/text-extraction.service';
 import { DocumentChunkingService } from '../../school/ai-chat/services/document-chunking.service';
 import { EmbeddingService } from '../../school/ai-chat/services/embedding.service';
-import { PineconeService } from '../../school/ai-chat/services/pinecone.service';
+import { PineconeService } from '../../explore/chat/services/pinecone.service';
+import { DocumentProcessingService } from '../../explore/chat/services/document-processing.service';
 import * as colors from 'colors';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class GeneralMaterialsService {
     private readonly chunkingService: DocumentChunkingService,
     private readonly embeddingService: EmbeddingService,
     private readonly pineconeService: PineconeService,
+    private readonly documentProcessingService: DocumentProcessingService,
   ) {}
 
   /**
@@ -249,6 +251,7 @@ export class GeneralMaterialsService {
             where: {
               platformId: libraryUser.platformId, 
               isAiEnabled: true,
+              chapterStatus: 'active', // Only count active chapters
             },
             select: {
               materialId: true,
@@ -265,6 +268,7 @@ export class GeneralMaterialsService {
             where: {
               platformId: libraryUser.platformId,
               isAiEnabled: true,
+              chapterStatus: 'active', // Only count active chapters
             },
             select: {
               materialId: true,
@@ -575,6 +579,7 @@ export class GeneralMaterialsService {
         where: {
           materialId: materialId,
           platformId: libraryUser.platformId,
+          chapterStatus: 'active', // Only return active chapters (soft delete support)
         },
         select: {
           id: true,
@@ -584,7 +589,7 @@ export class GeneralMaterialsService {
           pageEnd: true,
           order: true,
           isAiEnabled: true,
-          isProcessed: true,
+          isProcessed: true, // Keep for backward compatibility, but we'll override with MaterialProcessing status
           chunkCount: true,
           createdAt: true,
           updatedAt: true,
@@ -610,8 +615,76 @@ export class GeneralMaterialsService {
         },
       });
 
+      // Optimized: Get all processing statuses in batch queries instead of N+1
+      // Step 1: Get all PDFMaterials for these chapters in one query
+      const chapterIds = chapters.map(ch => ch.id);
+      const pdfMaterials = await this.prisma.pDFMaterial.findMany({
+        where: {
+          materialId: { in: chapterIds },
+        },
+        select: {
+          id: true,
+          materialId: true, // This links to chapter.id
+        },
+      });
+
+      // Step 2: Get all MaterialProcessing records for these PDFMaterials in one query
+      const pdfMaterialIds = pdfMaterials.map(pm => pm.id);
+      const materialProcessings = await this.prisma.materialProcessing.findMany({
+        where: {
+          material_id: { in: pdfMaterialIds },
+        },
+        select: {
+          material_id: true,
+          status: true,
+        },
+      });
+
+      // Step 3: Create lookup maps for O(1) access
+      const pdfMaterialByChapterId = new Map(
+        pdfMaterials.map(pm => [pm.materialId, pm.id])
+      );
+      const processingByPdfMaterialId = new Map(
+        materialProcessings.map(mp => [mp.material_id, mp.status])
+      );
+
+      // Step 4: Map chapters with processing status
+      const chaptersWithStatus = chapters.map((chapter) => {
+        const pdfMaterialId = pdfMaterialByChapterId.get(chapter.id);
+        const processingStatus = pdfMaterialId 
+          ? processingByPdfMaterialId.get(pdfMaterialId) || null
+          : null;
+        
+        const isProcessed = processingStatus === 'COMPLETED';
+
+        return {
+          ...chapter,
+          isProcessed, // Override with status from MaterialProcessing
+          processingStatus, // Include raw status for reference
+        };
+      });
+
+      // Step 5: Batch update chapters' isProcessed field to keep database in sync
+      // This ensures future queries can use the cached isProcessed value without joins
+      const updatesNeeded = chaptersWithStatus
+        .filter(ch => ch.isProcessed !== chapters.find(c => c.id === ch.id)?.isProcessed)
+        .map(ch => ({
+          where: { id: ch.id },
+          data: { isProcessed: ch.isProcessed },
+        }));
+
+      if (updatesNeeded.length > 0) {
+        // Batch update all chapters that need syncing
+        await Promise.all(
+          updatesNeeded.map(update => 
+            this.prisma.libraryGeneralMaterialChapter.update(update)
+          )
+        );
+        this.logger.log(colors.blue(`🔄 Synced isProcessed status for ${updatesNeeded.length} chapters`));
+      }
+
       this.logger.log(colors.green(`[GENERAL MATERIALS] Material chapters retrieved successfully: ${materialId}`));
-      return new ApiResponse(true, 'Material chapters retrieved successfully', chapters);
+      return new ApiResponse(true, 'Material chapters retrieved successfully', chaptersWithStatus);
     } catch (error: any) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
@@ -1183,101 +1256,101 @@ export class GeneralMaterialsService {
   /**
    * Create a new chapter under a general material
    */
-  async createGeneralMaterialChapter(
-    user: any,
-    materialId: string,
-    payload: CreateGeneralMaterialChapterDto,
-  ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Creating chapter for material: ${materialId} by user: ${user.email}`));
+  // async createGeneralMaterialChapter(
+  //   user: any,
+  //   materialId: string,
+  //   payload: CreateGeneralMaterialChapterDto,
+  // ): Promise<ApiResponse<any>> {
+  //   this.logger.log(colors.cyan(`[GENERAL MATERIALS] Creating chapter for material: ${materialId} by user: ${user.email}`));
 
-    try {
-      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: user.sub },
-        select: { platformId: true, email: true },
-      });
+  //   try {
+  //     const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+  //       where: { id: user.sub },
+  //       select: { platformId: true, email: true },
+  //     });
 
-      if (!libraryUser) {
-        this.logger.error(colors.red('Library user not found'));
-        throw new NotFoundException('Library user not found');
-      }
+  //     if (!libraryUser) {
+  //       this.logger.error(colors.red('Library user not found'));
+  //       throw new NotFoundException('Library user not found');
+  //     }
 
-      const material = await this.prisma.libraryGeneralMaterial.findFirst({
-        where: {
-          id: materialId,
-          platformId: libraryUser.platformId,
-        },
-        select: {
-          id: true,
-          title: true,
-        },
-      });
+  //     const material = await this.prisma.libraryGeneralMaterial.findFirst({
+  //       where: {
+  //         id: materialId,
+  //         platformId: libraryUser.platformId,
+  //       },
+  //       select: {
+  //         id: true,
+  //         title: true,
+  //       },
+  //     });
 
-      if (!material) {
-        this.logger.error(colors.red(`General material not found or does not belong to your platform: ${materialId}`));
-        throw new NotFoundException('General material not found or does not belong to your platform');
-      }
+  //     if (!material) {
+  //       this.logger.error(colors.red(`General material not found or does not belong to your platform: ${materialId}`));
+  //       throw new NotFoundException('General material not found or does not belong to your platform');
+  //     }
 
-      const lastChapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
-        where: {
-          materialId: materialId,
-          platformId: libraryUser.platformId,
-        },
-        orderBy: {
-          order: 'desc',
-        },
-        select: {
-          order: true,
-        },
-      });
+  //     const lastChapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
+  //       where: {
+  //         materialId: materialId,
+  //         platformId: libraryUser.platformId,
+  //       },
+  //       orderBy: {
+  //         order: 'desc',
+  //       },
+  //       select: {
+  //         order: true,
+  //       },
+  //     });
 
-      const nextOrder = (lastChapter?.order || 0) + 1;
+  //     const nextOrder = (lastChapter?.order || 0) + 1;
 
-      // Verify material has isAiEnabled=true if chapter is being enabled
-      if (payload.isAiEnabled === true) {
-        const materialCheck = await this.prisma.libraryGeneralMaterial.findFirst({
-          where: {
-            id: materialId,
-            platformId: libraryUser.platformId,
-            isAiEnabled: true,
-          },
-          select: { id: true },
-        });
+  //     // Verify material has isAiEnabled=true if chapter is being enabled
+  //     if (payload.isAiEnabled === true) {
+  //       const materialCheck = await this.prisma.libraryGeneralMaterial.findFirst({
+  //         where: {
+  //           id: materialId,
+  //           platformId: libraryUser.platformId,
+  //           isAiEnabled: true,
+  //         },
+  //         select: { id: true },
+  //       });
 
-        if (!materialCheck) {
-          this.logger.error(colors.red(`Cannot enable AI for chapter: Material must have isAiEnabled=true first`));
-          throw new BadRequestException('Cannot enable AI for chapter: The parent material must have AI enabled first');
-        }
-      }
+  //       if (!materialCheck) {
+  //         this.logger.error(colors.red(`Cannot enable AI for chapter: Material must have isAiEnabled=true first`));
+  //         throw new BadRequestException('Cannot enable AI for chapter: The parent material must have AI enabled first');
+  //       }
+  //     }
 
-      const chapter = await this.prisma.libraryGeneralMaterialChapter.create({
-        data: {
-          materialId: materialId,
-          platformId: libraryUser.platformId,
-          title: payload.title,
-          description: payload.description ?? null,
-          pageStart: payload.pageStart ?? null,
-          pageEnd: payload.pageEnd ?? null,
-          isAiEnabled: payload.isAiEnabled ?? false,
-          order: nextOrder,
-        },
-      });
+  //     const chapter = await this.prisma.libraryGeneralMaterialChapter.create({
+  //       data: {
+  //         materialId: materialId,
+  //         platformId: libraryUser.platformId,
+  //         title: payload.title,
+  //         description: payload.description ?? null,
+  //         pageStart: payload.pageStart ?? null,
+  //         pageEnd: payload.pageEnd ?? null,
+  //         isAiEnabled: payload.isAiEnabled ?? false,
+  //         order: nextOrder,
+  //       },
+  //     });
 
-      this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter created successfully: ${chapter.id}`));
-      return new ApiResponse(true, 'General material chapter created successfully', chapter);
-    } catch (error: any) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
+  //     this.logger.log(colors.green(`[GENERAL MATERIALS] Chapter created successfully: ${chapter.id}`));
+  //     return new ApiResponse(true, 'General material chapter created successfully', chapter);
+  //   } catch (error: any) {
+  //     if (error instanceof NotFoundException || error instanceof BadRequestException) {
+  //       throw error;
+  //     }
 
-      this.logger.error(colors.red(`Error creating general material chapter: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to create general material chapter');
-    }
-  }
+  //     this.logger.error(colors.red(`Error creating general material chapter: ${error.message}`), error.stack);
+  //     throw new InternalServerErrorException('Failed to create general material chapter');
+  //   }
+  // }
 
   /**
    * Create a chapter with file upload in one step
    */
-  async createChapterWithFile(
+  async createChapterWithFile( 
     user: any,
     materialId: string,
     payload: CreateChapterWithFileDto,
@@ -1324,11 +1397,12 @@ export class GeneralMaterialsService {
         throw new NotFoundException('General material not found or does not belong to your platform');
       }
 
-      // Get next order for chapter
+      // Get next order for chapter (only count active chapters)
       const lastChapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
         where: {
           materialId: materialId,
           platformId: libraryUser.platformId,
+          chapterStatus: 'active', // Only count active chapters for ordering
         },
         orderBy: {
           order: 'desc',
@@ -1377,27 +1451,29 @@ export class GeneralMaterialsService {
         this.logger.log(colors.cyan(`Created Organisation for LibraryPlatform: ${organisation.id}`));
       }
 
-      // Get or create User record for PDFMaterial
-      let pdfMaterialUploadedBy = await this.prisma.user.findUnique({
-        where: { email: libraryUser.email },
+      // Get or create Library System school (for library materials that don't belong to a real school)
+      const librarySchool = await this.prisma.school.upsert({
+        where: { school_email: 'library-chat@system.com' },
+        update: {},
+        create: {
+          school_name: 'Library Chat System',
+          school_email: 'library-chat@system.com',
+          school_phone: '+000-000-0000',
+          school_address: 'System Default',
+          school_type: 'primary_and_secondary',
+          school_ownership: 'private',
+          status: 'approved',
+        },
         select: { id: true },
       });
 
-      if (!pdfMaterialUploadedBy) {
-        const librarySchool = await this.prisma.school.upsert({
-          where: { school_email: 'library-chat@system.com' },
-          update: {},
-          create: {
-            school_name: 'Library Chat System',
-            school_email: 'library-chat@system.com',
-            school_phone: '+000-000-0000',
-            school_address: 'System Default',
-            school_type: 'primary_and_secondary',
-            school_ownership: 'private',
-            status: 'approved',
-          },
-        });
+      // Get or create User record for PDFMaterial
+      let pdfMaterialUploadedBy = await this.prisma.user.findUnique({
+        where: { email: libraryUser.email },
+        select: { id: true, school_id: true },
+      });
 
+      if (!pdfMaterialUploadedBy) {
         pdfMaterialUploadedBy = await this.prisma.user.create({
           data: {
             email: libraryUser.email,
@@ -1405,10 +1481,10 @@ export class GeneralMaterialsService {
             first_name: libraryUser.email.split('@')[0],
             last_name: 'Library',
             phone_number: '+000-000-0000',
-            school_id: librarySchool.id,
+            school_id: librarySchool.id, // Use library system school
             role: 'super_admin',
           },
-          select: { id: true },
+          select: { id: true, school_id: true },
         });
       }
 
@@ -1424,13 +1500,17 @@ export class GeneralMaterialsService {
       }
 
       // Upload file to S3 first (before database operations)
+      this.logger.log(colors.blue(`🚀 Starting S3 document upload...`));
       let uploadResult: any;
       let s3Key: string | undefined;
       let uploadSucceeded = false;
 
       try {
+        // Use existing general materials path structure
         const uploadFolder = `library/general-materials/chapters/${libraryUser.platformId}/${materialId}`;
-        uploadResult = await this.s3Service.uploadFile(file, uploadFolder);
+        const documentTitle = payload.fileTitle || file.originalname.replace(/\.[^/.]+$/, '');
+        const fileName = `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`;
+        uploadResult = await this.s3Service.uploadFile(file, uploadFolder, fileName);
         s3Key = uploadResult.key;
         uploadSucceeded = true;
         this.logger.log(colors.green(`✅ File uploaded to S3: ${s3Key}`));
@@ -1438,6 +1518,10 @@ export class GeneralMaterialsService {
         this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
         throw new InternalServerErrorException('Failed to upload file to cloud storage');
       }
+
+      // Calculate document size
+      const documentSize = FileValidationHelper.formatFileSize(file.size);
+      this.logger.log(colors.blue(`📊 Document size: ${documentSize}`));
 
       // Create chapter and file in a transaction
       let result: any;
@@ -1459,7 +1543,7 @@ export class GeneralMaterialsService {
             },
           });
 
-          // Create PDFMaterial for backward compatibility
+          // Create PDFMaterial for backward compatibility (using PDFMaterial.id for lookup later)
           const pdfMaterial = await tx.pDFMaterial.create({
             data: {
               title: payload.fileTitle || file.originalname,
@@ -1467,13 +1551,13 @@ export class GeneralMaterialsService {
               url: uploadResult.url,
               platformId: organisation.id,
               uploadedById: pdfMaterialUploadedBy.id,
-              schoolId: null,
+              schoolId: librarySchool.id, // Use library system school (required for processing, but library materials don't belong to real schools)
               topic_id: null,
               downloads: 0,
-              size: file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : null,
+              size: documentSize,
               status: 'published',
               order: payload.fileOrder || 1,
-              fileType: fileType,
+              fileType: validationResult.fileType,
               originalName: file.originalname,
               materialId: chapter.id, // Link to chapter
             },
@@ -1520,32 +1604,49 @@ export class GeneralMaterialsService {
 
       // Process for AI chat if enabled (must succeed or rollback everything)
       if (shouldEnableAiChat) {
-        this.logger.log(colors.blue(`[GENERAL MATERIALS] Processing chapter file for AI chat: ${result.chapterFile.id}`));
+        this.logger.log(colors.blue(`[GENERAL MATERIALS] Setting up AI chat processing for PDFMaterial: ${result.pdfMaterial.id}`));
         
         try {
-          const fileTypeString = this.mapLibraryMaterialTypeToFileType(fileType);
-          await this.processChapterFileForAiChatFromBuffer(
-            result.chapterFile,
-            result.chapter,
-            file.buffer,
-            fileTypeString,
-            libraryUser.platformId,
-            result.pdfMaterial.id,
-          );
+          // Use library system school for library materials (school_id is required by schema)
+          // Library materials don't belong to a real school, so we use the default library school
+          const schoolIdForProcessing = librarySchool.id;
 
-          // Update chapter status
+          // Create material processing record
+          this.logger.log(colors.blue(`⚙️ Creating material processing record...`));
+          
+          const materialProcessing = await this.prisma.materialProcessing.create({
+            data: {
+              material_id: result.pdfMaterial.id, // Use PDFMaterial.id for lookup
+              school_id: schoolIdForProcessing, // Use library system school (required by schema)
+              status: 'PENDING',
+              total_chunks: 0,
+              processed_chunks: 0,
+              failed_chunks: 0,
+              embedding_model: 'text-embedding-3-small', // Default embedding model
+            },
+          });
+
+          this.logger.log(colors.green(`✅ Material processing record created with ID: ${materialProcessing.id}`));
+
+          // Auto-start processing in background using explore chat DocumentProcessingService
+          this.logger.log(colors.blue(`🔄 Starting document processing in background...`));
+          this.documentProcessingService.processDocument(result.pdfMaterial.id);
+          this.logger.log(colors.green(`✅ Document processing started`));
+
+          // Update chapter status (isProcessed will be determined by MaterialProcessing.status)
           await this.prisma.libraryGeneralMaterialChapter.update({
             where: { id: result.chapter.id },
             data: {
               isAiEnabled: true,
-              isProcessed: true,
+              // Don't set isProcessed here - it should come from MaterialProcessing.status
+              // The status will be checked dynamically when querying chapters
             },
           });
 
-          this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing completed for chapter: ${result.chapter.id}`));
+          this.logger.log(colors.green(`[GENERAL MATERIALS] AI chat processing setup completed for chapter: ${result.chapter.id}`));
         } catch (aiProcessingError: any) {
-          // If AI processing fails, rollback EVERYTHING (S3 + Database)
-          this.logger.error(colors.red(`❌ AI processing failed, rolling back all changes: ${aiProcessingError.message}`));
+          // If AI processing setup fails, rollback EVERYTHING (S3 + Database)
+          this.logger.error(colors.red(`❌ AI processing setup failed, rolling back all changes: ${aiProcessingError.message}`));
           
           // Delete from S3
           if (uploadSucceeded && s3Key) {
@@ -1575,7 +1676,7 @@ export class GeneralMaterialsService {
             this.logger.error(colors.red(`❌ Failed to delete database records during rollback: ${deleteDbError.message}`));
           }
 
-          throw new InternalServerErrorException(`AI processing failed: ${aiProcessingError.message}. All changes have been rolled back.`);
+          throw new InternalServerErrorException(`AI processing setup failed: ${aiProcessingError.message}. All changes have been rolled back.`);
         }
       }
 
@@ -1647,12 +1748,13 @@ export class GeneralMaterialsService {
         throw new NotFoundException('Library user not found');
       }
 
-      // Verify chapter exists and belongs to the user's platform and material
+      // Verify chapter exists and belongs to the user's platform and material (must be active)
       const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
         where: {
           id: chapterId,
           materialId: materialId,
           platformId: libraryUser.platformId,
+          chapterStatus: 'active', // Only allow uploading to active chapters
         },
         select: {
           id: true,
@@ -2241,6 +2343,283 @@ export class GeneralMaterialsService {
         return 'FOOTNOTE';
       default:
         return 'TEXT';
+    }
+  }
+
+  /**
+   * Get processing status for a material (by PDFMaterial.id)
+  //  */
+  // async getProcessingStatus(user: any, materialId: string): Promise<ApiResponse<any>> {
+  //   this.logger.log(colors.cyan(`[GENERAL MATERIALS] Getting processing status for material: ${materialId}`));
+
+  //   try {
+  //     // Verify the material exists and belongs to the user's platform
+  //     const pdfMaterial = await this.prisma.pDFMaterial.findUnique({
+  //       where: { id: materialId },
+  //       select: { id: true, platformId: true },
+  //     });
+
+  //     if (!pdfMaterial) {
+  //       throw new NotFoundException('Material not found');
+  //     }
+
+  //     // Get processing status
+  //     const status = await this.documentProcessingService.getProcessingStatus(materialId);
+
+  //     if (!status) {
+  //       return new ApiResponse(
+  //         false,
+  //         'Processing status not found for this material',
+  //         { materialId, status: null }
+  //       );
+  //     }
+
+  //     return new ApiResponse(
+  //       true,
+  //       'Processing status retrieved successfully',
+  //       {
+  //         materialId,
+  //         status: status.status,
+  //         totalChunks: status.total_chunks,
+  //         processedChunks: status.processed_chunks,
+  //         failedChunks: status.failed_chunks,
+  //         errorMessage: status.error_message,
+  //         embeddingModel: status.embedding_model,
+  //         createdAt: status.createdAt.toISOString(),
+  //         updatedAt: status.updatedAt.toISOString(),
+  //       }
+  //     );
+  //   } catch (error: any) {
+  //     this.logger.error(colors.red(`❌ Error getting processing status: ${error.message}`));
+      
+  //     if (error instanceof NotFoundException) {
+  //       throw error;
+  //     }
+      
+  //     throw new InternalServerErrorException(`Failed to get processing status: ${error.message}`);
+  //   }
+  // }
+
+  /**
+   * Retry processing for a material (by PDFMaterial.id)
+   * This will download the document from S3, reprocess it, and wait for completion
+   */
+  async retryProcessing(user: any, chapterId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Retrying processing for chapter: ${chapterId}`));
+
+    try {
+      // Find PDFMaterial linked to this chapter (PDFMaterial.materialId = chapter.id)
+      const pdfMaterial = await this.prisma.pDFMaterial.findFirst({
+        where: { materialId: chapterId }, // chapterId is the chapter.id, PDFMaterial.materialId links to it
+        select: { id: true, platformId: true, url: true },
+      });
+
+      if (!pdfMaterial) {
+        throw new NotFoundException('PDFMaterial not found for this chapter. The chapter may not have been processed yet.');
+      }
+
+      // Check if file exists on S3
+      if (!pdfMaterial.url) {
+        throw new BadRequestException('Material does not have a file URL. Cannot retry processing.');
+      }
+
+      // Helper function to convert technical errors to user-friendly messages
+      const getUserFriendlyError = (errorMessage: string | null | undefined): string => {
+        if (!errorMessage) return 'Unknown error occurred';
+        
+        if (errorMessage.includes('404 Not Found') || errorMessage.includes('Failed to download')) {
+          return 'The document file could not be found. The file may have been deleted or moved. Please re-upload the document.';
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+          return 'The document processing took too long. The file may be too large. Please try again or contact support.';
+        } else if (errorMessage.includes('S3') || errorMessage.includes('cloud storage')) {
+          return 'Unable to access the document file. Please check if the file exists and try again.';
+        } else if (errorMessage.includes('embedding') || errorMessage.includes('OpenAI')) {
+          return 'Failed to generate document embeddings. Please check your API configuration and try again.';
+        } else if (errorMessage.includes('Pinecone') || errorMessage.includes('vector')) {
+          return 'Failed to save document to the search database. Please try again or contact support.';
+        }
+        
+        return 'Failed to process document. Please try again later.';
+      };
+
+      // Retry processing and wait for it to complete (use PDFMaterial.id for processing)
+      this.logger.log(colors.blue(`🔄 Starting retry processing and waiting for completion...`));
+      const processingResult = await this.documentProcessingService.retryProcessing(pdfMaterial.id);
+
+      // Get final status from database (use PDFMaterial.id)
+      const finalStatus = await this.documentProcessingService.getProcessingStatus(pdfMaterial.id);
+
+      if (!finalStatus) {
+        // If processing completed but status not found, return the processing result
+        const userFriendlyError = processingResult.success 
+          ? null 
+          : getUserFriendlyError(processingResult.error);
+        
+        return new ApiResponse(
+          processingResult.success,
+          processingResult.success 
+            ? 'Document processing completed successfully' 
+            : userFriendlyError || 'Document processing failed',
+          {
+            chapterId,
+            pdfMaterialId: pdfMaterial.id,
+            status: processingResult.success ? 'COMPLETED' : 'FAILED',
+            success: processingResult.success,
+            processingTime: processingResult.processingTime,
+            totalChunks: processingResult.chunkingResult?.totalChunks || 0,
+            processedChunks: processingResult.embeddingResult?.successCount || 0,
+            failedChunks: processingResult.embeddingResult?.failureCount || 0,
+            errorMessage: userFriendlyError || processingResult.error || null,
+          }
+        );
+      }
+
+      // Return complete status from database
+      const userFriendlyError = finalStatus.status === 'FAILED' 
+        ? getUserFriendlyError(finalStatus.error_message)
+        : null;
+
+      return new ApiResponse(
+        finalStatus.status === 'COMPLETED',
+        finalStatus.status === 'COMPLETED' 
+          ? 'Document processing completed successfully' 
+          : finalStatus.status === 'FAILED'
+          ? userFriendlyError || 'Document processing failed'
+          : 'Document processing completed',
+        {
+          chapterId,
+          pdfMaterialId: pdfMaterial.id,
+          status: finalStatus.status,
+          totalChunks: finalStatus.total_chunks,
+          processedChunks: finalStatus.processed_chunks,
+          failedChunks: finalStatus.failed_chunks,
+          errorMessage: userFriendlyError || finalStatus.error_message || null,
+          embeddingModel: finalStatus.embedding_model,
+          processingTime: processingResult.processingTime,
+          createdAt: finalStatus.createdAt.toISOString(),
+          updatedAt: finalStatus.updatedAt.toISOString(),
+        }
+      );
+    } catch (error: any) {
+      this.logger.error(colors.red(`❌ Error retrying processing: ${error.message}`));
+      
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      // Provide user-friendly error messages for common issues
+      let userFriendlyMessage = 'Failed to process document. Please try again later.';
+      
+      if (error.message?.includes('404 Not Found') || error.message?.includes('Failed to download')) {
+        userFriendlyMessage = 'The document file could not be found. The file may have been deleted or moved. Please re-upload the document.';
+      } else if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
+        userFriendlyMessage = 'The document processing took too long. The file may be too large. Please try again or contact support.';
+      } else if (error.message?.includes('S3') || error.message?.includes('cloud storage')) {
+        userFriendlyMessage = 'Unable to access the document file. Please check if the file exists and try again.';
+      } else if (error.message?.includes('embedding') || error.message?.includes('OpenAI')) {
+        userFriendlyMessage = 'Failed to generate document embeddings. Please check your API configuration and try again.';
+      } else if (error.message?.includes('Pinecone') || error.message?.includes('vector')) {
+        userFriendlyMessage = 'Failed to save document to the search database. Please try again or contact support.';
+      }
+      
+      throw new InternalServerErrorException(userFriendlyMessage);
+    }
+  }
+
+  /**
+   * Delete a chapter (soft delete - sets chapterStatus to deleted)
+   * Chapter remains in database for chat history purposes
+   */
+  async deleteChapter(user: any, materialId: string, chapterId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[GENERAL MATERIALS] Soft deleting chapter: ${chapterId} for material: ${materialId}`));
+
+    try {
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify material exists and belongs to user's platform
+      const material = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: { id: true },
+      });
+
+      if (!material) {
+        this.logger.error(colors.red(`Material not found or does not belong to your platform: ${materialId}`));
+        throw new NotFoundException('Material not found or does not belong to your platform');
+      }
+
+      // Verify chapter exists and belongs to the material and platform
+      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
+        where: {
+          id: chapterId,
+          materialId: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: { id: true, title: true, chapterStatus: true },
+      });
+
+      if (!chapter) {
+        throw new NotFoundException('Chapter not found or does not belong to this material');
+      }
+
+      // Check if already deleted
+      if (chapter.chapterStatus === 'deleted') {
+        return new ApiResponse(
+          true,
+          'Chapter is already deleted',
+          {
+            chapterId,
+            materialId,
+            status: 'deleted',
+            message: 'Chapter was already deleted',
+          }
+        );
+      }
+
+      // Soft delete: Update status to deleted
+      const updatedChapter = await this.prisma.libraryGeneralMaterialChapter.update({
+        where: { id: chapterId },
+        data: { chapterStatus: 'deleted' },
+        select: {
+          id: true,
+          title: true,
+          chapterStatus: true,
+          updatedAt: true,
+        },
+      });
+
+      this.logger.log(colors.green(`✅ Chapter soft deleted successfully: ${chapterId}`));
+
+      return new ApiResponse(
+        true,
+        'Chapter deleted successfully. It has been hidden but remains in the database for chat history.',
+        {
+          chapterId: updatedChapter.id,
+          materialId,
+          title: updatedChapter.title,
+          status: updatedChapter.chapterStatus,
+          deletedAt: updatedChapter.updatedAt.toISOString(),
+          message: 'Chapter has been soft deleted. Chat history will remain accessible.',
+        }
+      );
+    } catch (error: any) {
+      this.logger.error(colors.red(`❌ Error deleting chapter: ${error.message}`));
+      
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      throw new InternalServerErrorException(`Failed to delete chapter: ${error.message}`);
     }
   }
 }

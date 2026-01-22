@@ -1,16 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { DocumentProcessingService } from './document-processing.service';
-import { PineconeService } from '../../../explore/chat/services/pinecone.service';
+import { PineconeService } from './pinecone.service';
 import { EmbeddingService } from './embedding.service';
 import OpenAI from 'openai';
 import { 
   SendMessageDto, 
-  ChatMessageResponseDto, 
-  CreateConversationDto, 
-  ConversationResponseDto,
-  GetChatHistoryDto 
-} from '../dto/chat.dto';
+  ChatMessageResponseDto 
+} from '../../../school/ai-chat/dto/chat.dto';
+import { CreateConversationDto, ConversationResponseDto, GetChatHistoryDto } from '../../../school/ai-chat/dto/chat.dto';
 import { User } from '@prisma/client';
 import * as colors from 'colors';
 

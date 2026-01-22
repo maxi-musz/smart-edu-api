@@ -60,7 +60,7 @@ export class AiChatController {
     @UploadedFiles() files: { document?: Express.Multer.File[] },
     @GetUser() user: User
   ) {
-    return this.aiChatService.uploadDocument(uploadDto, files, user);
+    return this.aiChatService.uploadDocument(uploadDto, files, user); 
   }
 
   @Post('start-upload')

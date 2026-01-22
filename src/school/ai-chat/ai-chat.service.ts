@@ -9,7 +9,7 @@ import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto } from '
 import { InitiateAiChatDto, TeacherMaterialDto, SupportedDocumentTypeDto } from './dto/initiate-ai-chat.dto';
 import { UploadProgressService } from './upload-progress.service';
 import { DocumentProcessingService } from './services';
-import { PineconeService } from './services/pinecone.service';
+import { PineconeService } from '../../explore/chat/services/pinecone.service';
 
 @Injectable()
 export class AiChatService {
