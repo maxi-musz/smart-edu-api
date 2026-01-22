@@ -32,11 +32,15 @@ echo "Current directory: $(pwd)"
 echo "Running nest build..."
 $NEST_CMD build
 
-# Verify build output - check both current dir and common Render paths
+# Verify build output - check both standard location and src subdirectory
 BUILD_SUCCESS=false
 if [ -f "dist/main.js" ]; then
   echo "✅ Build successful: dist/main.js exists in $(pwd)/dist/"
   ls -la dist/ | head -10
+  BUILD_SUCCESS=true
+elif [ -f "dist/src/main.js" ]; then
+  echo "✅ Build successful: dist/src/main.js exists (NestJS preserved src structure)"
+  ls -la dist/src/ | head -10
   BUILD_SUCCESS=true
 elif [ -f "../dist/main.js" ]; then
   echo "✅ Build successful: dist/main.js exists in parent directory"
@@ -49,14 +53,18 @@ elif [ -f "src/dist/main.js" ]; then
 fi
 
 if [ "$BUILD_SUCCESS" = false ]; then
-  echo "❌ Build failed: dist/main.js not found"
+  echo "❌ Build failed: dist/main.js or dist/src/main.js not found"
   echo "Contents of current directory:"
   ls -la
   if [ -d "dist" ]; then
     echo "dist directory exists but main.js is missing:"
     ls -la dist/
+    if [ -d "dist/src" ]; then
+      echo "dist/src directory contents:"
+      ls -la dist/src/
+    fi
   fi
-  echo "Searching for dist/main.js..."
+  echo "Searching for main.js..."
   find . -name "main.js" -type f 2>/dev/null | head -10
   exit 1
 fi
