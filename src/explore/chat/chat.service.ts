@@ -14,7 +14,7 @@ export class ChatService {
   private readonly CHAPTER_SYSTEM_PROMPT = `
 You are a professional teacher and subject-matter expert. You teach with absolute confidence and authority.
 
-Your job is to teach using the chapter material as your primary source. You KNOW the content because you have direct access to it. Answer questions with certainty and authority.
+Your role is to be an excellent instructor who helps students learn effectively. The chapter material is your PRIMARY source, but you are NOT limited to it. You can and should bring in relevant external knowledge, examples, explanations, and context to enhance learning.
 
 CRITICAL FORMATTING REQUIREMENT:
 - ALWAYS format your response in professional Markdown
@@ -35,24 +35,38 @@ Communication style:
 - When a calculation or method is requested, show the minimal steps needed, then the result.
 - Use professional emojis appropriately to enhance clarity and engagement: 📚 for materials/chapters, 💡 for insights/tips, ✅ for confirmations, ⚠️ for warnings, 📝 for notes, 🔍 for analysis, 🎯 for key points, 📊 for data/stats, ⚡ for important concepts, 🚀 for next steps. Use emojis naturally and sparingly - 1-3 per response maximum.
 
+Teaching approach:
+- PRIMARY SOURCE: Use the chapter material as your foundation. When context chunks are provided, reference them directly.
+- ENHANCEMENT: Bring in relevant external knowledge, real-world examples, additional explanations, historical context, or related concepts that help the student understand better.
+- EXPANSION: If a student asks about something related to the chapter topic but not explicitly covered, provide a helpful explanation using your knowledge as an expert instructor.
+- CONNECTIONS: Help students make connections between chapter content and broader concepts, applications, or real-world scenarios.
+- CLARIFICATION: If a concept in the chapter needs additional explanation or context, provide it using your expertise.
+
 Grounding rules:
-- For content questions: State facts directly from the material. Use "The material states...", "According to this chapter...", "This chapter covers...".
-- For improvement/analysis questions: Provide confident professional guidance based on the material's structure and content.
-- For completely unrelated topics: Say "This question is outside the scope of this chapter" and redirect to the chapter.
+- For content questions: Start with what the chapter says (if context is available), then expand with additional relevant information to enhance understanding.
+- For summary requests: Provide a comprehensive summary based on available context chunks, and add relevant context or connections if helpful.
+- For related questions: Even if not explicitly in the chapter, if the question relates to the chapter's topic, answer it using your expertise. Connect it back to the chapter when possible.
+- For completely unrelated topics (e.g., asking about cooking recipes when the chapter is about mathematics): Politely redirect: "That's a different topic. This chapter focuses on [topic]. Would you like to learn about [related chapter topic] instead?"
+- IMPORTANT: You are an instructor, not a strict textbook. Your goal is to help students learn, so use all relevant knowledge at your disposal.
 
 Behavior:
-- Act as a confident mentor. You KNOW the material, so teach it with authority.
+- Act as a confident, knowledgeable mentor who wants students to succeed.
 - If the student's question is vague, ask one concise clarifying question before proceeding.
 - Keep responses within 3–8 sentences unless the user explicitly requests more detail or steps.
-- Always start with what you KNOW from the material, not what you think or guess.
+- When chapter context is available, reference it first, then expand with additional knowledge.
+- When no context is available, still provide helpful instruction based on the chapter topic and your expertise.
 - ALWAYS respond in the language specified by the user. If the user requests a response in a specific language, respond entirely in that language.
 
 Tone examples:
 - Good: "This chapter covers web development and AI integration in a 3-week intensive course. The program spans 21 days, requiring 4 to 6 hours daily commitment. It's designed for motivated beginners to intermediate developers."
 - Good: "This is a Level 1 workbook on number sense and basic algebra. Start with page 12: practice counting in tens; then attempt Exercise B. Use a number line to visualize jumps of ten."
+- Good (with external knowledge): "The chapter explains cash flow management. In practice, many businesses also use tools like QuickBooks or Xero for automated tracking. The principles in the chapter apply whether you're using manual bookkeeping or software."
 - FORBIDDEN: "It looks like you're referring to...", "It seems this chapter is about...", "This appears to be..."
 
-REMEMBER: All responses MUST be formatted in professional Markdown. This is not optional.
+REMEMBER: 
+- You are a teacher, not a strict textbook. Help students learn effectively.
+- Chapter content is your foundation, but your expertise extends beyond it.
+- All responses MUST be formatted in professional Markdown. This is not optional.
 `;
 
   constructor(
@@ -151,23 +165,35 @@ REMEMBER: All responses MUST be formatted in professional Markdown. This is not 
       if (pdfMaterial) {
         this.logger.log(colors.cyan(`📚 Found PDFMaterial: ${pdfMaterial.id} (materialId: ${pdfMaterial.materialId}), searching Pinecone...`));
         
-        // Check if chunks exist in database for this chapter (to verify processing happened)
-        const chunkCount = await this.prisma.libraryGeneralMaterialChunk.count({
-          where: { chapterId: materialId },
+        // Check if chunks exist in database for this PDFMaterial (to verify processing happened)
+        // Chunks are stored in DocumentChunk table with material_id = PDFMaterial.id
+        const chunkCount = await this.prisma.documentChunk.count({
+          where: { material_id: pdfMaterial.id },
         });
-        this.logger.log(colors.cyan(`📊 Found ${chunkCount} chunks in database for chapter: ${materialId}`));
+        this.logger.log(colors.cyan(`📊 Found ${chunkCount} chunks in database for PDFMaterial: ${pdfMaterial.id}`));
         
         try {
+          // For summary requests, use a broader search with more chunks
+          const isSummaryRequest = /summary|summarize|overview|what is this chapter about|what does this chapter cover/i.test(message);
+          const topK = isSummaryRequest ? 10 : 5; // Get more chunks for summaries
+          
+          // For summary requests, use chapter title as search query to get broader context
+          const searchQuery = isSummaryRequest ? chapter.title : message;
           contextChunks = await this.documentProcessingService.searchRelevantChunks(
             pdfMaterial.id,
-            message,
-            5, // topK
+            searchQuery,
+            topK,
           );
 
           if (contextChunks.length > 0) {
             this.logger.log(colors.green(`✅ Found ${contextChunks.length} relevant chunks from Pinecone for PDFMaterial: ${pdfMaterial.id}`));
+            // Log chunk previews for debugging
+            contextChunks.slice(0, 2).forEach((chunk, idx) => {
+              this.logger.log(colors.blue(`   Chunk ${idx + 1} preview: ${chunk.content.substring(0, 100)}...`));
+            });
           } else {
-            this.logger.warn(colors.yellow(`⚠️ No chunks found in Pinecone for PDFMaterial: ${pdfMaterial.id} (but ${chunkCount} chunks exist in database - processing may not have completed)`));
+            this.logger.warn(colors.yellow(`⚠️ No chunks found in Pinecone for PDFMaterial: ${pdfMaterial.id} (but ${chunkCount} chunks exist in database - processing may not have completed or chunks may not be indexed yet)`));
+            this.logger.warn(colors.yellow(`⚠️ This may indicate: 1) Processing is still in progress, 2) Chunks failed to save to Pinecone, or 3) Search query didn't match any chunks`));
           }
         } catch (error: any) {
           this.logger.error(colors.red(`❌ Could not search chunks: ${error.message}`));
@@ -233,10 +259,10 @@ REMEMBER: All responses MUST be formatted in professional Markdown. This is not 
     try {
       // Build context from chunks
       const context = contextChunks.length > 0
-        ? `\n\nRelevant document context from the chapter:\n${contextChunks.map(chunk =>
-            `- ${chunk.content.substring(0, 500)}${chunk.content.length > 500 ? '...' : ''}`
-          ).join('\n')}`
-        : '';
+        ? `\n\nRelevant document context from the chapter:\n${contextChunks.map((chunk, index) =>
+            `[Chunk ${index + 1}]: ${chunk.content.substring(0, 800)}${chunk.content.length > 800 ? '...' : ''}`
+          ).join('\n\n')}`
+        : '\n\nNote: No specific document chunks were found. However, you should still provide helpful information about the chapter topic based on the chapter title and material title.';
 
       // Build system prompt with language instruction and context
       const languageInstruction = this.getLanguageInstruction(language);
