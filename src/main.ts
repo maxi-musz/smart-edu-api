@@ -10,21 +10,10 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  const corsOriginsEnv =
-    configService.get<string>('CORS_ORIGINS') ||
-    configService.get<string>('FRONTEND_URL');
-
-  const allowedOrigins = corsOriginsEnv
-    ? corsOriginsEnv.split(',').map((o) => o.trim())
-    : ['https://smart-edu-hub-dusky.vercel.app'];
-
+  // TODO: Restrict CORS origins in production for security
+  // For now, allowing all origins for development
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes('*')) return callback(null, true);
-      if (allowedOrigins.some((o) => o === origin)) return callback(null, true);
-      return callback(new Error('Not allowed by CORS'));
-    },
+    origin: true, // Allow all origins
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders:
       'Content-Type, Authorization, X-Requested-With, Accept, Origin',
