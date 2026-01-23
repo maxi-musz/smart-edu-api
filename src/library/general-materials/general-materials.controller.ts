@@ -138,37 +138,37 @@ export class GeneralMaterialsController {
   }
 
   // 5) Create new general material (full file upload)
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @UseGuards(LibraryJwtGuard)
-  @ApiBearerAuth()
-  @CreateGeneralMaterialDocs.consumes
-  @CreateGeneralMaterialDocs.operation
-  @CreateGeneralMaterialDocs.body
-  @CreateGeneralMaterialDocs.response201
-  @CreateGeneralMaterialDocs.response400
-  @CreateGeneralMaterialDocs.response401
-  @CreateGeneralMaterialDocs.response404
-  @CreateGeneralMaterialDocs.response500
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'file', maxCount: 1 },
-      { name: 'thumbnail', maxCount: 1 },
-    ]),
-  )
-  // async createGeneralMaterial(
-  //   @Request() req: any,
-  //   @Body() payload: CreateGeneralMaterialDto,
-  //   @UploadedFiles()
-  //   files: {
-  //     file?: Express.Multer.File[];
-  //     thumbnail?: Express.Multer.File[];
-  //   },
-  // ) {
-  //   const materialFile = files.file?.[0];
-  //   const thumbnailFile = files.thumbnail?.[0];
-  //   return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, materialFile, thumbnailFile);
-  // }
+  // @Post()
+  // @HttpCode(HttpStatus.CREATED)
+  // @UseGuards(LibraryJwtGuard)
+  // @ApiBearerAuth()
+  // @CreateGeneralMaterialDocs.consumes
+  // @CreateGeneralMaterialDocs.operation
+  // @CreateGeneralMaterialDocs.body
+  // @CreateGeneralMaterialDocs.response201
+  // @CreateGeneralMaterialDocs.response400
+  // @CreateGeneralMaterialDocs.response401
+  // @CreateGeneralMaterialDocs.response404
+  // @CreateGeneralMaterialDocs.response500
+  // @UseInterceptors(
+  //   FileFieldsInterceptor([
+  //     { name: 'file', maxCount: 1 },
+  //     { name: 'thumbnail', maxCount: 1 },
+  //   ]),
+  // )
+  // // async createGeneralMaterial(
+  // //   @Request() req: any,
+  // //   @Body() payload: CreateGeneralMaterialDto,
+  // //   @UploadedFiles()
+  // //   files: {
+  // //     file?: Express.Multer.File[];
+  // //     thumbnail?: Express.Multer.File[];
+  // //   },
+  // // ) {
+  // //   const materialFile = files.file?.[0];
+  // //   const thumbnailFile = files.thumbnail?.[0];
+  // //   return await this.generalMaterialsService.createGeneralMaterial(req.user, payload, materialFile, thumbnailFile);
+  // // }
 
   // 8) Start general material upload with progress tracking
   @Post('upload/start')
