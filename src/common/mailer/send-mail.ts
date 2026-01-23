@@ -6,6 +6,21 @@ import { passwordResetTemplate } from "../email-templates/password-reset-templat
 import { loginOtpTemplate } from "../email-templates/login-otp-template";
 import { EmailProviderFactory } from "./providers/email-provider.factory";
 
+// Helper function to get the correct from email address based on provider
+const getFromEmailAddress = (): string => {
+  const provider = (process.env.EMAIL_PROVIDER || "gmail").toLowerCase();
+  
+  // Prioritize provider-specific env vars
+  if (provider === "resend") {
+    return process.env.RESEND_FROM_EMAIL || process.env.EMAIL_USER || "noreply@smart-edu.com";
+  }
+  if (provider === "sendgrid") {
+    return process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER || "noreply@smart-edu.com";
+  }
+  // Default to Gmail/EMAIL_USER
+  return process.env.EMAIL_USER || "noreply@smart-edu.com";
+};
+
 // add the interface for the mail to send 
 export interface OnboardingMailPayload {
     school_name: string;
@@ -61,7 +76,7 @@ export const sendMail = async (payload: SendMailProps): Promise<void> => {
             html: payload.html,
             from: {
                 name: "Smart Edu Hub",
-                address: process.env.EMAIL_USER || process.env.RESEND_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || "noreply@smart-edu.com",
+                address: getFromEmailAddress(),
             },
         });
         
@@ -84,7 +99,7 @@ export const sendOnboardingMailToSchoolOwner = async (
         await emailProvider.sendEmail({
             from: {
                 name: "Smart Edu Hub",
-                address: process.env.EMAIL_USER || process.env.RESEND_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || "noreply@smart-edu.com",
+                address: getFromEmailAddress(),
             },
             to: payload.school_email,
             subject: `Welcome to Smart Edu Hub`,
@@ -117,7 +132,7 @@ export const sendOnboardingMailToBTechAdmin = async (
         await emailProvider.sendEmail({
             from: {
                 name: "Smart Edu Hub",
-                address: process.env.EMAIL_USER || process.env.RESEND_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || "noreply@smart-edu.com",
+                address: getFromEmailAddress(),
             },
             to: adminEmail,
             subject: `New Registration on Smart Edu Hub`,
@@ -143,7 +158,7 @@ export const sendOnboardingMailToBTechAdmin = async (
     await emailProvider.sendEmail({
       from: {
         name: 'Smart Edu Hub',
-        address: process.env.EMAIL_USER || process.env.RESEND_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || "noreply@smart-edu.com",
+        address: getFromEmailAddress(),
       },
       to: email,
       subject: `🔐 Your Password Reset Code`,
@@ -162,7 +177,7 @@ export const sendLoginOtpByMail = async ({ email, otp}: SendResetOtpProps): Prom
     await emailProvider.sendEmail({
         from: {
             name: "Smart Edu Hub",
-            address: process.env.EMAIL_USER || process.env.RESEND_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || "noreply@smart-edu.com",
+            address: getFromEmailAddress(),
         },
         to: email,
         subject: `Login OTP Confirmation Code: ${otp}`,
