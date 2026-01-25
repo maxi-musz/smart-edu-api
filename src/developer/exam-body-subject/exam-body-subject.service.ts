@@ -26,12 +26,30 @@ export class ExamBodySubjectService {
       // Auto-generate code from name
       const code = this.generateCode(createDto.name);
 
+      // Check for duplicate by name or code (exam bodies like WAEC only have one Mathematics per year)
       const existing = await this.prisma.examBodySubject.findFirst({
-        where: { examBodyId, code: code },
+        where: {
+          examBodyId,
+          OR: [
+            { name: createDto.name },
+            { code: code },
+          ],
+        },
       });
 
       if (existing) {
-        throw new ConflictException(`Subject with code "${code}" already exists for this exam body`);
+        const field = existing.name === createDto.name ? 'name' : 'code';
+        throw new ConflictException(`Subject with ${field} "${field === 'name' ? createDto.name : code}" already exists for this exam body`);
+      }
+
+      // Auto-calculate order if not provided
+      let order = createDto.order;
+      if (order === undefined || order === null) {
+        const lastSubject = await this.prisma.examBodySubject.findFirst({
+          where: { examBodyId },
+          orderBy: { order: 'desc' },
+        });
+        order = lastSubject ? lastSubject.order + 1 : 0;
       }
 
       let iconUrl: string | undefined;
@@ -67,6 +85,7 @@ export class ExamBodySubjectService {
             ...createDto,
             code,
             examBodyId,
+            order,
             ...(iconUrl && { iconUrl }),
           },
           include: { examBody: true },
@@ -137,12 +156,20 @@ export class ExamBodySubjectService {
     if (updateDto.name) {
       code = this.generateCode(updateDto.name);
       
-      // Check if new code conflicts with another subject
+      // Check if new name or code conflicts with another subject
       const conflict = await this.prisma.examBodySubject.findFirst({
-        where: { examBodyId: existing.examBodyId, code: code, id: { not: id } },
+        where: {
+          examBodyId: existing.examBodyId,
+          id: { not: id },
+          OR: [
+            { name: updateDto.name },
+            { code: code },
+          ],
+        },
       });
       if (conflict) {
-        throw new ConflictException(`Subject with code "${code}" (generated from "${updateDto.name}") already exists`);
+        const field = conflict.name === updateDto.name ? 'name' : 'code';
+        throw new ConflictException(`Subject with ${field} "${field === 'name' ? updateDto.name : code}" already exists`);
       }
     }
 

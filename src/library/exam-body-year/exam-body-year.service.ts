@@ -1,17 +1,17 @@
 import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateExamBodyYearDto, UpdateExamBodyYearDto } from './dto';
-import { ResponseHelper } from '../../shared/helper-functions/response.helpers';
+import { CreateLibraryExamBodyYearDto, UpdateLibraryExamBodyYearDto } from './dto';
+import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
 
 @Injectable()
-export class ExamBodyYearService {
-  private readonly logger = new Logger(ExamBodyYearService.name);
+export class LibraryExamBodyYearService {
+  private readonly logger = new Logger(LibraryExamBodyYearService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(examBodyId: string, createDto: CreateExamBodyYearDto) {
-    this.logger.log(colors.cyan(`📝 Creating year: ${createDto.year} for exam body: ${examBodyId}`));
+  async create(examBodyId: string, createDto: CreateLibraryExamBodyYearDto) {
+    this.logger.log(colors.cyan(`[LIBRARY EXAM BODY] Creating year: ${createDto.year}`));
 
     const examBody = await this.prisma.examBody.findUnique({ where: { id: examBodyId } });
     if (!examBody) {
@@ -47,13 +47,10 @@ export class ExamBodyYearService {
       include: { examBody: true },
     });
 
-    this.logger.log(colors.green(`✅ Year created: ${year.year}`));
-    return ResponseHelper.success('Year created successfully', year);
+    return new ApiResponse(true, 'Year created successfully', year);
   }
 
   async findAll(examBodyId: string) {
-    this.logger.log(colors.cyan(`📚 Fetching years for exam body: ${examBodyId}`));
-
     const years = await this.prisma.examBodyYear.findMany({
       where: { examBodyId },
       include: {
@@ -63,8 +60,7 @@ export class ExamBodyYearService {
       orderBy: { order: 'desc' },
     });
 
-    this.logger.log(colors.green(`✅ Found ${years.length} years`));
-    return ResponseHelper.success('Years retrieved successfully', years);
+    return new ApiResponse(true, 'Years retrieved successfully', years);
   }
 
   async findOne(id: string) {
@@ -80,11 +76,11 @@ export class ExamBodyYearService {
       throw new NotFoundException('Year not found');
     }
 
-    return ResponseHelper.success('Year retrieved successfully', year);
+    return new ApiResponse(true, 'Year retrieved successfully', year);
   }
 
-  async update(id: string, updateDto: UpdateExamBodyYearDto) {
-    this.logger.log(colors.cyan(`📝 Updating year: ${id}`));
+  async update(id: string, updateDto: UpdateLibraryExamBodyYearDto) {
+    this.logger.log(colors.cyan(`[LIBRARY EXAM BODY] Updating year: ${id}`));
 
     const existing = await this.prisma.examBodyYear.findUnique({ where: { id } });
     if (!existing) {
@@ -110,8 +106,7 @@ export class ExamBodyYearService {
       include: { examBody: true },
     });
 
-    this.logger.log(colors.green(`✅ Year updated: ${year.year}`));
-    return ResponseHelper.success('Year updated successfully', year);
+    return new ApiResponse(true, 'Year updated successfully', year);
   }
 
   async remove(id: string) {
@@ -121,9 +116,7 @@ export class ExamBodyYearService {
     }
 
     await this.prisma.examBodyYear.delete({ where: { id } });
-    this.logger.log(colors.green(`✅ Year deleted: ${year.year}`));
 
-    return ResponseHelper.success('Year deleted successfully', { id });
+    return new ApiResponse(true, 'Year deleted successfully', { id });
   }
 }
-
