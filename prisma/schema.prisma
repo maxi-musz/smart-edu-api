@@ -1964,6 +1964,7 @@ model LibraryPlatform {
   generalMaterialProcessings       LibraryGeneralMaterialProcessing[]
   generalMaterialChunks            LibraryGeneralMaterialChunk[]
   assessments                      LibraryAssessment[]
+  examBodyAssessments              ExamBodyAssessment[]
 }
 
 /// Nigerian Examination Bodies (WAEC, JAMB, NECO, etc.)
@@ -2035,6 +2036,7 @@ model ExamBodyYear {
 model ExamBodyAssessment {
   id           String  @id @default(cuid())
   examBodyId   String
+  platformId   String?
   subjectId    String
   yearId       String
   title        String // e.g., "WAEC Mathematics 2024/2025"
@@ -2048,7 +2050,7 @@ model ExamBodyAssessment {
   passingScore   Float          @default(50) // Percentage
 
   // Attempt settings
-  maxAttempts      Int     @default(999) // Users can take many times
+  maxAttempts      Int?    @default(999) // Null means unlimited attempts
   allowReview      Boolean @default(true)
   shuffleQuestions Boolean @default(true)
   shuffleOptions   Boolean @default(true)
@@ -2067,12 +2069,14 @@ model ExamBodyAssessment {
   updatedAt DateTime @updatedAt
 
   examBody  ExamBody                     @relation(fields: [examBodyId], references: [id], onDelete: Cascade)
+  platform LibraryPlatform?              @relation(fields: [platformId], references: [id])
   subject   ExamBodySubject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   year      ExamBodyYear                 @relation(fields: [yearId], references: [id], onDelete: Cascade)
   questions ExamBodyAssessmentQuestion[]
   attempts  ExamBodyAssessmentAttempt[]
 
-  @@unique([examBodyId, subjectId, yearId])
+  @@unique([platformId, examBodyId, subjectId, yearId])
+  @@index([platformId])
   @@index([examBodyId])
   @@index([subjectId])
   @@index([yearId])

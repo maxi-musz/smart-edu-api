@@ -23,8 +23,13 @@ export class ExamBodyAssessmentService {
     if (!subject) throw new NotFoundException('Subject not found');
     if (!year) throw new NotFoundException('Year not found');
 
-    const existing = await this.prisma.examBodyAssessment.findUnique({
-      where: { examBodyId_subjectId_yearId: { examBodyId, subjectId, yearId } },
+    const existing = await this.prisma.examBodyAssessment.findFirst({
+      where: {
+        examBodyId,
+        subjectId,
+        yearId,
+        platformId: null,
+      },
     });
 
     if (existing) {
@@ -37,6 +42,8 @@ export class ExamBodyAssessmentService {
         examBodyId,
         subjectId,
         yearId,
+        platformId: null,
+        assessmentType: 'EXAM', // Default to EXAM
       },
       include: {
         examBody: true,
