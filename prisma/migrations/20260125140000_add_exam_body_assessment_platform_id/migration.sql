@@ -11,5 +11,19 @@ CREATE INDEX IF NOT EXISTS "ExamBodyAssessment_platformId_idx" ON "ExamBodyAsses
 -- CreateIndex
 CREATE UNIQUE INDEX IF NOT EXISTS "ExamBodyAssessment_platformId_examBodyId_subjectId_yearId_key" ON "ExamBodyAssessment"("platformId", "examBodyId", "subjectId", "yearId");
 
--- AddForeignKey
-ALTER TABLE "ExamBodyAssessment" ADD CONSTRAINT "ExamBodyAssessment_platformId_fkey" FOREIGN KEY ("platformId") REFERENCES "LibraryPlatform"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- AddForeignKey (only if it doesn't exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_constraint 
+        WHERE conname = 'ExamBodyAssessment_platformId_fkey'
+    ) THEN
+        ALTER TABLE "ExamBodyAssessment" 
+        ADD CONSTRAINT "ExamBodyAssessment_platformId_fkey" 
+        FOREIGN KEY ("platformId") 
+        REFERENCES "LibraryPlatform"("id") 
+        ON DELETE SET NULL 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
