@@ -92,12 +92,16 @@ export class ExamPracticeService {
       orderBy: { attemptNumber: 'desc' },
     });
 
-    const canAttempt = attemptCount < assessment.maxAttempts;
+    const canAttempt = assessment.maxAttempts === null
+      ? true
+      : attemptCount < assessment.maxAttempts;
 
     return ResponseHelper.success('Assessment details retrieved successfully', {
       ...assessment,
       attemptsTaken: attemptCount,
-      attemptsRemaining: assessment.maxAttempts - attemptCount,
+      attemptsRemaining: assessment.maxAttempts === null
+        ? null
+        : Math.max(assessment.maxAttempts - attemptCount, 0),
       previousAttempts,
       canAttempt,
     });
@@ -118,7 +122,7 @@ export class ExamPracticeService {
       where: { assessmentId, userId },
     });
 
-    if (attemptCount >= assessment.maxAttempts) {
+    if (assessment.maxAttempts !== null && attemptCount >= assessment.maxAttempts) {
       throw new BadRequestException('No attempts remaining for this assessment');
     }
 
@@ -148,7 +152,9 @@ export class ExamPracticeService {
       assessmentId: assessment.id,
       title: assessment.title,
       questions,
-      attemptsRemaining: assessment.maxAttempts - attemptCount,
+      attemptsRemaining: assessment.maxAttempts === null
+        ? null
+        : Math.max(assessment.maxAttempts - attemptCount, 0),
     });
   }
 
@@ -175,7 +181,7 @@ export class ExamPracticeService {
       where: { assessmentId, userId: user.sub },
     });
 
-    if (attemptCount >= assessment.maxAttempts) {
+    if (assessment.maxAttempts !== null && attemptCount >= assessment.maxAttempts) {
       throw new BadRequestException('No attempts remaining');
     }
 
@@ -263,7 +269,9 @@ export class ExamPracticeService {
       return newAttempt;
     });
 
-    const attemptsRemaining = assessment.maxAttempts - attempt.attemptNumber;
+    const attemptsRemaining = assessment.maxAttempts === null
+      ? null
+      : Math.max(assessment.maxAttempts - attempt.attemptNumber, 0);
 
     this.logger.log(colors.green(`✅ Assessment submitted. Score: ${totalScore}/${assessment.totalPoints}`));
 

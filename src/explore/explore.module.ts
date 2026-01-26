@@ -15,9 +15,11 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { LibraryAuthModule } from '../library/library-auth/library-auth.module';
 import { AiChatModule } from '../school/ai-chat/ai-chat.module';
 import { ExploreChatServicesModule } from './chat/explore-chat-services.module';
+import { ExploreExamBodyModule } from './exam-body/exam-body.module';
 
 @Module({
   imports: [
+    ExploreExamBodyModule,
     PrismaModule,
     LibraryAuthModule,
     AiChatModule, // Import to use DocumentProcessingService for Pinecone chunk searching

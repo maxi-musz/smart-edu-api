@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsInt, Min, IsBoolean, IsNumber, IsEnum } from 'class-validator';
 import { AssessmentType } from '@prisma/client';
 
-export class CreateExamBodyAssessmentDto {
+export class CreateLibraryExamBodyAssessmentDto {
   @ApiProperty({ example: 'WAEC Mathematics 2024/2025' })
   @IsString()
   @IsNotEmpty()
@@ -30,11 +30,15 @@ export class CreateExamBodyAssessmentDto {
   @IsOptional()
   passingScore?: number;
 
-  @ApiPropertyOptional({ example: 999 })
+  @ApiPropertyOptional({
+    example: null,
+    nullable: true,
+    description: 'Max attempts allowed. Use null for unlimited.',
+  })
   @IsInt()
   @Min(1)
   @IsOptional()
-  maxAttempts?: number;
+  maxAttempts?: number | null;
 
   @ApiPropertyOptional({ example: true })
   @IsBoolean()
@@ -60,7 +64,4 @@ export class CreateExamBodyAssessmentDto {
   @IsBoolean()
   @IsOptional()
   showExplanation?: boolean;
-
-  // assessmentType is not in DTO - defaults to CBT in service
 }
-
