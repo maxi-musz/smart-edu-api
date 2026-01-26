@@ -1,8 +1,8 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param, Get } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param, Get, Delete, Query, BadRequestException } from '@nestjs/common';
 import { TopicService } from './topic.service';
 import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
 import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
-import { CreateTopicDocs, UpdateTopicDocs, GetTopicMaterialsDocs } from './docs/topic.docs';
+import { CreateTopicDocs, UpdateTopicDocs, GetTopicMaterialsDocs, GetTopicsBySubjectDocs, DeleteTopicDocs } from './docs/topic.docs';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Library Topic')
@@ -62,5 +62,42 @@ export class TopicController {
     @Param('topicId') topicId: string,
   ) {
     return await this.topicService.getTopicMaterials(req.user, topicId);
+  }
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @GetTopicsBySubjectDocs.operation
+  @GetTopicsBySubjectDocs.response200
+  @GetTopicsBySubjectDocs.response400
+  @GetTopicsBySubjectDocs.response401
+  @GetTopicsBySubjectDocs.response404
+  @GetTopicsBySubjectDocs.response500
+  async getTopicsBySubject(
+    @Request() req: any,
+    @Query('subjectId') subjectId: string,
+  ) {
+    if (!subjectId) {
+      throw new BadRequestException('subjectId query parameter is required');
+    }
+    return await this.topicService.getTopicsBySubject(req.user, subjectId);
+  }
+
+  @Delete('deletetopic/:topicId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @DeleteTopicDocs.operation
+  @DeleteTopicDocs.response200
+  @DeleteTopicDocs.response400
+  @DeleteTopicDocs.response401
+  @DeleteTopicDocs.response404
+  @DeleteTopicDocs.response500
+  async deleteTopic(
+    @Request() req: any,
+    @Param('topicId') topicId: string,
+  ) {
+    return await this.topicService.deleteTopic(req.user, topicId);
   }
 }

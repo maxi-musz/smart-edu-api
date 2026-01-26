@@ -214,6 +214,92 @@ export class TopicService {
     }
   }
 
+  async deleteTopic(user: any, topicId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY TOPIC] Deleting topic: ${topicId} for library user: ${user.email}`));
+
+    try {
+      // Get the library user to ensure they exist and get their platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify the topic exists and belongs to the user's platform
+      const existingTopic = await this.prisma.libraryTopic.findFirst({
+        where: {
+          id: topicId,
+          platformId: libraryUser.platformId,
+        },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!existingTopic) {
+        this.logger.error(colors.red(`Topic not found or does not belong to user's platform: ${topicId}`));
+        throw new NotFoundException('Topic not found or does not belong to your platform');
+      }
+
+      // Check if topic has associated resources (optional - you may want to prevent deletion if resources exist)
+      const [videosCount, materialsCount, linksCount, assignmentsCount] = await Promise.all([
+        this.prisma.libraryVideoLesson.count({
+          where: { topicId: topicId, platformId: libraryUser.platformId },
+        }),
+        this.prisma.libraryMaterial.count({
+          where: { topicId: topicId, platformId: libraryUser.platformId },
+        }),
+        this.prisma.libraryLink.count({
+          where: { topicId: topicId, platformId: libraryUser.platformId },
+        }),
+        this.prisma.libraryAssignment.count({
+          where: { topicId: topicId, platformId: libraryUser.platformId },
+        }),
+      ]);
+
+      const totalResources = videosCount + materialsCount + linksCount + assignmentsCount;
+
+      // Delete the topic (cascade will handle related resources if configured)
+      await this.prisma.libraryTopic.delete({
+        where: { id: topicId },
+      });
+
+      this.logger.log(colors.green(`Topic deleted successfully: ${topicId}`));
+
+      return new ApiResponse(true, 'Topic deleted successfully', {
+        deletedTopic: {
+          id: existingTopic.id,
+          title: existingTopic.title,
+          subject: existingTopic.subject,
+        },
+        deletedResourcesCount: totalResources,
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error deleting topic: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to delete topic');
+    }
+  }
+
   async getTopicMaterials(user: any, topicId: string): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[LIBRARY TOPIC] Fetching materials for topic: ${topicId} for library user: ${user.email}`));
 
@@ -704,6 +790,141 @@ export class TopicService {
 
       this.logger.error(colors.red(`Error fetching topic materials: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to retrieve topic materials');
+    }
+  }
+
+  /**
+   * Get all topics for a specific subject
+   */
+  async getTopicsBySubject(user: any, subjectId: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY TOPIC] Fetching topics for subject: ${subjectId}, user: ${user.email}`));
+
+    try {
+      // Get the library user to ensure they exist and get their platform
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      // Verify the subject exists and belongs to the user's platform
+      const subject = await this.prisma.librarySubject.findFirst({
+        where: {
+          id: subjectId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (!subject) {
+        this.logger.error(colors.red(`Subject not found or does not belong to user's platform: ${subjectId}`));
+        throw new NotFoundException('Subject not found or does not belong to your platform');
+      }
+
+      // Fetch all topics for this subject
+      const topics = await this.prisma.libraryTopic.findMany({
+        where: {
+          subjectId: subjectId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          is_active: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: {
+          order: 'asc',
+        },
+      });
+
+      this.logger.log(colors.green(`✅ Found ${topics.length} topics for subject: ${subjectId}`));
+
+      // Get resource counts for each topic in parallel
+      const topicsWithCounts = await Promise.all(
+        topics.map(async (topic) => {
+          const [videosCount, materialsCount, linksCount, assignmentsCount] = await Promise.all([
+            // Count videos (published only)
+            this.prisma.libraryVideoLesson.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'published' as any,
+              },
+            }),
+            // Count materials (published only) - includes PDFs and other material types
+            this.prisma.libraryMaterial.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'published' as any,
+              },
+            }),
+            // Count links (published only)
+            this.prisma.libraryLink.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'published' as any,
+              },
+            }),
+            // Count assignments (published only)
+            this.prisma.libraryAssignment.count({
+              where: {
+                topicId: topic.id,
+                platformId: libraryUser.platformId,
+                status: 'PUBLISHED' as any,
+              },
+            }),
+          ]);
+
+          return {
+            ...topic,
+            resourceCounts: {
+              totalVideos: videosCount,
+              totalMaterials: materialsCount,
+              totalLinks: linksCount,
+              totalAssignments: assignmentsCount,
+              totalResources: videosCount + materialsCount + linksCount + assignmentsCount,
+            },
+          };
+        })
+      );
+
+      return new ApiResponse(true, 'Topics retrieved successfully', {
+        subject: {
+          id: subject.id,
+          name: subject.name,
+          code: subject.code,
+          class: subject.class,
+        },
+        topics: topicsWithCounts,
+        count: topicsWithCounts.length,
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(colors.red(`Error fetching topics: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to retrieve topics');
     }
   }
 
