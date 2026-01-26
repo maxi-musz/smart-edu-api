@@ -119,3 +119,76 @@ export const GetTopicMaterialsDocs = {
     description: 'Internal server error',
   }),
 };
+
+export const GetTopicsBySubjectDocs = {
+  operation: ApiOperation({
+    summary: 'Get all topics for a subject',
+    description:
+      'Retrieves all topics associated with a specific library subject. ' +
+      'Topics are returned in order (ascending by order field). ' +
+      'Requires a valid JWT token in the Authorization header. ' +
+      'Response is wrapped in { success, message, data } where data contains the subject information and an array of topics.',
+  }),
+
+  response200: ApiResponse({
+    status: 200,
+    description: 'Topics retrieved successfully',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - validation error',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description: 'Not found - library user not found or subject not found/does not belong to user\'s platform',
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
+
+export const DeleteTopicDocs = {
+  operation: ApiOperation({
+    summary: 'Delete a topic',
+    description:
+      'Delete a topic from the authenticated library user\'s platform. ' +
+      'The topic and all its associated resources (videos, materials, links, assignments) will be deleted. ' +
+      'This action cannot be undone. ' +
+      'Requires a valid JWT token in the Authorization header. ' +
+      'Response is wrapped in { success, message, data } where data contains information about the deleted topic and resource count.',
+  }),
+
+  response200: ApiResponse({
+    status: 200,
+    description: 'Topic deleted successfully',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - validation error',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description: 'Not found - library user not found or topic not found/does not belong to user\'s platform',
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
