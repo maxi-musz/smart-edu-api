@@ -33,6 +33,7 @@ export class ChatService {
 
   Your job is to teach using the uploaded material as your primary source. You KNOW the content because you have direct access to it. Answer questions with certainty and authority.
 
+  "VERY IMPORTANT": MAKE SURE YOU COMPLETELY ANSWER A USERS QUESTION, IF I ASK HOW MANY LIST OF THIS IS IN THIS BOK, DONT LIST OUT 3 WHEREAS IT IS ACTUALLY 5, THIS WILL BE VERY BAD
   Communication style:
   - Be direct, confident, and authoritative. NEVER hedge or use uncertain language.
   - STRICTLY FORBIDDEN phrases: "it looks like", "it seems", "appears", "might", "I think", "I believe", "likely", "probably", "perhaps", "maybe", "could be", "might be", "seems to be", "looks like", "appears to be".
@@ -750,7 +751,7 @@ export class ChatService {
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: messages as any,
-        max_tokens: 4000,
+        max_tokens: 12000, // Increased from 4000 to allow complete responses (gpt-4o-mini supports up to 16,384)
         temperature: isMaterialChat ? 0.25 : 0.7,
       });
 
