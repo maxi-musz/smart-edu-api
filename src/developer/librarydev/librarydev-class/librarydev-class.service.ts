@@ -46,9 +46,9 @@ export class LibraryDevClassService {
   async listClasses(platformId: string): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[DEV] Listing library classes for platform: ${platformId}`));
 
-    if (!platformId) {
-      throw new BadRequestException('platformId is required');
-    }
+    // if (!platformId) {
+    //   throw new BadRequestException('platformId is required');
+    // }
 
     const classes = await this.prisma.libraryClass.findMany({
       orderBy: { order: 'asc' },
