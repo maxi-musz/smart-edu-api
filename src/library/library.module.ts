@@ -11,9 +11,28 @@ import { TopicModule } from './subject/topic/topic.module';
 import { ContentModule } from './content/content.module';
 import { GeneralMaterialsModule } from './general-materials/general-materials.module';
 import { AssessmentModule } from './assessment/assessment.module';
+import { LibraryExamBodyAssessmentModule } from './exam-body-assessment/exam-body-assessment.module';
+import { LibraryExamBodyModule } from './exam-body/exam-body.module';
+import { LibraryExamBodySubjectModule } from './exam-body-subject/exam-body-subject.module';
+import { LibraryExamBodyYearModule } from './exam-body-year/exam-body-year.module';
 
 @Module({
-  imports: [PrismaModule, LibraryAuthModule, ProfileModule, SchoolsModule, ResourcesModule, SubjectModule, TopicModule, ContentModule, GeneralMaterialsModule, AssessmentModule],
+  imports: [
+    PrismaModule,
+    LibraryAuthModule,
+    ProfileModule,
+    SchoolsModule,
+    ResourcesModule,
+    SubjectModule,
+    TopicModule,
+    ContentModule,
+    GeneralMaterialsModule,
+    AssessmentModule,
+    LibraryExamBodyAssessmentModule,
+    LibraryExamBodyModule,
+    LibraryExamBodySubjectModule,
+    LibraryExamBodyYearModule,
+  ],
   controllers: [LibraryController],
   providers: [LibraryService],
   exports: [LibraryService],

@@ -5,9 +5,9 @@ import { ExamBodyService } from './exam-body.service';
 import { CreateExamBodyDto, UpdateExamBodyDto } from './dto';
 import { ExamBodyDocs } from './docs/exam-body.docs';
 
-@ApiTags('Developer - Exam Bodies')
+@ApiTags('Exam Bodies')
 @ApiBearerAuth()
-@Controller('developer/exam-bodies')
+@Controller('exam-bodies')
 export class ExamBodyController {
   constructor(private readonly examBodyService: ExamBodyService) {}
 

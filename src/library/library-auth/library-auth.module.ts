@@ -5,6 +5,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LibraryJwtStrategy, LibraryJwtGuard } from './guard/library-jwt.guard';
+import { LibraryOwnerGuard } from './guard/library-owner.guard';
 
 @Module({
   imports: [
@@ -26,8 +27,8 @@ import { LibraryJwtStrategy, LibraryJwtGuard } from './guard/library-jwt.guard';
     })
   ],
   controllers: [LibraryAuthController],
-  providers: [LibraryAuthService, LibraryJwtStrategy, LibraryJwtGuard],
-  exports: [LibraryAuthService, LibraryJwtGuard],
+  providers: [LibraryAuthService, LibraryJwtStrategy, LibraryJwtGuard, LibraryOwnerGuard],
+  exports: [LibraryAuthService, LibraryJwtGuard, LibraryOwnerGuard],
 })
 export class LibraryAuthModule {}
 
