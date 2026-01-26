@@ -278,7 +278,7 @@ REMEMBER:
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: messages as any,
-        max_tokens: 4000,
+        max_tokens: 16000, // Increased from 4000 to allow complete responses (gpt-4o-mini supports up to 16,384)
         temperature: 0.25, // Lower temperature for more factual, consistent responses
       });
 

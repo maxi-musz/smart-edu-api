@@ -98,7 +98,7 @@ export class ExploreAiBooksService {
           downloads: true,
           createdAt: true,
           classes: {
-            include: {
+            select: {
               class: {
                 select: {
                   id: true,
