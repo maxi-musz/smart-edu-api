@@ -933,7 +933,7 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Found ${questions.length} question, Questions: ${JSON.stringify(questions, null, 2)}`));
+      this.logger.log(colors.green(`Found ${questions.length} question`));
 
       return new ApiResponse(
         true,
@@ -1012,6 +1012,7 @@ export class AssessmentService {
   ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(colors.cyan(`📋 Update payload: options=${updateQuestionDto.options !== undefined ? `${updateQuestionDto.options?.length || 0} items` : 'not provided'}, correctAnswers=${updateQuestionDto.correctAnswers !== undefined ? `${updateQuestionDto.correctAnswers?.length || 0} items` : 'not provided'}`));
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -1190,11 +1191,26 @@ export class AssessmentService {
             where: { questionId: questionId },
           });
 
+          this.logger.log(colors.cyan(`📝 Processing correctAnswers update: ${updateQuestionDto.correctAnswers.length} answers provided`));
+
           // Create new correct answers if provided
           if (updateQuestionDto.correctAnswers.length > 0) {
+            // If options were also updated, validate that optionIds in correctAnswers match the new option IDs
+            if (updateQuestionDto.options !== undefined && options.length > 0) {
+              const newOptionIds = new Set(options.map(opt => opt.id));
+              for (const answerData of updateQuestionDto.correctAnswers) {
+                if (answerData.optionIds && answerData.optionIds.length > 0) {
+                  const invalidOptionIds = answerData.optionIds.filter(id => !newOptionIds.has(id));
+                  if (invalidOptionIds.length > 0) {
+                    this.logger.warn(colors.yellow(`⚠️ Warning: correctAnswers contains optionIds that don't match new options: [${invalidOptionIds.join(', ')}]`));
+                  }
+                }
+              }
+            }
+
             correctAnswers = await Promise.all(
               updateQuestionDto.correctAnswers.map(async (answerData: any) => {
-                return await prisma.libraryAssessmentCorrectAnswer.create({
+                const created = await prisma.libraryAssessmentCorrectAnswer.create({
                   data: {
                     questionId: questionId,
                     answerText: answerData.answerText,
@@ -1204,11 +1220,62 @@ export class AssessmentService {
                     answerJson: answerData.answerJson,
                   },
                 });
+                this.logger.log(colors.green(`✅ Created correct answer with optionIds: [${(answerData.optionIds || []).join(', ')}]`));
+                return created;
               })
             );
+          } else if (options.length > 0 && (updateQuestionDto.questionType === 'MULTIPLE_CHOICE_SINGLE' || updateQuestionDto.questionType === 'MULTIPLE_CHOICE_MULTIPLE' || !updateQuestionDto.questionType)) {
+            // If correctAnswers is explicitly set to empty array and options exist, auto-generate from options marked as isCorrect
+            // This handles the case where user updates options but doesn't send correctAnswers
+            const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
+            
+            if (correctOptionIds.length > 0) {
+              this.logger.log(colors.yellow(`🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options (update)`));
+              
+              const correctAnswer = await prisma.libraryAssessmentCorrectAnswer.create({
+                data: {
+                  questionId: questionId,
+                  optionIds: correctOptionIds,
+                },
+              });
+              correctAnswers = [correctAnswer];
+              
+              this.logger.log(colors.green(`✅ Correct answer auto-generated with optionIds: [${correctOptionIds.join(', ')}]`));
+            }
+          } else {
+            this.logger.log(colors.yellow(`⚠️ correctAnswers explicitly set to empty array, all correct answers removed`));
+          }
+        } else if (updateQuestionDto.options !== undefined && options.length > 0) {
+          // If options were updated but correctAnswers were not provided, auto-generate from new options
+          // This ensures correctAnswers reference the NEW option IDs, not the old ones
+          const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
+          
+          if (correctOptionIds.length > 0) {
+            // Delete old correct answers first
+            await prisma.libraryAssessmentCorrectAnswer.deleteMany({
+              where: { questionId: questionId },
+            });
+            
+            this.logger.log(colors.yellow(`🔧 Auto-updating correct answers from ${correctOptionIds.length} correct options (options updated)`));
+            
+            const correctAnswer = await prisma.libraryAssessmentCorrectAnswer.create({
+              data: {
+                questionId: questionId,
+                optionIds: correctOptionIds,
+              },
+            });
+            correctAnswers = [correctAnswer];
+            
+            this.logger.log(colors.green(`✅ Correct answer auto-updated with new optionIds: [${correctOptionIds.join(', ')}]`));
+          } else {
+            // No correct options, but options were updated - delete old correct answers
+            await prisma.libraryAssessmentCorrectAnswer.deleteMany({
+              where: { questionId: questionId },
+            });
+            this.logger.log(colors.yellow(`⚠️ No options marked as correct after update, removed old correct answers`));
           }
         } else {
-          // Keep existing correct answers
+          // Keep existing correct answers (neither options nor correctAnswers were updated)
           correctAnswers = await prisma.libraryAssessmentCorrectAnswer.findMany({
             where: { questionId: questionId },
           });

@@ -25,7 +25,17 @@ export class CBTService {
    * Create a new CBT Assessment (automatically sets assessmentType to 'CBT')
    */
   async createCBT(createCBTDto: CreateLibraryCBTDto, user: any): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CBT] Creating new CBT: ${createCBTDto.title} for user: ${user.email}`));
+    // Determine scope: topic > chapter > subject
+    let scopeInfo = '';
+    if (createCBTDto.topicId) {
+      scopeInfo = `for topic: ${createCBTDto.topicId}`;
+    } else if (createCBTDto.chapterId) {
+      scopeInfo = `for chapter: ${createCBTDto.chapterId}`;
+    } else {
+      scopeInfo = `for subject: ${createCBTDto.subjectId}`;
+    }
+    
+    this.logger.log(colors.cyan(`[LIBRARY CBT] Creating new CBT: ${createCBTDto.title} ${scopeInfo} for user: ${user.email}`));
     
     // Convert CBT DTO to Assessment DTO and force assessmentType to 'CBT'
     const createAssessmentDto = {
