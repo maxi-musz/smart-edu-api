@@ -386,6 +386,42 @@ export class ExploreService {
 
       this.logger.log(colors.yellow(`📖 Subject: ${subject.name} (${subject.code})`));
 
+      // Check if there's a subject-level assessment (assessment with subjectId but no topicId)
+      const subjectLevelAssessment = await this.prisma.libraryAssessment.findFirst({
+        where: {
+          subjectId: subjectId,
+          // topicId: null,
+          status: 'ACTIVE',
+          isPublished: true,
+        },
+        // select: {
+        //   id: true,
+        // },
+        orderBy: {
+          createdAt: 'desc', // Get the most recent one if multiple exist
+        },
+      });
+
+      const libraryAssessmentInfo = subjectLevelAssessment
+        ? {
+            has_library_assessment: true,
+            assessment_id: subjectLevelAssessment.id,
+            title: subjectLevelAssessment.title,
+            description: subjectLevelAssessment.description,
+            duration: subjectLevelAssessment.duration,
+            passingScore: subjectLevelAssessment.passingScore,
+          }
+        : {
+            has_library_assessment: false,
+            assessment_id: null,
+          };
+
+      this.logger.log(
+        colors.yellow(
+          `📝 Subject-level assessment check: ${libraryAssessmentInfo.has_library_assessment ? `Found (ID: ${libraryAssessmentInfo.assessment_id})` : 'None'}`,
+        ),
+      );
+
       // Get all topics for this subject directly (no chapters)
       const topics = await this.prisma.libraryTopic.findMany({
         where: {
@@ -572,6 +608,7 @@ export class ExploreService {
           color: subject.color,
           description: subject.description
         },
+        library_assessment: libraryAssessmentInfo,
         topics: topicsWithResources,
         statistics: subjectStats
       };
