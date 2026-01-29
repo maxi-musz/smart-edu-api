@@ -368,35 +368,14 @@ export class ExploreService {
     );
 
     try {
-      // Fetch the subject with its platform and class
+      // Fetch the subject with only required fields
       const subject = await this.prisma.librarySubject.findUnique({
         where: { id: subjectId },
         select: {
-          id: true,
           name: true,
           code: true,
           description: true,
-          color: true,
-          thumbnailUrl: true,
-          thumbnailKey: true,
-          createdAt: true,
-          updatedAt: true,
-          platform: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              description: true,
-              status: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              order: true
-            }
-          }
+          color: true
         }
       });
 
@@ -413,19 +392,17 @@ export class ExploreService {
           subjectId: subjectId,
           is_active: true
         },
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              order: true,
-              is_active: true,
-              createdAt: true,
-              updatedAt: true
-            },
-            orderBy: {
-              order: 'asc'
-            }
-          });
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          is_active: true
+        },
+        orderBy: {
+          order: 'asc'
+        }
+      });
 
       this.logger.log(colors.yellow(`📑 Found ${topics.length} topics`));
 
@@ -448,19 +425,7 @@ export class ExploreService {
                     thumbnailUrl: true,
                     durationSeconds: true,
                     sizeBytes: true,
-                    views: true,
-                    order: true,
-                    status: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    uploadedBy: {
-                      select: {
-                        id: true,
-                        email: true,
-                        first_name: true,
-                        last_name: true
-                      }
-                    }
+                    views: true
                   },
                   orderBy: {
                     order: 'asc'
@@ -476,23 +441,9 @@ export class ExploreService {
                     id: true,
                     title: true,
                     description: true,
-                    url: true,
-                    s3Key: true,
                     materialType: true,
                     sizeBytes: true,
-                    pageCount: true,
-                    status: true,
-                    order: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    uploadedBy: {
-                      select: {
-                        id: true,
-                        email: true,
-                        first_name: true,
-                        last_name: true
-                      }
-                    }
+                    pageCount: true
                   },
                   orderBy: {
                     order: 'asc'
@@ -509,22 +460,13 @@ export class ExploreService {
                     title: true,
                     description: true,
                     duration: true,
-                    passingScore: true,
-                    status: true,
-                    createdAt: true,
-                    updatedAt: true
+                    passingScore: true
                   },
                   orderBy: {
                     createdAt: 'desc'
                   }
                 })
               ]);
-
-              // Calculate statistics
-              const totalViews = videos.reduce((sum, video) => sum + video.views, 0);
-              const totalDuration = videos.reduce((sum, video) => sum + (video.durationSeconds || 0), 0);
-              const totalVideoSize = videos.reduce((sum, video) => sum + (video.sizeBytes || 0), 0);
-              const totalMaterialSize = materials.reduce((sum, material) => sum + (material.sizeBytes || 0), 0);
 
               // Get question counts for assessments
               const assessmentsWithCounts = await Promise.all(
@@ -533,13 +475,15 @@ export class ExploreService {
                     where: { assessmentId: assessment.id }
                   });
                   return {
-                    ...assessment,
+                    id: assessment.id,
+                    title: assessment.title,
+                    description: assessment.description,
+                    duration: assessment.duration,
+                    passingScore: assessment.passingScore,
                     questionsCount: questionCount
                   };
                 })
               );
-
-              const totalQuestions = assessmentsWithCounts.reduce((sum, assessment) => sum + assessment.questionsCount, 0);
 
               // Get user submissions for assessments in this topic (if user is authenticated)
               let submissions: any[] = [];
@@ -555,27 +499,8 @@ export class ExploreService {
                   select: {
                     id: true,
                     assessmentId: true,
-                    attemptNumber: true,
-                    status: true,
-                    submittedAt: true,
-                    totalScore: true,
-                    maxScore: true,
                     percentage: true,
-                    passed: true,
-                    timeSpent: true,
-                    assessment: {
-                      select: {
-                        id: true,
-                        title: true,
-                        totalPoints: true,
-                        passingScore: true,
-                        _count: {
-                          select: {
-                            questions: true
-                          }
-                        }
-                      }
-                    }
+                    passed: true
                   },
                   orderBy: {
                     submittedAt: 'desc'
@@ -587,38 +512,47 @@ export class ExploreService {
                 submissions = userAttempts.map(attempt => ({
                   id: attempt.id,
                   assessmentId: attempt.assessmentId,
-                  assessmentTitle: attempt.assessment.title,
-                  attemptNumber: attempt.attemptNumber,
-                  status: attempt.status,
-                  dateTaken: attempt.submittedAt ? this.formatDate(attempt.submittedAt) : null,
-                  totalQuestions: attempt.assessment._count.questions,
-                  maxScore: attempt.maxScore,
-                  userScore: attempt.totalScore,
                   percentage: Math.round(attempt.percentage),
-                  passed: attempt.passed,
-                  timeSpent: attempt.timeSpent,
-                  passingScore: attempt.assessment.passingScore
+                  passed: attempt.passed
                 }));
               } else {
                 this.logger.log(colors.gray(`⚠️ No submissions check: userId=${userId}, assessmentsCount=${assessmentsWithCounts.length}`));
               }
 
+              // format the response and return formatted response 
+              
+
               return {
-                ...topic,
-                videos: videos,
-                materials: materials,
+                id: topic.id,
+                title: topic.title,
+                description: topic.description,
+                order: topic.order,
+                is_active: topic.is_active,
+                videos: videos.map(video => ({
+                  id: video.id,
+                  title: video.title,
+                  description: video.description,
+                  videoUrl: video.videoUrl,
+                  thumbnailUrl: video.thumbnailUrl,
+                  durationSeconds: video.durationSeconds,
+                  sizeBytes: video.sizeBytes,
+                  views: video.views
+                })),
+                materials: materials.map(material => ({
+                  id: material.id,
+                  title: material.title,
+                  description: material.description,
+                  materialType: material.materialType,
+                  sizeBytes: material.sizeBytes,
+                  pageCount: material.pageCount
+                })),
                 assessments: assessmentsWithCounts,
                 submissions: submissions,
                 statistics: {
                   videosCount: videos.length,
                   materialsCount: materials.length,
                   assessmentsCount: assessments.length,
-                  totalViews: totalViews,
-                  totalDuration: totalDuration,
-                  totalVideoSize: totalVideoSize,
-                  totalMaterialSize: totalMaterialSize,
-                  totalSize: totalVideoSize + totalMaterialSize,
-                  totalQuestions: totalQuestions
+                  submissionsCount: submissions.length
                 }
               };
             })
@@ -628,16 +562,16 @@ export class ExploreService {
       const subjectStats = {
         topicsCount: topics.length,
         videosCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.videosCount, 0),
-        materialsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.materialsCount, 0),
-        assessmentsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.assessmentsCount, 0),
-        totalViews: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalViews, 0),
-        totalDuration: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalDuration, 0),
-        totalSize: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalSize, 0),
-        totalQuestions: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.totalQuestions, 0)
+        materialsCount: topicsWithResources.reduce((sum, topic) => sum + topic.statistics.materialsCount, 0)
       };
 
       const data = {
-        subject,
+        subject: {
+          name: subject.name,
+          code: subject.code,
+          color: subject.color,
+          description: subject.description
+        },
         topics: topicsWithResources,
         statistics: subjectStats
       };
@@ -650,7 +584,7 @@ export class ExploreService {
       const submissionsSummary = userId ? `, ${totalSubmissions} submissions` : '';
 
       this.logger.log(colors.green(`✅ Complete resources retrieved for "${subject.name}"`));
-      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials, ${subjectStats.assessmentsCount} assessments${submissionsSummary}`));
+      this.logger.log(colors.cyan(`📊 Summary: ${subjectStats.topicsCount} topics, ${subjectStats.videosCount} videos, ${subjectStats.materialsCount} materials${submissionsSummary}`));
 
       return ResponseHelper.success('Subject resources retrieved successfully', data);
     } catch (error) {

@@ -586,8 +586,8 @@ export class AuthService {
 
             // if password matches, return success response with user data
             if(!passwordMatches) {
-                console.log(colors.red("Password does not match"));
-                return ResponseHelper.error("Passwords do not match", null, 400);
+                console.log(colors.red("User not found"));
+                return ResponseHelper.error("User not found", null, 404);
             }
 
             // set email to verified if it is not already
