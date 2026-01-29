@@ -14,6 +14,31 @@ export class ExploreAssessmentController {
     private readonly exploreAssessmentService: ExploreAssessmentService,
   ) {}
 
+  // Specific routes MUST come before :assessmentId to avoid "attempts" being matched as assessmentId
+  @Get('attempts')
+  @ExploreAssessmentDocs.getUserAttempts()
+  async getUserAttempts(
+    @Request() req: any,
+    @Query('assessmentId') assessmentId?: string,
+  ) {
+    return this.exploreAssessmentService.getUserAttempts(
+      req.user,
+      assessmentId,
+    );
+  }
+
+  @Get('attempts/:attemptId')
+  @ExploreAssessmentDocs.getAttemptResults()
+  async getAttemptResults(
+    @Request() req: any,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.exploreAssessmentService.getAttemptResults(
+      req.user,
+      attemptId,
+    );
+  }
+
   @Get(':assessmentId')
   @ExploreAssessmentDocs.getAssessment()
   async getAssessment(
@@ -49,31 +74,6 @@ export class ExploreAssessmentController {
       req.user,
       assessmentId,
       submitDto,
-    );
-  }
-
-  // Get all attempts for user (MUST come before attempts/:attemptId to avoid route conflicts)
-  @Get('attempts')
-  @ExploreAssessmentDocs.getUserAttempts()
-  async getUserAttempts(
-    @Request() req: any,
-    @Query('assessmentId') assessmentId?: string,
-  ) {
-    return this.exploreAssessmentService.getUserAttempts(
-      req.user,
-      assessmentId,
-    );
-  }
-
-  @Get('attempts/:attemptId')
-  @ExploreAssessmentDocs.getAttemptResults()
-  async getAttemptResults(
-    @Request() req: any,
-    @Param('attemptId') attemptId: string,
-  ) {
-    return this.exploreAssessmentService.getAttemptResults(
-      req.user,
-      attemptId,
     );
   }
 }

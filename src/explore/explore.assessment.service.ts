@@ -857,6 +857,14 @@ export class ExploreAssessmentService {
   }
 
   async getAttemptResults(user: any, attemptId: string) {
+    // Validate attemptId
+    if (!attemptId || attemptId === 'undefined' || attemptId.trim() === '') {
+      this.logger.error(
+        colors.red(`❌ Invalid attemptId provided: ${attemptId}`),
+      );
+      throw new BadRequestException('Attempt ID is required and cannot be empty');
+    }
+
     this.logger.log(
       colors.cyan(
         `📊 User ${user.sub} requesting attempt results: ${attemptId}`,
