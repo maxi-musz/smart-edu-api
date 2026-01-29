@@ -656,11 +656,62 @@ export class AuthService {
         this.logger.log(colors.blue("Requesting password reset otp..."))
 
         try {
-            const existing_user = await this.prisma.user.findFirst({
-                where: {
-                    email: payload.email
+            const emailLower = payload.email.toLowerCase();
+            
+            // Check if it's a library user first
+            const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+                where: { email: emailLower }
+            });
+
+            let existing_user;
+            let isLibraryUser = false;
+
+            if (libraryUser) {
+                // It's a library user - check if they have a User record for OTP storage
+                isLibraryUser = true;
+                existing_user = await this.prisma.user.findUnique({
+                    where: { email: emailLower }
+                });
+
+                // If no User record exists, create a minimal one just for OTP storage
+                if (!existing_user) {
+                    // Get or create a system school for library users
+                    const librarySchool = await this.prisma.school.upsert({
+                        where: { school_email: 'library-system@system.com' },
+                        update: {},
+                        create: {
+                            school_name: 'Library System',
+                            school_email: 'library-system@system.com',
+                            school_phone: '+000-000-0000',
+                            school_address: 'System Default',
+                            school_type: 'primary_and_secondary',
+                            school_ownership: 'private',
+                            status: 'approved',
+                        },
+                    });
+
+                    existing_user = await this.prisma.user.create({
+                        data: {
+                            email: emailLower,
+                            password: 'smartedu', // Placeholder - library users use LibraryResourceUser.password
+                            first_name: libraryUser.first_name,
+                            last_name: libraryUser.last_name,
+                            phone_number: libraryUser.phone_number || '+000-000-0000',
+                            school_id: librarySchool.id,
+                            role: 'super_admin', // Library users have elevated permissions
+                            status: 'active',
+                        },
+                    });
+                    this.logger.log(colors.cyan(`Created User record for library user OTP storage: ${emailLower}`));
                 }
-            })
+            } else {
+                // Regular user - check User table
+                existing_user = await this.prisma.user.findFirst({
+                    where: {
+                        email: emailLower
+                    }
+                });
+            }
 
             // if user not found
             if(!existing_user) {
@@ -672,7 +723,7 @@ export class AuthService {
             const otp = generateOTP();
             const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
-            // Update OTP for the user
+            // Update OTP for the user (stored in User table for both regular and library users)
             await this.prisma.user.update({
                 where: {
                     id: existing_user.id
@@ -689,7 +740,8 @@ export class AuthService {
                 otp
             })
 
-            console.log(colors.magenta(`OTP ${otp} successfully sent to ${payload.email}`));
+            const userType = isLibraryUser ? 'library user' : 'user';
+            console.log(colors.magenta(`OTP ${otp} successfully sent to ${payload.email} (${userType})`));
             
             return ResponseHelper.success(
                 "OTP sent successfully",
@@ -707,10 +759,11 @@ export class AuthService {
         console.log(colors.cyan(`Verifying OTP and resetting password for: ${dto.email}`));
 
         try {
+            const emailLower = dto.email.toLowerCase();
             
-            // Find user with matching email and OTP
+            // Find user with matching email and OTP (OTP is stored in User table)
             const user = await this.prisma.user.findFirst({
-                where: { email: dto.email, otp: dto.otp },
+                where: { email: emailLower, otp: dto.otp },
             });
 
             // Check if user exists and OTP is valid
@@ -735,18 +788,46 @@ export class AuthService {
             // Hash the new password
             const hashedPassword = await argon.hash(dto.new_password);
 
-            // Update user with new password and clear OTP fields
-            const updatedUser = await this.prisma.user.update({
-                where: { id: user.id },
-                data: {
-                    password: hashedPassword,
-                    is_otp_verified: false,
-                    otp: "",
-                    otp_expires_at: null,
-                },
+            // Check if this is a library user
+            const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+                where: { email: emailLower }
             });
 
-            console.log(colors.green(`Password reset successfully for user: ${dto.email}`));
+            if (libraryUser) {
+                // Update LibraryResourceUser password (the one used for authentication)
+                await this.prisma.libraryResourceUser.update({
+                    where: { id: libraryUser.id },
+                    data: {
+                        password: hashedPassword,
+                    },
+                });
+
+                // Also update User table password (for consistency, even though it's not used for auth)
+                await this.prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        password: hashedPassword,
+                        is_otp_verified: false,
+                        otp: "",
+                        otp_expires_at: null,
+                    },
+                });
+
+                console.log(colors.green(`Password reset successfully for library user: ${dto.email}`));
+            } else {
+                // Regular user - update User table password
+                await this.prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        password: hashedPassword,
+                        is_otp_verified: false,
+                        otp: "",
+                        otp_expires_at: null,
+                    },
+                });
+
+                console.log(colors.green(`Password reset successfully for user: ${dto.email}`));
+            }
 
             return ResponseHelper.success(
                 "Password reset successfully",
