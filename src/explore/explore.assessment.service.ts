@@ -19,7 +19,7 @@ export class ExploreAssessmentService {
   async getAssessment(user: any, assessmentId: string) {
     this.logger.log(
       colors.cyan(
-        `🎯 User ${user.sub} requesting assessment details: ${assessmentId}`,
+        `[EXPLORER - GET] 🎯 User requesting assessment details`,
       ),
     );
 
@@ -28,7 +28,7 @@ export class ExploreAssessmentService {
       const assessment = await this.prisma.libraryAssessment.findUnique({
         where: {
           id: assessmentId,
-          status: 'ACTIVE', // Only active assessments
+          // status: 'ACTIVE', // Only active assessments
           isPublished: true, // Only published assessments
         },
         select: {
@@ -149,10 +149,10 @@ export class ExploreAssessmentService {
         },
       });
 
-      // Calculate remaining attempts
+      // Calculate attempts (unlimited for explore assessments)
       const attemptsTaken = userAttempts.length;
-      const attemptsRemaining = assessment.maxAttempts - attemptsTaken;
-      const canTakeAssessment = attemptsRemaining > 0;
+      // Explore assessments allow unlimited attempts - ignore maxAttempts
+      const canTakeAssessment = true;
 
       // Find latest attempt
       const latestAttempt = userAttempts[0] || null;
@@ -164,8 +164,8 @@ export class ExploreAssessmentService {
         },
         userProgress: {
           attemptsTaken,
-          attemptsRemaining,
-          maxAttempts: assessment.maxAttempts,
+          attemptsRemaining: null, // Unlimited for explore assessments
+          maxAttempts: null, // Unlimited for explore assessments
           canTakeAssessment,
           latestAttempt,
         },
@@ -174,7 +174,7 @@ export class ExploreAssessmentService {
 
       this.logger.log(
         colors.green(
-          `✅ Assessment retrieved: "${assessment.title}" (${attemptsTaken}/${assessment.maxAttempts} attempts used)`,
+          `✅ Assessment retrieved: "${assessment.title}" (${attemptsTaken} attempts taken - unlimited attempts allowed)`,
         ),
       );
 
@@ -225,7 +225,7 @@ export class ExploreAssessmentService {
         throw new NotFoundException('Assessment not found or not available');
       }
 
-      // Check if user has attempts remaining
+      // Get attempt count (for logging only - explore assessments allow unlimited attempts)
       const attemptCount = await this.prisma.libraryAssessmentAttempt.count({
         where: {
           assessmentId: assessmentId,
@@ -233,9 +233,7 @@ export class ExploreAssessmentService {
         },
       });
 
-      if (attemptCount >= assessment.maxAttempts) {
-        throw new ForbiddenException('No attempts remaining for this assessment');
-      }
+      // Explore assessments allow unlimited attempts - no restriction check
 
       // Fetch all questions with options
       const questions = await this.prisma.libraryAssessmentQuestion.findMany({
@@ -434,7 +432,7 @@ export class ExploreAssessmentService {
       this.logger.log(colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
       // ============ END DETAILED LOGGING ============
 
-      // Check attempts remaining
+      // Get attempt count (for logging only - explore assessments allow unlimited attempts)
       const attemptCount = await this.prisma.libraryAssessmentAttempt.count({
         where: {
           assessmentId: assessmentId,
@@ -442,15 +440,12 @@ export class ExploreAssessmentService {
         },
       });
 
-      if (attemptCount >= assessment.maxAttempts) {
-        throw new ForbiddenException('No attempts remaining');
-      }
-
+      // Explore assessments allow unlimited attempts - no restriction check
       const attemptNumber = attemptCount + 1;
 
       this.logger.log(
         colors.yellow(
-          `📝 Processing attempt ${attemptNumber}/${assessment.maxAttempts}`,
+          `📝 Processing attempt ${attemptNumber} (unlimited attempts allowed)`,
         ),
       );
 
@@ -629,7 +624,7 @@ export class ExploreAssessmentService {
           message: passed
             ? '🎉 Congratulations! You passed the assessment.'
             : '📚 Keep studying! You can retake the assessment.',
-          attemptsRemaining: assessment.maxAttempts - attemptNumber,
+          attemptsRemaining: null, // Unlimited attempts for explore assessments
         },
       };
 
@@ -1091,6 +1086,86 @@ export class ExploreAssessmentService {
       }
       this.logger.error(
         colors.red(`❌ Error retrieving attempt results: ${error.message}`),
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Get all attempts for the authenticated user (summary list)
+   * Optionally filtered by assessmentId
+   */
+  async getUserAttempts(
+    user: any,
+    assessmentId?: string,
+  ) {
+    this.logger.log(
+      colors.cyan(
+        `📊 Fetching attempts for user: ${user.sub}${assessmentId ? ` (assessment: ${assessmentId})` : ''}`,
+      ),
+    );
+
+    try {
+      const where: any = {
+        userId: user.sub,
+      };
+
+      if (assessmentId) {
+        where.assessmentId = assessmentId;
+      }
+
+      const attempts = await this.prisma.libraryAssessmentAttempt.findMany({
+        where,
+        select: {
+          id: true,
+          attemptNumber: true,
+          status: true,
+          startedAt: true,
+          submittedAt: true,
+          timeSpent: true,
+          totalScore: true,
+          maxScore: true,
+          percentage: true,
+          passed: true,
+          isGraded: true,
+          gradedAt: true,
+          createdAt: true,
+          assessment: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              totalPoints: true,
+              passingScore: true,
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                },
+              },
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { submittedAt: 'desc' },
+      });
+
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${attempts.length} attempts for user: ${user.sub}`,
+        ),
+      );
+
+      return ResponseHelper.success('Attempts retrieved successfully', attempts);
+    } catch (error) {
+      this.logger.error(
+        colors.red(`❌ Error retrieving attempts: ${error.message}`),
       );
       throw error;
     }

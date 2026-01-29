@@ -37,7 +37,7 @@ export class ExploreController {
   ) {
     // Optional authentication - if user is logged in, include their submissions
     const user = req.user || null;
-    return this.exploreService.getTopicsBySubject(subjectId, user);
+    return this.exploreService.getTopicsForSubject(subjectId, user);
   }
 
   @Get('videos/:videoId/play')

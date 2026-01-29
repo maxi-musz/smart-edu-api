@@ -19,6 +19,29 @@ export class ExploreExamBodyController {
     return this.service.findAllExamBodies();
   }
 
+  // Get all attempts for the authenticated user (optionally filtered by assessmentId)
+  // MUST come before :examBodyId route to avoid routing conflicts
+  @Get('attempts')
+  @UseGuards(JwtGuard)
+  @ExploreExamBodyDocs.getUserAttempts()
+  getUserAttempts(
+    @Request() req: any,
+    @Query('assessmentId') assessmentId?: string,
+  ) {
+    return this.service.getUserAttempts(req.user, assessmentId);
+  }
+
+  // Get attempt results (MUST come after 'attempts' but before 'attempts/:attemptId')
+  @Get('attempts/:attemptId')
+  @UseGuards(JwtGuard)
+  @ExploreExamBodyDocs.getAttemptResults()
+  getAttemptResults(
+    @Request() req: any,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.service.getAttemptResults(req.user, attemptId);
+  }
+
   // Get a single exam body with subjects and years
   @Get(':examBodyId')
   @UseGuards(JwtGuard)
@@ -80,7 +103,7 @@ export class ExploreExamBodyController {
     return this.service.submitAssessment(req.user, examBodyId, assessmentId, submitDto);
   }
 
-  // Get attempts for a specific assessment (nested route - must come before generic attempts route)
+  // Get attempts for a specific assessment (nested route)
   @Get(':examBodyId/assessments/:assessmentId/attempts')
   @UseGuards(JwtGuard)
   @ExploreExamBodyDocs.getAssessmentAttempts()
@@ -90,27 +113,5 @@ export class ExploreExamBodyController {
     @Param('assessmentId') assessmentId: string,
   ) {
     return this.service.getUserAttempts(req.user, assessmentId);
-  }
-
-  // Get all attempts for the authenticated user (optionally filtered by assessmentId)
-  @Get('attempts')
-  @UseGuards(JwtGuard)
-  @ExploreExamBodyDocs.getUserAttempts()
-  getUserAttempts(
-    @Request() req: any,
-    @Query('assessmentId') assessmentId?: string,
-  ) {
-    return this.service.getUserAttempts(req.user, assessmentId);
-  }
-
-  // Get attempt results (MUST come after other routes to avoid conflicts)
-  @Get('attempts/:attemptId')
-  @UseGuards(JwtGuard)
-  @ExploreExamBodyDocs.getAttemptResults()
-  getAttemptResults(
-    @Request() req: any,
-    @Param('attemptId') attemptId: string,
-  ) {
-    return this.service.getAttemptResults(req.user, attemptId);
   }
 }

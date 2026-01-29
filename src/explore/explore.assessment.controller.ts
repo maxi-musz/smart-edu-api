@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExploreAssessmentService } from './explore.assessment.service';
 import { JwtGuard } from '../school/auth/guard';
@@ -49,6 +49,19 @@ export class ExploreAssessmentController {
       req.user,
       assessmentId,
       submitDto,
+    );
+  }
+
+  // Get all attempts for user (MUST come before attempts/:attemptId to avoid route conflicts)
+  @Get('attempts')
+  @ExploreAssessmentDocs.getUserAttempts()
+  async getUserAttempts(
+    @Request() req: any,
+    @Query('assessmentId') assessmentId?: string,
+  ) {
+    return this.exploreAssessmentService.getUserAttempts(
+      req.user,
+      assessmentId,
     );
   }
 

@@ -359,7 +359,7 @@ export class ExploreService {
     }
   }
 
-  async getTopicsBySubject(subjectId: string, user?: any) {
+  async getTopicsForSubject(subjectId: string, user?: any) {
     const userId = user?.sub || null;
     this.logger.log(
       colors.cyan(

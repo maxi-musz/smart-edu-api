@@ -84,6 +84,24 @@ export class ExploreAssessmentDocs {
     );
   }
 
+  static getUserAttempts() {
+    return applyDecorators(
+      ApiOperation({
+        summary: 'Get all assessment attempts for the authenticated user',
+        description:
+          'Retrieves a list of all assessment attempts (summary) for the authenticated user. Can be optionally filtered by assessmentId. Returns basic attempt information suitable for displaying in a list. Use the detailed endpoint to get full results for a specific attempt.',
+      }),
+      ApiResponse({
+        status: 200,
+        description: 'Attempts retrieved successfully',
+      }),
+      ApiResponse({
+        status: 401,
+        description: 'Unauthorized - Authentication required',
+      }),
+    );
+  }
+
   static getAttemptResults() {
     return applyDecorators(
       ApiOperation({
