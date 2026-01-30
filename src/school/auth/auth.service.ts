@@ -581,6 +581,25 @@ export class AuthService {
                 return ResponseHelper.error("User not found", null, 404);
             }
 
+            // Stored password must be a valid Argon2 hash (starts with $). If not, it may be a placeholder
+            // (e.g. for library users who have a User record only for OTP storage).
+            const storedPassword = existing_user.password ?? '';
+            if (!storedPassword.startsWith('$')) {
+                const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+                    where: { email: existing_user.email.toLowerCase() },
+                });
+                if (libraryUser) {
+                    this.logger.log(colors.yellow(`Library user attempted sign-in via school auth: ${payload.email}`));
+                    return ResponseHelper.error(
+                        "This account uses Library sign-in. Please use the Library sign-in page.",
+                        null,
+                        400
+                    );
+                }
+                console.log(colors.red("User not found"));
+                return ResponseHelper.error("User not found", null, 404);
+            }
+
             // if user exists, compare the password with the hashed password
             const passwordMatches = await argon.verify(existing_user.password, payload.password);
 
