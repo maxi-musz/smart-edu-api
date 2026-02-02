@@ -1,5 +1,32 @@
 import * as crypto from 'crypto';
 
+/** Default length for auto-generated strong passwords. */
+const DEFAULT_RANDOM_PASSWORD_LENGTH = 20;
+
+/** Character sets for random password (at least one of each for strength). */
+const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // exclude I, O for clarity
+const LOWER = 'abcdefghjkmnpqrstuvwxyz';   // exclude i, l, o
+const DIGITS = '23456789';                 // exclude 0, 1
+const SYMBOLS = '!@#$%&*_+-=';
+const ALL = UPPER + LOWER + DIGITS + SYMBOLS;
+
+/**
+ * Generates a cryptographically strong random password (no user info).
+ * Ensures at least one upper, one lower, one digit, one symbol; length >= 16.
+ */
+export function generateRandomStrongPassword(length: number = DEFAULT_RANDOM_PASSWORD_LENGTH): string {
+  const len = Math.max(16, length);
+  const pick = (chars: string) => chars[crypto.randomInt(0, chars.length)];
+  const mandatory = [pick(UPPER), pick(LOWER), pick(DIGITS), pick(SYMBOLS)];
+  const rest = Array.from({ length: len - 4 }, () => pick(ALL));
+  const combined = [...mandatory, ...rest];
+  for (let i = combined.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [combined[i], combined[j]] = [combined[j], combined[i]];
+  }
+  return combined.join('');
+}
+
 /**
  * Generates a strong password based on user information
  * @param firstName - User's first name

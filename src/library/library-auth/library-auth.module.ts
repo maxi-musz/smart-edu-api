@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LibraryJwtStrategy, LibraryJwtGuard } from './guard/library-jwt.guard';
 import { LibraryOwnerGuard } from './guard/library-owner.guard';
+import { LibraryElevatedGuard } from './guard/library-elevated.guard';
 
 @Module({
   imports: [
@@ -27,8 +28,8 @@ import { LibraryOwnerGuard } from './guard/library-owner.guard';
     })
   ],
   controllers: [LibraryAuthController],
-  providers: [LibraryAuthService, LibraryJwtStrategy, LibraryJwtGuard, LibraryOwnerGuard],
-  exports: [LibraryAuthService, LibraryJwtGuard, LibraryOwnerGuard],
+  providers: [LibraryAuthService, LibraryJwtStrategy, LibraryJwtGuard, LibraryOwnerGuard, LibraryElevatedGuard],
+  exports: [LibraryAuthService, LibraryJwtGuard, LibraryOwnerGuard, LibraryElevatedGuard],
 })
 export class LibraryAuthModule {}
 
