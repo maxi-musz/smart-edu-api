@@ -514,7 +514,8 @@ export class AccessControlHelperService {
 
   /**
    * Get excluded topic/video/material/assessment IDs for a subject (for current user's school).
-   * Includes library-level exclusions and, for students, teacher-level exclusions (for this user or their class).
+   * Includes library-level exclusions. Teacher-level exclusions are applied only for teachers and students;
+   * school owners (school_director, school_admin) see all library-granted content and are not affected by teacher exclusions.
    */
   async getExcludedIdsForSubject(
     userId: string,
@@ -545,12 +546,15 @@ export class AccessControlHelperService {
       this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.MATERIAL),
       this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.ASSESSMENT),
     ]);
-    const teacherExcluded = await this.getTeacherExcludedIdsForUser(
-      userId,
-      user.school_id,
-      subjectId,
-      subject.classId ?? undefined,
-    );
+    const isSchoolOwner = user.role === 'school_director' || user.role === 'school_admin';
+    const teacherExcluded = isSchoolOwner
+      ? { topicIds: [] as string[], videoIds: [] as string[], materialIds: [] as string[], assessmentIds: [] as string[] }
+      : await this.getTeacherExcludedIdsForUser(
+          userId,
+          user.school_id,
+          subjectId,
+          subject.classId ?? undefined,
+        );
     return {
       topicIds: [...new Set([...libraryTopicIds, ...teacherExcluded.topicIds])],
       videoIds: [...new Set([...libraryVideoIds, ...teacherExcluded.videoIds])],
