@@ -13,12 +13,22 @@ async function bootstrap() {
   // TODO: Restrict CORS origins in production for security
   // For now, allowing all origins for development
   app.enableCors({
-    origin: true, // Allow all origins
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders:
-      'Content-Type, Authorization, X-Requested-With, Accept, Origin',
-    exposedHeaders: 'Content-Disposition',
+    origin: true, // Allow all origins (required for credentials: true)
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+      'Origin',
+      'Accept-Language',
+      'Content-Language',
+      'school_id', // Custom header for school context (teachers, directors, students)
+    ],
+    exposedHeaders: ['Content-Disposition'],
     credentials: true,
+    preflightContinue: false, // Let Nest handle preflight (sends CORS headers on OPTIONS)
+    optionsSuccessStatus: 204, // Some clients expect 204 for OPTIONS
   });
 
   app.setGlobalPrefix('api/v1', {

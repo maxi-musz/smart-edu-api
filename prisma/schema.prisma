@@ -109,6 +109,10 @@ model School {
   userSettings          UserSettings[]
   videoContent          VideoContent[]
   wallet                Wallet?
+  // Multi-level access control relations
+  libraryResourceAccess LibraryResourceAccess[]
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 }
 
 model Document {
@@ -199,6 +203,11 @@ model User {
   libraryVideoWatchHistory         LibraryVideoWatchHistory[]
   schoolVideoViews                 SchoolVideoView[]
   schoolVideoWatchHistory          SchoolVideoWatchHistory[]
+  // Multi-level access control relations
+  schoolAccessGranted              SchoolResourceAccess[]                   @relation("SchoolAccessGranter")
+  schoolAccessReceived             SchoolResourceAccess[]                   @relation("SchoolAccessUser")
+  teacherAccessGranted             TeacherResourceAccess[]                  @relation("TeacherAccessGranter")
+  studentAccessReceived            TeacherResourceAccess[]                  @relation("TeacherAccessStudent")
 }
 
 model Teacher {
@@ -311,26 +320,29 @@ model Parent {
 }
 
 model Class {
-  id                  String               @id @default(cuid())
-  classId             Int                  @default(autoincrement())
-  name                String
-  schoolId            String
-  academic_session_id String
-  classTeacherId      String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  attendanceRecords   AttendanceRecord[]
-  attendanceSessions  AttendanceSession[]
-  attendanceSummaries AttendanceSummary[]
-  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
-  classTeacher        Teacher?             @relation("ClassTeacher", fields: [classTeacherId], references: [id])
-  school              School               @relation(fields: [schoolId], references: [id])
-  payments            Payment[]
-  students            Student[]
-  performances        StudentPerformance[]
-  subjects            Subject[]
-  schedules           TimetableEntry[]
-  results             Result[]
+  id                    String                  @id @default(cuid())
+  classId               Int                     @default(autoincrement())
+  name                  String
+  schoolId              String
+  academic_session_id   String
+  classTeacherId        String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  attendanceRecords     AttendanceRecord[]
+  attendanceSessions    AttendanceSession[]
+  attendanceSummaries   AttendanceSummary[]
+  academicSession       AcademicSession         @relation(fields: [academic_session_id], references: [id])
+  classTeacher          Teacher?                @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  school                School                  @relation(fields: [schoolId], references: [id])
+  payments              Payment[]
+  students              Student[]
+  performances          StudentPerformance[]
+  subjects              Subject[]
+  schedules             TimetableEntry[]
+  results               Result[]
+  // Multi-level access control relations
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 
   @@unique([schoolId, academic_session_id, classId])
   @@index([schoolId, academic_session_id])
@@ -618,26 +630,26 @@ model Organisation {
 }
 
 model VideoContent {
-  id           String       @id @default(cuid())
+  id           String                    @id @default(cuid())
   title        String
   description  String?
   url          String
   schoolId     String?
   platformId   String
   uploadedById String
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
   topic_id     String?
   duration     String?
   size         String?
-  status       String       @default("published")
+  status       String                    @default("published")
   thumbnail    Json?
-  views        Int          @default(0)
-  order        Int          @default(0)
-  platform     Organisation @relation(fields: [platformId], references: [id])
-  school       School?      @relation(fields: [schoolId], references: [id])
-  topic        Topic?       @relation(fields: [topic_id], references: [id])
-  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  views        Int                       @default(0)
+  order        Int                       @default(0)
+  platform     Organisation              @relation(fields: [platformId], references: [id])
+  school       School?                   @relation(fields: [schoolId], references: [id])
+  topic        Topic?                    @relation(fields: [topic_id], references: [id])
+  uploadedBy   User                      @relation(fields: [uploadedById], references: [id])
   videoViews   SchoolVideoView[]
   watchHistory SchoolVideoWatchHistory[]
 
@@ -1933,6 +1945,25 @@ enum LibraryAssignmentStatus {
 }
 
 // -------------------------------------------------------------------
+// Multi-Level Access Control Enums
+// -------------------------------------------------------------------
+
+enum LibraryResourceType {
+  SUBJECT // Access to entire subject and all its children
+  TOPIC // Access to specific topic and its children
+  VIDEO // Access to specific video
+  MATERIAL // Access to specific material (PDF, etc)
+  ASSESSMENT // Access to specific assessment
+  ALL // Access to all platform resources
+}
+
+enum AccessLevel {
+  FULL // Can view, interact, take assessments, download
+  READ_ONLY // Can only view content
+  LIMITED // Feature-limited or time-limited access
+}
+
+// -------------------------------------------------------------------
 // Core platform-level library models
 // -------------------------------------------------------------------
 
@@ -1970,6 +2001,8 @@ model LibraryPlatform {
   generalMaterialChunks            LibraryGeneralMaterialChunk[]
   assessments                      LibraryAssessment[]
   examBodyAssessments              ExamBodyAssessment[]
+  // Multi-level access control relation
+  libraryResourceAccess            LibraryResourceAccess[]
 }
 
 /// Nigerian Examination Bodies (WAEC, JAMB, NECO, etc.)
@@ -2074,7 +2107,7 @@ model ExamBodyAssessment {
   updatedAt DateTime @updatedAt
 
   examBody  ExamBody                     @relation(fields: [examBodyId], references: [id], onDelete: Cascade)
-  platform LibraryPlatform?              @relation(fields: [platformId], references: [id])
+  platform  LibraryPlatform?             @relation(fields: [platformId], references: [id])
   subject   ExamBodySubject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   year      ExamBodyYear                 @relation(fields: [yearId], references: [id], onDelete: Cascade)
   questions ExamBodyAssessmentQuestion[]
@@ -2250,17 +2283,19 @@ model LibraryResourceUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform                 LibraryPlatform                     @relation(fields: [platformId], references: [id])
-  uploadedVideos           LibraryVideoLesson[]
-  uploadedMaterials        LibraryMaterial[]
-  uploadedAssignments      LibraryAssignment[]
-  uploadedLinks            LibraryLink[]
-  comments                 LibraryComment[]
-  uploadedGeneralMaterials LibraryGeneralMaterial[]
-  uploadedChapterFiles     LibraryGeneralMaterialChapterFile[]
-  createdAssessments       LibraryAssessment[]
-  videoViews               LibraryVideoView[]
-  videoWatchHistory        LibraryVideoWatchHistory[]
+  platform                    LibraryPlatform                     @relation(fields: [platformId], references: [id])
+  uploadedVideos              LibraryVideoLesson[]
+  uploadedMaterials           LibraryMaterial[]
+  uploadedAssignments         LibraryAssignment[]
+  uploadedLinks               LibraryLink[]
+  comments                    LibraryComment[]
+  uploadedGeneralMaterials    LibraryGeneralMaterial[]
+  uploadedChapterFiles        LibraryGeneralMaterialChapterFile[]
+  createdAssessments          LibraryAssessment[]
+  videoViews                  LibraryVideoView[]
+  videoWatchHistory           LibraryVideoWatchHistory[]
+  // Multi-level access control relation
+  libraryResourceAccessGrants LibraryResourceAccess[]
 
   @@index([platformId])
 }
@@ -2276,10 +2311,10 @@ model LibraryClass {
   name  String
   order Int    @default(1)
 
-  createdAt        DateTime                        @default(now())
-  updatedAt        DateTime                        @updatedAt
-  subjects         LibrarySubject[]
-  materialClasses  LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryGeneralMaterial
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  subjects        LibrarySubject[]
+  materialClasses LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryGeneralMaterial
 }
 
 /// Subjects under a library class (e.g. "Mathematics", "Physics").
@@ -2299,16 +2334,20 @@ model LibrarySubject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform         LibraryPlatform          @relation(fields: [platformId], references: [id])
-  class            LibraryClass?            @relation(fields: [classId], references: [id])
-  topics           LibraryTopic[]
-  videos           LibraryVideoLesson[]
-  materials        LibraryMaterial[]
-  assignments      LibraryAssignment[]
-  links            LibraryLink[]
-  comments         LibraryComment[]
-  generalMaterials LibraryGeneralMaterial[]
-  assessments      LibraryAssessment[]
+  platform              LibraryPlatform          @relation(fields: [platformId], references: [id])
+  class                 LibraryClass?            @relation(fields: [classId], references: [id])
+  topics                LibraryTopic[]
+  videos                LibraryVideoLesson[]
+  materials             LibraryMaterial[]
+  assignments           LibraryAssignment[]
+  links                 LibraryLink[]
+  comments              LibraryComment[]
+  generalMaterials      LibraryGeneralMaterial[]
+  assessments           LibraryAssessment[]
+  // Multi-level access control relations
+  libraryResourceAccess LibraryResourceAccess[]
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 
   @@unique([platformId, code])
   @@index([platformId, name])
@@ -2332,12 +2371,16 @@ model LibraryTopic {
   platform LibraryPlatform @relation(fields: [platformId], references: [id])
   subject  LibrarySubject  @relation(fields: [subjectId], references: [id])
 
-  videos      LibraryVideoLesson[]
-  materials   LibraryMaterial[]
-  assignments LibraryAssignment[]
-  links       LibraryLink[]
-  comments    LibraryComment[]
-  assessments LibraryAssessment[]
+  videos                LibraryVideoLesson[]
+  materials             LibraryMaterial[]
+  assignments           LibraryAssignment[]
+  links                 LibraryLink[]
+  comments              LibraryComment[]
+  assessments           LibraryAssessment[]
+  // Multi-level access control relations
+  libraryResourceAccess LibraryResourceAccess[]
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 
   @@index([platformId, subjectId])
   @@index([subjectId, order])
@@ -2375,12 +2418,16 @@ model LibraryVideoLesson {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform     LibraryPlatform            @relation(fields: [platformId], references: [id])
-  subject      LibrarySubject             @relation(fields: [subjectId], references: [id])
-  topic        LibraryTopic?              @relation(fields: [topicId], references: [id])
-  uploadedBy   LibraryResourceUser        @relation(fields: [uploadedById], references: [id])
-  videoViews   LibraryVideoView[]
-  watchHistory LibraryVideoWatchHistory[]
+  platform              LibraryPlatform            @relation(fields: [platformId], references: [id])
+  subject               LibrarySubject             @relation(fields: [subjectId], references: [id])
+  topic                 LibraryTopic?              @relation(fields: [topicId], references: [id])
+  uploadedBy            LibraryResourceUser        @relation(fields: [uploadedById], references: [id])
+  videoViews            LibraryVideoView[]
+  watchHistory          LibraryVideoWatchHistory[]
+  // Multi-level access control relations
+  libraryResourceAccess LibraryResourceAccess[]
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 
   @@index([platformId])
   @@index([subjectId])
@@ -2747,9 +2794,13 @@ model LibraryAssessment {
   createdBy LibraryResourceUser @relation(fields: [createdById], references: [id])
 
   // Assessment content
-  questions LibraryAssessmentQuestion[]
-  attempts  LibraryAssessmentAttempt[]
-  analytics LibraryAssessmentAnalytics?
+  questions             LibraryAssessmentQuestion[]
+  attempts              LibraryAssessmentAttempt[]
+  analytics             LibraryAssessmentAnalytics?
+  // Multi-level access control relations
+  libraryResourceAccess LibraryResourceAccess[]
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 
   @@index([platformId])
   @@index([subjectId])
@@ -2919,6 +2970,212 @@ model LibraryAssessmentAnalytics {
   @@index([assessmentId])
 }
 
+// ===================================================================
+// MULTI-LEVEL ACCESS CONTROL MODELS
+// ===================================================================
+// Level 1: Library Owner -> Schools
+// Level 2: School Owner -> Users/Roles/Classes
+// Level 3: Teacher -> Students
+// ===================================================================
+
+/// Level 1: Library Owner -> School Access Control
+/// Manages which schools have access to library platform resources
+/// Created by library owners to grant schools access to their content
+model LibraryResourceAccess {
+  id         String @id @default(cuid())
+  platformId String // Library platform granting access
+  schoolId   String // School being granted access
+
+  // Resource scope - defines what's being granted
+  // If subjectId is set: access to that subject and all its children
+  // If topicId is set: access to that topic and all its children
+  // If specific resource ID is set: access only to that resource
+  // If resourceType is ALL: access to entire platform
+  subjectId    String?
+  topicId      String?
+  videoId      String?
+  materialId   String?
+  assessmentId String?
+
+  resourceType LibraryResourceType // Type of resource being granted
+  accessLevel  AccessLevel         @default(FULL)
+
+  // Metadata
+  grantedById String // LibraryResourceUser who granted
+  grantedAt   DateTime  @default(now())
+  expiresAt   DateTime? // Optional expiration date
+
+  isActive Boolean @default(true)
+  notes    String? // Optional notes about the grant
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  platform  LibraryPlatform     @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  school    School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  grantedBy LibraryResourceUser @relation(fields: [grantedById], references: [id])
+
+  // Optional resource relations - only set when granting specific resources
+  subject    LibrarySubject?     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic      LibraryTopic?       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  video      LibraryVideoLesson? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  material   LibraryMaterial?    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  assessment LibraryAssessment?  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  // Child relations
+  schoolResourceAccess SchoolResourceAccess[]
+
+  // Ensure unique grants per resource
+  @@unique([platformId, schoolId, resourceType, subjectId, topicId, videoId, materialId, assessmentId], name: "unique_library_resource_grant")
+  @@index([platformId, schoolId, isActive])
+  @@index([schoolId, isActive, resourceType])
+  @@index([platformId, isActive])
+  @@index([grantedById])
+  @@index([expiresAt])
+}
+
+/// Level 2: School Owner -> Users/Roles/Classes Access Control
+/// Manages access within a school - school owners control what their users see
+/// This is a subset of what the library owner granted to the school
+model SchoolResourceAccess {
+  id                      String @id @default(cuid())
+  schoolId                String
+  libraryResourceAccessId String // References the library's grant (parent access)
+
+  // Scope: Who in the school gets access?
+  // At least one of these should be set:
+  userId   String? // Specific user (student, teacher, etc)
+  roleType Roles? // Entire role (all teachers, all students, etc)
+  classId  String? // Entire class
+
+  // Can further restrict the library grant
+  // School owner can give access to subset of what library granted
+  subjectId    String?
+  topicId      String?
+  videoId      String?
+  materialId   String?
+  assessmentId String?
+
+  resourceType LibraryResourceType
+  accessLevel  AccessLevel         @default(READ_ONLY)
+
+  // Metadata
+  grantedById String // School director/admin who granted
+  grantedAt   DateTime  @default(now())
+  expiresAt   DateTime?
+
+  isActive Boolean @default(true)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  school                School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  libraryResourceAccess LibraryResourceAccess @relation(fields: [libraryResourceAccessId], references: [id], onDelete: Cascade)
+  grantedBy             User                  @relation("SchoolAccessGranter", fields: [grantedById], references: [id])
+  user                  User?                 @relation("SchoolAccessUser", fields: [userId], references: [id], onDelete: Cascade)
+  class                 Class?                @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  // Optional specific resource relations
+  subject    LibrarySubject?     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic      LibraryTopic?       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  video      LibraryVideoLesson? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  material   LibraryMaterial?    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  assessment LibraryAssessment?  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  // Child relations
+  teacherResourceAccess TeacherResourceAccess[]
+
+  @@index([schoolId, isActive])
+  @@index([userId, isActive, resourceType])
+  @@index([classId, isActive])
+  @@index([roleType, isActive])
+  @@index([libraryResourceAccessId])
+  @@index([grantedById])
+}
+
+/// Level 3: Teacher -> Students Access Control
+/// Allows teachers to control what their students can access
+/// This is a subset of what the school owner granted
+model TeacherResourceAccess {
+  id                     String @id @default(cuid())
+  teacherId              String // User ID of teacher granting access
+  schoolId               String
+  schoolResourceAccessId String // References the school's grant (parent access)
+
+  // Scope: Which students get access?
+  studentId String? // Specific student
+  classId   String? // Entire class
+
+  // Can further restrict what school owner granted
+  subjectId    String?
+  topicId      String?
+  videoId      String?
+  materialId   String?
+  assessmentId String?
+
+  resourceType LibraryResourceType
+  accessLevel  AccessLevel         @default(READ_ONLY)
+
+  // Metadata
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  isActive Boolean @default(true)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  teacher              User                 @relation("TeacherAccessGranter", fields: [teacherId], references: [id])
+  school               School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  schoolResourceAccess SchoolResourceAccess @relation(fields: [schoolResourceAccessId], references: [id], onDelete: Cascade)
+  student              User?                @relation("TeacherAccessStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  class                Class?               @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  // Optional specific resource relations
+  subject    LibrarySubject?     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic      LibraryTopic?       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  video      LibraryVideoLesson? @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  material   LibraryMaterial?    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  assessment LibraryAssessment?  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([teacherId, isActive])
+  @@index([studentId, isActive, resourceType])
+  @@index([classId, isActive])
+  @@index([schoolResourceAccessId])
+  @@index([schoolId, teacherId])
+}
+
+/// Audit log for access control changes
+/// Tracks who granted/revoked access and when
+model AccessControlAuditLog {
+  id              String   @id @default(cuid())
+  entityType      String // LibraryResourceAccess, SchoolResourceAccess, TeacherResourceAccess
+  entityId        String // ID of the access control record
+  action          String // CREATED, UPDATED, DELETED, REVOKED
+  performedById   String // User/LibraryResourceUser who performed action
+  performedByRole String // Role of the performer
+  schoolId        String?
+  platformId      String?
+  changes         Json? // JSON of what changed
+  reason          String? // Optional reason for the change
+  createdAt       DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([performedById])
+  @@index([schoolId])
+  @@index([platformId])
+  @@index([createdAt])
+}
+
+// ===================================================================
+// END MULTI-LEVEL ACCESS CONTROL MODELS
+// ===================================================================
+
 /// Non-video study materials under each topic/subject in a library:
 /// PDFs, notes, slides, links, etc. Files should live in S3.
 model LibraryMaterial {
@@ -2944,10 +3201,14 @@ model LibraryMaterial {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
-  subject    LibrarySubject      @relation(fields: [subjectId], references: [id])
-  topic      LibraryTopic?       @relation(fields: [topicId], references: [id])
-  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
+  platform              LibraryPlatform         @relation(fields: [platformId], references: [id])
+  subject               LibrarySubject          @relation(fields: [subjectId], references: [id])
+  topic                 LibraryTopic?           @relation(fields: [topicId], references: [id])
+  uploadedBy            LibraryResourceUser     @relation(fields: [uploadedById], references: [id])
+  // Multi-level access control relations
+  libraryResourceAccess LibraryResourceAccess[]
+  schoolResourceAccess  SchoolResourceAccess[]
+  teacherResourceAccess TeacherResourceAccess[]
 
   @@index([platformId])
   @@index([subjectId])
@@ -3006,9 +3267,9 @@ model LibraryGeneralMaterial {
   updatedAt DateTime @updatedAt
 
   // Relations
-  platform   LibraryPlatform     @relation(fields: [platformId], references: [id])
-  uploadedBy LibraryResourceUser @relation(fields: [uploadedById], references: [id])
-  subject    LibrarySubject?     @relation(fields: [subjectId], references: [id])
+  platform   LibraryPlatform               @relation(fields: [platformId], references: [id])
+  uploadedBy LibraryResourceUser           @relation(fields: [uploadedById], references: [id])
+  subject    LibrarySubject?               @relation(fields: [subjectId], references: [id])
   classes    LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryClass
 
   // Chapters for AI chunking
@@ -3037,7 +3298,7 @@ model LibraryGeneralMaterial {
 
 /// Junction table for many-to-many relationship between LibraryGeneralMaterial and LibraryClass
 model LibraryGeneralMaterialClass {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   materialId String
   classId    String
   createdAt  DateTime @default(now())

@@ -3,45 +3,42 @@ import { ApiTags } from '@nestjs/swagger';
 import { ExploreService } from './explore.service';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
 import { ExploreDocs } from './docs';
-import { JwtGuard, OptionalJwtGuard } from '../school/auth/guard';
+import { JwtGuard } from '../school/auth/guard';
 
 @ApiTags('Explore')
 @Controller('explore')
+@UseGuards(JwtGuard)
 export class ExploreController {
   constructor(private readonly exploreService: ExploreService) {}
 
   @Get('/')
   @ExploreDocs.getExploreData()
-  async getExploreData() {
-    return this.exploreService.getExploreData();
+  async getExploreData(@Request() req: any) {
+    return this.exploreService.getExploreData(req.user);
   }
 
   @Get('subjects')
   @ExploreDocs.getSubjects()
-  async getSubjects(@Query() queryDto: QuerySubjectsDto) {
-    return this.exploreService.getSubjects(queryDto);
+  async getSubjects(@Request() req: any, @Query() queryDto: QuerySubjectsDto) {
+    return this.exploreService.getSubjects(req.user, queryDto);
   }
 
   @Get('videos')
   @ExploreDocs.getVideos()
-  async getVideos(@Query() queryDto: QueryVideosDto) {
-    return this.exploreService.getVideos(queryDto);
+  async getVideos(@Request() req: any, @Query() queryDto: QueryVideosDto) {
+    return this.exploreService.getVideos(req.user, queryDto);
   }
 
   @Get('topics/:subjectId')
-  @UseGuards(OptionalJwtGuard)
   @ExploreDocs.getTopicsBySubject()
   async getTopicsBySubject(
     @Request() req: any,
     @Param('subjectId') subjectId: string,
   ) {
-    // Optional authentication - if user is logged in, include their submissions
-    const user = req.user || null;
-    return this.exploreService.getTopicsForSubject(subjectId, user);
+    return this.exploreService.getTopicsForSubject(subjectId, req.user);
   }
 
   @Get('videos/:videoId/play')
-  @UseGuards(JwtGuard)
   @ExploreDocs.playVideo()
   async playVideo(@Request() req: any, @Param('videoId') videoId: string) {
     return this.exploreService.playVideo(req.user, videoId);
