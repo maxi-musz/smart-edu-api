@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -199,7 +205,9 @@ export class SchoolsService {
     this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Fetching detailed data for school: ${id}`));
 
     try {
-      // Fetch school basic info
+      const documentSelect = { id: true, secure_url: true, public_id: true };
+
+      // Fetch school basic info and submitted documents (CAC, tax clearance, utility bill)
       const school = await this.prisma.school.findUnique({
         where: { id },
         select: {
@@ -213,8 +221,14 @@ export class SchoolsService {
           status: true,
           school_icon: true,
           platformId: true,
+          cacId: true,
+          utilityBillId: true,
+          taxClearanceId: true,
           createdAt: true,
           updatedAt: true,
+          cac: { select: documentSelect },
+          tax_clearance: { select: documentSelect },
+          utility_bill: { select: documentSelect },
         },
       });
 
@@ -394,10 +408,17 @@ export class SchoolsService {
         subscription: subscriptionPlan || null,
       };
 
+      const { cac, tax_clearance, utility_bill, ...schoolRest } = school;
+
       const responseData = {
         school: {
-          ...school,
+          ...schoolRest,
           statistics,
+        },
+        documentsSubmitted: {
+          cac: cac ?? null,
+          taxClearance: tax_clearance ?? null,
+          utilityBill: utility_bill ?? null,
         },
         details: {
           teachers: {
@@ -439,6 +460,45 @@ export class SchoolsService {
       this.logger.error(colors.red(`Error fetching school details: ${error.message}`));
       throw new InternalServerErrorException('Failed to retrieve school details');
     }
+  }
+
+  async approveSchool(id: string): Promise<ApiResponse<any>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Approving school: ${id}`));
+
+    const school = await this.prisma.school.findUnique({
+      where: { id },
+      select: { id: true, school_name: true, status: true },
+    });
+
+    if (!school) {
+      throw new NotFoundException('School not found');
+    }
+
+    if (school.status === 'approved') {
+      throw new BadRequestException('School is already approved');
+    }
+
+    const allowedStatuses = ['pending', 'not_verified'];
+    if (!allowedStatuses.includes(school.status)) {
+      throw new BadRequestException(
+        `School cannot be approved from status "${school.status}". Only pending or not_verified schools can be approved.`,
+      );
+    }
+
+    const updated = await this.prisma.school.update({
+      where: { id },
+      data: { status: 'approved' },
+      select: {
+        id: true,
+        school_name: true,
+        school_email: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    this.logger.log(colors.green(`School approved successfully: ${updated.school_name}`));
+    return new ApiResponse(true, 'School approved successfully', updated);
   }
 }
 

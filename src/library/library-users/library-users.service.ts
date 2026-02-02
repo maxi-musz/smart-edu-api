@@ -8,6 +8,7 @@ import { generateRandomStrongPassword } from 'src/shared/helper-functions/passwo
 import {
   sendLibraryUserOnboardToNewUser,
   sendLibraryUserOnboardToCreator,
+  sendLibraryUserPermissionsUpdated,
 } from 'src/common/mailer/send-library-user-onboard';
 import { CreateLibraryUserDto, UpdateLibraryUserDto } from './dto';
 import type { LibraryDashboardQueryDto } from './dto/library-dashboard-query.dto';
@@ -524,6 +525,7 @@ export class LibraryUsersService {
         email: emailLower,
         temporaryPassword: plainPassword,
         role,
+        permissions: user.permissions ?? [],
       });
 
       if (creator?.email) {
@@ -536,6 +538,7 @@ export class LibraryUsersService {
           newUserEmail: emailLower,
           newUserRole: role,
           libraryName,
+          permissions: user.permissions ?? [],
         });
       }
     } catch (emailError) {
@@ -603,6 +606,37 @@ export class LibraryUsersService {
       },
     });
 
+    if (dto.permissions !== undefined) {
+      const oldPerms = existing.permissions ?? [];
+      const newPerms = user.permissions ?? [];
+      const added = newPerms.filter((p) => !oldPerms.includes(p));
+      const removed = oldPerms.filter((p) => !newPerms.includes(p));
+      if (added.length > 0 || removed.length > 0) {
+        try {
+          const library = await this.prisma.libraryPlatform.findUnique({
+            where: { id: platformId },
+            select: { name: true },
+          });
+          const libraryName = library?.name ?? 'Library';
+          await sendLibraryUserPermissionsUpdated({
+            to: user.email,
+            libraryName,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            addedPermissions: added,
+            removedPermissions: removed,
+            currentPermissions: newPerms,
+          });
+        } catch (emailErr) {
+          this.logger.warn(
+            colors.yellow(
+              `[LIBRARY USERS] Permissions updated but email failed: ${(emailErr as Error).message}`,
+            ),
+          );
+        }
+      }
+    }
+
     this.logger.log(colors.green('Library user updated successfully'));
     return new ApiResponse(true, 'Library user updated successfully', user);
   }
@@ -668,6 +702,29 @@ export class LibraryUsersService {
       },
     });
 
+    try {
+      const library = await this.prisma.libraryPlatform.findUnique({
+        where: { id: platformId },
+        select: { name: true },
+      });
+      const libraryName = library?.name ?? 'Library';
+      await sendLibraryUserPermissionsUpdated({
+        to: updated.email,
+        libraryName,
+        firstName: updated.first_name,
+        lastName: updated.last_name,
+        addedPermissions: [permissionCode],
+        removedPermissions: [],
+        currentPermissions: updated.permissions ?? [],
+      });
+    } catch (emailErr) {
+      this.logger.warn(
+        colors.yellow(
+          `[LIBRARY USERS] Permission added but email failed: ${(emailErr as Error).message}`,
+        ),
+      );
+    }
+
     this.logger.log(colors.green(`Permission "${permissionCode}" added successfully`));
     return new ApiResponse(true, `Permission "${permissionCode}" added successfully`, updated);
   }
@@ -711,6 +768,29 @@ export class LibraryUsersService {
         updatedAt: true,
       },
     });
+
+    try {
+      const library = await this.prisma.libraryPlatform.findUnique({
+        where: { id: platformId },
+        select: { name: true },
+      });
+      const libraryName = library?.name ?? 'Library';
+      await sendLibraryUserPermissionsUpdated({
+        to: updated.email,
+        libraryName,
+        firstName: updated.first_name,
+        lastName: updated.last_name,
+        addedPermissions: [],
+        removedPermissions: [permissionCode],
+        currentPermissions: updated.permissions ?? [],
+      });
+    } catch (emailErr) {
+      this.logger.warn(
+        colors.yellow(
+          `[LIBRARY USERS] Permission removed but email failed: ${(emailErr as Error).message}`,
+        ),
+      );
+    }
 
     this.logger.log(colors.green(`Permission "${permissionCode}" removed successfully`));
     return new ApiResponse(true, `Permission "${permissionCode}" removed successfully`, updated);

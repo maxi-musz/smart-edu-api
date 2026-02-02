@@ -4,6 +4,7 @@ import {
   libraryUserOnboardNewUserTemplate,
   libraryUserOnboardCreatorTemplate,
 } from '../email-templates/library-user-onboard';
+import { libraryUserPermissionsUpdatedTemplate } from '../email-templates/library-user-permissions-updated';
 
 export interface LibraryUserOnboardNewUserPayload {
   to: string;
@@ -13,6 +14,7 @@ export interface LibraryUserOnboardNewUserPayload {
   email: string;
   temporaryPassword: string;
   role?: string;
+  permissions?: string[];
 }
 
 export interface LibraryUserOnboardCreatorPayload {
@@ -24,6 +26,7 @@ export interface LibraryUserOnboardCreatorPayload {
   newUserEmail: string;
   newUserRole: string;
   libraryName: string;
+  permissions?: string[];
 }
 
 /** Send onboarding email to the new library user (login credentials). */
@@ -38,10 +41,11 @@ export const sendLibraryUserOnboardToNewUser = async (
       email: payload.email,
       temporaryPassword: payload.temporaryPassword,
       role: payload.role,
+      permissions: payload.permissions,
     });
     await sendMail({
       to: payload.to,
-      subject: `Welcome to ${payload.libraryName} – Your login details`,
+      subject: `Welcome to the library platform – Your login details`,
       html,
     });
     console.log(colors.green(`Library user onboarding email sent to ${payload.to}`));
@@ -64,6 +68,7 @@ export const sendLibraryUserOnboardToCreator = async (
       newUserEmail: payload.newUserEmail,
       newUserRole: payload.newUserRole,
       libraryName: payload.libraryName,
+      permissions: payload.permissions,
     });
     await sendMail({
       to: payload.to,
@@ -73,6 +78,41 @@ export const sendLibraryUserOnboardToCreator = async (
     console.log(colors.green(`Library user creation notification sent to ${payload.to}`));
   } catch (error) {
     console.error(colors.red('Error sending library user creation notification to creator:'), error);
+    throw error;
+  }
+};
+
+export interface LibraryUserPermissionsUpdatedPayload {
+  to: string;
+  libraryName: string;
+  firstName: string;
+  lastName: string;
+  addedPermissions: string[];
+  removedPermissions: string[];
+  currentPermissions: string[];
+}
+
+/** Send email to a library user when their permissions are updated (added or removed). */
+export const sendLibraryUserPermissionsUpdated = async (
+  payload: LibraryUserPermissionsUpdatedPayload,
+): Promise<void> => {
+  try {
+    const html = libraryUserPermissionsUpdatedTemplate({
+      libraryName: payload.libraryName,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      addedPermissions: payload.addedPermissions,
+      removedPermissions: payload.removedPermissions,
+      currentPermissions: payload.currentPermissions,
+    });
+    await sendMail({
+      to: payload.to,
+      subject: `Your permissions have been updated – ${payload.libraryName}`,
+      html,
+    });
+    console.log(colors.green(`Library user permissions-updated email sent to ${payload.to}`));
+  } catch (error) {
+    console.error(colors.red('Error sending library user permissions-updated email:'), error);
     throw error;
   }
 };

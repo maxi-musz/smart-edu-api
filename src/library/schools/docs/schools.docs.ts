@@ -27,10 +27,11 @@ export const GetSchoolByIdDocs = {
     description:
       'Retrieve comprehensive detailed information for a specific school by its ID. ' +
       'This endpoint provides all necessary data for displaying a school detail page including: ' +
-      'school basic information, statistics (teachers, students, classes, subjects, parents, users), ' +
+      'school basic information, documents submitted by the school (CAC, tax clearance, utility bill), ' +
+      'statistics (teachers, students, classes, subjects, parents, users), ' +
       'academic sessions (current and all), subscription details, recent teachers (10 most recent), recent students (10 most recent), ' +
       'all classes, all subjects, and recent content (10 most recent assessments and assignments). ' +
-      'Response is wrapped in { success, message, data } where data contains school info, statistics, and detailed breakdowns.',
+      'Response is wrapped in { success, message, data } where data contains school info, documentsSubmitted, statistics, and detailed breakdowns.',
   }),
   response200: ApiResponse({
     status: 200,
@@ -43,6 +44,31 @@ export const GetSchoolByIdDocs = {
   response500: ApiResponse({
     status: 500,
     description: 'Internal server error - Failed to retrieve school details',
+  }),
+};
+
+export const ApproveSchoolDocs = {
+  operation: ApiOperation({
+    summary: 'Approve a school',
+    description:
+      'Set a school\'s status to approved. Only schools with status "pending" or "not_verified" can be approved. ' +
+      'Returns the updated school (id, school_name, school_email, status, updatedAt).',
+  }),
+  response200: ApiResponse({
+    status: 200,
+    description: 'School approved successfully',
+  }),
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - School already approved or cannot be approved from current status',
+  }),
+  response404: ApiResponse({
+    status: 404,
+    description: 'School not found',
+  }),
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
   }),
 };
 
