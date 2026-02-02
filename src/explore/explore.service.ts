@@ -1,5 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccessControlHelperService } from '../school-access-control/access-control-helper.service';
+import { LibraryResourceType } from '../library-access-control/dto';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
 import * as colors from 'colors';
@@ -8,15 +10,35 @@ import * as colors from 'colors';
 export class ExploreService {
   private readonly logger = new Logger(ExploreService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessControlHelper: AccessControlHelperService,
+  ) {}
 
-  async getExploreData() {
-    this.logger.log(colors.cyan('📚 Fetching explore page data...'));
+  async getExploreData(user: any) {
+    const userId = user?.sub;
+    if (!userId) {
+      this.logger.error(colors.red('❌ Authentication required'));
+      throw new ForbiddenException('Authentication required');
+    }
+
+    this.logger.log(colors.cyan(`📚 Fetching explore page data for user ${user.email}...`));
 
     try {
-      // Fetch all library classes with subject count
+      const accessibleSubjectIds = await this.accessControlHelper.getAccessibleSubjectIds(userId);
+      if (accessibleSubjectIds.length === 0) {
+        return ResponseHelper.success('Explore data retrieved successfully', {
+          classes: [],
+          subjects: [],
+          recentVideos: [],
+          statistics: { totalClasses: 0, totalSubjects: 0, totalVideos: 0 },
+        });
+      }
+
+      // Fetch library classes that have accessible subjects
       this.logger.log(colors.yellow('Fetching library classes...'));
       const classes = await this.prisma.libraryClass.findMany({
+        where: { subjects: { some: { id: { in: accessibleSubjectIds } } } },
         orderBy: { order: 'asc' },
         select: {
           id: true,
@@ -28,9 +50,10 @@ export class ExploreService {
         }
       });
 
-      // Fetch all library subjects with thumbnails and platform info
+      // Fetch accessible library subjects with thumbnails and platform info
       this.logger.log(colors.yellow('Fetching library subjects...'));
       const subjects = await this.prisma.librarySubject.findMany({
+        where: { id: { in: accessibleSubjectIds } },
         orderBy: { name: 'asc' },
         select: {
           id: true,
@@ -66,55 +89,61 @@ export class ExploreService {
         }
       });
 
-      // Fetch the 20 most recent published videos with topic, subject, and platform info
+      // Fetch accessible video IDs for filtering
+      const accessibleVideoIds = await this.accessControlHelper.getAccessibleVideoIds(userId);
+
+      // Fetch the 20 most recent published videos (filtered by access)
       this.logger.log(colors.yellow('Fetching recent videos...'));
-      const recentVideos = await this.prisma.libraryVideoLesson.findMany({
-        where: {
-          status: 'published'
-        },
-        take: 20,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          videoUrl: true,
-          thumbnailUrl: true,
-          durationSeconds: true,
-          sizeBytes: true,
-          views: true,
-          order: true,
-          createdAt: true,
-          updatedAt: true,
-          topic: {
+      const recentVideos = accessibleVideoIds.length > 0
+        ? await this.prisma.libraryVideoLesson.findMany({
+            where: {
+              status: 'published',
+              id: { in: accessibleVideoIds }
+            },
+            take: 20,
+            orderBy: { createdAt: 'desc' },
             select: {
               id: true,
               title: true,
               description: true,
-              order: true
-            }
-          },
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              color: true,
+              videoUrl: true,
               thumbnailUrl: true,
-              thumbnailKey: true
+              durationSeconds: true,
+              sizeBytes: true,
+              views: true,
+              order: true,
+              createdAt: true,
+              updatedAt: true,
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  order: true
+                }
+              },
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  color: true,
+                  thumbnailUrl: true,
+                  thumbnailKey: true
+                }
+              },
+              platform: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  description: true,
+                  status: true
+                }
+              }
             }
-          },
-          platform: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              description: true,
-              status: true
-            }
-          }
-        }
-      });
+          })
+        : [];
 
       // Format classes data
       const formattedClasses = classes.map(cls => ({
@@ -159,26 +188,42 @@ export class ExploreService {
     }
   }
 
-  async getSubjects(queryDto: QuerySubjectsDto) {
+  async getSubjects(user: any, queryDto: QuerySubjectsDto) {
+    const userId = user?.sub;
+    if (!userId) {
+      throw new ForbiddenException('Authentication required');
+    }
+
     const { classId, search, page = 1, limit = 20 } = queryDto;
     const skip = (page - 1) * limit;
 
     this.logger.log(colors.cyan(`📚 Fetching subjects - Page: ${page}, Limit: ${limit}, ClassId: ${classId || 'all'}, Search: ${search || 'none'}`));
 
     try {
-      // Build where clause
-      const where: any = {};
+      const accessibleSubjectIds = await this.accessControlHelper.getAccessibleSubjectIds(userId);
+      if (accessibleSubjectIds.length === 0) {
+        return ResponseHelper.success('Subjects retrieved successfully', {
+          items: [],
+          meta: { totalItems: 0, totalPages: 0, currentPage: page, limit }
+        });
+      }
+
+      // Build where clause - filter by accessible subjects
+      const where: any = { id: { in: accessibleSubjectIds } };
 
       if (classId) {
         where.classId = classId;
       }
 
       if (search) {
-        where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { code: { contains: search, mode: 'insensitive' } }
-        ];
+        where.AND = where.AND || [];
+        where.AND.push({
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            { code: { contains: search, mode: 'insensitive' } }
+          ]
+        });
       }
 
       // Get total count
@@ -259,16 +304,30 @@ export class ExploreService {
     }
   }
 
-  async getVideos(queryDto: QueryVideosDto) {
+  async getVideos(user: any, queryDto: QueryVideosDto) {
+    const userId = user?.sub;
+    if (!userId) {
+      throw new ForbiddenException('Authentication required');
+    }
+
     const { classId, subjectId, topicId, search, page = 1, limit = 20 } = queryDto;
     const skip = (page - 1) * limit;
 
     this.logger.log(colors.cyan(`🎥 Fetching videos - Page: ${page}, SubjectId: ${subjectId || 'all'}, TopicId: ${topicId || 'all'}`));
 
     try {
+      const accessibleVideoIds = await this.accessControlHelper.getAccessibleVideoIds(userId);
+      if (accessibleVideoIds.length === 0) {
+        return ResponseHelper.success('Videos retrieved successfully', {
+          items: [],
+          meta: { totalItems: 0, totalPages: 0, currentPage: page, limit }
+        });
+      }
+
       // Build where clause
       const where: any = {
-        status: 'published'
+        status: 'published',
+        id: { in: accessibleVideoIds }
       };
 
       if (topicId) {
@@ -359,8 +418,23 @@ export class ExploreService {
     }
   }
 
-  async getTopicsForSubject(subjectId: string, user?: any) {
-    const userId = user?.sub || null;
+  async getTopicsForSubject(subjectId: string, user: any) {
+    const userId = user?.sub;
+    if (!userId) {
+      throw new ForbiddenException('Authentication required');
+    }
+
+    const accessCheck = await this.accessControlHelper.checkUserAccess(
+      userId,
+      LibraryResourceType.SUBJECT,
+      subjectId,
+    );
+    if (!accessCheck.hasAccess) {
+      throw new ForbiddenException(
+        accessCheck.reason ?? 'You do not have access to this subject',
+      );
+    }
+
     this.logger.log(
       colors.cyan(
         `📚 Fetching comprehensive topic resources for subject: ${subjectId}${userId ? ` (User: ${userId})` : ' (Public)'}`,
@@ -386,6 +460,13 @@ export class ExploreService {
 
       this.logger.log(colors.yellow(`📖 Subject: ${subject.name} (${subject.code})`));
 
+      // Get excluded resource IDs (library owner may have turned off individual topics/videos/materials/assessments)
+      const excluded = await this.accessControlHelper.getExcludedIdsForSubject(userId, subjectId);
+      const excludedTopicIds = new Set(excluded.topicIds);
+      const excludedVideoIds = new Set(excluded.videoIds);
+      const excludedMaterialIds = new Set(excluded.materialIds);
+      const excludedAssessmentIds = new Set(excluded.assessmentIds);
+
       // Check if there's a subject-level assessment (assessment with subjectId but no topicId)
       const subjectLevelAssessment = await this.prisma.libraryAssessment.findFirst({
         where: {
@@ -402,7 +483,9 @@ export class ExploreService {
         },
       });
 
-      const libraryAssessmentInfo = subjectLevelAssessment
+      // Hide subject-level assessment if library owner has turned it off
+      const subjectAssessmentExcluded = subjectLevelAssessment && excludedAssessmentIds.has(subjectLevelAssessment.id);
+      const libraryAssessmentInfo = subjectLevelAssessment && !subjectAssessmentExcluded
         ? {
             has_library_assessment: true,
             assessment_id: subjectLevelAssessment.id,
@@ -423,7 +506,7 @@ export class ExploreService {
       );
 
       // Get all topics for this subject directly (no chapters)
-      const topics = await this.prisma.libraryTopic.findMany({
+      const allTopics = await this.prisma.libraryTopic.findMany({
         where: {
           subjectId: subjectId,
           is_active: true
@@ -440,7 +523,9 @@ export class ExploreService {
         }
       });
 
-      this.logger.log(colors.yellow(`📑 Found ${topics.length} topics`));
+      // Filter out topics that library owner has turned off
+      const topics = allTopics.filter((t) => !excludedTopicIds.has(t.id));
+      this.logger.log(colors.yellow(`📑 Found ${topics.length} topics (${allTopics.length - topics.length} excluded by library owner)`));
 
       // For each topic, get all resources (videos, materials, assessments)
       const topicsWithResources = await Promise.all(
@@ -558,13 +643,20 @@ export class ExploreService {
               // format the response and return formatted response 
               
 
+              // Filter out videos/materials/assessments that library owner has turned off
+              const visibleVideos = videos.filter((v) => !excludedVideoIds.has(v.id));
+              const visibleMaterials = materials.filter((m) => !excludedMaterialIds.has(m.id));
+              const visibleAssessmentsWithCounts = assessmentsWithCounts.filter((a) => !excludedAssessmentIds.has(a.id));
+              const visibleAssessmentIds = new Set(visibleAssessmentsWithCounts.map((a) => a.id));
+              const visibleSubmissions = submissions.filter((s) => visibleAssessmentIds.has(s.assessmentId));
+
               return {
                 id: topic.id,
                 title: topic.title,
                 description: topic.description,
                 order: topic.order,
                 is_active: topic.is_active,
-                videos: videos.map(video => ({
+                videos: visibleVideos.map(video => ({
                   id: video.id,
                   title: video.title,
                   description: video.description,
@@ -574,7 +666,7 @@ export class ExploreService {
                   sizeBytes: video.sizeBytes,
                   views: video.views
                 })),
-                materials: materials.map(material => ({
+                materials: visibleMaterials.map(material => ({
                   id: material.id,
                   title: material.title,
                   description: material.description,
@@ -582,13 +674,13 @@ export class ExploreService {
                   sizeBytes: material.sizeBytes,
                   pageCount: material.pageCount
                 })),
-                assessments: assessmentsWithCounts,
-                submissions: submissions,
+                assessments: visibleAssessmentsWithCounts,
+                submissions: visibleSubmissions,
                 statistics: {
-                  videosCount: videos.length,
-                  materialsCount: materials.length,
-                  assessmentsCount: assessments.length,
-                  submissionsCount: submissions.length
+                  videosCount: visibleVideos.length,
+                  materialsCount: visibleMaterials.length,
+                  assessmentsCount: visibleAssessmentsWithCounts.length,
+                  submissionsCount: visibleSubmissions.length
                 }
               };
             })
@@ -634,7 +726,23 @@ export class ExploreService {
   }
 
   async playVideo(user: any, videoId: string) {
-    this.logger.log(colors.cyan(`🎥 User ${user.sub} requesting video playback: ${videoId}`));
+    const userId = user?.sub;
+    if (!userId) {
+      throw new ForbiddenException('Authentication required');
+    }
+
+    this.logger.log(colors.cyan(`🎥 User ${userId} requesting video playback: ${videoId}`));
+
+    const accessCheck = await this.accessControlHelper.checkUserAccess(
+      userId,
+      LibraryResourceType.VIDEO,
+      videoId,
+    );
+    if (!accessCheck.hasAccess) {
+      throw new ForbiddenException(
+        accessCheck.reason ?? 'You do not have access to this video',
+      );
+    }
 
     try {
       // Fetch video details
@@ -691,7 +799,7 @@ export class ExploreService {
       const existingView = await this.prisma.libraryVideoView.findFirst({
         where: {
           videoId: videoId,
-          userId: user.sub, // JWT payload uses 'sub' for user ID
+          userId, // JWT payload uses 'sub' for user ID
         },
       });
 
@@ -711,15 +819,15 @@ export class ExploreService {
           this.prisma.libraryVideoView.create({
             data: {
               videoId: videoId,
-              userId: user.sub,
+              userId,
             },
           }),
         ]);
 
         updatedViews = video.views + 1;
-        this.logger.log(colors.green(`✅ New unique view recorded: "${video.title}" by user ${user.sub} (Total: ${updatedViews})`));
+        this.logger.log(colors.green(`✅ New unique view recorded: "${video.title}" by user ${userId} (Total: ${updatedViews})`));
       } else {
-        this.logger.log(colors.yellow(`⚠️ Repeat view (not counted): "${video.title}" by user ${user.sub}`));
+        this.logger.log(colors.yellow(`⚠️ Repeat view (not counted): "${video.title}" by user ${userId}`));
       }
 
       const data = {

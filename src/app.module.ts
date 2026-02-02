@@ -22,6 +22,8 @@ import { RequestLoggerMiddleware } from './shared/middleware/request-logger.midd
 import { ExploreModule } from './explore/explore.module';
 import { ExamPracticeModule } from './exam-practice/exam-practice.module';
 import { VideoModule } from './video/video.module';
+import { LibraryAccessControlModule } from './library-access-control/library-access-control.module';
+import { SchoolAccessControlModule } from './school-access-control/school-access-control.module';
 
 @Module({
   imports: [
@@ -53,6 +55,8 @@ import { VideoModule } from './video/video.module';
     ExploreModule,
     ExamPracticeModule,
     VideoModule,
+    LibraryAccessControlModule,
+    SchoolAccessControlModule,
   ],
   controllers: [AppController],
   providers: [AppService],

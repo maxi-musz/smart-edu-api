@@ -13,6 +13,7 @@ import { ChatService } from './chat/chat.service';
 import { ChatTTSController } from './chat/chat-tts.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LibraryAuthModule } from '../library/library-auth/library-auth.module';
+import { SchoolAccessControlModule } from '../school-access-control/school-access-control.module';
 import { AiChatModule } from '../school/ai-chat/ai-chat.module';
 import { ExploreChatServicesModule } from './chat/explore-chat-services.module';
 import { ExploreExamBodyModule } from './exam-body/exam-body.module';
@@ -22,6 +23,7 @@ import { ExploreExamBodyModule } from './exam-body/exam-body.module';
     ExploreExamBodyModule,
     PrismaModule,
     LibraryAuthModule,
+    SchoolAccessControlModule,
     AiChatModule, // Import to use DocumentProcessingService for Pinecone chunk searching
     ExploreChatServicesModule, // Import to use TextToSpeechService
     JwtModule.registerAsync({
