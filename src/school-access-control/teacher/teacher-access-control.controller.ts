@@ -20,6 +20,7 @@ import {
   TeacherRevokeAccessDto,
   QueryTeacherAvailableResourcesDto,
   QueryStudentResourcesDto,
+  TeacherExcludeResourceDto,
 } from './dto';
 import { GetUser } from '../../school/auth/decorator/get-user-decorator';
 import { JwtGuard } from '../../school/auth/guard/jwt.guard';
@@ -40,6 +41,32 @@ export class TeacherAccessControlController {
   @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
   async getAvailableResources(@GetUser() user: any, @Query() query: QueryTeacherAvailableResourcesDto) {
     return this.teacherAccessService.getAvailableResources(user, query);
+  }
+
+  @Post('exclude')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Exclude (turn off) a topic/video/material/assessment for students or class',
+    description: 'Teachers can exclude resources so selected students or class do not see them in explore.',
+  })
+  @ApiResponse({ status: 201, description: 'Resource excluded successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - missing resource ID or classId/studentId' })
+  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
+  @ApiResponse({ status: 404, description: 'Subject, student, or class not found' })
+  async excludeResource(@GetUser() user: any, @Body() dto: TeacherExcludeResourceDto) {
+    return this.teacherAccessService.excludeResource(user, dto);
+  }
+
+  @Post('include')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Include (turn on) a previously excluded resource',
+    description: 'Remove the teacher-level exclusion so the resource is visible again to students/class.',
+  })
+  @ApiResponse({ status: 200, description: 'Resource included successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
+  async includeResource(@GetUser() user: any, @Body() dto: TeacherExcludeResourceDto) {
+    return this.teacherAccessService.includeResource(user, dto);
   }
 
   @Post('grant')

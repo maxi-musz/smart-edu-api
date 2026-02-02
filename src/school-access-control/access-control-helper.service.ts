@@ -141,7 +141,9 @@ export class AccessControlHelperService {
   }
 
   /**
-   * Get all accessible resources for a user
+   * Get all accessible resources for a user (uses SchoolResourceAccess when present).
+   * Not used for explore visibility: subject list and video list use library grants to school only
+   * (getSubjectIdsGrantedToSchool / getAccessibleSubjectIds). Kept for checkUserAccess and any legacy use.
    */
   async getUserAccessibleResources(
     userId: string,
@@ -308,58 +310,115 @@ export class AccessControlHelperService {
   }
 
   /**
-   * Get accessible subject IDs for filtering explore data.
-   * Resolves ALL, SUBJECT grants and hierarchy.
+   * Get subject IDs that the library has granted to the school (LibraryResourceAccess only).
+   * Used as the source of truth for "which subjects can this school see" so teachers and students
+   * see the same list. SchoolResourceAccess (per-user/role/class grants) is not used here, to avoid
+   * legacy grants restricting teachers to a subset of subjects when the library granted the whole set.
    */
-  async getAccessibleSubjectIds(userId: string): Promise<string[]> {
-    this.logger.log(colors.cyan(`📚 Getting accessible subject IDs for user ${userId}...`));
-    const ids = await this.getUserAccessibleResources(userId, LibraryResourceType.SUBJECT);
-    const subjects = await this.prisma.librarySubject.findMany({
-      where: { id: { in: ids } },
-      select: { id: true },
+  private async getSubjectIdsGrantedToSchool(schoolId: string): Promise<string[]> {
+    const libraryAccess = await this.prisma.libraryResourceAccess.findMany({
+      where: {
+        schoolId,
+        isActive: true,
+        AND: [
+          { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+          { resourceType: { in: [LibraryResourceType.ALL, LibraryResourceType.SUBJECT] } },
+        ],
+      },
+      select: { platformId: true, resourceType: true, subjectId: true },
     });
-    return subjects.map((s) => s.id);
+    const subjectIds = new Set<string>();
+    for (const la of libraryAccess) {
+      if (la.resourceType === LibraryResourceType.ALL) {
+        const subjects = await this.prisma.librarySubject.findMany({
+          where: { platformId: la.platformId },
+          select: { id: true },
+        });
+        subjects.forEach((s) => subjectIds.add(s.id));
+      } else if (la.subjectId) {
+        subjectIds.add(la.subjectId);
+      }
+    }
+    return Array.from(subjectIds);
   }
 
   /**
-   * Get accessible video IDs. A video is accessible if its subject, topic, or the video itself is granted.
+   * Get accessible subject IDs for filtering explore data.
+   * Source: library grants to the school (not SchoolResourceAccess), then minus school-level exclusions.
+   * School owner (school_director, school_admin) sees all granted subjects; others see granted minus school exclusions.
+   * Teachers and students thus see the same subject list when the library granted multiple subjects to the school.
+   */
+  async getAccessibleSubjectIds(userId: string): Promise<string[]> {
+    this.logger.log(colors.cyan(`📚 Getting accessible subject IDs for user ${userId}...`));
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { school_id: true, role: true },
+    });
+    if (!user) return [];
+    const subjectIds = await this.getSubjectIdsGrantedToSchool(user.school_id);
+    if (subjectIds.length === 0) return [];
+    if (user.role === 'school_director' || user.role === 'school_admin') {
+      return subjectIds;
+    }
+    const schoolExclusions = await this.prisma.schoolResourceExclusion.findMany({
+      where: { schoolId: user.school_id },
+      select: { subjectId: true },
+    });
+    if (schoolExclusions.length === 0) return subjectIds;
+    const excludedSet = new Set(schoolExclusions.map((e) => e.subjectId));
+    return subjectIds.filter((id) => !excludedSet.has(id));
+  }
+
+  /**
+   * Get accessible video IDs. Based on library grants to the school (same as subjects), not SchoolResourceAccess.
+   * Returns all published videos in subjects the user can see, minus library and teacher exclusions.
    */
   async getAccessibleVideoIds(userId: string): Promise<string[]> {
-    const resourceIds = await this.getUserAccessibleResources(userId, LibraryResourceType.VIDEO);
-    const subjectIds = new Set<string>();
-    const topicIds = new Set<string>();
-    const videoIds = new Set<string>();
-
-    for (const id of resourceIds) {
-      const [subject, topic, video] = await Promise.all([
-        this.prisma.librarySubject.findUnique({ where: { id }, select: { id: true } }),
-        this.prisma.libraryTopic.findUnique({ where: { id }, select: { id: true } }),
-        this.prisma.libraryVideoLesson.findUnique({ where: { id }, select: { id: true } }),
-      ]);
-      if (subject) subjectIds.add(id);
-      else if (topic) topicIds.add(id);
-      else if (video) videoIds.add(id);
-    }
+    const subjectIds = await this.getAccessibleSubjectIds(userId);
+    if (subjectIds.length === 0) return [];
 
     const videos = await this.prisma.libraryVideoLesson.findMany({
       where: {
         status: 'published',
-        OR: [
-          { subjectId: { in: Array.from(subjectIds) } },
-          { topicId: { in: Array.from(topicIds) } },
-          { id: { in: Array.from(videoIds) } },
-        ],
+        subjectId: { in: subjectIds },
       },
       select: { id: true },
     });
 
     const accessibleVideoIds = videos.map((v) => v.id);
-    const excludedVideoIds = await this.getExcludedVideoIdsForUser(userId);
-    if (excludedVideoIds.length > 0) {
-      const excludedSet = new Set(excludedVideoIds);
+    const [libraryExcluded, teacherExcluded] = await Promise.all([
+      this.getExcludedVideoIdsForUser(userId),
+      this.getTeacherExcludedVideoIdsForUser(userId),
+    ]);
+    const excludedSet = new Set([...libraryExcluded, ...teacherExcluded]);
+    if (excludedSet.size > 0) {
       return accessibleVideoIds.filter((id) => !excludedSet.has(id));
     }
     return accessibleVideoIds;
+  }
+
+  /**
+   * Get all video IDs that teachers have excluded for this user (student or class).
+   */
+  private async getTeacherExcludedVideoIdsForUser(userId: string): Promise<string[]> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { school_id: true, student: { select: { current_class_id: true } } },
+    });
+    if (!user) return [];
+    const where: any = {
+      schoolId: user.school_id,
+      resourceType: 'VIDEO',
+      OR: [{ studentId: userId }],
+    };
+    if (user.student?.current_class_id) {
+      where.OR.push({ classId: user.student.current_class_id, studentId: null });
+    }
+    const rows = await this.prisma.teacherResourceExclusion.findMany({
+      where,
+      select: { resourceId: true },
+    });
+    return rows.map((r) => r.resourceId);
   }
 
   /**
@@ -455,7 +514,7 @@ export class AccessControlHelperService {
 
   /**
    * Get excluded topic/video/material/assessment IDs for a subject (for current user's school).
-   * Resolves platform from subject and user's school.
+   * Includes library-level exclusions and, for students, teacher-level exclusions (for this user or their class).
    */
   async getExcludedIdsForSubject(
     userId: string,
@@ -468,24 +527,66 @@ export class AccessControlHelperService {
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { school_id: true },
+      select: { school_id: true, role: true, student: { select: { current_class_id: true } } },
     });
     if (!user) {
       return { topicIds: [], videoIds: [], materialIds: [], assessmentIds: [] };
     }
     const subject = await this.prisma.librarySubject.findUnique({
       where: { id: subjectId },
-      select: { platformId: true },
+      select: { platformId: true, classId: true },
     });
     if (!subject) {
       return { topicIds: [], videoIds: [], materialIds: [], assessmentIds: [] };
     }
-    const [topicIds, videoIds, materialIds, assessmentIds] = await Promise.all([
+    const [libraryTopicIds, libraryVideoIds, libraryMaterialIds, libraryAssessmentIds] = await Promise.all([
       this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.TOPIC),
       this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.VIDEO),
       this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.MATERIAL),
       this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.ASSESSMENT),
     ]);
+    const teacherExcluded = await this.getTeacherExcludedIdsForUser(
+      userId,
+      user.school_id,
+      subjectId,
+      subject.classId ?? undefined,
+    );
+    return {
+      topicIds: [...new Set([...libraryTopicIds, ...teacherExcluded.topicIds])],
+      videoIds: [...new Set([...libraryVideoIds, ...teacherExcluded.videoIds])],
+      materialIds: [...new Set([...libraryMaterialIds, ...teacherExcluded.materialIds])],
+      assessmentIds: [...new Set([...libraryAssessmentIds, ...teacherExcluded.assessmentIds])],
+    };
+  }
+
+  /**
+   * Get resource IDs excluded by teachers for this user or for this subject's library class in this school.
+   * Exclusions are scoped to schoolId so they only affect students in this school.
+   */
+  private async getTeacherExcludedIdsForUser(
+    userId: string,
+    schoolId: string,
+    subjectId: string,
+    subjectLibraryClassId?: string,
+  ): Promise<{ topicIds: string[]; videoIds: string[]; materialIds: string[]; assessmentIds: string[] }> {
+    const orConditions: Array<{ studentId: string } | { libraryClassId: string; studentId: null }> = [{ studentId: userId }];
+    if (subjectLibraryClassId) {
+      orConditions.push({ libraryClassId: subjectLibraryClassId, studentId: null });
+    }
+    const rows = await this.prisma.teacherResourceExclusion.findMany({
+      where: { schoolId, subjectId, OR: orConditions },
+      select: { resourceType: true, resourceId: true },
+    });
+    const topicIds: string[] = [];
+    const videoIds: string[] = [];
+    const materialIds: string[] = [];
+    const assessmentIds: string[] = [];
+    for (const r of rows) {
+      if (r.resourceType === 'TOPIC') topicIds.push(r.resourceId);
+      else if (r.resourceType === 'VIDEO') videoIds.push(r.resourceId);
+      else if (r.resourceType === 'MATERIAL') materialIds.push(r.resourceId);
+      else if (r.resourceType === 'ASSESSMENT') assessmentIds.push(r.resourceId);
+    }
     return { topicIds, videoIds, materialIds, assessmentIds };
   }
 

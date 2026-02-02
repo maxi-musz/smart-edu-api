@@ -110,9 +110,11 @@ model School {
   videoContent          VideoContent[]
   wallet                Wallet?
   // Multi-level access control relations
-  libraryResourceAccess LibraryResourceAccess[]
-  schoolResourceAccess  SchoolResourceAccess[]
+  libraryResourceAccess  LibraryResourceAccess[]
+  schoolResourceAccess   SchoolResourceAccess[]
   teacherResourceAccess TeacherResourceAccess[]
+  schoolResourceExclusions  SchoolResourceExclusion[]
+  teacherResourceExclusions TeacherResourceExclusion[]
 }
 
 model Document {
@@ -208,6 +210,9 @@ model User {
   schoolAccessReceived             SchoolResourceAccess[]                   @relation("SchoolAccessUser")
   teacherAccessGranted             TeacherResourceAccess[]                  @relation("TeacherAccessGranter")
   studentAccessReceived            TeacherResourceAccess[]                  @relation("TeacherAccessStudent")
+  schoolExclusionsBy               SchoolResourceExclusion[]                @relation("SchoolExclusionBy")
+  teacherExclusionsBy              TeacherResourceExclusion[]              @relation("TeacherExclusionBy")
+  teacherExclusionsForStudent      TeacherResourceExclusion[]              @relation("TeacherExclusionForStudent")
 }
 
 model Teacher {
@@ -341,8 +346,9 @@ model Class {
   schedules             TimetableEntry[]
   results               Result[]
   // Multi-level access control relations
-  schoolResourceAccess  SchoolResourceAccess[]
-  teacherResourceAccess TeacherResourceAccess[]
+  schoolResourceAccess   SchoolResourceAccess[]
+  teacherResourceAccess  TeacherResourceAccess[]
+  teacherResourceExclusions TeacherResourceExclusion[]
 
   @@unique([schoolId, academic_session_id, classId])
   @@index([schoolId, academic_session_id])
@@ -2315,6 +2321,7 @@ model LibraryClass {
   updatedAt       DateTime                      @updatedAt
   subjects        LibrarySubject[]
   materialClasses LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryGeneralMaterial
+  teacherResourceExclusions TeacherResourceExclusion[]
 }
 
 /// Subjects under a library class (e.g. "Mathematics", "Physics").
@@ -2345,9 +2352,11 @@ model LibrarySubject {
   generalMaterials      LibraryGeneralMaterial[]
   assessments           LibraryAssessment[]
   // Multi-level access control relations
-  libraryResourceAccess LibraryResourceAccess[]
-  schoolResourceAccess  SchoolResourceAccess[]
-  teacherResourceAccess TeacherResourceAccess[]
+  libraryResourceAccess     LibraryResourceAccess[]
+  schoolResourceAccess      SchoolResourceAccess[]
+  teacherResourceAccess     TeacherResourceAccess[]
+  schoolResourceExclusions  SchoolResourceExclusion[]
+  teacherResourceExclusions TeacherResourceExclusion[]
 
   @@unique([platformId, code])
   @@index([platformId, name])
@@ -3148,6 +3157,54 @@ model TeacherResourceAccess {
   @@index([classId, isActive])
   @@index([schoolResourceAccessId])
   @@index([schoolId, teacherId])
+}
+
+/// School owner "turn off" exclusions: school owner can exclude subjects so everyone (except school owner) sees fewer.
+/// School owner always sees everything library granted; others see library grants minus these exclusions.
+model SchoolResourceExclusion {
+  id           String   @id @default(cuid())
+  schoolId     String
+  platformId   String
+  subjectId    String   // Subject school owner turned off
+  excludedById String   // School director/admin who excluded
+  createdAt    DateTime @default(now())
+
+  school     School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subject    LibrarySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  excludedBy User   @relation("SchoolExclusionBy", fields: [excludedById], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, platformId, subjectId])
+  @@index([schoolId])
+  @@index([platformId])
+}
+
+/// Teacher "turn off" exclusions: teacher can exclude topics/videos/materials/assessments for students/class.
+/// classId = school Class. libraryClassId = library class (e.g. JSS-1) for library materials. Exclusions affect only this school.
+model TeacherResourceExclusion {
+  id             String   @id @default(cuid())
+  teacherId      String
+  schoolId       String
+  subjectId      String
+  resourceType   String   // TOPIC | VIDEO | MATERIAL | ASSESSMENT
+  resourceId     String
+  classId        String?  // School class
+  libraryClassId String?  // Library class (e.g. JSS-1, Primary-1)
+  studentId      String?
+  createdAt      DateTime @default(now())
+
+  teacher      User           @relation("TeacherExclusionBy", fields: [teacherId], references: [id], onDelete: Cascade)
+  school       School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subject      LibrarySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class        Class?         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  libraryClass LibraryClass?  @relation(fields: [libraryClassId], references: [id], onDelete: Cascade)
+  student      User?          @relation("TeacherExclusionForStudent", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, schoolId, subjectId, resourceType, resourceId, classId, studentId, libraryClassId])
+  @@index([schoolId, subjectId])
+  @@index([teacherId])
+  @@index([classId])
+  @@index([libraryClassId])
+  @@index([studentId])
 }
 
 /// Audit log for access control changes

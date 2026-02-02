@@ -458,6 +458,8 @@ GET /library-access-control/schools/:schoolId
 
 **Auth**: School director/admin JWT token
 
+**School-level exclusions**: School directors and admins can **exclude (turn off) subjects** for the school. Excluded subjects are hidden from non-admin users (teachers, students) in explore; school owner still sees all granted subjects. Use **Exclude Subject** to turn off a subject and **Include Subject** to turn it back on. **Frontend**: Load **Get Excluded Subjects** to set toggle state (OFF for those subject IDs, ON for others); when user toggles to ON call **Include Subject**, when toggles to OFF call **Exclude Subject**. If teachers/students see fewer subjects than the school owner with no toggles turned off, call **Include All Subjects** to clear stale exclusions.
+
 ## Get Available Resources
 
 Gets library resources available to the school (granted by library owners).
@@ -512,6 +514,160 @@ GET /school-access-control/available-resources
   }
 }
 ```
+
+---
+
+## Exclude Subject (Turn Off Subject for School)
+
+School directors/admins can exclude a subject so non-admin users (teachers, students) do not see it in explore. School owner still sees all granted subjects.
+
+```
+POST /school-access-control/exclude-subject
+```
+
+**Request Body**:
+```json
+{
+  "subjectId": "string (required) - Library subject ID to exclude"
+}
+```
+
+**Response** `201 Created`:
+```json
+{
+  "success": true,
+  "message": "Subject excluded successfully",
+  "data": {
+    "id": "exclusion_id",
+    "schoolId": "school_id",
+    "platformId": "platform_id",
+    "subjectId": "subject_id",
+    "excludedById": "user_id",
+    "createdAt": "2026-02-01T12:00:00.000Z",
+    "subject": {
+      "id": "subject_id",
+      "name": "Mathematics",
+      "code": "MATH"
+    }
+  }
+}
+```
+
+If the subject is already excluded:
+```json
+{
+  "success": true,
+  "message": "Subject already excluded",
+  "data": { ... }
+}
+```
+
+**Error Responses**:
+- `400 Bad Request` - Your school does not have library access to this subject
+- `403 Forbidden` - Only school directors and admins can exclude subjects
+- `404 Not Found` - Subject not found
+
+---
+
+## Include Subject (Turn On Previously Excluded Subject)
+
+Removes the school-level subject exclusion so the subject is visible again to non-admin users.
+
+```
+POST /school-access-control/include-subject
+```
+
+**Request Body**: Same as Exclude Subject.
+```json
+{
+  "subjectId": "string (required)"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "message": "Subject included successfully",
+  "data": {
+    "id": "exclusion_id",
+    "removed": true
+  }
+}
+```
+
+If the subject was not excluded:
+```json
+{
+  "success": true,
+  "message": "Subject was not excluded",
+  "data": null
+}
+```
+
+**Error Responses**:
+- `403 Forbidden` - Only school directors and admins can include subjects
+- `404 Not Found` - Subject not found
+
+---
+
+## Get Excluded Subjects
+
+Returns subject IDs that the school owner has turned off. **Use this to show correct "Visible to school" toggle state**: OFF for these subjects, ON for all others. If teachers/students see fewer subjects than the school owner, there are exclusions; load this list and sync toggles (call **Include Subject** when user turns a subject ON, **Exclude Subject** when OFF).
+
+```
+GET /school-access-control/excluded-subjects
+```
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "message": "Excluded subjects retrieved successfully",
+  "data": {
+    "subjectIds": ["subject_id_1"],
+    "items": [
+      { "subjectId": "subject_id_1", "subject": { "id": "subject_id_1", "name": "Mathematics", "code": "MATH" } }
+    ]
+  }
+}
+```
+
+**Error Responses**:
+- `403 Forbidden` - Only school directors and admins
+
+---
+
+## Include All Subjects (Turn On All)
+
+Removes **all** school-level exclusions for the school so teachers and students see every subject the library granted. Use when the school owner wants "all toggles ON" and there are stale exclusions (e.g. others see 2 subjects but owner sees 3).
+
+```
+POST /school-access-control/include-all-subjects
+```
+
+**Request Body**: None.
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "message": "All subjects are now visible to the school (1 exclusion(s) removed)",
+  "data": { "removedCount": 1 }
+}
+```
+
+If no exclusions existed:
+```json
+{
+  "success": true,
+  "message": "No exclusions to clear; all subjects are already visible",
+  "data": { "removedCount": 0 }
+}
+```
+
+**Error Responses**:
+- `403 Forbidden` - Only school directors and admins
 
 ---
 
@@ -731,6 +887,8 @@ GET /school-access-control/users/:userId/resources
 
 **Auth**: Teacher JWT token
 
+**Teacher-level exclusions**: Teachers can **exclude (turn off) topics, videos, materials, or assessments** for a specific student or an entire class. Excluded resources are hidden from those students in explore. Teachers cannot exclude subjects. Use **Exclude Resource** to turn off a resource and **Include Resource** to turn it back on.
+
 ## Get Teacher's Available Resources
 
 Gets resources the teacher can manage (granted to teachers by school).
@@ -778,6 +936,107 @@ GET /school-access-control/teacher/available-resources
   }
 }
 ```
+
+---
+
+## Exclude Resource (Teacher – Turn Off for Student/Class)
+
+Teachers can exclude a topic, video, material, or assessment for a specific student or an entire class. Excluded resources are hidden from those users in explore.
+
+```
+POST /school-access-control/teacher/exclude
+```
+
+**Request Body**:
+```json
+{
+  "subjectId": "string (required) - Library subject ID under which the resource lives",
+  "resourceType": "TOPIC | VIDEO | MATERIAL | ASSESSMENT (required)",
+  "topicId": "string (required if resourceType is TOPIC)",
+  "videoId": "string (required if resourceType is VIDEO)",
+  "materialId": "string (required if resourceType is MATERIAL)",
+  "assessmentId": "string (required if resourceType is ASSESSMENT)",
+  "classId": "string (optional) - exclude for entire class",
+  "studentId": "string (optional) - exclude for specific student"
+}
+```
+
+**Note**: Either `classId` or `studentId` must be provided (or both).
+
+**Response** `201 Created`:
+```json
+{
+  "success": true,
+  "message": "Resource excluded successfully",
+  "data": {
+    "id": "exclusion_id",
+    "teacherId": "teacher_user_id",
+    "schoolId": "school_id",
+    "subjectId": "subject_id",
+    "resourceType": "TOPIC",
+    "resourceId": "topic_id",
+    "classId": "class_id",
+    "studentId": null,
+    "createdAt": "2026-02-01T12:00:00.000Z",
+    "subject": {
+      "id": "subject_id",
+      "name": "Mathematics",
+      "code": "MATH"
+    }
+  }
+}
+```
+
+If the resource is already excluded:
+```json
+{
+  "success": true,
+  "message": "Resource already excluded",
+  "data": { ... }
+}
+```
+
+**Error Responses**:
+- `400 Bad Request` - Missing resource ID for the given `resourceType`, or missing both `classId` and `studentId`; resource not found or does not belong to subject
+- `403 Forbidden` - Only teachers can exclude resources
+- `404 Not Found` - Subject, student, or class not found
+
+---
+
+## Include Resource (Teacher – Turn On Previously Excluded)
+
+Removes the teacher-level exclusion so the resource is visible again to the student/class.
+
+```
+POST /school-access-control/teacher/include
+```
+
+**Request Body**: Same as Exclude Resource (subjectId, resourceType, and the relevant resource ID; classId/studentId as used when excluding).
+
+**Response** `200 OK`:
+```json
+{
+  "success": true,
+  "message": "Resource included successfully",
+  "data": {
+    "id": "exclusion_id",
+    "removed": true
+  }
+}
+```
+
+If the resource was not excluded:
+```json
+{
+  "success": true,
+  "message": "Resource was not excluded",
+  "data": null
+}
+```
+
+**Error Responses**:
+- `400 Bad Request` - Missing resource ID for the given `resourceType`
+- `403 Forbidden` - Only teachers can include resources
 
 ---
 
