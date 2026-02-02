@@ -54,10 +54,12 @@ export class LibraryAccessControlService {
       }
 
       if (school.status !== 'approved') {
-        throw new BadRequestException(`Cannot grant access to non-approved school: ${school.school_name}`);
+        throw new BadRequestException(
+          `This school (${school.school_name}) is not approved yet. Approve the school first (e.g. PATCH /library/schools/${dto.schoolId}/approve), then try granting access again.`,
+        );
       }
 
-      // Validate resource IDs based on resource type
+      // Validate resource IDs based on resource type (throws clear BadRequestException if invalid)
       await this.validateResourceIds(libraryResourceUser.platformId, dto);
 
       // Check if access already exists
@@ -76,7 +78,9 @@ export class LibraryAccessControlService {
 
       if (existingAccess) {
         if (existingAccess.isActive) {
-          throw new BadRequestException('Access grant already exists for this resource');
+          throw new BadRequestException(
+            `This school already has access to this ${dto.resourceType.toLowerCase()}. To change access level or expiry, use PATCH /library-access-control/${existingAccess.id} instead.`,
+          );
         }
         // Reactivate existing access
         const updated = await this.prisma.libraryResourceAccess.update({
@@ -797,61 +801,91 @@ export class LibraryAccessControlService {
 
       case LibraryResourceType.SUBJECT:
         if (!dto.subjectId) {
-          throw new BadRequestException('subjectId is required for SUBJECT resource type');
+          throw new BadRequestException(
+            'When granting access to a subject, subjectId is required. Include subjectId in the request body.',
+          );
         }
+        this.logger.log(colors.cyan(`[LIBRARY ACCESS] Validating subject ID: ${dto.subjectId}`));
         const subject = await this.prisma.librarySubject.findFirst({
           where: { id: dto.subjectId, platformId },
         });
         if (!subject) {
-          throw new NotFoundException('Subject not found in your platform');
+          const msg =
+            'Subject not found in your library platform. Use a library subject ID (from your library content), not a school subject ID. Get IDs from your library resources/subjects API.';
+          this.logger.warn(
+            colors.yellow(
+              `[LIBRARY ACCESS] Grant failed: ${msg} subjectId=${dto.subjectId} platformId=${platformId}`,
+            ),
+          );
+          throw new BadRequestException({
+            message: msg,
+            error: 'Subject not found in library platform',
+            subjectId: dto.subjectId,
+          });
         }
-        break;
+        break;  
 
       case LibraryResourceType.TOPIC:
         if (!dto.topicId) {
-          throw new BadRequestException('topicId is required for TOPIC resource type');
+          throw new BadRequestException(
+            'When granting access to a topic, topicId is required. Include topicId in the request body.',
+          );
         }
         const topic = await this.prisma.libraryTopic.findFirst({
           where: { id: dto.topicId, platformId },
         });
         if (!topic) {
-          throw new NotFoundException('Topic not found in your platform');
+          throw new BadRequestException(
+            `The topic with ID "${dto.topicId}" was not found in your library platform. Check that the topic exists and belongs to your platform.`,
+          );
         }
         break;
 
       case LibraryResourceType.VIDEO:
         if (!dto.videoId) {
-          throw new BadRequestException('videoId is required for VIDEO resource type');
+          throw new BadRequestException(
+            'When granting access to a video, videoId is required. Include videoId in the request body.',
+          );
         }
         const video = await this.prisma.libraryVideoLesson.findFirst({
           where: { id: dto.videoId, platformId },
         });
         if (!video) {
-          throw new NotFoundException('Video not found in your platform');
+          throw new BadRequestException(
+            `The video with ID "${dto.videoId}" was not found in your library platform. Check that the video exists and belongs to your platform.`,
+          );
         }
         break;
 
       case LibraryResourceType.MATERIAL:
         if (!dto.materialId) {
-          throw new BadRequestException('materialId is required for MATERIAL resource type');
+          throw new BadRequestException(
+            'When granting access to a material, materialId is required. Include materialId in the request body.',
+          );
         }
         const material = await this.prisma.libraryMaterial.findFirst({
           where: { id: dto.materialId, platformId },
         });
         if (!material) {
-          throw new NotFoundException('Material not found in your platform');
+          throw new BadRequestException(
+            `The material with ID "${dto.materialId}" was not found in your library platform. Check that the material exists and belongs to your platform.`,
+          );
         }
         break;
 
       case LibraryResourceType.ASSESSMENT:
         if (!dto.assessmentId) {
-          throw new BadRequestException('assessmentId is required for ASSESSMENT resource type');
+          throw new BadRequestException(
+            'When granting access to an assessment, assessmentId is required. Include assessmentId in the request body.',
+          );
         }
         const assessment = await this.prisma.libraryAssessment.findFirst({
           where: { id: dto.assessmentId, platformId },
         });
         if (!assessment) {
-          throw new NotFoundException('Assessment not found in your platform');
+          throw new BadRequestException(
+            `The assessment with ID "${dto.assessmentId}" was not found in your library platform. Check that the assessment exists and belongs to your platform.`,
+          );
         }
         break;
     }
