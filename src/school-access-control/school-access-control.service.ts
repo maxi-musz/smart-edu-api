@@ -15,6 +15,7 @@ import {
   QueryAvailableResourcesDto,
   QueryUserResourcesDto,
   QueryAccessAnalyticsDto,
+  SchoolExcludeSubjectDto,
 } from './dto';
 import { LibraryResourceType, AccessLevel } from '../library-access-control/dto';
 import * as colors from 'colors';
@@ -595,6 +596,274 @@ export class SchoolAccessControlService {
       }
       this.logger.error(colors.red(`❌ Error revoking access: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to revoke access');
+    }
+  }
+
+  /**
+   * Exclude (turn off) a subject for the school. Only school_director and school_admin.
+   * Excluded subjects are hidden from non-admin users in explore; school owner still sees all.
+   */
+  async excludeSubject(user: any, dto: SchoolExcludeSubjectDto) {
+    this.logger.log(colors.cyan(`[SCHOOL LEVEL ACCESS] Excluding subject: ${dto.subjectId}`));
+
+    try {
+      const userData = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { school_id: true, role: true },
+      });
+
+      if (!userData) {
+        this.logger.error(colors.red(`❌ User not found: ${user.sub}`));
+        throw new NotFoundException('User not found');
+      }
+
+      if (!['school_director', 'school_admin'].includes(userData.role)) {
+        throw new ForbiddenException('Only school directors and admins can exclude subjects');
+      }
+
+      const subject = await this.prisma.librarySubject.findUnique({
+        where: { id: dto.subjectId },
+        select: { id: true, platformId: true },
+      });
+
+      if (!subject) {
+        this.logger.error(colors.red(`❌ Subject not found: ${dto.subjectId}`));
+        throw new NotFoundException('Subject not found');
+      }
+
+      // Verify school has library access to this subject (or ALL)
+      const libraryAccess = await this.prisma.libraryResourceAccess.findFirst({
+        where: {
+          schoolId: userData.school_id,
+          platformId: subject.platformId,
+          isActive: true,
+          AND: [
+            {
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: new Date() } },
+              ],
+            },
+            {
+              OR: [
+                { resourceType: LibraryResourceType.ALL },
+                { resourceType: LibraryResourceType.SUBJECT, subjectId: dto.subjectId },
+              ],
+            },
+          ],
+        },
+      });
+
+      if (!libraryAccess) {
+        this.logger.error(colors.red(`❌ School does not have library access to this subject: ${dto.subjectId}`));
+        throw new BadRequestException('Your school does not have library access to this subject');
+      }
+
+      const existing = await this.prisma.schoolResourceExclusion.findUnique({
+        where: {
+          schoolId_platformId_subjectId: {
+            schoolId: userData.school_id,
+            platformId: subject.platformId,
+            subjectId: dto.subjectId,
+          },
+        },
+      });
+
+      if (existing) {
+        this.logger.error(colors.red(`❌ Subject already excluded: ${dto.subjectId}`));
+        return {
+          success: true,
+          message: 'Subject already excluded',
+          data: existing,
+        };
+      }
+
+      const exclusion = await this.prisma.schoolResourceExclusion.create({
+        data: {
+          schoolId: userData.school_id,
+          platformId: subject.platformId,
+          subjectId: dto.subjectId,
+          excludedById: user.sub,
+        },
+        include: {
+          subject: {
+            select: { id: true, name: true, code: true },
+          },
+        },
+      });
+
+      this.logger.log(colors.green(`✅ Subject excluded: ${exclusion.id}`));
+      return {
+        success: true,
+        message: 'Subject excluded successfully',
+        data: exclusion,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      this.logger.error(colors.red(`❌ Error excluding subject: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to exclude subject');
+    }
+  }
+
+  /**
+   * Include (turn on) a previously excluded subject for the school.
+   */
+  async includeSubject(user: any, dto: SchoolExcludeSubjectDto) {
+    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Including subject: ${dto.subjectId}`));
+
+    try {
+      const userData = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { school_id: true, role: true },
+      });
+
+      if (!userData) {
+        this.logger.error(colors.red(`❌ User not found: ${user.sub}`));
+        throw new NotFoundException('User not found');
+      }
+
+      if (!['school_director', 'school_admin'].includes(userData.role)) {
+        this.logger.error(colors.red(`❌ User not authorized to include subjects: ${user.sub}`));
+        throw new ForbiddenException('Only school directors and admins can include subjects');
+      }
+
+      const subject = await this.prisma.librarySubject.findUnique({
+        where: { id: dto.subjectId },
+        select: { id: true, platformId: true },
+      });
+
+      if (!subject) {
+        this.logger.error(colors.red(`❌ Subject not found: ${dto.subjectId}`));
+        throw new NotFoundException('Subject not found');
+      }
+
+      const existing = await this.prisma.schoolResourceExclusion.findUnique({
+        where: {
+          schoolId_platformId_subjectId: {
+            schoolId: userData.school_id,
+            platformId: subject.platformId,
+            subjectId: dto.subjectId,
+          },
+        },
+      });
+
+      if (!existing) {
+        this.logger.error(colors.red(`❌ Subject was not excluded: ${dto.subjectId}`));
+        return {
+          success: true,
+          message: 'Subject was not excluded',
+          data: null,
+        };
+      }
+
+      await this.prisma.schoolResourceExclusion.delete({
+        where: { id: existing.id },
+      });
+
+      this.logger.log(colors.green(`✅ Subject included (exclusion removed): ${existing.id}`));
+      return {
+        success: true,
+        message: 'Subject included successfully',
+        data: { id: existing.id, removed: true },
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+      this.logger.error(colors.red(`❌ Error including subject: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to include subject');
+    }
+  }
+
+  /**
+   * Get subject IDs that the school owner has turned off (excluded) for teachers and students.
+   * Frontend should use this to show correct "Visible to school" toggle state: OFF for these, ON for others.
+   */
+  async getExcludedSubjects(user: any) {
+    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Fetching excluded subjects for school`));
+
+    try {
+      const userData = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { school_id: true, role: true },
+      });
+
+      if (!userData) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (!['school_director', 'school_admin'].includes(userData.role)) {
+        throw new ForbiddenException('Only school directors and admins can view excluded subjects');
+      }
+
+      const exclusions = await this.prisma.schoolResourceExclusion.findMany({
+        where: { schoolId: userData.school_id },
+        select: { subjectId: true, subject: { select: { id: true, name: true, code: true } } },
+      });
+
+      return {
+        success: true,
+        message: 'Excluded subjects retrieved successfully',
+        data: {
+          subjectIds: exclusions.map((e) => e.subjectId),
+          items: exclusions.map((e) => ({ subjectId: e.subjectId, subject: e.subject })),
+        },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error(colors.red(`❌ Error fetching excluded subjects: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to fetch excluded subjects');
+    }
+  }
+
+  /**
+   * Turn on all subjects for the school (remove all school-level exclusions).
+   * Use when the school owner wants "everyone sees all library subjects" and there are stale exclusions.
+   */
+  async includeAllSubjects(user: any) {
+    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Including all subjects (clearing exclusions)`));
+
+    try {
+      const userData = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { school_id: true, role: true },
+      });
+
+      if (!userData) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (!['school_director', 'school_admin'].includes(userData.role)) {
+        throw new ForbiddenException('Only school directors and admins can include all subjects');
+      }
+
+      const result = await this.prisma.schoolResourceExclusion.deleteMany({
+        where: { schoolId: userData.school_id },
+      });
+
+      this.logger.log(colors.green(`✅ Cleared ${result.count} subject exclusion(s)`));
+      return {
+        success: true,
+        message: result.count > 0 ? `All subjects are now visible to the school (${result.count} exclusion(s) removed)` : 'No exclusions to clear; all subjects are already visible',
+        data: { removedCount: result.count },
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      this.logger.error(colors.red(`❌ Error including all subjects: ${error.message}`), error.stack);
+      throw new InternalServerErrorException('Failed to include all subjects');
     }
   }
 

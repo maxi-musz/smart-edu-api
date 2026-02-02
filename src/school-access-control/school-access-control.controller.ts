@@ -20,6 +20,7 @@ import {
   SchoolRevokeAccessDto,
   QueryAvailableResourcesDto,
   QueryUserResourcesDto,
+  SchoolExcludeSubjectDto,
 } from './dto';
 import { GetUser } from '../school/auth/decorator/get-user-decorator';
 import { JwtGuard } from '../school/auth/guard/jwt.guard';
@@ -100,6 +101,56 @@ export class SchoolAccessControlController {
     @Body() dto?: SchoolRevokeAccessDto,
   ) {
     return this.accessControlService.revokeAccess(user, id, dto);
+  }
+
+  @Post('exclude-subject')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Exclude (turn off) a subject for the school',
+    description: 'School directors/admins can exclude subjects so non-admin users do not see them in explore. School owner still sees all.',
+  })
+  @ApiResponse({ status: 201, description: 'Subject excluded successfully' })
+  @ApiResponse({ status: 400, description: 'School does not have library access to this subject' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only school directors and admins' })
+  @ApiResponse({ status: 404, description: 'Subject not found' })
+  async excludeSubject(@GetUser() user: any, @Body() dto: SchoolExcludeSubjectDto) {
+    return this.accessControlService.excludeSubject(user, dto);
+  }
+
+  @Post('include-subject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Include (turn on) a previously excluded subject',
+    description: 'Remove the school-level subject exclusion so the subject is visible again to non-admin users.',
+  })
+  @ApiResponse({ status: 200, description: 'Subject included successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only school directors and admins' })
+  @ApiResponse({ status: 404, description: 'Subject not found' })
+  async includeSubject(@GetUser() user: any, @Body() dto: SchoolExcludeSubjectDto) {
+    return this.accessControlService.includeSubject(user, dto);
+  }
+
+  @Get('excluded-subjects')
+  @ApiOperation({
+    summary: 'Get subjects turned off for the school',
+    description: 'Returns subject IDs that the school owner has excluded. Use this to show correct "Visible to school" toggle state (OFF for these, ON for others).',
+  })
+  @ApiResponse({ status: 200, description: 'Excluded subjects retrieved successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only school directors and admins' })
+  async getExcludedSubjects(@GetUser() user: any) {
+    return this.accessControlService.getExcludedSubjects(user);
+  }
+
+  @Post('include-all-subjects')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Turn on all subjects for the school',
+    description: 'Remove all school-level exclusions so teachers and students see all subjects the library granted. Use when toggles should all be ON.',
+  })
+  @ApiResponse({ status: 200, description: 'All subjects now visible' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only school directors and admins' })
+  async includeAllSubjects(@GetUser() user: any) {
+    return this.accessControlService.includeAllSubjects(user);
   }
 
   @Get('users/:userId/resources')
