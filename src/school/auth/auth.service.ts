@@ -594,6 +594,19 @@ export class AuthService {
                 );
             }
 
+            // if user exists, confirm that the school is approved and if not apporved, show proper message that their school is currently undergoing approval process
+            const school = await this.prisma.school.findUnique({
+                where: { id: existing_user.school_id },
+            });
+            if (school?.status !== 'approved') {
+                this.logger.log(colors.yellow(`School is not approved: ${existing_user.school_id}`));
+                return ResponseHelper.error(
+                    "School is not approved, Contact support for more information",
+                    null,
+                    400
+                );
+            }
+
             // Stored password must be a valid Argon2 hash (starts with $). If not, it may be a placeholder
             // (e.g. for library users who have a User record only for OTP storage).
             const storedPassword = existing_user.password ?? '';
