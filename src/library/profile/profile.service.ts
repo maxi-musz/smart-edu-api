@@ -14,7 +14,20 @@ export class ProfileService {
 
     const libraryUser = await this.prisma.libraryResourceUser.findUnique({
       where: { id: user.sub },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+        last_name: true,
+        phone_number: true,
+        role: true,
+        userType: true,
+        status: true,
+        permissions: true,
+        permissionLevel: true,
+        platformId: true,
+        createdAt: true,
+        updatedAt: true,
         platform: {
           select: {
             id: true,
@@ -140,9 +153,7 @@ export class ProfileService {
       }),
     ]);
 
-    // Do not return password in response
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, uploadedVideos, uploadedMaterials, ...userData } = libraryUser as any;
+    const { uploadedVideos, uploadedMaterials, ...userData } = libraryUser;
 
     const responseData = {
       user: {

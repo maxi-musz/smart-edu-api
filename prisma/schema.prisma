@@ -2011,6 +2011,16 @@ model LibraryPlatform {
   libraryResourceAccess            LibraryResourceAccess[]
 }
 
+/// Permission definitions (catalog) for library users. Developers CRUD these; library admins assign codes to users via permissions array.
+model LibraryPermissionDefinition {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "upload_video", "manage_library_users", "view_analytics"
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 /// Nigerian Examination Bodies (WAEC, JAMB, NECO, etc.)
 /// These bodies can create assessments/past questions for students
 model ExamBody {
@@ -2285,6 +2295,8 @@ model LibraryResourceUser {
   role     LibraryUserRole @default(content_creator)
   userType LibraryUserType @default(libraryresourceowner)
   status   UserStatus      @default(active) // Reuses existing enum from main schema
+  permissions    String[] @default([]) // Permission codes from LibraryPermissionDefinition (e.g. manage_library_users, view_analytics)
+  permissionLevel Int?     // Elevated users: e.g. 10 = can manage library users; used alongside permissions array
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

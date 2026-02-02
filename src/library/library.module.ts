@@ -15,11 +15,13 @@ import { LibraryExamBodyAssessmentModule } from './exam-body-assessment/exam-bod
 import { LibraryExamBodyModule } from './exam-body/exam-body.module';
 import { LibraryExamBodySubjectModule } from './exam-body-subject/exam-body-subject.module';
 import { LibraryExamBodyYearModule } from './exam-body-year/exam-body-year.module';
+import { LibraryUsersModule } from './library-users/library-users.module';
 
 @Module({
   imports: [
     PrismaModule,
     LibraryAuthModule,
+    LibraryUsersModule,
     ProfileModule,
     SchoolsModule,
     ResourcesModule,
