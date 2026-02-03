@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CloudFrontService } from '../shared/services/cloudfront.service';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
 
@@ -7,7 +8,10 @@ import * as colors from 'colors';
 export class VideoService {
   private readonly logger = new Logger(VideoService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudFrontService: CloudFrontService,
+  ) {}
 
   /**
    * Universal video playback endpoint
@@ -76,6 +80,7 @@ export class VideoService {
         title: true,
         description: true,
         videoUrl: true,
+        videoS3Key: true,
         thumbnailUrl: true,
         durationSeconds: true,
         sizeBytes: true,
@@ -183,8 +188,12 @@ export class VideoService {
       },
     });
 
+    // Build playback URL (CloudFront if configured, otherwise S3)
+    const playbackUrl = this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+
     return ResponseHelper.success('Video retrieved for playback', {
       ...video,
+      videoUrl: playbackUrl, // Use CloudFront URL when available
       views: updatedViews,
       hasViewedBefore: !!existingView,
       viewedAt: existingView?.viewedAt || null,

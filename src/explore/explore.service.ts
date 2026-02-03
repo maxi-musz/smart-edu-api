@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessControlHelperService } from '../school-access-control/access-control-helper.service';
+import { CloudFrontService } from '../shared/services/cloudfront.service';
 import { LibraryResourceType } from '../library-access-control/dto';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
@@ -13,6 +14,7 @@ export class ExploreService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControlHelper: AccessControlHelperService,
+    private readonly cloudFrontService: CloudFrontService,
   ) {}
 
   async getExploreData(user: any) {
@@ -756,6 +758,7 @@ export class ExploreService {
           title: true,
           description: true,
           videoUrl: true,
+          videoS3Key: true,
           thumbnailUrl: true,
           durationSeconds: true,
           sizeBytes: true,
@@ -830,8 +833,12 @@ export class ExploreService {
         this.logger.log(colors.yellow(`⚠️ Repeat view (not counted): "${video.title}" by user ${userId}`));
       }
 
+      // Build playback URL (CloudFront if configured, otherwise S3)
+      const playbackUrl = this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+
       const data = {
         ...video,
+        videoUrl: playbackUrl, // Use CloudFront URL when available
         views: updatedViews,
         hasViewedBefore: !!existingView,
         viewedAt: existingView?.viewedAt || new Date(),
