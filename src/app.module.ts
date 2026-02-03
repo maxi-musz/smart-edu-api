@@ -24,6 +24,7 @@ import { ExamPracticeModule } from './exam-practice/exam-practice.module';
 import { VideoModule } from './video/video.module';
 import { LibraryAccessControlModule } from './library-access-control/library-access-control.module';
 import { SchoolAccessControlModule } from './school-access-control/school-access-control.module';
+import { CloudFrontModule } from './shared/services/cloudfront.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { SchoolAccessControlModule } from './school-access-control/school-access
     PushNotificationsModule,
     SchedulesModule,
     PrismaModule,
+    CloudFrontModule,
     UserModule,
     LibraryModule,
     DeveloperModule,
