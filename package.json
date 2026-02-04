@@ -33,8 +33,10 @@
   },
   "dependencies": {
     "2": "^3.0.0",
+    "@aws-sdk/client-mediaconvert": "^3.981.0",
     "@aws-sdk/client-s3": "^3.879.0",
     "@aws-sdk/s3-request-presigner": "^3.879.0",
+    "@nestjs/cli": "^11.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -44,7 +46,6 @@
     "@nestjs/platform-socket.io": "^11.1.10",
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/websockets": "^11.1.10",
-    "@nestjs/cli": "^11.0.0",
     "@pinecone-database/pinecone": "^6.1.2",
     "@prisma/adapter-pg": "7.2.0",
     "@prisma/client": "7.2.0",

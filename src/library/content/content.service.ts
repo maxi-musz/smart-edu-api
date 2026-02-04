@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../shared/services/s3.service';
+import { HlsTranscodeService } from '../../shared/services/hls-transcode.service';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
 import { FileValidationHelper } from '../../shared/helper-functions/file-validation.helper';
 import { ApiResponse } from '../../shared/helper-functions/response';
@@ -8,6 +9,7 @@ import { UploadLibraryVideoDto } from './dto/upload-video.dto';
 import { UploadLibraryMaterialDto } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
 import { UpdateLibraryVideoDto } from './dto/update-video.dto';
+import { HlsTranscodeStatus } from '@prisma/client';
 import * as colors from 'colors';
 import * as ffmpeg from 'fluent-ffmpeg';
 import { promisify } from 'util';
@@ -22,6 +24,7 @@ export class ContentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
+    private readonly hlsTranscodeService: HlsTranscodeService,
     private readonly uploadProgressService: UploadProgressService,
   ) {}
 
@@ -201,6 +204,7 @@ export class ContentService {
             durationSeconds: durationSeconds,
             order: nextOrder,
             status: 'published',
+            hlsStatus: HlsTranscodeStatus.pending, // Mark for HLS transcode
           },
           include: {
             topic: {
@@ -229,6 +233,35 @@ export class ContentService {
       this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, videoLesson.id);
 
       this.logger.log(colors.green(`✅ Video uploaded successfully: ${videoLesson.id}`));
+
+      // Save uploaded file to temp path for HLS transcode so we don't re-download from S3
+      // Multer uses memory storage by default, so videoFile.buffer has the data (not videoFile.path)
+      let localPathForTranscode: string | undefined;
+      const transcodeTempDir = path.join(os.tmpdir(), 'hls-transcode');
+      try {
+        fs.mkdirSync(transcodeTempDir, { recursive: true });
+        localPathForTranscode = path.join(transcodeTempDir, `upload_${videoLesson.id}_${Date.now()}.mp4`);
+        
+        if (videoFile?.path && fs.existsSync(videoFile.path)) {
+          // Disk storage: copy the file
+          fs.copyFileSync(videoFile.path, localPathForTranscode);
+        } else if (videoFile?.buffer) {
+          // Memory storage: write buffer to file
+          fs.writeFileSync(localPathForTranscode, videoFile.buffer);
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ No local file or buffer available, will use S3`));
+          localPathForTranscode = undefined;
+        }
+      } catch (copyErr) {
+        this.logger.warn(colors.yellow(`⚠️ Could not save for local transcode, will use S3: ${copyErr.message}`));
+        localPathForTranscode = undefined;
+      }
+
+      // Trigger HLS transcode in background (use local file when available to skip S3 download)
+      this.hlsTranscodeService.transcodeLibraryVideo(videoLesson.id, localPathForTranscode ? { localFilePath: localPathForTranscode } : undefined)
+        .then(() => this.logger.log(colors.green(`✅ HLS transcode completed for: ${videoLesson.id}`)))
+        .catch((err) => this.logger.error(colors.red(`❌ HLS transcode failed for ${videoLesson.id}: ${err.message}`)));
+
       return videoLesson;
     } catch (error) {
       if (smoother) clearInterval(smoother);

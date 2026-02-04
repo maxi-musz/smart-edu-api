@@ -145,6 +145,82 @@ Choice can be made when we implement; the walkthrough stays the same (output HLS
 
 **Checkpoint:** After Phase 2, new/updated videos can have HLS; existing videos continue to play via `videoUrl`. No breaking change to current code paths.
 
+### Phase 2.5 — End-to-end testing
+
+Use this checklist to verify the full flow locally or in staging.
+
+#### Prerequisites
+
+- **FFmpeg** installed (`ffmpeg -version`).
+- **Env:** `CLOUDFRONT_DOMAIN`, `AWS_S3_BUCKET`, `DATABASE_URL`, and AWS credentials for S3 read/write.
+- **DB:** Migrations applied (`npx prisma migrate deploy` or `prisma migrate dev`).
+
+#### 1. Start the app and confirm modules load
+
+```bash
+npm run start:dev
+```
+
+Look for log lines:
+
+- `✅ CloudFront enabled: <your-domain>` (or `⚠️ CloudFront not configured`).
+- No errors on startup from `HlsTranscodeService` or `CloudFrontService`.
+
+#### 2. Upload a test video (library or school)
+
+- **Library:** Use your existing library video upload flow (platform → subject → topic → add video). Ensure the request completes and returns a video ID.
+- **School:** Use your school video upload flow (school → topic → add video). Ensure the request completes and returns a video ID.
+
+After upload, the transcode is triggered in the background. You should see logs like:
+
+- `🎬 Starting HLS transcode for library video: <id>`
+- `🔄 Transcode attempt 1/3...`
+- `📥 Downloading source video...`
+- `🔄 Starting FFmpeg transcode (480p, 720p, 1080p)...`
+- `✅ HLS transcode completed for library video: <id>`
+
+If transcode fails, you’ll see retry attempts (e.g. `⏳ Retrying in 30s...`) and eventually `hlsStatus: failed`. Use the admin endpoints below to list failed videos and retry.
+
+#### 3. Check transcode status (optional)
+
+- **Stats:** `GET /admin/hls-transcode/stats`  
+  Response includes counts for `pending`, `processing`, `completed`, `failed` for library and school.
+- **Single video:** `GET /admin/hls-transcode/status/library/<videoId>` or `GET /admin/hls-transcode/status/school/<videoId>`  
+  Returns `hlsStatus` and `hlsPlaybackUrl` when completed.
+- **Failed list:** `GET /admin/hls-transcode/failed/library` or `GET /admin/hls-transcode/failed/school`  
+  Use these to retry: `POST /admin/hls-transcode/retry/library/<videoId>` or `POST /admin/hls-transcode/retry/school/<videoId>`.
+
+#### 4. Call the play endpoint
+
+Use the same endpoint you use in production for playback (e.g. universal play or explore play), with a valid JWT and the video ID from step 2.
+
+**When HLS is ready (`hlsStatus === completed`):**
+
+- `data.videoUrl` should be the **HLS manifest URL** (e.g. `https://<cloudfront>/.../master.m3u8`).
+- `data.streamingType` should be `"hls"`.
+
+**When HLS is not ready (pending/processing/failed):**
+
+- `data.videoUrl` is the **CloudFront (or S3) MP4 URL**.
+- `data.streamingType` is `"mp4"`.
+
+#### 5. Play in browser or app
+
+- For **HLS:** Use a player that supports HLS (e.g. HLS.js, or native on Safari). Point it at `data.videoUrl` (the `.m3u8` URL).
+- For **MP4:** Use a standard `<video src="...">` or equivalent.
+
+#### 6. Quick verification summary
+
+| Step | What to verify |
+|------|----------------|
+| Upload | Video created; logs show transcode started. |
+| Transcode | Logs show FFmpeg run and “HLS transcode completed” (or retries then failure). |
+| Play (HLS ready) | `videoUrl` is `.m3u8`, `streamingType` is `hls`. |
+| Play (HLS not ready) | `videoUrl` is MP4 URL, `streamingType` is `mp4`. |
+| Admin | `/admin/hls-transcode/stats` and status/failed/retry endpoints respond as expected. |
+
+If any step fails, check: FFmpeg on PATH, S3 permissions (read source + write HLS prefix), CloudFront domain and bucket policy, and that the DB has the HLS columns and enum.
+
 ---
 
 ## Phase 3 — Signed URLs (optional, for tighter security)

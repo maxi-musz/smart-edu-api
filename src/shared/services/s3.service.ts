@@ -63,8 +63,27 @@ export class S3Service {
     }
 
     this.s3Client = new S3Client(s3ClientConfig);
+  }
 
+  /**
+   * Log S3 service status (called from main.ts after startup)
+   */
+  logStatus(): void {
     this.logger.log(colors.green(`✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`));
+  }
+
+  /**
+   * Get the bucket name (for status logging)
+   */
+  getBucketName(): string {
+    return this.bucketName;
+  }
+
+  /**
+   * Get the region (for status logging)
+   */
+  getRegion(): string {
+    return this.region;
   }
 
   /**
@@ -120,7 +139,9 @@ export class S3Service {
           // ACL removed - bucket uses "Bucket owner enforced" which disables ACLs
           // Use bucket policies for public access instead
           Metadata: {
-            originalName: file.originalname,
+            // Encode originalName to handle special characters (spaces, unicode, etc.)
+            // HTTP headers cannot contain certain characters
+            originalName: encodeURIComponent(file.originalname),
             size: file.size.toString(),
             uploadedAt: new Date().toISOString(),
           },

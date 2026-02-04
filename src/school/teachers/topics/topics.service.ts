@@ -9,8 +9,10 @@ import { UploadVideoLessonDto, VideoLessonResponseDto, UploadProgressDto } from 
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 
 import { S3Service } from '../../../shared/services/s3.service';
+import { HlsTranscodeService } from '../../../shared/services/hls-transcode.service';
 import { UploadProgressService } from '../../ai-chat/upload-progress.service';
 import { DocumentProcessingService } from '../../ai-chat/services';
+import { HlsTranscodeStatus } from '@prisma/client';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { formatDate } from 'src/shared/helper-functions/formatter';
@@ -31,6 +33,7 @@ export class TopicsService {
     private readonly prisma: PrismaService,
     private readonly academicSessionService: AcademicSessionService,
     private readonly s3Service: S3Service,
+    private readonly hlsTranscodeService: HlsTranscodeService,
     private readonly uploadProgressService: UploadProgressService,
     private readonly documentProcessingService: DocumentProcessingService,
   ) {}
@@ -1333,6 +1336,7 @@ export class TopicsService {
             uploadedById: userId,
             order: nextOrder,
             url: finalVideoUrl,
+            videoS3Key: videoS3Key, // Store S3 key for HLS transcode
             duration: videoDuration,
             size: videoSize,
             thumbnail: thumbnailResult ? {
@@ -1340,7 +1344,8 @@ export class TopicsService {
               public_id: thumbnailResult.public_id
             } : undefined,
             status: 'published',
-            views: 0
+            views: 0,
+            hlsStatus: HlsTranscodeStatus.pending, // Mark for HLS transcode
           },
           include: {
             topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
@@ -1402,6 +1407,34 @@ export class TopicsService {
       }
       this.logger.log(colors.blue(`   - Topic: ${videoContent.topic.title}`));
       this.logger.log(colors.blue(`   - Subject: ${videoContent.topic.subject.name}`));
+
+      // Save uploaded file to temp path for HLS transcode so we don't re-download from S3
+      // Multer uses memory storage by default, so videoFile.buffer has the data (not videoFile.path)
+      let localPathForTranscode: string | undefined;
+      const transcodeTempDir = path.join(os.tmpdir(), 'hls-transcode');
+      try {
+        fs.mkdirSync(transcodeTempDir, { recursive: true });
+        localPathForTranscode = path.join(transcodeTempDir, `upload_school_${videoContent.id}_${Date.now()}.mp4`);
+        
+        if (videoFile?.path && fs.existsSync(videoFile.path)) {
+          // Disk storage: copy the file
+          fs.copyFileSync(videoFile.path, localPathForTranscode);
+        } else if (videoFile?.buffer) {
+          // Memory storage: write buffer to file
+          fs.writeFileSync(localPathForTranscode, videoFile.buffer);
+        } else {
+          this.logger.warn(colors.yellow(`⚠️ No local file or buffer available, will use S3`));
+          localPathForTranscode = undefined;
+        }
+      } catch (copyErr) {
+        this.logger.warn(colors.yellow(`⚠️ Could not save for local transcode, will use S3: ${copyErr.message}`));
+        localPathForTranscode = undefined;
+      }
+
+      // Trigger HLS transcode in background (use local file when available to skip S3 download)
+      this.hlsTranscodeService.transcodeSchoolVideo(videoContent.id, localPathForTranscode ? { localFilePath: localPathForTranscode } : undefined)
+        .then(() => this.logger.log(colors.green(`✅ HLS transcode completed for school video: ${videoContent.id}`)))
+        .catch((err) => this.logger.error(colors.red(`❌ HLS transcode failed for school video ${videoContent.id}: ${err.message}`)));
 
       return {
         id: videoContent.id,

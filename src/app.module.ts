@@ -11,9 +11,9 @@ import { LibraryModule } from './library/library.module';
 import { DeveloperModule } from './developer/developer.module';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
-import * as joi from 'joi';
 import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
+import { envValidationSchema } from './config/env.validation';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { UserModule } from './user/user.module';
@@ -25,6 +25,7 @@ import { VideoModule } from './video/video.module';
 import { LibraryAccessControlModule } from './library-access-control/library-access-control.module';
 import { SchoolAccessControlModule } from './school-access-control/school-access-control.module';
 import { CloudFrontModule } from './shared/services/cloudfront.module';
+import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
 
 @Module({
   imports: [
@@ -32,12 +33,7 @@ import { CloudFrontModule } from './shared/services/cloudfront.module';
       isGlobal: true, // Makes the configuration available globally
       envFilePath: '.env', // Path to your environment variables file
       load: [appConfig, databaseConfig],
-      // validationSchema: joi.object({
-      //   NODE_ENV: joi.string().valid('development', 'staging', 'production').required(),
-      //   DATABASE_URL: joi.string().required(),
-      //   DATABASE_URL_STAGING: joi.string().required(),
-      //   DATABASE_URL_PRODUCTION: joi.string().required(),
-      // }),
+      validationSchema: envValidationSchema,
     }),
     MulterModule.register({
       storage: memoryStorage(),
@@ -50,6 +46,7 @@ import { CloudFrontModule } from './shared/services/cloudfront.module';
     SchedulesModule,
     PrismaModule,
     CloudFrontModule,
+    HlsTranscodeModule,
     UserModule,
     LibraryModule,
     DeveloperModule,

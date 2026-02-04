@@ -425,16 +425,31 @@ export class ExploreService {
     if (!userId) {
       throw new ForbiddenException('Authentication required');
     }
+    const isLibraryUser = !!user?.platform_id;
 
-    const accessCheck = await this.accessControlHelper.checkUserAccess(
-      userId,
-      LibraryResourceType.SUBJECT,
-      subjectId,
-    );
-    if (!accessCheck.hasAccess) {
-      throw new ForbiddenException(
-        accessCheck.reason ?? 'You do not have access to this subject',
+    // Library users (platform owners) should be able to see their own subjects
+    // without going through the school-based access control chain, which expects
+    // a school user in the `user` table.
+    if (!isLibraryUser) {
+      const accessCheck = await this.accessControlHelper.checkUserAccess(
+        userId,
+        LibraryResourceType.SUBJECT,
+        subjectId,
       );
+      if (!accessCheck.hasAccess) {
+        throw new ForbiddenException(
+          accessCheck.reason ?? 'You do not have access to this subject',
+        );
+      }
+    } else {
+      // Basic safety: make sure the subject belongs to the library user's platform
+      const ownsSubject = await this.prisma.librarySubject.findFirst({
+        where: { id: subjectId, platformId: user.platform_id },
+        select: { id: true },
+      });
+      if (!ownsSubject) {
+        throw new ForbiddenException('You do not have access to this subject');
+      }
     }
 
     this.logger.log(
@@ -728,30 +743,47 @@ export class ExploreService {
   }
 
   async playVideo(user: any, videoId: string) {
+    this.logger.log(colors.cyan(`🎥 User ${user?.sub ?? user?.email} requesting video playback: ${videoId}`));
     const userId = user?.sub;
     if (!userId) {
       throw new ForbiddenException('Authentication required');
     }
 
-    this.logger.log(colors.cyan(`🎥 User ${userId} requesting video playback: ${videoId}`));
+    const isLibraryUser = !!user?.platform_id;
 
-    const accessCheck = await this.accessControlHelper.checkUserAccess(
-      userId,
-      LibraryResourceType.VIDEO,
-      videoId,
-    );
-    if (!accessCheck.hasAccess) {
-      throw new ForbiddenException(
-        accessCheck.reason ?? 'You do not have access to this video',
+    if (isLibraryUser) {
+      // Library users (platform owners): allow if video exists, is published, and belongs to their platform
+      const videoExists = await this.prisma.libraryVideoLesson.findFirst({
+        where: {
+          id: videoId,
+          // status: 'published',
+          platformId: user.platform_id,
+        },
+        select: { id: true },
+      });
+      if (!videoExists) {
+        throw new ForbiddenException('Video not found or you do not have access to this video');
+      }
+    } else {
+      // School users: use full access control chain (library → school → teacher)
+      const accessCheck = await this.accessControlHelper.checkUserAccess(
+        userId,
+        LibraryResourceType.VIDEO,
+        videoId,
       );
+      if (!accessCheck.hasAccess) {
+        throw new ForbiddenException(
+          accessCheck.reason ?? 'You do not have access to this video',
+        );
+      }
     }
 
     try {
       // Fetch video details
       const video = await this.prisma.libraryVideoLesson.findUnique({
-        where: { 
+        where: {
           id: videoId,
-          status: 'published'
+          status: 'published',
         },
         select: {
           id: true,
@@ -759,6 +791,8 @@ export class ExploreService {
           description: true,
           videoUrl: true,
           videoS3Key: true,
+          hlsPlaybackUrl: true,
+          hlsStatus: true,
           thumbnailUrl: true,
           durationSeconds: true,
           sizeBytes: true,
@@ -799,31 +833,28 @@ export class ExploreService {
       }
 
       // Check if user has already viewed this video (unique view tracking like YouTube)
+      // Library users: sub is LibraryResourceUser id. School users: sub is User id.
+      const viewWhere = isLibraryUser
+        ? { videoId, libraryResourceUserId: userId }
+        : { videoId, userId };
       const existingView = await this.prisma.libraryVideoView.findFirst({
-        where: {
-          videoId: videoId,
-          userId, // JWT payload uses 'sub' for user ID
-        },
+        where: viewWhere,
       });
 
       let updatedViews = video.views;
 
       // Only increment view count if this is a new unique view
       if (!existingView) {
+        const viewData = isLibraryUser
+          ? { videoId, libraryResourceUserId: userId, userId: null }
+          : { videoId, userId, libraryResourceUserId: null };
         await this.prisma.$transaction([
-          // Increment view count
           this.prisma.libraryVideoLesson.update({
             where: { id: videoId },
-            data: {
-              views: { increment: 1 },
-            },
+            data: { views: { increment: 1 } },
           }),
-          // Record the view
           this.prisma.libraryVideoView.create({
-            data: {
-              videoId: videoId,
-              userId,
-            },
+            data: viewData,
           }),
         ]);
 
@@ -833,12 +864,19 @@ export class ExploreService {
         this.logger.log(colors.yellow(`⚠️ Repeat view (not counted): "${video.title}" by user ${userId}`));
       }
 
-      // Build playback URL (CloudFront if configured, otherwise S3)
-      const playbackUrl = this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+      // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
+      const isHlsReady = video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
+      const playbackUrl = isHlsReady && video.hlsPlaybackUrl
+        ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
+        : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+
+      // Remove internal fields from response
+      const { hlsStatus, hlsPlaybackUrl, videoS3Key, ...videoData } = video;
 
       const data = {
-        ...video,
-        videoUrl: playbackUrl, // Use CloudFront URL when available
+        ...videoData,
+        videoUrl: playbackUrl, // Use HLS or CloudFront URL when available
+        streamingType: isHlsReady ? 'hls' : 'mp4', // Inform client of stream type
         views: updatedViews,
         hasViewedBefore: !!existingView,
         viewedAt: existingView?.viewedAt || new Date(),

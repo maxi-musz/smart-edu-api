@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ExploreController } from './explore.controller';
 import { ExploreService } from './explore.service';
@@ -17,9 +18,11 @@ import { SchoolAccessControlModule } from '../school-access-control/school-acces
 import { AiChatModule } from '../school/ai-chat/ai-chat.module';
 import { ExploreChatServicesModule } from './chat/explore-chat-services.module';
 import { ExploreExamBodyModule } from './exam-body/exam-body.module';
+import { UniversalJwtStrategy, UniversalJwtGuard } from '../video/guards/universal-jwt.guard';
 
 @Module({
   imports: [
+    PassportModule,
     ExploreExamBodyModule,
     PrismaModule,
     LibraryAuthModule,
@@ -50,6 +53,8 @@ import { ExploreExamBodyModule } from './exam-body/exam-body.module';
     ExploreChatGateway,
     ExploreChatSocketJwtGuard,
     ChatService,
+    UniversalJwtStrategy,
+    UniversalJwtGuard,
   ],
   exports: [ExploreService, ExploreAiBooksService, ExploreChatGateway],
 })
