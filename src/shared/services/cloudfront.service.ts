@@ -9,7 +9,12 @@ export class CloudFrontService {
 
   constructor(private readonly configService: ConfigService) {
     this.cloudFrontDomain = this.configService.get<string>('CLOUDFRONT_DOMAIN');
-    
+  }
+
+  /**
+   * Log CloudFront service status (called from main.ts after startup)
+   */
+  logStatus(): void {
     if (this.cloudFrontDomain) {
       this.logger.log(colors.green(`✅ CloudFront enabled: ${this.cloudFrontDomain}`));
     } else {
@@ -60,5 +65,18 @@ export class CloudFrontService {
     }
 
     return fallbackVideoUrl;
+  }
+
+  /**
+   * Return the HLS playback URL, normalizing for provider.
+   * MediaConvert writes main.m3u8; FFmpeg writes master.m3u8.
+   * If the stored URL points to master.m3u8 but we use MediaConvert, return main.m3u8 so existing DB records work.
+   */
+  getHlsPlaybackUrl(storedHlsUrl: string): string {
+    const provider = this.configService.get<string>('HLS_TRANSCODE_PROVIDER') || 'ffmpeg';
+    if (provider.toLowerCase() === 'mediaconvert' && storedHlsUrl.endsWith('/master.m3u8')) {
+      return storedHlsUrl.replace(/\/master\.m3u8$/, '/main.m3u8');
+    }
+    return storedHlsUrl;
   }
 }

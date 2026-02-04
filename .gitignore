@@ -45,6 +45,9 @@ lerna-debug.log*
 .env.production
 .env.staging
 
+# AWS setup docs (contains credentials)
+docs/AWS-MULTI-ENV/
+
 # temp directory
 .temp
 .tmp

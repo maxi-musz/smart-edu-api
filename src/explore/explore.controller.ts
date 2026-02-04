@@ -3,11 +3,11 @@ import { ApiTags } from '@nestjs/swagger';
 import { ExploreService } from './explore.service';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
 import { ExploreDocs } from './docs';
-import { JwtGuard } from '../school/auth/guard';
+import { UniversalJwtGuard } from '../video/guards/universal-jwt.guard';
 
 @ApiTags('Explore')
 @Controller('explore')
-@UseGuards(JwtGuard)
+@UseGuards(UniversalJwtGuard)
 export class ExploreController {
   constructor(private readonly exploreService: ExploreService) {}
 

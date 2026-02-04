@@ -81,6 +81,8 @@ export class VideoService {
         description: true,
         videoUrl: true,
         videoS3Key: true,
+        hlsPlaybackUrl: true,
+        hlsStatus: true,
         thumbnailUrl: true,
         durationSeconds: true,
         sizeBytes: true,
@@ -188,12 +190,19 @@ export class VideoService {
       },
     });
 
-    // Build playback URL (CloudFront if configured, otherwise S3)
-    const playbackUrl = this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+    // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
+    const isHlsReady = video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
+    const playbackUrl = isHlsReady && video.hlsPlaybackUrl
+      ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
+      : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+
+    // Remove internal fields from response
+    const { hlsStatus, hlsPlaybackUrl, videoS3Key, ...videoData } = video;
 
     return ResponseHelper.success('Video retrieved for playback', {
-      ...video,
-      videoUrl: playbackUrl, // Use CloudFront URL when available
+      ...videoData,
+      videoUrl: playbackUrl, // Use HLS or CloudFront URL when available
+      streamingType: isHlsReady ? 'hls' : 'mp4', // Inform client of stream type
       views: updatedViews,
       hasViewedBefore: !!existingView,
       viewedAt: existingView?.viewedAt || null,
@@ -220,6 +229,9 @@ export class VideoService {
         title: true,
         description: true,
         url: true,
+        videoS3Key: true,
+        hlsPlaybackUrl: true,
+        hlsStatus: true,
         thumbnail: true,
         duration: true,
         size: true,
@@ -306,11 +318,18 @@ export class VideoService {
     // Parse duration to seconds for consistency
     const durationSeconds = this.parseDurationToSeconds(video.duration || '00:00:00');
 
+    // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
+    const isHlsReady = video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
+    const playbackUrl = isHlsReady && video.hlsPlaybackUrl
+      ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
+      : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.url);
+
     return ResponseHelper.success('Video retrieved for playback', {
       id: video.id,
       title: video.title,
       description: video.description,
-      videoUrl: video.url, // Use 'videoUrl' for consistency
+      videoUrl: playbackUrl, // Use HLS or CloudFront URL when available
+      streamingType: isHlsReady ? 'hls' : 'mp4', // Inform client of stream type
       thumbnailUrl: video.thumbnail ? (video.thumbnail as any).secure_url || null : null,
       durationSeconds: durationSeconds,
       size: video.size,

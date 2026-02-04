@@ -151,7 +151,9 @@ export class S3StorageProvider implements IStorageProvider {
           // Note: ACL removed - bucket uses "Bucket owner enforced" which disables ACLs
           // Files will be accessible based on bucket policy instead
           Metadata: {
-            originalName: file.originalname,
+            // Encode originalName to handle special characters (spaces, unicode, etc.)
+            // HTTP headers cannot contain certain characters
+            originalName: encodeURIComponent(file.originalname),
             size: file.size.toString(),
             uploadedAt: new Date().toISOString(),
           },

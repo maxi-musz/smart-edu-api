@@ -639,7 +639,8 @@ model VideoContent {
   id           String                    @id @default(cuid())
   title        String
   description  String?
-  url          String
+  url          String // Original video URL (MP4)
+  videoS3Key   String? // S3 object key for original MP4
   schoolId     String?
   platformId   String
   uploadedById String
@@ -652,6 +653,11 @@ model VideoContent {
   thumbnail    Json?
   views        Int                       @default(0)
   order        Int                       @default(0)
+
+  // HLS Adaptive Streaming (generated from source MP4)
+  hlsPlaybackUrl String? // CloudFront URL to HLS master playlist (.m3u8)
+  hlsS3Prefix    String? // S3 prefix where HLS files are stored (for cleanup)
+  hlsStatus      HlsTranscodeStatus? // Transcode status: pending, processing, completed, failed
   platform     Organisation              @relation(fields: [platformId], references: [id])
   school       School?                   @relation(fields: [schoolId], references: [id])
   topic        Topic?                    @relation(fields: [topic_id], references: [id])
@@ -1919,6 +1925,13 @@ enum LibraryContentStatus {
   archived
 }
 
+enum HlsTranscodeStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
 enum ChapterStatus {
   active
   deleted
@@ -2424,10 +2437,15 @@ model LibraryVideoLesson {
   title       String
   description String?
 
-  videoUrl       String // Public or signed URL
-  videoS3Key     String? // S3 object key
+  videoUrl       String // Public or signed URL (MP4)
+  videoS3Key     String? // S3 object key for original MP4
   thumbnailUrl   String?
   thumbnailS3Key String?
+
+  // HLS Adaptive Streaming (generated from source MP4)
+  hlsPlaybackUrl String? // CloudFront URL to HLS master playlist (.m3u8)
+  hlsS3Prefix    String? // S3 prefix where HLS files are stored (for cleanup)
+  hlsStatus      HlsTranscodeStatus? // Transcode status: pending, processing, completed, failed
 
   durationSeconds Int?
   sizeBytes       Int?

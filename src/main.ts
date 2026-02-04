@@ -4,6 +4,10 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as colors from 'colors';
 import { ConfigService } from '@nestjs/config';
+import { HlsTranscodeService } from './shared/services/hls-transcode.service';
+import { S3Service } from './shared/services/s3.service';
+import { CloudFrontService } from './shared/services/cloudfront.service';
+import { MediaConvertTranscodeProvider } from './shared/services/transcode-providers/mediaconvert.provider';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -85,5 +89,39 @@ async function bootstrap() {
   console.log(colors.yellow(`📝 API Documentation: http://localhost:${process.env.PORT ?? 3000}/api/docs`));
   console.log(colors.blue(`💾 Database: ${process.env.DATABASE_URL}`));
   console.log(colors.magenta(`🔗 API Base URL: http://localhost:${process.env.PORT ?? 3000}/api/v1`));
+
+  // Log AWS services status at the end of startup (grouped together)
+  console.log(colors.gray('────────────────────────────────────────'));
+  console.log(colors.white('📦 AWS Services Status:'));
+
+  try {
+    const s3Service = app.get(S3Service);
+    s3Service.logStatus();
+  } catch {
+    // S3Service not available
+  }
+
+  try {
+    const cloudFrontService = app.get(CloudFrontService);
+    cloudFrontService.logStatus();
+  } catch {
+    // CloudFrontService not available
+  }
+
+  try {
+    const mediaConvertProvider = app.get(MediaConvertTranscodeProvider);
+    mediaConvertProvider.logStatus();
+  } catch {
+    // MediaConvertTranscodeProvider not available (may be using ffmpeg)
+  }
+
+  try {
+    const hlsTranscode = app.get(HlsTranscodeService);
+    hlsTranscode.logActiveProvider();
+  } catch {
+    // HlsTranscodeService not available in some setups
+  }
+
+  console.log(colors.gray('────────────────────────────────────────'));
 }
 bootstrap();
