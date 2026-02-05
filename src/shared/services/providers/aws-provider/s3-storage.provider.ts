@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, DeleteObjectCommand, GetBucketLocationCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand, DeleteObjectsCommand, GetBucketLocationCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as colors from 'colors';
@@ -203,6 +203,57 @@ export class S3StorageProvider implements IStorageProvider {
     } catch (error) {
       this.logger.error(colors.red(`❌ Failed to delete file from S3: ${error.message}`));
       throw new Error(`Failed to delete file from S3: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delete all objects in a folder/prefix
+   * Used for deleting HLS folders which contain multiple .ts and .m3u8 files
+   * @param prefix - The folder prefix to delete (e.g., "library/videos-hls/abc123/")
+   */
+  async deleteFolder(prefix: string): Promise<void> {
+    try {
+      // Ensure prefix ends with "/" for proper folder matching
+      const folderPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+      
+      this.logger.log(colors.cyan(`🗑️ Deleting folder from S3: ${folderPrefix}`));
+      
+      let continuationToken: string | undefined;
+      let deletedCount = 0;
+      
+      do {
+        // List all objects with this prefix
+        const listCommand = new ListObjectsV2Command({
+          Bucket: this.bucketName,
+          Prefix: folderPrefix,
+          ContinuationToken: continuationToken,
+        });
+        
+        const listResponse = await this.s3Client.send(listCommand);
+        
+        if (listResponse.Contents && listResponse.Contents.length > 0) {
+          // Delete objects in batches (S3 allows max 1000 objects per delete request)
+          const objectsToDelete = listResponse.Contents.map(obj => ({ Key: obj.Key! }));
+          
+          const deleteCommand = new DeleteObjectsCommand({
+            Bucket: this.bucketName,
+            Delete: {
+              Objects: objectsToDelete,
+              Quiet: true,
+            },
+          });
+          
+          await this.s3Client.send(deleteCommand);
+          deletedCount += objectsToDelete.length;
+        }
+        
+        continuationToken = listResponse.NextContinuationToken;
+      } while (continuationToken);
+      
+      this.logger.log(colors.green(`✅ Folder deleted from S3: ${folderPrefix} (${deletedCount} files)`));
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Failed to delete folder from S3: ${error.message}`));
+      throw new Error(`Failed to delete folder from S3: ${error.message}`);
     }
   }
 

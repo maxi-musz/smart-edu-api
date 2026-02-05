@@ -104,6 +104,30 @@ export class CloudinaryStorageProvider implements IStorageProvider {
     }
   }
 
+  async deleteFolder(prefix: string): Promise<void> {
+    try {
+      this.logger.log(colors.cyan(`🗑️ Deleting folder from Cloudinary: ${prefix}`));
+      
+      // Delete all resources with the given prefix
+      const result = await cloudinary.api.delete_resources_by_prefix(prefix, {
+        resource_type: 'video', // HLS files are typically video resources
+      });
+      
+      // Also try deleting image resources with the prefix
+      await cloudinary.api.delete_resources_by_prefix(prefix, {
+        resource_type: 'image',
+      }).catch(() => {}); // Ignore errors for images
+      
+      // Delete the folder itself (if empty)
+      await cloudinary.api.delete_folder(prefix).catch(() => {});
+      
+      this.logger.log(colors.green(`✅ Folder deleted from Cloudinary: ${prefix}`));
+    } catch (error) {
+      this.logger.error(colors.red(`❌ Failed to delete folder from Cloudinary: ${error.message}`));
+      throw new Error(`Failed to delete folder from Cloudinary: ${error.message}`);
+    }
+  }
+
   getFileUrl(key: string): string {
     // Cloudinary public_id can be used to generate URL
     // But we need to know the resource type, so we'll return a generic URL

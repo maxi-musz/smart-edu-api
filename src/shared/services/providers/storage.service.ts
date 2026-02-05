@@ -56,6 +56,10 @@ export class StorageService implements OnModuleInit {
     return this.storageProvider.deleteFile(key);
   }
 
+  async deleteFolder(prefix: string): Promise<void> {
+    return this.storageProvider.deleteFolder(prefix);
+  }
+
   getFileUrl(key: string): string {
     return this.storageProvider.getFileUrl(key);
   }

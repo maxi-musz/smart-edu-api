@@ -139,3 +139,40 @@ export const UpdateSubjectThumbnailDocs = {
   }),
 };
 
+export const DeleteSubjectDocs = {
+  operation: ApiOperation({
+    summary: 'Delete a subject',
+    description:
+      'Delete a subject from the authenticated library user\'s platform. ' +
+      'The subject cannot be deleted if it has any topics - all topics must be deleted first. ' +
+      'The associated thumbnail will be automatically deleted from storage. ' +
+      'Requires a valid JWT token in the Authorization header. ' +
+      'Response is wrapped in { success, message, data } where data contains the deleted subject id.',
+  }),
+
+  response200: ApiResponse({
+    status: 200,
+    description: 'Subject deleted successfully',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - subject has existing topics that must be deleted first',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description: 'Not found - library user not found or subject not found/does not belong to user\'s platform',
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
+

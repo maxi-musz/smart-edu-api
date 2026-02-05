@@ -31,6 +31,12 @@ export interface IStorageProvider {
   deleteFile(key: string): Promise<void>;
 
   /**
+   * Delete all files in a folder/prefix
+   * @param prefix - The folder prefix to delete
+   */
+  deleteFolder(prefix: string): Promise<void>;
+
+  /**
    * Get the public URL for a stored file
    * @param key - The storage key
    * Note: For private buckets, this may return a placeholder. Use getPresignedUrl() if available.

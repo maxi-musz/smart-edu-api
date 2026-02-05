@@ -941,21 +941,49 @@ export class TeachersService {
 
     // Delete teacher
     async deleteTeacher(id: string) {
+        this.logger.log(colors.cyan(`Deleting teacher: ${id}`));
         try {
-            const teacher = await this.prisma.user.findFirst({
-                where: { id, role: 'teacher' }
+            // id coming from the route may be either the Teacher.id or the User.id.
+            // We resolve the actual teacher record first, including its linked user.
+            const teacher = await this.prisma.teacher.findFirst({
+                where: {
+                    OR: [
+                        { id },           // treat as Teacher.id
+                        { user_id: id },  // treat as User.id
+                    ],
+                },
+                include: {
+                    user: true,
+                },
             });
 
             if (!teacher) {
+                this.logger.error(colors.red(`Teacher not found: ${id}`));
                 return ResponseHelper.error('Teacher not found', 404);
             }
 
-            // Soft delete - update status to inactive
-            await this.prisma.user.update({
-                where: { id },
-                data: { status: UserStatus.inactive }
+            // hard delete the teacher, remove any assinged subjects to the teacher and remove the teacher from any class they are managing, this should be a prisma tx, all should pass or all should fail
+            await this.prisma.$transaction(async (tx) => {
+                const teacherId = teacher.id;
+                const userId = teacher.user_id;
+
+                // Remove subject assignments
+                await tx.teacherSubject.deleteMany({ where: { teacherId } });
+
+                // Detach from any classes they manage
+                await tx.class.updateMany({
+                    where: { classTeacherId: teacherId },
+                    data: { classTeacherId: null },
+                });
+
+                // Delete teacher record
+                await tx.teacher.delete({ where: { id: teacherId } });
+
+                // Delete linked user account
+                await tx.user.delete({ where: { id: userId } });
             });
 
+            this.logger.log(colors.green(`Teacher deleted successfully: ${id}`));
             return ResponseHelper.success('Teacher deleted successfully');
         } catch (error) {
             console.log(colors.red('Error deleting teacher: '), error);
