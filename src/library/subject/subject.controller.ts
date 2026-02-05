@@ -1,9 +1,9 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, UseInterceptors, UploadedFile, Patch, Param, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, UseInterceptors, UploadedFile, Patch, Param, BadRequestException, Delete } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SubjectService } from './subject.service';
 import { CreateSubjectDto, UpdateSubjectDto } from './dto/subject.dto';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
-import { CreateSubjectDocs, UpdateSubjectDocs, UpdateSubjectThumbnailDocs } from './docs/subject.docs';
+import { CreateSubjectDocs, UpdateSubjectDocs, UpdateSubjectThumbnailDocs, DeleteSubjectDocs } from './docs/subject.docs';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 
 @ApiTags('Library Subject')
@@ -75,6 +75,23 @@ export class SubjectController {
       throw new BadRequestException('Thumbnail file is required');
     }
     return await this.subjectService.updateSubjectThumbnail(req.user, subjectId, thumbnail);
+  }
+
+  @Delete('deletesubject/:subjectId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @DeleteSubjectDocs.operation
+  @DeleteSubjectDocs.response200
+  @DeleteSubjectDocs.response400
+  @DeleteSubjectDocs.response401
+  @DeleteSubjectDocs.response404
+  @DeleteSubjectDocs.response500
+  async deleteSubject(
+    @Request() req: any,
+    @Param('subjectId') subjectId: string,
+  ) {
+    return await this.subjectService.deleteSubject(req.user, subjectId);
   }
 }
 
