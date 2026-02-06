@@ -2,10 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
-import { User } from '@prisma/client';
+import { AuditForType, AuditPerformedByType, User } from '@prisma/client';
 import { CreateSubjectDto, EditSubjectDto } from 'src/shared/dto/subject.dto';
 import { sendSubjectRoleEmail } from 'src/common/mailer/send-assignment-notifications';
 import { AcademicSessionService } from '../../../academic-session/academic-session.service';
+import { AuditService } from 'src/audit/audit.service';
+
+export interface CreateSubjectOptions {
+  /** When set (library flow), resolve school by id instead of user.email. User may be null. */
+  schoolId?: string;
+  /** When set, an audit log entry is created with this performer. */
+  performedBy?: { type: 'school_user' | 'library_user'; id: string };
+}
 
 export interface AssignSubjectToClassDto {
   classId: string;
@@ -19,7 +27,8 @@ export class SubjectService {
 
   constructor(
     private prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService
+    private readonly academicSessionService: AcademicSessionService,
+    private readonly auditService: AuditService,
   ) {}
 
    ////////////////////////////////////////////////////////////////////////// FETCH ALL SUBJECT
@@ -248,26 +257,26 @@ export class SubjectService {
 
    ////////////////////////////////////////////////////////////////////////// CREATE SUBJECT
   // PUT -  /API/v1/
-  async createSubject(user: User, dto: CreateSubjectDto) {
+  async createSubject(user: User | null, dto: CreateSubjectDto, options?: CreateSubjectOptions) {
     this.logger.log(colors.cyan(`Creating new subject: ${dto.subject_name}`));
 
-    // Convert to lowercase
     const subjectName = dto.subject_name.toLowerCase();
     const description = dto.description?.toLowerCase();
 
-    // get the school id 
-    const existingSchool = await this.prisma.school.findFirst({
-      where: {
-        school_email: user.email
-      }
-    });
+    const existingSchool = options?.schoolId
+      ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
+      : user
+        ? await this.prisma.school.findFirst({
+            where: { school_email: user.email },
+          })
+        : null;
 
-    if(!existingSchool) {
-      console.log(colors.red("School not found"));
+    if (!existingSchool) {
+      this.logger.error('School not found');
       return new ApiResponse(
         false,
-        "School does not exist",
-        null
+        'School does not exist',
+        null,
       );
     }
 
@@ -389,6 +398,16 @@ export class SubjectService {
         this.logger.error(colors.red(`❌ Failed to send subject assignment email: ${emailError.message}`));
         // Don't fail the entire operation if email fails
       }
+    }
+
+    if (options?.performedBy) {
+      await this.auditService.log({
+        auditForType: AuditForType.create_subject,
+        targetId: existingSchool.id,
+        performedById: options.performedBy.id,
+        performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+        metadata: { subjectId: subject.id },
+      });
     }
 
     return new ApiResponse(

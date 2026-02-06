@@ -3263,6 +3263,45 @@ model AccessControlAuditLog {
 // END MULTI-LEVEL ACCESS CONTROL MODELS
 // ===================================================================
 
+// ===================================================================
+// SENSITIVE OPERATIONS AUDIT LOG
+// ===================================================================
+
+/// Type of sensitive operation being audited (e.g. onboard_school, onboard_classes)
+enum AuditForType {
+  onboard_school
+  onboard_classes
+  onboard_teachers
+  onboard_students
+  create_subject
+}
+
+/// Who performed the action: school-side user or library-side user
+enum AuditPerformedByType {
+  school_user
+  library_user
+}
+
+/// Audit log for sensitive operations: who did what and when
+model AuditLog {
+  id                String               @id @default(cuid())
+  audit_for_type    AuditForType
+  target_id         String?              // e.g. school id for onboard_school
+  performed_by_id   String?              // User id or LibraryResourceUser id
+  performed_by_type AuditPerformedByType?
+  metadata          Json?                // Optional extra context
+  createdAt         DateTime             @default(now())
+
+  @@index([audit_for_type])
+  @@index([target_id])
+  @@index([performed_by_id])
+  @@index([createdAt])
+}
+
+// ===================================================================
+// END SENSITIVE OPERATIONS AUDIT LOG
+// ===================================================================
+
 /// Non-video study materials under each topic/subject in a library:
 /// PDFs, notes, slides, links, etc. Files should live in S3.
 model LibraryMaterial {

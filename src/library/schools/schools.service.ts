@@ -8,12 +8,25 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
+import { AuthService } from '../../school/auth/auth.service';
+import {
+  OnboardSchoolDto,
+  OnboardClassesDto,
+  OnboardTeachersDto,
+  OnboardStudentsDto,
+} from '../../school/director/students/dto/auth.dto';
+import { SubjectService } from '../../school/director/subject/subject.service';
+import { CreateSubjectDto } from '../../shared/dto/subject.dto';
 
 @Injectable()
 export class SchoolsService {
   private readonly logger = new Logger(SchoolsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authService: AuthService,
+    private readonly subjectService: SubjectService,
+  ) {}
 
   async getAllSchools(): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan('[LIBRARY SCHOOLS] Fetching comprehensive dashboard data for all schools'));
@@ -499,6 +512,69 @@ export class SchoolsService {
 
     this.logger.log(colors.green(`School approved successfully: ${updated.school_name}`));
     return new ApiResponse(true, 'School approved successfully', updated);
+  }
+
+  /**
+   * Onboard a new school on behalf of the library (library owner flow).
+   * Delegates to AuthService.onboardSchool and passes the library user as performer for audit.
+   */
+  async onboardSchool(
+    dto: OnboardSchoolDto,
+    files: Express.Multer.File[],
+    schoolIcon: Express.Multer.File | undefined,
+    libraryUser: { id: string },
+  ): Promise<ApiResponse<unknown>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding school: ${dto.school_name}`));
+    return this.authService.onboardSchool(dto, files, schoolIcon, {
+      type: 'library_user',
+      id: libraryUser.id,
+    }) as Promise<ApiResponse<unknown>>;
+  }
+
+  async onboardClasses(
+    schoolId: string,
+    dto: OnboardClassesDto,
+    libraryUser: { id: string },
+  ): Promise<ApiResponse<unknown>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding classes for school: ${schoolId}`));
+    return this.authService.onboardClasses(dto, {}, { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } }) as Promise<ApiResponse<unknown>>;
+  }
+
+  async onboardTeachers(
+    schoolId: string,
+    dto: OnboardTeachersDto,
+    libraryUser: { id: string },
+  ): Promise<ApiResponse<unknown>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding teachers for school: ${schoolId}`));
+    return this.authService.onboardTeachers(dto, {}, { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } }) as Promise<ApiResponse<unknown>>;
+  }
+
+  async onboardStudents(
+    schoolId: string,
+    dto: OnboardStudentsDto,
+    libraryUser: { id: string },
+  ): Promise<ApiResponse<unknown>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding students for school: ${schoolId}`));
+    return this.authService.onboardStudents(dto, {}, { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } }) as Promise<ApiResponse<unknown>>;
+  }
+
+  async createSubject(
+    schoolId: string,
+    dto: CreateSubjectDto,
+    libraryUser: { id: string },
+  ): Promise<ApiResponse<unknown>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} creating subject for school: ${schoolId}`));
+    const result = await this.subjectService.createSubject(null, dto, {
+      schoolId,
+      performedBy: { type: 'library_user', id: libraryUser.id },
+    });
+    if (!result.success) {
+      if (result.message === 'School does not exist') {
+        throw new NotFoundException(result.message);
+      }
+      throw new BadRequestException(result.message);
+    }
+    return result as ApiResponse<unknown>;
   }
 }
 

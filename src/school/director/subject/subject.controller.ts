@@ -45,7 +45,9 @@ export class SubjectController {
         @GetUser() user: User,
         @Body() dto: CreateSubjectDto
     ) {
-        return this.subjectService.createSubject(user, dto);
+        return this.subjectService.createSubject(user, dto, {
+            performedBy: { type: 'school_user', id: user.id },
+        });
     }
 
     @Patch(':id')

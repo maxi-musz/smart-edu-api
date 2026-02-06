@@ -3,7 +3,7 @@ import * as colors from 'colors';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { SchoolOwnership, SchoolType, SubscriptionPlanType, BillingCycle, SubscriptionStatus } from '@prisma/client';
+import { AuditForType, AuditPerformedByType, SchoolOwnership, SchoolType, SubscriptionPlanType, BillingCycle, SubscriptionStatus } from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
 import { OnboardDataDto, OnboardSchoolDto, RequestLoginOtpDTO, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyEmailOTPDto, VerifyresetOtp } from 'src/school/director/students/dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
@@ -23,11 +23,20 @@ import { AcademicSessionService } from '../../academic-session/academic-session.
 import { PushNotificationsService } from 'src/push-notifications/push-notifications.service';
 import { DeviceType } from 'src/push-notifications/dto/register-device.dto';
 import { generateStrongPassword } from 'src/shared/helper-functions/password-generator';
+import { AuditService } from 'src/audit/audit.service';
 
 // Storage upload result mapped to match database schema
 interface DocumentUploadResult {
     secure_url: string;
     public_id: string;
+}
+
+/** Options for onboarding methods when called by library on behalf of a school, or to record audit performer. */
+export interface OnboardOptions {
+    /** When set (library flow), resolve school by id instead of user.email */
+    schoolId?: string;
+    /** When set, an audit log entry is created with this performer. */
+    performedBy?: { type: 'school_user' | 'library_user'; id: string };
 }
 
 @Injectable()
@@ -41,11 +50,17 @@ export class AuthService {
         private readonly storageService: StorageService,
         private readonly excelProcessorService: ExcelProcessorService,
         private readonly academicSessionService: AcademicSessionService,
-        private readonly pushNotificationsService: PushNotificationsService
+        private readonly pushNotificationsService: PushNotificationsService,
+        private readonly auditService: AuditService
     ) {}
     
-    // Onboard new school
-    async onboardSchool(dto: OnboardSchoolDto, files: Express.Multer.File[], schoolIcon?: Express.Multer.File) {
+    // Onboard new school. Optional performedBy logs who did the action (e.g. library owner); when omitted, logs with no performer (public/auth flow).
+    async onboardSchool(
+        dto: OnboardSchoolDto,
+        files: Express.Multer.File[],
+        schoolIcon?: Express.Multer.File,
+        performedBy?: { type: 'school_user' | 'library_user'; id: string }
+    ) {
         
         console.log(colors.blue('Onboarding a new school...'));
         console.log("email: ", dto.school_email)
@@ -370,6 +385,18 @@ export class AuthService {
                 created_at: formatDate(school.createdAt),
                 updated_at: formatDate(school.updatedAt),
             };
+
+            await this.auditService.log({
+                auditForType: AuditForType.onboard_school,
+                targetId: school.id,
+                performedById: performedBy?.id,
+                performedByType:
+                    performedBy?.type === 'library_user'
+                        ? AuditPerformedByType.library_user
+                        : performedBy?.type === 'school_user'
+                          ? AuditPerformedByType.school_user
+                          : undefined,
+            });
 
             // return the newly created school
             console.log(colors.magenta("New school created successfully!"));
@@ -890,14 +917,16 @@ export class AuthService {
     }
 
     /////////////////////////////////////////////////////////// director onboarding 
-    async onboardClasses(dto: OnboardClassesDto, user: any) {
+    async onboardClasses(dto: OnboardClassesDto, user: any, options?: OnboardOptions) {
         console.log(colors.cyan("Onboarding classes..."));
 
         try {
-            // Check if school exists
-            const existingSchool = await this.prisma.school.findFirst({
-                where: { school_email: user.email}
-            });
+            // Resolve school: by id when options.schoolId (library flow), else by user email (auth flow)
+            const existingSchool = options?.schoolId
+                ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
+                : await this.prisma.school.findFirst({
+                    where: { school_email: user.email }
+                });
 
             if (!existingSchool) {
                 console.log(colors.red("School not found"));
@@ -970,6 +999,15 @@ export class AuthService {
                 updated_at: formatDate(cls.updatedAt)
             }));
 
+            if (options?.performedBy) {
+                await this.auditService.log({
+                    auditForType: AuditForType.onboard_classes,
+                    targetId: existingSchool.id,
+                    performedById: options.performedBy.id,
+                    performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+                });
+            }
+
             return ResponseHelper.success(
                 "Classes created successfully",
                 formatted_response
@@ -991,14 +1029,15 @@ export class AuthService {
         }
     }
 
-    async onboardTeachers(dto: OnboardTeachersDto, user: any) {
+    async onboardTeachers(dto: OnboardTeachersDto, user: any, options?: OnboardOptions) {
         console.log(colors.cyan("Onboarding teachers..."));
 
         try {
-            // Check if school exists
-            const existingSchool = await this.prisma.school.findFirst({
-                where: { school_email: user.email }
-            });
+            const existingSchool = options?.schoolId
+                ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
+                : await this.prisma.school.findFirst({
+                    where: { school_email: user.email }
+                });
 
             if (!existingSchool) {
                 console.log(colors.red("School not found"));
@@ -1137,6 +1176,15 @@ export class AuthService {
                 updated_at: formatDate(user.updatedAt)
             }));
 
+            if (options?.performedBy) {
+                await this.auditService.log({
+                    auditForType: AuditForType.onboard_teachers,
+                    targetId: existingSchool.id,
+                    performedById: options.performedBy.id,
+                    performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+                });
+            }
+
             return ResponseHelper.success(
                 "Teachers onboarded successfully",
                 formatted_response
@@ -1158,14 +1206,15 @@ export class AuthService {
         }
     }
 
-    async onboardStudents(dto: OnboardStudentsDto, user: any) {
+    async onboardStudents(dto: OnboardStudentsDto, user: any, options?: OnboardOptions) {
         console.log(colors.cyan("Onboarding students..."));
 
         try {
-            // Check if school exists
-            const existingSchool = await this.prisma.school.findFirst({
-                where: { school_email: user.email }
-            });
+            const existingSchool = options?.schoolId
+                ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
+                : await this.prisma.school.findFirst({
+                    where: { school_email: user.email }
+                });
 
             if (!existingSchool) {
                 console.log(colors.red("School not found"));
@@ -1332,6 +1381,15 @@ export class AuthService {
                 created_at: formatDate(user.createdAt),
                 updated_at: formatDate(user.updatedAt)
             }));
+
+            if (options?.performedBy) {
+                await this.auditService.log({
+                    auditForType: AuditForType.onboard_students,
+                    targetId: existingSchool.id,
+                    performedById: options.performedBy.id,
+                    performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+                });
+            }
 
             return ResponseHelper.success(
                 "Students onboarded successfully",

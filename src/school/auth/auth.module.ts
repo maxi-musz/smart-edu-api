@@ -10,10 +10,12 @@ import * as colors from 'colors';
 import { AcademicSessionModule } from '../../academic-session/academic-session.module';
 import { PushNotificationsModule } from 'src/push-notifications/push-notifications.module';
 import { StorageModule } from 'src/shared/services/providers/storage.module';
+import { AuditModule } from 'src/audit/audit.module';
 
 @Module({
   imports: [
     PrismaModule,
+    AuditModule,
     AcademicSessionModule,
     PushNotificationsModule,
     StorageModule,

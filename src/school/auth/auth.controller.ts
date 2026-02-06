@@ -153,7 +153,9 @@ export class AuthController {
     @AuthControllerDocs.onboardClasses.operation
     @AuthControllerDocs.onboardClasses.response201
     onboardClasses(@Body() dto: OnboardClassesDto, @Request() req: any) {
-        return this.authService.onboardClasses(dto, req.user);
+        return this.authService.onboardClasses(dto, req.user, {
+            performedBy: { type: 'school_user', id: req.user.sub },
+        });
     }
 
     // Onboard teachers
@@ -166,7 +168,9 @@ export class AuthController {
     @AuthControllerDocs.onboardTeachers.operation
     @AuthControllerDocs.onboardTeachers.response201
     onboardTeachers(@Body() dto: OnboardTeachersDto, @Request() req: any) {
-        return this.authService.onboardTeachers(dto, req.user);
+        return this.authService.onboardTeachers(dto, req.user, {
+            performedBy: { type: 'school_user', id: req.user.sub },
+        });
     }
 
     // Onboard students
@@ -179,10 +183,12 @@ export class AuthController {
     @AuthControllerDocs.onboardStudents.operation
     @AuthControllerDocs.onboardStudents.response201
     onboardStudents(@Body() dto: OnboardStudentsDto, @Request() req: any) {
-        return this.authService.onboardStudents(dto, req.user);
+        return this.authService.onboardStudents(dto, req.user, {
+            performedBy: { type: 'school_user', id: req.user.sub },
+        });
     }
 
-    // Onboard directors
+    // Onboard directors or school owners
     // POST /api/v1/auth/onboard-directors
     // Protected endpoint
     @UseGuards(JwtGuard)
