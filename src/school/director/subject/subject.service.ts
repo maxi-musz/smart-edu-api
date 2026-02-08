@@ -15,6 +15,13 @@ export interface CreateSubjectOptions {
   performedBy?: { type: 'school_user' | 'library_user'; id: string };
 }
 
+export interface EditSubjectOptions {
+  /** When set (library flow), resolve school by id instead of user.email. User may be null. */
+  schoolId?: string;
+  /** When set, an audit log entry is created with this performer. */
+  performedBy?: { type: 'school_user' | 'library_user'; id: string };
+}
+
 export interface AssignSubjectToClassDto {
   classId: string;
   subjectId: string;
@@ -419,22 +426,23 @@ export class SubjectService {
 
   ////////////////////////////////////////////////////////////////////////// EDIT SUBJECT
   // PATCH - /api/v1/director/subjects/:id
-  async editSubject(user: User, subjectId: string, dto: EditSubjectDto) {
+  async editSubject(user: User | null, subjectId: string, dto: EditSubjectDto, options?: EditSubjectOptions) {
     this.logger.log(colors.cyan(`Editing subject: ${subjectId}`));
 
-    // Get the school id 
-    const existingSchool = await this.prisma.school.findFirst({
-      where: {
-        school_email: user.email
-      }
-    });
+    const existingSchool = options?.schoolId
+      ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
+      : user
+        ? await this.prisma.school.findFirst({
+            where: { school_email: user.email },
+          })
+        : null;
 
-    if(!existingSchool) {
-      console.log(colors.red("School not found"));
+    if (!existingSchool) {
+      this.logger.error('School not found');
       return new ApiResponse(
         false,
-        "School does not exist",
-        null
+        'School does not exist',
+        null,
       );
     }
 
@@ -624,6 +632,16 @@ export class SubjectService {
     });
 
     this.logger.log(colors.green(`Subject ${existingSubject.name} updated successfully`));
+
+    if (options?.performedBy) {
+      await this.auditService.log({
+        auditForType: AuditForType.update_subject,
+        targetId: existingSchool.id,
+        performedById: options.performedBy.id,
+        performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+        metadata: { subjectId },
+      });
+    }
 
     const response = new ApiResponse(
       true,

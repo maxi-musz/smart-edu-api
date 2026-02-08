@@ -11,6 +11,7 @@ import {
   OnboardTeachersDocs,
   OnboardStudentsDocs,
   CreateSubjectDocs,
+  EditSubjectDocs,
 } from './docs/schools.docs';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { LibraryOwnerGuard } from '../library-auth/guard/library-owner.guard';
@@ -21,7 +22,7 @@ import {
   OnboardTeachersDto,
   OnboardStudentsDto,
 } from '../../school/director/students/dto/auth.dto';
-import { CreateSubjectDto } from '../../shared/dto/subject.dto';
+import { CreateSubjectDto, EditSubjectDto } from '../../shared/dto/subject.dto';
 
 @ApiTags('Library Schools')
 @Controller('library/schools')
@@ -137,6 +138,25 @@ export class SchoolsController {
     @Request() req: { libraryUser: { id: string } },
   ) {
     return this.schoolsService.createSubject(schoolId, dto, req.libraryUser);
+  }
+
+  @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
+  @Patch(':schoolId/subjects/:subjectId')
+  @HttpCode(HttpStatus.OK)
+  @EditSubjectDocs.bearerAuth
+  @EditSubjectDocs.operation
+  @EditSubjectDocs.response200
+  @EditSubjectDocs.response400
+  @EditSubjectDocs.response401
+  @EditSubjectDocs.response403
+  @EditSubjectDocs.response404
+  editSubject(
+    @Param('schoolId') schoolId: string,
+    @Param('subjectId') subjectId: string,
+    @Body() dto: EditSubjectDto,
+    @Request() req: { libraryUser: { id: string } },
+  ) {
+    return this.schoolsService.editSubject(schoolId, subjectId, dto, req.libraryUser);
   }
 
   @Get('getallschools')

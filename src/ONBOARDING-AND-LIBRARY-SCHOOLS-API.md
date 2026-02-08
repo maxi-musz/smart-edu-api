@@ -324,11 +324,115 @@ The school is always identified by the path parameter `:schoolId` (except onboar
 - **Auth:** Bearer JWT (library)  
 - **Content-Type:** `application/json`
 
-**Path:** `schoolId` — school ID.
+**Path:**
 
-**Request body:** Same as **1.4** — `{ students: Array<{ first_name, last_name, email, phone_number, default_class }> }`.
+| Param      | Type   | Description |
+|------------|--------|-------------|
+| `schoolId` | string | School ID (cuid) |
 
-**Response (201):** Same as **1.4**.
+**Request body (payload):**
+
+```ts
+{
+  students: Array<{
+    first_name: string;    // required, e.g. "Jane"
+    last_name: string;     // required, e.g. "Smith"
+    email: string;        // required, must be unique in system, e.g. "jane.smith@school.edu.ng"
+    phone_number: string; // required, e.g. "+2348012345678"
+    default_class: string; // required — must match an existing class name in this school (e.g. "JSS 1A")
+  }>;
+}
+```
+
+**Example request:**
+
+```json
+{
+  "students": [
+    {
+      "first_name": "Jane",
+      "last_name": "Smith",
+      "email": "jane.smith@school.edu.ng",
+      "phone_number": "+2348012345678",
+      "default_class": "JSS 1A"
+    },
+    {
+      "first_name": "John",
+      "last_name": "Doe",
+      "email": "john.doe@school.edu.ng",
+      "phone_number": "+2348098765432",
+      "default_class": "JSS 1B"
+    }
+  ]
+}
+```
+
+**Response (201):**
+
+```ts
+{
+  success: true;
+  message: string;   // "Students onboarded successfully"
+  data: Array<{
+    id: string;           // User id
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number: string;
+    role: string;         // "student"
+    school_id: string;
+    created_at: string;   // formatted date
+    updated_at: string;   // formatted date
+  }>;
+  length: number;    // number of students created
+  statusCode: number; // 200 (HTTP status is 201)
+}
+```
+
+**Example response:**
+
+```json
+{
+  "success": true,
+  "message": "Students onboarded successfully",
+  "data": [
+    {
+      "id": "clxx...",
+      "first_name": "jane",
+      "last_name": "smith",
+      "email": "jane.smith@school.edu.ng",
+      "phone_number": "+2348012345678",
+      "role": "student",
+      "school_id": "clxx...",
+      "created_at": "2024-01-15T10:30:00.000Z",
+      "updated_at": "2024-01-15T10:30:00.000Z"
+    },
+    {
+      "id": "clxx...",
+      "first_name": "john",
+      "last_name": "doe",
+      "email": "john.doe@school.edu.ng",
+      "phone_number": "+2348098765432",
+      "role": "student",
+      "school_id": "clxx...",
+      "created_at": "2024-01-15T10:30:00.000Z",
+      "updated_at": "2024-01-15T10:30:00.000Z"
+    }
+  ],
+  "length": 2,
+  "statusCode": 200
+}
+```
+
+**Errors:**
+
+| Status | Condition |
+|--------|-----------|
+| 400 | `students` empty or invalid; some emails already exist in the system (`error` = array of existing emails); some `default_class` values do not exist in the school (`error` = array of invalid class names); no current academic session for the school. |
+| 401 | Missing or invalid library JWT. |
+| 403 | Not library owner. |
+| 404 | School not found. |
+| 500 | Server error (e.g. "Error onboarding students"). |
 
 ---
 
@@ -341,13 +445,13 @@ The school is always identified by the path parameter `:schoolId` (except onboar
 
 **Path:** `schoolId` — school ID.
 
-**Request body:**
+**Request body:** When adding a subject as library owner, **`class_taking_it` is required** — it must be the **school’s Class id** (the `Class` model under the school), not a library class.
 
 ```ts
 {
   subject_name: string;           // required, e.g. "Mathematics"
+  class_taking_it: string;       // required — school Class id (cuid)
   code?: string;                 // e.g. "MATH101"
-  class_taking_it?: string;      // class ID (optional)
   teacher_taking_it?: string;    // teacher ID (optional)
   color?: string;                // hex, e.g. "#FF5733"
   description?: string;
@@ -376,7 +480,48 @@ The school is always identified by the path parameter `:schoolId` (except onboar
 }
 ```
 
-**Errors:** 404 if school not found; 400 for validation or business rules (e.g. duplicate code).
+**Errors:** 400 if `class_taking_it` is missing; 404 if school not found; 400 for validation or business rules (e.g. duplicate code).
+
+---
+
+### 2.6 Edit subject for a school
+
+**`PATCH /api/v1/library/schools/:schoolId/subjects/:subjectId`**
+
+- **Auth:** Bearer JWT (library)  
+- **Content-Type:** `application/json`
+
+**Path:** `schoolId` — school ID; `subjectId` — subject ID (school’s Subject).
+
+**Request body (all optional):**
+
+```ts
+{
+  subject_name?: string;
+  code?: string;
+  class_taking_it?: string;       // school Class id
+  teachers_taking_it?: string[]; // array of teacher IDs (replaces existing assignments)
+  color?: string;                // hex
+  description?: string;
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Subject updated successfully",
+  "data": {
+    "subject": { "id", "name", "code", "color", "description", "classId", "Class": { "id", "name" }, "teacherSubjects": [...] },
+    "updatedFields": ["name", "classId"],
+    "teachersAssigned": 1
+  },
+  "statusCode": 200
+}
+```
+
+**Errors:** 404 if school or subject not found; 400 for validation or business rules.
 
 ---
 
@@ -412,6 +557,7 @@ The school is always identified by the path parameter `:schoolId` (except onboar
 | Onboard teachers (library) | Library JWT | POST | `/api/v1/library/schools/:schoolId/onboard-teachers` |
 | Onboard students (library) | Library JWT | POST | `/api/v1/library/schools/:schoolId/onboard-students` |
 | Create subject (library) | Library JWT | POST | `/api/v1/library/schools/:schoolId/create-subject` |
+| Edit subject (library) | Library JWT | PATCH | `/api/v1/library/schools/:schoolId/subjects/:subjectId` |
 | Get all schools | — | GET | `/api/v1/library/schools/getallschools` |
 | Get school by ID | — | GET | `/api/v1/library/schools/getschoolbyid/:id` |
 | Approve school | Library JWT | PATCH | `/api/v1/library/schools/:id/approve` |

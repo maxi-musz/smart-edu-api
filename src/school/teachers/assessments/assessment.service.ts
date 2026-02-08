@@ -7,6 +7,13 @@ import { CreateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentDto, 
 import { StorageService } from '../../../shared/services/providers/storage.service';
 import { AssessmentNotificationsService } from '../../../push-notifications/assessment/assessment-notifications.service';
 
+/** When set, the assessment operation is performed by a library owner on behalf of a school. */
+export interface LibraryAssessmentContext {
+  schoolId: string;
+  /** User id (school's User) to attribute created assessments to. If not provided, school director is used. */
+  createdByUserId?: string;
+}
+
 @Injectable()
 export class AssessmentService {
   private readonly logger = new Logger(AssessmentService.name);
@@ -52,45 +59,79 @@ export class AssessmentService {
    */
   async createAssessment(
     createQuizDto: CreateAssessmentDto,
-    user: any
+    user: any,
+    libraryContext?: LibraryAssessmentContext
   ) {
     try {
       this.logger.log(colors.cyan(`Creating New Assessment: ${createQuizDto.title}`));
 
-      // fetch teacher from db
-      const teacher = await this.prisma.teacher.findFirst({
-        where: {
-          user_id: user.sub
+      let schoolId: string;
+      let academicSessionId: string;
+      let createdByUserId: string;
+
+      if (libraryContext) {
+        const school = await this.prisma.school.findUnique({
+          where: { id: libraryContext.schoolId },
+        });
+        if (!school) {
+          throw new NotFoundException('School not found');
         }
-      });
-
-      if (!teacher) {
-        this.logger.error(colors.red(`Teacher not found: ${user.sub}`));
-        throw new NotFoundException('Teacher not found');
+        schoolId = libraryContext.schoolId;
+        const session = await this.prisma.academicSession.findFirst({
+          where: { school_id: schoolId, is_current: true },
+        });
+        if (!session) {
+          throw new BadRequestException('No current academic session found for the school');
+        }
+        academicSessionId = session.id;
+        if (libraryContext.createdByUserId) {
+          const u = await this.prisma.user.findFirst({
+            where: { id: libraryContext.createdByUserId, school_id: schoolId },
+          });
+          if (!u) {
+            throw new BadRequestException('created_by_user_id does not belong to this school');
+          }
+          createdByUserId = u.id;
+        } else {
+          const director = await this.prisma.user.findFirst({
+            where: { school_id: schoolId, role: 'school_director' },
+          });
+          if (!director) {
+            throw new BadRequestException('School has no director; provide created_by_user_id');
+          }
+          createdByUserId = director.id;
+        }
+        await this.verifySubjectBelongsToSchool(createQuizDto.subject_id, schoolId);
+        if (createQuizDto.topic_id) {
+          await this.verifyTopicBelongsToSchool(createQuizDto.topic_id, schoolId);
+        }
+      } else {
+        const teacher = await this.prisma.teacher.findFirst({
+          where: { user_id: user.sub },
+        });
+        if (!teacher) {
+          this.logger.error(colors.red(`Teacher not found: ${user.sub}`));
+          throw new NotFoundException('Teacher not found');
+        }
+        const teacherId = teacher.id;
+        schoolId = teacher.school_id;
+        academicSessionId = teacher.academic_session_id;
+        createdByUserId = user.sub;
+        await this.verifyTeacherSubjectAccess(createQuizDto.subject_id, user.sub);
+        if (createQuizDto.topic_id) {
+          await this.verifyTeacherTopicAccess(createQuizDto.topic_id, teacherId, schoolId);
+        }
       }
 
-      const teacherId = teacher.id;
-      const schoolId = teacher.school_id;
-      const academicSessionId = teacher.academic_session_id;
-  
-      // Verify teacher has access to the subject
-      await this.verifyTeacherSubjectAccess(createQuizDto.subject_id, user.sub);
-      
-      // If topic_id is provided, verify access to that specific topic
-      if (createQuizDto.topic_id) {
-        await this.verifyTeacherTopicAccess(createQuizDto.topic_id, teacherId, schoolId);
-      }
-  
       // Prepare the data object with scalar field IDs
       const createData: any = {
         title: createQuizDto.title,
         description: createQuizDto.description,
         instructions: createQuizDto.instructions,
-        // Use scalar field IDs instead of connect operations
         subject_id: createQuizDto.subject_id,
         school_id: schoolId,
         academic_session_id: academicSessionId,
-        created_by: user.sub, // Use the User ID, not Teacher ID
+        created_by: createdByUserId,
         // Quiz settings
         duration: createQuizDto.duration,
         max_attempts: createQuizDto.max_attempts || 1,
@@ -166,10 +207,10 @@ export class AssessmentService {
       assessmentType?: string;
       page?: number;
       limit?: number;
-    }
+    },
+    libraryContext?: LibraryAssessmentContext
   ) {
     try {
-      // Log only the parameters that are actually passed in
       const receivedParams = Object.entries(filters)
         .filter(([key, value]) => value !== undefined && value !== null && value !== '')
         .map(([key, value]) => `${key}=${value}`)
@@ -177,67 +218,64 @@ export class AssessmentService {
       
       this.logger.log(colors.cyan(`Getting all assessments for user: ${userId} with params: ${receivedParams}`));
 
-      // Validate required subjectId
       if (!filters.subjectId) {
         throw new BadRequestException('subject_id is required');
       }
 
-      // Get user to check role and school_id
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          role: true,
-          school_id: true
-        }
-      });
-
-      if (!user || !user.school_id) {
-        throw new NotFoundException('User not found or missing school data');
+      // if user is a library owner, log it that library owner fetching assessment for subject {name}
+      if (libraryContext) {
+        this.logger.log(colors.cyan(`Library owner fetching assessment for subject: ${filters.subjectId}`));
       }
 
-      // Check if user is a director
-      const isDirector = user.role === 'school_director';
-
-      // Get teacher record (for teachers) or use user data (for directors)
       let schoolId: string;
       let currentSessionId: any;
+      let isDirector: boolean;
 
-      if (isDirector) {
-        this.logger.log(colors.cyan(`✅ User is a director - fetching all assessments for school: ${user.school_id}`));
-        schoolId = user.school_id;
-        
-        // Get current academic session for the school
-        currentSessionId = await this.prisma.academicSession.findFirst({
-          where: {
-            school_id: schoolId,
-            is_current: true
-          }
+      if (libraryContext) {
+        const school = await this.prisma.school.findUnique({
+          where: { id: libraryContext.schoolId },
         });
-
+        if (!school) {
+          throw new NotFoundException('School not found');
+        }
+        schoolId = libraryContext.schoolId;
+        currentSessionId = await this.prisma.academicSession.findFirst({
+          where: { school_id: schoolId, is_current: true },
+        });
         if (!currentSessionId) {
-          this.logger.error(colors.red(`Current academic session not found for school: ${schoolId}`));
           throw new NotFoundException('Current academic session not found');
         }
+        isDirector = true;
       } else {
-        // For teachers, get teacher record to access academic session ID
-        const teacher = await this.getTeacherByUserId(userId);
-        if (!teacher) {
-          throw new NotFoundException('Teacher not found');
-        }
-        schoolId = teacher.school_id;
-
-        // get current academic session id
-        currentSessionId = await this.prisma.academicSession.findFirst({
-          where: {
-            school_id: schoolId,
-            is_current: true
-          }
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, role: true, school_id: true },
         });
+        if (!user || !user.school_id) {
+          throw new NotFoundException('User not found or missing school data');
+        }
+        isDirector = user.role === 'school_director';
 
-        if (!currentSessionId) {
-          this.logger.error(colors.red(`Current academic session not found: ${schoolId}`));
-          throw new NotFoundException('Current academic session not found');
+        if (isDirector) {
+          schoolId = user.school_id;
+          currentSessionId = await this.prisma.academicSession.findFirst({
+            where: { school_id: schoolId, is_current: true },
+          });
+          if (!currentSessionId) {
+            throw new NotFoundException('Current academic session not found');
+          }
+        } else {
+          const teacher = await this.getTeacherByUserId(userId);
+          if (!teacher) {
+            throw new NotFoundException('Teacher not found');
+          }
+          schoolId = teacher.school_id;
+          currentSessionId = await this.prisma.academicSession.findFirst({
+            where: { school_id: schoolId, is_current: true },
+          });
+          if (!currentSessionId) {
+            throw new NotFoundException('Current academic session not found');
+          }
         }
       }
 
@@ -385,16 +423,18 @@ export class AssessmentService {
    * @param assessmentId - ID of the assessment
    * @param userId - ID of the teacher
    */
-  async getAssessmentQuestions(assessmentId: string, userId: string) {
+  async getAssessmentQuestions(assessmentId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Getting questions for assessment: ${assessmentId} by user: ${userId}`));
 
-      // First verify the assessment exists and the teacher has access to it
+      const whereClause: any = { id: assessmentId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        whereClause.created_by = userId;
+      }
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           subject: {
             select: {
@@ -620,14 +660,14 @@ export class AssessmentService {
     assessmentId: string, 
     questionDataString: string, 
     imageFile: Express.Multer.File | undefined,
-    userId: string
+    userId: string,
+    libraryContext?: LibraryAssessmentContext
   ) {
     let uploadedImageKey: string | undefined;
     
     try {
       this.logger.log(colors.cyan(`Creating question with image for assessment: ${assessmentId}`));
       
-      // Parse question data from JSON string
       let createQuestionDto: CreateAssessmentQuestionDto;
       try {
         createQuestionDto = JSON.parse(questionDataString);
@@ -635,12 +675,14 @@ export class AssessmentService {
         throw new BadRequestException('Invalid JSON in questionData field');
       }
       
-      // Verify assessment exists and teacher has access
+      const whereClause: any = { id: assessmentId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        whereClause.created_by = userId;
+      }
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           school: {
             select: {
@@ -725,16 +767,18 @@ export class AssessmentService {
    * @param createQuestionDto - Question data (includes image_url if image was uploaded separately)
    * @param userId - ID of the teacher
    */
-  async createQuestion(assessmentId: string, createQuestionDto: CreateAssessmentQuestionDto, userId: string) {
+  async createQuestion(assessmentId: string, createQuestionDto: CreateAssessmentQuestionDto, userId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Creating question for assessment: ${assessmentId} by user: ${userId}`));
 
-      // First verify the assessment exists and the teacher has access to it
+      const whereClause: any = { id: assessmentId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        whereClause.created_by = userId;
+      }
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           school: {
             select: {
@@ -944,16 +988,18 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    * @param imageFile - Optional image file to upload (replaces existing image)
    */
-  async updateQuestion(assessmentId: string, questionId: string, updateQuestionDto: any, userId: string, imageFile?: Express.Multer.File) {
+  async updateQuestion(assessmentId: string, questionId: string, updateQuestionDto: any, userId: string, imageFile?: Express.Multer.File, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
 
-      // First verify the assessment exists and the teacher has access to it
+      const whereClause: any = { id: assessmentId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        whereClause.created_by = userId;
+      }
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           school: {
             select: {
@@ -1228,16 +1274,18 @@ export class AssessmentService {
    * @param questionId - ID of the question
    * @param userId - ID of the teacher
    */
-  async deleteQuestionImage(assessmentId: string, questionId: string, userId: string) {
+  async deleteQuestionImage(assessmentId: string, questionId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Deleting image for question: ${questionId}`));
 
-      // First verify the assessment exists and the teacher has access to it
+      const whereClause: any = { id: assessmentId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        whereClause.created_by = userId;
+      }
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          created_by: userId
-        }
+        where: whereClause,
       });
 
       if (!assessment) {
@@ -1314,16 +1362,18 @@ export class AssessmentService {
    * @param questionId - ID of the question
    * @param userId - ID of the teacher
    */
-  async deleteQuestion(assessmentId: string, questionId: string, userId: string) {
+  async deleteQuestion(assessmentId: string, questionId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`));
 
-      // First verify the assessment exists and the teacher has access to it
+      const whereClause: any = { id: assessmentId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        whereClause.created_by = userId;
+      }
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          created_by: userId
-        }
+        where: whereClause,
       });
 
       if (!assessment) {
@@ -1438,23 +1488,25 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async getTopicQuizzes(topicId: string, userId: string, schoolId: string) {
+  async getTopicQuizzes(topicId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Getting quizzes for topic: ${topicId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+      if (libraryContext) {
+        await this.verifyTopicBelongsToSchool(topicId, effectiveSchoolId);
+      } else {
+        const teacher = await this.getTeacherByUserId(userId);
+        if (!teacher) {
+          throw new NotFoundException('Teacher not found');
+        }
+        await this.verifyTeacherTopicAccess(topicId, teacher.id, schoolId);
       }
-
-      // Verify teacher has access to the topic
-      await this.verifyTeacherTopicAccess(topicId, teacher.id, schoolId);
 
       const quizzes = await this.prisma.assessment.findMany({
         where: {
           topic_id: topicId,
-          school_id: schoolId,
+          school_id: effectiveSchoolId,
         },
         include: {
           topic: {
@@ -1501,20 +1553,23 @@ export class AssessmentService {
    * @param quizId - ID of the quiz
    * @param userId - ID of the user (teacher)
    */
-  async getQuizById(quizId: string, userId: string) {
+  async getQuizById(quizId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Getting quiz: ${quizId}`));
 
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const whereClause: any = { id: quizId };
+      if (libraryContext) {
+        whereClause.school_id = libraryContext.schoolId;
+      } else {
+        const teacher = await this.getTeacherByUserId(userId);
+        if (!teacher) {
+          throw new NotFoundException('Teacher not found');
+        }
+        whereClause.created_by = userId;
       }
 
       const quiz = await this.prisma.assessment.findFirst({
-        where: {
-          id: quizId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           topic: {
             select: {
@@ -1578,41 +1633,43 @@ export class AssessmentService {
   async updateQuiz(
     quizId: string,
     updateQuizDto: UpdateAssessmentDto,
-    userId: string
+    userId: string,
+    libraryContext?: LibraryAssessmentContext
   ) {
     try {
-      // Log exactly what the user is sending for update
       this.logger.log(colors.cyan(`Updating assessment: ${quizId}`));
       this.logger.log(colors.yellow(`Update payload received: ${JSON.stringify(updateQuizDto, null, 2)}`));
 
-      // Get teacher record to access school and academic session
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
-      }
+      let existingQuiz: any;
+      let schoolIdForNotify: string;
 
-      // Verify quiz exists and teacher has access
-      const existingQuiz = await this.prisma.assessment.findFirst({
-        where: {
-          id: quizId,
-          school_id: teacher.school_id,
-          created_by: userId
+      if (libraryContext) {
+        existingQuiz = await this.verifyAssessmentBelongsToSchool(quizId, libraryContext.schoolId);
+        schoolIdForNotify = libraryContext.schoolId;
+        if (updateQuizDto.subject_id && updateQuizDto.subject_id !== existingQuiz.subject_id) {
+          await this.verifySubjectBelongsToSchool(updateQuizDto.subject_id, libraryContext.schoolId);
         }
-      });
-
-      if (!existingQuiz) {
-        this.logger.error(colors.red(`Assessment not found or access denied: ${quizId}`));
-        throw new NotFoundException('Assessment not found or access denied');
-      }
-
-      // If subject is being changed, verify access to new subject
-      if (updateQuizDto.subject_id && updateQuizDto.subject_id !== existingQuiz.subject_id) {
-        await this.verifyTeacherSubjectAccess(updateQuizDto.subject_id, userId);
-      }
-
-      // If topic is being changed, verify access to new topic
-      if (updateQuizDto.topic_id && updateQuizDto.topic_id !== existingQuiz.topic_id) {
-        await this.verifyTeacherTopicAccess(updateQuizDto.topic_id, teacher.id, teacher.school_id);
+        if (updateQuizDto.topic_id && updateQuizDto.topic_id !== existingQuiz.topic_id) {
+          await this.verifyTopicBelongsToSchool(updateQuizDto.topic_id, libraryContext.schoolId);
+        }
+      } else {
+        const teacher = await this.getTeacherByUserId(userId);
+        if (!teacher) {
+          throw new NotFoundException('Teacher not found');
+        }
+        existingQuiz = await this.prisma.assessment.findFirst({
+          where: { id: quizId, school_id: teacher.school_id, created_by: userId },
+        });
+        if (!existingQuiz) {
+          throw new NotFoundException('Assessment not found or access denied');
+        }
+        schoolIdForNotify = teacher.school_id;
+        if (updateQuizDto.subject_id && updateQuizDto.subject_id !== existingQuiz.subject_id) {
+          await this.verifyTeacherSubjectAccess(updateQuizDto.subject_id, userId);
+        }
+        if (updateQuizDto.topic_id && updateQuizDto.topic_id !== existingQuiz.topic_id) {
+          await this.verifyTeacherTopicAccess(updateQuizDto.topic_id, teacher.id, teacher.school_id);
+        }
       }
 
       // Check if quiz has attempts and is being changed to a state that would affect students
@@ -1697,15 +1754,16 @@ export class AssessmentService {
       this.logger.log(colors.green(`Assessment updated successfully: ${quiz.title}`));
 
       // Send notifications if status changed
+      const notifySchoolId = libraryContext ? libraryContext.schoolId : schoolIdForNotify;
       if (isBeingPublished) {
         try {
-          await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, teacher.school_id);
+          await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, notifySchoolId);
         } catch (notificationError) {
           this.logger.error(colors.yellow(`⚠️ Failed to send published notifications: ${notificationError.message}`));
         }
       } else if (isBeingUnpublished) {
         try {
-          await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, teacher.school_id);
+          await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, notifySchoolId);
         } catch (notificationError) {
           this.logger.error(colors.yellow(`⚠️ Failed to send unpublished notifications: ${notificationError.message}`));
         }
@@ -1724,23 +1782,17 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async deleteQuiz(quizId: string, userId: string, schoolId: string) {
+  async deleteQuiz(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Deleting Assessment: ${quizId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const effectiveSchoolId = libraryContext ? libraryContext.schoolId : schoolId;
+      const whereClause: any = { id: quizId, school_id: effectiveSchoolId };
+      if (!libraryContext) {
+        whereClause.created_by = userId;
       }
-
-      // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.assessment.findFirst({
-        where: {
-          id: quizId,
-          school_id: schoolId,
-          created_by: userId
-        }
+        where: whereClause,
       });
 
       if (!existingQuiz) {
@@ -1774,26 +1826,22 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async publishQuiz(quizId: string, userId: string, schoolId: string) {
+  async publishQuiz(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Publishing quiz: ${quizId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
-      }
-
-      // Verify quiz exists and teacher has access
-      const existingQuiz = await this.prisma.assessment.findFirst({
-        where: {
-          id: quizId,
-          school_id: schoolId,
-          created_by: userId
-        },
-        include: {
-          questions: true
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+      const whereClause: any = { id: quizId, school_id: effectiveSchoolId };
+      if (!libraryContext) {
+        const teacher = await this.getTeacherByUserId(userId);
+        if (!teacher) {
+          throw new NotFoundException('Teacher not found');
         }
+        whereClause.created_by = userId;
+      }
+      const existingQuiz = await this.prisma.assessment.findFirst({
+        where: whereClause,
+        include: { questions: true },
       });
 
       if (!existingQuiz) {
@@ -1801,7 +1849,6 @@ export class AssessmentService {
         throw new NotFoundException('Quiz not found or access denied');
       }
 
-      // Check if quiz has questions
       if (existingQuiz.questions.length === 0) {
         this.logger.error(colors.red(`Quiz ${quizId} has no questions`));
         throw new BadRequestException('Cannot publish quiz without questions');
@@ -1841,7 +1888,7 @@ export class AssessmentService {
 
       // Send push notifications and emails to students enrolled in classes with this subject
       try {
-        await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, schoolId);
+        await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, effectiveSchoolId);
       } catch (notificationError) {
         // Log error but don't fail the publish operation
         this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
@@ -1860,23 +1907,17 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async unpublishQuiz(quizId: string, userId: string, schoolId: string) {
+  async unpublishQuiz(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Unpublishing quiz: ${quizId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+      const whereClause: any = { id: quizId, school_id: effectiveSchoolId };
+      if (!libraryContext) {
+        whereClause.created_by = userId;
       }
-
-      // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.assessment.findFirst({
-        where: {
-          id: quizId,
-          school_id: schoolId,
-          created_by: userId
-        }
+        where: whereClause,
       });
 
       if (!existingQuiz) {
@@ -1905,7 +1946,7 @@ export class AssessmentService {
 
       // Send push notifications and emails to students enrolled in classes with this subject
       try {
-        await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, schoolId);
+        await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, effectiveSchoolId);
       } catch (notificationError) {
         // Log error but don't fail the unpublish operation
         this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
@@ -1924,23 +1965,17 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async releaseAssessmentResults(quizId: string, userId: string, schoolId: string) {
+  async releaseAssessmentResults(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Releasing results for assessment: ${quizId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+      const whereClause: any = { id: quizId, school_id: effectiveSchoolId };
+      if (!libraryContext) {
+        whereClause.created_by = userId;
       }
-
-      // Verify quiz exists and teacher has access
       const existingQuiz = await this.prisma.assessment.findFirst({
-        where: {
-          id: quizId,
-          school_id: schoolId,
-          created_by: userId
-        }
+        where: whereClause,
       });
 
       if (!existingQuiz) {
@@ -1983,7 +2018,7 @@ export class AssessmentService {
 
       // Send push notifications and emails to students enrolled in classes with this subject
       try {
-        await this.assessmentNotificationsService.sendAssessmentResultReleasedNotifications(quiz, schoolId);
+        await this.assessmentNotificationsService.sendAssessmentResultReleasedNotifications(quiz, effectiveSchoolId);
       } catch (notificationError) {
         // Log error but don't fail the release operation
         this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
@@ -2002,23 +2037,17 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    * @param schoolId - ID of the school
    */
-  async getAssessmentAttempts(assessmentId: string, userId: string, schoolId: string) {
+  async getAssessmentAttempts(assessmentId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Getting assessment attempts for: ${assessmentId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+      const whereClause: any = { id: assessmentId, school_id: effectiveSchoolId };
+      if (!libraryContext) {
+        whereClause.created_by = userId;
       }
-
-      // Verify assessment exists and teacher has access
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          school_id: schoolId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           subject: {
             select: {
@@ -2044,7 +2073,7 @@ export class AssessmentService {
       // Get current academic session
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
-          school_id: schoolId,
+          school_id: effectiveSchoolId,
           is_current: true
         }
       });
@@ -2056,7 +2085,7 @@ export class AssessmentService {
       // Find all classes that have this subject
       const classesWithSubject = await this.prisma.class.findMany({
         where: {
-          schoolId: schoolId,
+          schoolId: effectiveSchoolId,
           academic_session_id: currentSession.id,
           subjects: {
             some: {
@@ -2092,7 +2121,7 @@ export class AssessmentService {
       // Get all active students in these classes
       const allStudents = await this.prisma.student.findMany({
         where: {
-          school_id: schoolId,
+          school_id: effectiveSchoolId,
           academic_session_id: currentSession.id,
           current_class_id: { in: classIds },
           status: 'active'
@@ -2125,7 +2154,7 @@ export class AssessmentService {
       const attempts = await this.prisma.assessmentAttempt.findMany({
         where: {
           assessment_id: assessmentId,
-          school_id: schoolId,
+          school_id: effectiveSchoolId,
           academic_session_id: currentSession.id
         },
         select: {
@@ -2281,23 +2310,17 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    * @param schoolId - ID of the school
    */
-  async getStudentSubmission(assessmentId: string, studentId: string, userId: string, schoolId: string) {
+  async getStudentSubmission(assessmentId: string, studentId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
     try {
       this.logger.log(colors.cyan(`Getting student submission for assessment: ${assessmentId}, student: ${studentId}`));
 
-      // Get teacher record
-      const teacher = await this.getTeacherByUserId(userId);
-      if (!teacher) {
-        throw new NotFoundException('Teacher not found');
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+      const whereClause: any = { id: assessmentId, school_id: effectiveSchoolId };
+      if (!libraryContext) {
+        whereClause.created_by = userId;
       }
-
-      // Verify assessment exists and teacher has access
       const assessment = await this.prisma.assessment.findFirst({
-        where: {
-          id: assessmentId,
-          school_id: schoolId,
-          created_by: userId
-        },
+        where: whereClause,
         include: {
           subject: {
             select: {
@@ -2328,7 +2351,7 @@ export class AssessmentService {
       const student = await this.prisma.student.findFirst({
         where: {
           id: studentId,
-          school_id: schoolId
+          school_id: effectiveSchoolId
         },
         include: {
           user: {
@@ -2357,10 +2380,10 @@ export class AssessmentService {
       this.logger.log(colors.green(`Student found: ${student.user.first_name} ${student.user.last_name} (user_id: ${student.user_id})`));
 
       // Get current academic session
-      this.logger.log(colors.cyan(`Getting current academic session for school: ${schoolId}`));
+      this.logger.log(colors.cyan(`Getting current academic session for school: ${effectiveSchoolId}`));
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
-          school_id: schoolId,
+          school_id: effectiveSchoolId,
           is_current: true
         }
       });
@@ -2372,13 +2395,12 @@ export class AssessmentService {
       this.logger.log(colors.green(`Current session found: ${currentSession.id}`));
 
       // Get all attempts for this student and assessment
-      // Note: AssessmentAttempt.student_id is the User.id (user_id), not the Student record id
       this.logger.log(colors.cyan(`Fetching attempts for assessment: ${assessmentId}, user_id: ${student.user_id}`));
       const attempts = await this.prisma.assessmentAttempt.findMany({
         where: {
           assessment_id: assessmentId,
           student_id: student.user_id,
-          school_id: schoolId,
+          school_id: effectiveSchoolId,
           academic_session_id: currentSession.id
         },
         include: {
@@ -2607,5 +2629,38 @@ export class AssessmentService {
     }
 
     return subject;
+  }
+
+  /** Verify subject exists and belongs to school (for library context). */
+  private async verifySubjectBelongsToSchool(subjectId: string, schoolId: string) {
+    const subject = await this.prisma.subject.findFirst({
+      where: { id: subjectId, schoolId },
+    });
+    if (!subject) {
+      throw new NotFoundException('Subject not found or does not belong to this school');
+    }
+    return subject;
+  }
+
+  /** Verify topic exists and belongs to school (for library context). */
+  private async verifyTopicBelongsToSchool(topicId: string, schoolId: string) {
+    const topic = await this.prisma.topic.findFirst({
+      where: { id: topicId, school_id: schoolId },
+    });
+    if (!topic) {
+      throw new NotFoundException('Topic not found or does not belong to this school');
+    }
+    return topic;
+  }
+
+  /** Verify assessment exists and belongs to school (for library context). */
+  private async verifyAssessmentBelongsToSchool(assessmentId: string, schoolId: string) {
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, school_id: schoolId },
+    });
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found or access denied');
+    }
+    return assessment;
   }
 }

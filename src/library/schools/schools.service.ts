@@ -16,7 +16,7 @@ import {
   OnboardStudentsDto,
 } from '../../school/director/students/dto/auth.dto';
 import { SubjectService } from '../../school/director/subject/subject.service';
-import { CreateSubjectDto } from '../../shared/dto/subject.dto';
+import { CreateSubjectDto, EditSubjectDto } from '../../shared/dto/subject.dto';
 
 @Injectable()
 export class SchoolsService {
@@ -563,6 +563,11 @@ export class SchoolsService {
     dto: CreateSubjectDto,
     libraryUser: { id: string },
   ): Promise<ApiResponse<unknown>> {
+    if (!dto.class_taking_it || dto.class_taking_it.trim() === '') {
+      throw new BadRequestException(
+        'class_taking_it (school class id) is required when adding a subject as library owner. Send the school\'s Class id, not a library class.',
+      );
+    }
     this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} creating subject for school: ${schoolId}`));
     const result = await this.subjectService.createSubject(null, dto, {
       schoolId,
@@ -570,6 +575,29 @@ export class SchoolsService {
     });
     if (!result.success) {
       if (result.message === 'School does not exist') {
+        throw new NotFoundException(result.message);
+      }
+      throw new BadRequestException(result.message);
+    }
+    return result as ApiResponse<unknown>;
+  }
+
+  async editSubject(
+    schoolId: string,
+    subjectId: string,
+    dto: EditSubjectDto,
+    libraryUser: { id: string },
+  ): Promise<ApiResponse<unknown>> {
+    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} editing subject ${subjectId} for school: ${schoolId}`));
+    const result = await this.subjectService.editSubject(null, subjectId, dto, {
+      schoolId,
+      performedBy: { type: 'library_user', id: libraryUser.id },
+    });
+    if (!result.success) {
+      if (result.message === 'School does not exist') {
+        throw new NotFoundException(result.message);
+      }
+      if (result.message === 'Subject not found') {
         throw new NotFoundException(result.message);
       }
       throw new BadRequestException(result.message);

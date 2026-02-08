@@ -3274,6 +3274,7 @@ enum AuditForType {
   onboard_teachers
   onboard_students
   create_subject
+  update_subject
 }
 
 /// Who performed the action: school-side user or library-side user

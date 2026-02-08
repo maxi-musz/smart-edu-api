@@ -100,9 +100,21 @@ export const CreateSubjectDocs = {
   ...libraryOnboardResponseDocs,
   operation: ApiOperation({
     summary: 'Create a subject for a school (library owner)',
-    description: 'Create a subject in a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
+    description:
+      'Create a subject in a school on behalf of the school. Requires library owner/admin. ' +
+      'class_taking_it (school Class id) is required — use the school\'s Class id, not a library class. Action is audited.',
   }),
   response201: ApiResponse({ status: 201, description: 'Subject created successfully' }),
+};
+
+export const EditSubjectDocs = {
+  ...libraryOnboardResponseDocs,
+  operation: ApiOperation({
+    summary: 'Edit a subject for a school (library owner)',
+    description:
+      'Update a subject that belongs to a school. Requires library owner/admin. School and subject are identified by path params. Action is audited.',
+  }),
+  response200: ApiResponse({ status: 200, description: 'Subject updated successfully' }),
 };
 
 export const GetAllSchoolsDocs = {

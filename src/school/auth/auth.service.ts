@@ -1296,8 +1296,8 @@ export class AuthService {
             }
             const currentSession = currentSessionResponse.data;
 
-            // Import student ID generator
-            const { generateUniqueStudentId } = await import('src/school/director/students/helper-functions/student-id-generator');
+            // Import student ID generator (relative path for runtime resolution from dist/)
+            const { generateUniqueStudentId } = await import('../director/students/helper-functions/student-id-generator');
 
             // Create users and student records (each in its own transaction for data integrity)
             const students = await Promise.all(
