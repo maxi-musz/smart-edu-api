@@ -275,14 +275,14 @@ export class ResultsService {
 
   /**
    * Calculate grade based on percentage
-   * @param percentage - Percentage score
+   * Scale: A 80-100, B 70-79.9, C 60-69.9, D 50-59.9, E 40-49.9, F <40
    */
   private calculateGrade(percentage: number): string {
-    if (percentage >= 90) return 'A';
-    if (percentage >= 80) return 'B';
-    if (percentage >= 70) return 'C';
-    if (percentage >= 60) return 'D';
-    if (percentage >= 50) return 'E';
+    if (percentage >= 80) return 'A';
+    if (percentage >= 70) return 'B';
+    if (percentage >= 60) return 'C';
+    if (percentage >= 50) return 'D';
+    if (percentage >= 40) return 'E';
     return 'F';
   }
 }

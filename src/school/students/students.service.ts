@@ -1678,7 +1678,18 @@ export class StudentsService {
         take: limit
       });
 
-      // Format assessments data
+      // If result is released but status is not CLOSED, close the assessment so student sees correct state
+      const toClose = assessments.filter(
+        (a) => a.is_result_released === true && a.status !== 'CLOSED'
+      );
+      if (toClose.length > 0) {
+        await this.prisma.assessment.updateMany({
+          where: { id: { in: toClose.map((a) => a.id) } },
+          data: { status: 'CLOSED' },
+        });
+      }
+
+      // Format assessments data (show CLOSED when result is released so student sees returned assessment as closed)
       const formattedAssessments = assessments.map(assessment => {
         const studentAttempts = assessment.attempts || [];
         const attemptCount = studentAttempts.length;
@@ -1695,14 +1706,18 @@ export class StudentsService {
           : 0;
         const overallAchievableMark = assessment.total_points;
 
+        const displayStatus = assessment.is_result_released ? 'CLOSED' : assessment.status;
         return {
           id: assessment.id,
           title: assessment.title,
           description: assessment.description,
           assessment_type: assessment.assessment_type,
-          status: assessment.status,
+          status: displayStatus,
           duration: assessment.duration,
           total_points: assessment.total_points,
+          can_edit_assessment: assessment.can_edit_assessment,
+          // student_can_view_grading: assessment.student_can_view_grading,
+          is_result_released: assessment.is_result_released,
           max_attempts: assessment.max_attempts,
           passing_score: canViewGrading ? assessment.passing_score : null,
           questions_count: assessment.questions.length,
@@ -2590,14 +2605,14 @@ export class StudentsService {
 
   /**
    * Calculate grade based on percentage
-   * @param percentage - Percentage score
+   * Scale: A 80-100, B 70-79.9, C 60-69.9, D 50-59.9, E 40-49.9, F <40
    */
   private calculateGrade(percentage: number): string {
-    if (percentage >= 90) return 'A';
-    if (percentage >= 80) return 'B';
-    if (percentage >= 70) return 'C';
-    if (percentage >= 60) return 'D';
-    if (percentage >= 50) return 'E';
+    if (percentage >= 80) return 'A';
+    if (percentage >= 70) return 'B';
+    if (percentage >= 60) return 'C';
+    if (percentage >= 50) return 'D';
+    if (percentage >= 40) return 'E';
     return 'F';
   }
 
