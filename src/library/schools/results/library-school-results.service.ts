@@ -1,19 +1,44 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AuditForType, AuditPerformedByType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { PushNotificationsService } from '../../../push-notifications/push-notifications.service';
+import { AuditService } from '../../../audit/audit.service';
 
 @Injectable()
-export class ResultsService {
-  private readonly logger = new Logger(ResultsService.name);
+export class LibrarySchoolResultsService {
+  private readonly logger = new Logger(LibrarySchoolResultsService.name);
   private readonly BATCH_SIZE = 50; // Process 50 students at a time
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly pushNotificationsService: PushNotificationsService
+    private readonly pushNotificationsService: PushNotificationsService,
+    private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * Log sensitive result release/unrelease actions to audit log. Never throws.
+   */
+  private async logAudit(
+    auditForType: AuditForType,
+    schoolId: string,
+    performedById: string,
+    metadata: Prisma.InputJsonValue,
+  ): Promise<void> {
+    try {
+      await this.auditService.log({
+        auditForType,
+        targetId: schoolId,
+        performedById,
+        performedByType: AuditPerformedByType.library_user,
+        metadata,
+      });
+    } catch (err: any) {
+      this.logger.warn(colors.yellow(`Audit log failed: ${err?.message ?? err}`));
+    }
+  }
 
   /**
    * Release results for all students in the current academic session (WHOLE SCHOOL)
@@ -72,16 +97,14 @@ export class ResultsService {
 
       this.logger.log(colors.blue(`📊 Found ${allStudents.length} students to process`));
 
-      // Get all released assessments for this session (EXAM and CBT types only)
+      // Get all eligible assessments for this session (library owner can release even if not yet marked released)
       const releasedAssessments = await this.prisma.assessment.findMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
           status: {
             in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
           },
-          // Only include EXAM and CBT assessment types
           assessment_type: {
             in: ['EXAM', 'CBT']
           }
@@ -98,44 +121,53 @@ export class ResultsService {
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found for this session`));
-        return new ApiResponse(false, 'No released assessments found for this session', null);
+        this.logger.error(colors.red(`[Library School Results Service] ❌ No assessments found for this session`));
+        return new ApiResponse(false, 'No assessments found for this session', null);
       }
 
-      this.logger.log(colors.blue(`[Director Results Service] 📚 Found ${releasedAssessments.length} released assessments`));
-
-      // Process students in batches to avoid overwhelming the system
-      const totalBatches = Math.ceil(allStudents.length / this.BATCH_SIZE);
+      // All DB writes in one transaction: all succeed or all fail
       let processedCount = 0;
       let errorCount = 0;
+      await this.prisma.$transaction(async (tx) => {
+        // Library owner: mark assessments as released and set view/edit flags
+        await tx.assessment.updateMany({
+          where: { id: { in: releasedAssessments.map((a) => a.id) } },
+          data: {
+            is_result_released: true,
+            student_can_view_grading: true,
+            can_edit_assessment: false,
+          },
+        });
 
-      for (let i = 0; i < allStudents.length; i += this.BATCH_SIZE) {
-        const batch = allStudents.slice(i, i + this.BATCH_SIZE);
-        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
+        this.logger.log(colors.blue(`[Library School Results Service] 📚 Found ${releasedAssessments.length} assessments - marked as released`));
 
-        this.logger.log(colors.cyan(`[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+        // Process students in batches to avoid overwhelming the system
+        const totalBatches = Math.ceil(allStudents.length / this.BATCH_SIZE);
 
-        // Process batch in parallel
-        const batchPromises = batch.map(student => 
-          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
-            .catch(error => {
-              this.logger.error(colors.red(`[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
+        for (let i = 0; i < allStudents.length; i += this.BATCH_SIZE) {
+          const batch = allStudents.slice(i, i + this.BATCH_SIZE);
+          const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
+
+          this.logger.log(colors.cyan(`[Library School Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+
+          const batchPromises = batch.map(student =>
+            this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, null, tx).catch(error => {
+              this.logger.error(colors.red(`[Library School Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
               errorCount++;
               return null;
             })
-        );
+          );
 
-        const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter(r => r !== null).length;
+          const batchResults = await Promise.all(batchPromises);
+          processedCount += batchResults.filter(r => r !== null).length;
 
-        // Small delay between batches to prevent overwhelming the database
-        if (i + this.BATCH_SIZE < allStudents.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          if (i + this.BATCH_SIZE < allStudents.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
         }
-      }
 
-      // Calculate class positions for all students
-      await this.calculateClassPositions(schoolId, currentSession.id);
+        await this.calculateClassPositions(schoolId, currentSession.id, tx);
+      });
 
       // Send push notifications to all students
       const studentUserIds = allStudents.map(s => s.user_id);
@@ -150,6 +182,16 @@ export class ResultsService {
       this.logger.log(colors.green(`✅ Result release completed!`));
       this.logger.log(colors.green(`   - Processed: ${processedCount}/${allStudents.length} students`));
       this.logger.log(colors.green(`   - Errors: ${errorCount}`));
+
+      await this.logAudit(AuditForType.release_results, schoolId, userId, {
+        scope: 'whole_school',
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+        processed: processedCount,
+        total_students: allStudents.length,
+        errors: errorCount,
+      });
 
       return new ApiResponse(
         true,
@@ -228,12 +270,11 @@ export class ResultsService {
         return ResponseHelper.error('Student not found', null, 404);
       }
 
-      // Get all released assessments for this session
-      const releasedAssessments = await this.prisma.assessment.findMany({
+      // Get all eligible assessments for this session (library owner can release even if not yet marked released)
+      const assessments = await this.prisma.assessment.findMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
           status: {
             in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
           },
@@ -252,16 +293,24 @@ export class ResultsService {
         }
       });
 
-      if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found`));
-        return ResponseHelper.error('No released assessments found for this session', null, 400);
+      if (assessments.length === 0) {
+        this.logger.error(colors.red(`❌ No assessments found for this session`));
+        return ResponseHelper.error('No assessments found for this session', null, 400);
       }
 
-      // Process student results
-      await this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId);
-
-      // Recalculate class positions
-      await this.calculateClassPositions(schoolId, currentSession.id);
+      // All DB writes in one transaction: all succeed or all fail
+      await this.prisma.$transaction(async (tx) => {
+        await tx.assessment.updateMany({
+          where: { id: { in: assessments.map((a) => a.id) } },
+          data: {
+            is_result_released: true,
+            student_can_view_grading: true,
+            can_edit_assessment: false,
+          },
+        });
+        await this.processStudentResults(student, assessments, currentSession.id, schoolId, null, tx);
+        await this.calculateClassPositions(schoolId, currentSession.id, tx);
+      });
 
       // Send push notification to student
       await this.sendResultReleaseNotifications(
@@ -273,6 +322,14 @@ export class ResultsService {
       );
 
       this.logger.log(colors.green(`✅ Results released successfully for student`));
+
+      await this.logAudit(AuditForType.release_results, schoolId, userId, {
+        scope: 'student',
+        student_id: studentId,
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+      });
 
       return ResponseHelper.success(
         'Results released successfully for student',
@@ -344,16 +401,15 @@ export class ResultsService {
       });
 
       if (classStudents.length === 0) {
-        this.logger.error(colors.red(`❌ No students found in this class`));
+        this.logger.error(colors.red(`[Library School Results Service] ❌ No students found in this class`));
         return ResponseHelper.error('No students found in this class', null, 404);
       }
 
-      // Get all released assessments for this session
+      // Get all eligible assessments for this session (library owner can release even if not yet marked released)
       const releasedAssessments = await this.prisma.assessment.findMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
           status: {
             in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
           },
@@ -373,42 +429,49 @@ export class ResultsService {
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found`));
-        return ResponseHelper.error('No released assessments found for this session', null, 400);
+        this.logger.error(colors.red(`[Library School Results Service] ❌ No assessments found for this session`));
+        return ResponseHelper.error('No assessments found for this session', null, 400);
       }
 
-      this.logger.log(colors.blue(`[Director Results Service] 📊 Processing ${classStudents.length} students in class`));
+      this.logger.log(colors.blue(`[Library School Results Service] 📊 Processing ${classStudents.length} students in class`));
 
-      // Process students in batches
-      const totalBatches = Math.ceil(classStudents.length / this.BATCH_SIZE);
       let processedCount = 0;
       let errorCount = 0;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.assessment.updateMany({
+          where: { id: { in: releasedAssessments.map((a) => a.id) } },
+          data: {
+            is_result_released: true,
+            student_can_view_grading: true,
+            can_edit_assessment: false,
+          },
+        });
 
-      for (let i = 0; i < classStudents.length; i += this.BATCH_SIZE) {
-        const batch = classStudents.slice(i, i + this.BATCH_SIZE);
-        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(classStudents.length / this.BATCH_SIZE);
+        for (let i = 0; i < classStudents.length; i += this.BATCH_SIZE) {
+          const batch = classStudents.slice(i, i + this.BATCH_SIZE);
+          const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
 
-        this.logger.log(colors.cyan(`[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+          this.logger.log(colors.cyan(`[Library School Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
 
-        const batchPromises = batch.map(student =>
-          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
-            .catch(error => {
-              this.logger.error(colors.red(`[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
+          const batchPromises = batch.map(student =>
+            this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, null, tx).catch(error => {
+              this.logger.error(colors.red(`❌ Error processing student ${student.id}: ${error.message}`));
               errorCount++;
               return null;
             })
-        );
+          );
 
-        const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter(r => r !== null).length;
+          const batchResults = await Promise.all(batchPromises);
+          processedCount += batchResults.filter(r => r !== null).length;
 
-        if (i + this.BATCH_SIZE < classStudents.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          if (i + this.BATCH_SIZE < classStudents.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
         }
-      }
 
-      // Recalculate class positions
-      await this.calculateClassPositions(schoolId, currentSession.id);
+        await this.calculateClassPositions(schoolId, currentSession.id, tx);
+      });
 
       // Send push notifications to all students in class
       const studentUserIds = classStudents.map(s => s.user_id);
@@ -423,6 +486,17 @@ export class ResultsService {
       this.logger.log(colors.green(`✅ Results released successfully for class`));
       this.logger.log(colors.green(`   - Processed: ${processedCount}/${classStudents.length} students`));
       this.logger.log(colors.green(`   - Errors: ${errorCount}`));
+
+      await this.logAudit(AuditForType.release_results, schoolId, userId, {
+        scope: 'class',
+        class_id: classId,
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+        total_students: classStudents.length,
+        processed: processedCount,
+        errors: errorCount,
+      });
 
       return ResponseHelper.success(
         `Results released successfully for ${processedCount} students in class`,
@@ -510,12 +584,11 @@ export class ResultsService {
         this.logger.warn(colors.yellow(`⚠️  Some student IDs not found: ${notFoundIds.join(', ')}`));
       }
 
-      // Get all released assessments for this session
+      // Get all eligible assessments for this session (library owner can release even if not yet marked released)
       const releasedAssessments = await this.prisma.assessment.findMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
           status: {
             in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
           },
@@ -535,48 +608,49 @@ export class ResultsService {
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found`));
-        return ResponseHelper.error('No released assessments found for this session', null, 400);
+        this.logger.error(colors.red(`[Library School Results Service] ❌ No assessments found for this session`));
+        return ResponseHelper.error('No assessments found for this session', null, 400);
       }
 
-      this.logger.log(colors.blue(`[Director Results Service] 📊 Processing ${students.length} students`));
+      this.logger.log(colors.blue(`[Library School Results Service] 📊 Processing ${students.length} students`));
 
-      // Process students in batches
-      const totalBatches = Math.ceil(students.length / this.BATCH_SIZE);
       let processedCount = 0;
       let errorCount = 0;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.assessment.updateMany({
+          where: { id: { in: releasedAssessments.map((a) => a.id) } },
+          data: {
+            is_result_released: true,
+            student_can_view_grading: true,
+            can_edit_assessment: false,
+          },
+        });
 
-      for (let i = 0; i < students.length; i += this.BATCH_SIZE) {
-        const batch = students.slice(i, i + this.BATCH_SIZE);
-        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(students.length / this.BATCH_SIZE);
+        for (let i = 0; i < students.length; i += this.BATCH_SIZE) {
+          const batch = students.slice(i, i + this.BATCH_SIZE);
+          const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
 
-        this.logger.log(colors.cyan(`[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+          this.logger.log(colors.cyan(`[Library School Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
 
-        const batchPromises = batch.map(student =>
-          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
-            .catch(error => {
-              this.logger.error(colors.red(`[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
+          const batchPromises = batch.map(student =>
+            this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, null, tx).catch(error => {
+              this.logger.error(colors.red(`[Library School Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
               errorCount++;
               return null;
             })
-        );
+          );
 
-        const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter(r => r !== null).length;
+          const batchResults = await Promise.all(batchPromises);
+          processedCount += batchResults.filter(r => r !== null).length;
 
-        if (i + this.BATCH_SIZE < students.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          if (i + this.BATCH_SIZE < students.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
         }
-      }
 
-      // Recalculate class positions for affected classes
-      const affectedClasses = [...new Set(students.map(s => s.current_class_id).filter(Boolean))];
-      for (const classId of affectedClasses) {
-        if (classId) {
-          await this.calculateClassPositions(schoolId, currentSession.id);
-          break; // Only need to calculate once as it processes all classes
-        }
-      }
+        await this.calculateClassPositions(schoolId, currentSession.id, tx);
+      });
 
       // Send push notifications to all students
       const studentUserIds = students.map(s => s.user_id);
@@ -594,6 +668,19 @@ export class ResultsService {
       if (notFoundIds.length > 0) {
         this.logger.log(colors.yellow(`   - Not found: ${notFoundIds.length} student IDs`));
       }
+
+      await this.logAudit(AuditForType.release_results, schoolId, userId, {
+        scope: 'students',
+        student_ids: studentIds,
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+        total_requested: studentIds.length,
+        total_found: students.length,
+        processed: processedCount,
+        errors: errorCount,
+        not_found_count: notFoundIds.length,
+      });
 
       return ResponseHelper.success(
         `Results released successfully for ${processedCount} students`,
@@ -649,7 +736,7 @@ export class ResultsService {
       }
 
       if (!currentSession) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No academic session found`));
+        this.logger.error(colors.red(`[Library School Results Service] ❌ No academic session found`));
         return ResponseHelper.error('No academic session found', null, 400);
       }
 
@@ -664,7 +751,7 @@ export class ResultsService {
       });
 
       if (!result) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ Result not found for this student`));
+        this.logger.error(colors.red(`[Library School Results Service] ❌ Result not found for this student`));
         return ResponseHelper.error('Result not found for this student', null, 404);
       }
 
@@ -699,6 +786,14 @@ export class ResultsService {
       }
 
       this.logger.log(colors.green(`✅ Results unreleased successfully for student`));
+
+      await this.logAudit(AuditForType.unrelease_results, schoolId, userId, {
+        scope: 'student',
+        student_id: studentId,
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+      });
 
       return ResponseHelper.success(
         'Results unreleased successfully for student',
@@ -790,6 +885,16 @@ export class ResultsService {
       }
 
       this.logger.log(colors.green(`✅ Results unreleased successfully for ${updateResult.count} students`));
+
+      await this.logAudit(AuditForType.unrelease_results, schoolId, userId, {
+        scope: 'students',
+        student_ids: studentIds,
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+        total_requested: studentIds.length,
+        total_updated: updateResult.count,
+      });
 
       return ResponseHelper.success(
         `Results unreleased successfully for ${updateResult.count} students`,
@@ -894,6 +999,16 @@ export class ResultsService {
       this.logger.log(colors.green(`✅ Results unreleased successfully for class`));
       this.logger.log(colors.green(`   - Updated: ${updateResult.count}/${classStudents.length} students`));
 
+      await this.logAudit(AuditForType.unrelease_results, schoolId, userId, {
+        scope: 'class',
+        class_id: classId,
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+        total_students: classStudents.length,
+        updated: updateResult.count,
+      });
+
       return ResponseHelper.success(
         `Results unreleased successfully for ${updateResult.count} students in class`,
         {
@@ -996,6 +1111,14 @@ export class ResultsService {
       this.logger.log(colors.green(`✅ Results unreleased successfully for whole school`));
       this.logger.log(colors.green(`   - Updated: ${updateResult.count} results`));
 
+      await this.logAudit(AuditForType.unrelease_results, schoolId, userId, {
+        scope: 'whole_school',
+        session_id: currentSession.id,
+        academic_year: currentSession.academic_year,
+        term: currentSession.term,
+        total_updated: updateResult.count,
+      });
+
       return ResponseHelper.success(
         `Results unreleased successfully for ${updateResult.count} students`,
         {
@@ -1015,19 +1138,23 @@ export class ResultsService {
   }
 
   /**
-   * Process results for a single student
+   * Process results for a single student.
+   * releasedBy: User.id when released by school director; null when released by library owner (Result.released_by FK is to User only).
+   * tx: optional transaction client for atomic release (all succeed or all fail).
    */
   private async processStudentResults(
     student: { id: string; user_id: string; current_class_id: string | null },
     releasedAssessments: any[],
     sessionId: string,
     schoolId: string,
-    releasedBy: string
+    releasedBy: string | null,
+    tx?: Prisma.TransactionClient
   ): Promise<any> {
+    const client = tx ?? this.prisma;
     // Get final result (best attempt) for each released assessment
     const assessmentResults = await Promise.all(
       releasedAssessments.map(async (assessment) => {
-        const studentResult = await this.prisma.assessmentAttempt.findFirst({
+        const studentResult = await client.assessmentAttempt.findFirst({
           where: {
             assessment_id: assessment.id,
             student_id: student.user_id,
@@ -1053,7 +1180,7 @@ export class ResultsService {
 
     if (validResults.length === 0) {
       // Upsert empty result record
-      return await this.prisma.result.upsert({
+      return await client.result.upsert({
         where: {
           academic_session_id_student_id: {
             academic_session_id: sessionId,
@@ -1064,7 +1191,7 @@ export class ResultsService {
           class_id: student.current_class_id,
           subject_results: [],
           released_by: releasedBy,
-          released_by_school_admin: true // Set to true when released by director
+          released_by_school_admin: true
         },
         create: {
           school_id: schoolId,
@@ -1073,7 +1200,7 @@ export class ResultsService {
           class_id: student.current_class_id,
           subject_results: [],
           released_by: releasedBy,
-          released_by_school_admin: true // Set to true when released by director
+          released_by_school_admin: true
         }
       });
     }
@@ -1154,7 +1281,7 @@ export class ResultsService {
     const overallGrade = this.calculateGrade(overallPercentage);
 
     // Upsert result record
-    return await this.prisma.result.upsert({
+    return await client.result.upsert({
       where: {
         academic_session_id_student_id: {
           academic_session_id: sessionId,
@@ -1171,7 +1298,7 @@ export class ResultsService {
         overall_percentage: Math.round(overallPercentage * 100) / 100,
         overall_grade: overallGrade,
         released_by: releasedBy,
-        released_by_school_admin: true // Set to true when released by director
+        released_by_school_admin: true
       },
       create: {
         school_id: schoolId,
@@ -1186,7 +1313,7 @@ export class ResultsService {
         overall_percentage: Math.round(overallPercentage * 100) / 100,
         overall_grade: overallGrade,
         released_by: releasedBy,
-        released_by_school_admin: true // Set to true when released by director
+        released_by_school_admin: true
       }
     });
   }
@@ -1238,13 +1365,19 @@ export class ResultsService {
   }
 
   /**
-   * Calculate class positions for all students
+   * Calculate class positions for all students.
+   * tx: optional transaction client for atomic release (all succeed or all fail).
    */
-  private async calculateClassPositions(schoolId: string, sessionId: string): Promise<void> {
+  private async calculateClassPositions(
+    schoolId: string,
+    sessionId: string,
+    tx?: Prisma.TransactionClient
+  ): Promise<void> {
+    const client = tx ?? this.prisma;
     this.logger.log(colors.cyan(`📊 Calculating class positions...`));
 
     // Get all classes
-    const classes = await this.prisma.class.findMany({
+    const classes = await client.class.findMany({
       where: {
         schoolId: schoolId,
         academic_session_id: sessionId
@@ -1257,7 +1390,7 @@ export class ResultsService {
     // Calculate positions for each class
     for (const classItem of classes) {
       // Get actual count of active students in the class (not just those with results)
-      const totalStudentsInClass = await this.prisma.student.count({
+      const totalStudentsInClass = await client.student.count({
         where: {
           school_id: schoolId,
           academic_session_id: sessionId,
@@ -1266,7 +1399,7 @@ export class ResultsService {
         }
       });
 
-      const classResults = await this.prisma.result.findMany({
+      const classResults = await client.result.findMany({
         where: {
           class_id: classItem.id,
           academic_session_id: sessionId
@@ -1278,7 +1411,7 @@ export class ResultsService {
 
       // Update positions
       for (let i = 0; i < classResults.length; i++) {
-        await this.prisma.result.update({
+        await client.result.update({
           where: { id: classResults[i].id },
           data: {
             class_position: i + 1,
@@ -1304,11 +1437,11 @@ export class ResultsService {
   }
 
   /**
-   * Get results dashboard data for director
-   * Returns: sessions, classes, subjects, and paginated results
+   * Get results dashboard data for a school (library owner on behalf of school).
+   * Returns: sessions, classes, subjects, and paginated results.
    */
   async getResultsDashboard(
-    userId: string,
+    schoolId: string,
     filters: {
       sessionId?: string;
       classId?: string;
@@ -1318,17 +1451,7 @@ export class ResultsService {
     } = {}
   ) {
     try {
-      this.logger.log(colors.cyan(`📊 Getting results dashboard for director: ${userId}`));
-
-      // Get director/school info
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, school_id: true, role: true }
-      });
-
-      if (!user || user.role !== 'school_director') {
-        return ResponseHelper.error('Access denied. Director role required.', null, 403);
-      }
+      this.logger.log(colors.cyan(`[LIBRARY-OWNER] 📊 Getting results dashboard for school: ${schoolId}`));
 
       const {
         sessionId,
@@ -1345,7 +1468,7 @@ export class ResultsService {
       // 1. Get all academic sessions and terms (active session/term at top)
       const allSessions = await this.prisma.academicSession.findMany({
         where: {
-          school_id: user.school_id
+          school_id: schoolId
         },
         select: {
           id: true,
@@ -1374,7 +1497,7 @@ export class ResultsService {
       // 2. Get all classes
       const classes = await this.prisma.class.findMany({
         where: {
-          schoolId: user.school_id,
+          schoolId: schoolId,
           ...(currentSession ? { academic_session_id: currentSession.id } : {})
         },
         include: {
@@ -1401,7 +1524,7 @@ export class ResultsService {
       // 3. Get all subjects
       const subjects = await this.prisma.subject.findMany({
         where: {
-          schoolId: user.school_id,
+          schoolId: schoolId,
           ...(currentSession ? { academic_session_id: currentSession.id } : {})
         },
         select: {
@@ -1432,7 +1555,7 @@ export class ResultsService {
         // Get all students in the selected class
         const allStudentsInClass = await this.prisma.student.findMany({
           where: {
-            school_id: user.school_id,
+            school_id: schoolId,
             academic_session_id: selectedSessionId,
             current_class_id: selectedClassId,
             status: 'active'
@@ -1463,7 +1586,7 @@ export class ResultsService {
           // Get all subjects for this class
           classSubjects = await this.prisma.subject.findMany({
             where: {
-              schoolId: user.school_id,
+              schoolId: schoolId,
               academic_session_id: selectedSessionId,
               classId: selectedClassId
             },
@@ -1489,7 +1612,7 @@ export class ResultsService {
             // Get all released assessments (status CLOSED) for all subjects in this class
             const allReleasedAssessments = await this.prisma.assessment.findMany({
               where: {
-                school_id: user.school_id,
+                school_id: schoolId,
                 academic_session_id: selectedSessionId,
                 subject_id: {
                   in: classSubjects.map(s => s.id)
@@ -1497,8 +1620,8 @@ export class ResultsService {
                 assessment_type: {
                   in: ['CBT', 'EXAM']
                 },
-                status: 'CLOSED',
-                is_result_released: true
+                // status: 'CLOSED',
+                // is_result_released: true
               },
               select: {
                 id: true,
@@ -1520,7 +1643,7 @@ export class ResultsService {
             // Check which students have results released by admin for this session
             const releasedResults = await this.prisma.result.findMany({
               where: {
-                school_id: user.school_id,
+                school_id: schoolId,
                 academic_session_id: selectedSessionId,
                 student_id: {
                   in: allStudentsInClass.map(s => s.id)
@@ -1535,10 +1658,10 @@ export class ResultsService {
             // Create a map of student IDs that have released results
             const releasedStudentIds = new Set(releasedResults.map(r => r.student_id));
 
-            // Get all assessment attempts for these assessments
+            // Get all assessment attempts for these assessments (student may have multiple attempts per assessment)
             const allAttempts = await this.prisma.assessmentAttempt.findMany({
               where: {
-                school_id: user.school_id,
+                school_id: schoolId,
                 academic_session_id: selectedSessionId,
                 assessment_id: {
                   in: allReleasedAssessments.map(a => a.id)
@@ -1563,32 +1686,33 @@ export class ResultsService {
                     subject_id: true
                   }
                 }
-              },
-              orderBy: [
-                { total_score: 'desc' },
-                { submitted_at: 'desc' }
-              ]
+              }
             });
 
-            // Create a map: student_id -> subject_id -> assessment_id -> best attempt
+            // For each (student, assessment), keep only the attempt with the highest total_score
+            const bestAttemptByStudentAndAssessment = new Map<string, any>();
+            for (const attempt of allAttempts) {
+              const key = `${attempt.student_id}:${attempt.assessment_id}`;
+              const existing = bestAttemptByStudentAndAssessment.get(key);
+              const attemptScore = attempt.total_score ?? 0;
+              if (!existing || (existing.total_score ?? 0) < attemptScore) {
+                bestAttemptByStudentAndAssessment.set(key, attempt);
+              }
+            }
+
+            // Build map: student_id -> subject_id -> assessment_id -> best attempt
             const attemptsMap = new Map<string, Map<string, Map<string, any>>>();
-            allAttempts.forEach(attempt => {
+            bestAttemptByStudentAndAssessment.forEach((attempt) => {
               if (!attemptsMap.has(attempt.student_id)) {
                 attemptsMap.set(attempt.student_id, new Map());
               }
               const studentAttempts = attemptsMap.get(attempt.student_id)!;
               const subjectId = attempt.assessment.subject_id;
-              
               if (!studentAttempts.has(subjectId)) {
                 studentAttempts.set(subjectId, new Map());
               }
               const subjectAttempts = studentAttempts.get(subjectId)!;
-              
-              // Keep only the best attempt for each assessment
-              if (!subjectAttempts.has(attempt.assessment_id) || 
-                  subjectAttempts.get(attempt.assessment_id)!.total_score < attempt.total_score) {
-                subjectAttempts.set(attempt.assessment_id, attempt);
-              }
+              subjectAttempts.set(attempt.assessment_id, attempt);
             });
 
             // Helper function to calculate grade based on percentage

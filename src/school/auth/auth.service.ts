@@ -1080,14 +1080,14 @@ export class AuthService {
             }
             const currentSession = currentSessionResponse.data;
 
-            // Import teacher ID generator
-            const { generateUniqueTeacherId } = await import('src/school/director/teachers/helper-functions/teacher-id-generator');
+            // Import teacher ID generator (relative path so runtime resolve works from dist/)
+            const { generateUniqueTeacherId } = await import('../director/teachers/helper-functions/teacher-id-generator');
 
             // Generate strong passwords for each teacher
             const teachersWithPasswords = await Promise.all(
                 dto.teachers.map(async (teacher) => {
-                    // const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
-                    const defaultPassword = `maximus123`;
+                    const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
+                    // const defaultPassword = `maximus123`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {
@@ -1273,7 +1273,7 @@ export class AuthService {
             const studentsWithPasswords = await Promise.all(
                 dto.students.map(async (student) => {
                     // const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
-                    const defaultPassword = `maximus123`;
+                    const defaultPassword = `Maximus123`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {

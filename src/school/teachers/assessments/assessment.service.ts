@@ -194,6 +194,175 @@ export class AssessmentService {
   }
 
   /**
+   * Duplicate an assessment (copy) for the same school/subject with reset fields for a new run.
+   * Used by library owners (and optionally teachers) to clone an assessment so they can edit and reuse.
+   */
+  async duplicateAssessment(
+    assessmentId: string,
+    user: any,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
+    if (!libraryContext) {
+      throw new BadRequestException('Duplicate assessment is only supported for library context');
+    }
+    const schoolId = libraryContext.schoolId;
+
+    const source = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, school_id: schoolId },
+      include: {
+        questions: {
+          include: {
+            options: { orderBy: { order: 'asc' } },
+            correct_answers: true,
+          },
+          orderBy: { order: 'asc' },
+        },
+      },
+    });
+    if (!source) {
+      throw new NotFoundException('Assessment not found or access denied');
+    }
+
+    const session = await this.prisma.academicSession.findFirst({
+      where: { school_id: schoolId, is_current: true },
+    });
+    if (!session) {
+      throw new BadRequestException('No current academic session found for the school');
+    }
+
+    let createdByUserId: string;
+    if (libraryContext.createdByUserId) {
+      const u = await this.prisma.user.findFirst({
+        where: { id: libraryContext.createdByUserId, school_id: schoolId },
+      });
+      if (!u) {
+        throw new BadRequestException('created_by_user_id does not belong to this school');
+      }
+      createdByUserId = u.id;
+    } else {
+      const director = await this.prisma.user.findFirst({
+        where: { school_id: schoolId, role: 'school_director' },
+      });
+      if (!director) {
+        throw new BadRequestException('School has no director; provide created_by_user_id');
+      }
+      createdByUserId = director.id;
+    }
+
+    const now = new Date();
+
+    const newAssessment = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.assessment.create({
+        data: {
+          title: `${source.title} (Copy)`,
+          description: source.description,
+          instructions: source.instructions,
+          subject_id: source.subject_id,
+          topic_id: source.topic_id,
+          school_id: source.school_id,
+          academic_session_id: session.id,
+          created_by: createdByUserId,
+          duration: source.duration,
+          max_attempts: source.max_attempts,
+          passing_score: source.passing_score,
+          total_points: source.total_points,
+          shuffle_questions: source.shuffle_questions,
+          shuffle_options: source.shuffle_options,
+          show_correct_answers: source.show_correct_answers,
+          show_feedback: source.show_feedback,
+          allow_review: source.allow_review,
+          grading_type: source.grading_type,
+          auto_submit: source.auto_submit,
+          assessment_type: source.assessment_type,
+          tags: source.tags ?? [],
+          time_limit: source.time_limit,
+          order: source.order,
+          student_can_view_grading: source.student_can_view_grading,
+          // Reset for new run
+          status: 'DRAFT',
+          is_published: false,
+          published_at: null,
+          is_result_released: false,
+          result_released_at: null,
+          student_completed_assessment: false,
+          can_edit_assessment: true,
+          start_date: now,
+          end_date: null,
+          // submissions left unset (no copy of submission stats)
+        },
+      });
+
+      for (const q of source.questions) {
+        const newQuestion = await tx.assessmentQuestion.create({
+          data: {
+            assessment_id: created.id,
+            question_text: q.question_text,
+            question_type: q.question_type,
+            order: q.order,
+            points: q.points,
+            is_required: q.is_required,
+            time_limit: q.time_limit,
+            image_url: q.image_url,
+            image_s3_key: q.image_s3_key,
+            audio_url: q.audio_url,
+            video_url: q.video_url,
+            allow_multiple_attempts: q.allow_multiple_attempts,
+            show_hint: q.show_hint,
+            hint_text: q.hint_text,
+            min_length: q.min_length,
+            max_length: q.max_length,
+            min_value: q.min_value,
+            max_value: q.max_value,
+            explanation: q.explanation,
+            difficulty_level: q.difficulty_level,
+          },
+        });
+
+        const oldToNewOptionId: Record<string, string> = {};
+        for (const opt of q.options) {
+          const newOpt = await tx.assessmentOption.create({
+            data: {
+              question_id: newQuestion.id,
+              option_text: opt.option_text,
+              order: opt.order,
+              is_correct: opt.is_correct,
+              image_url: opt.image_url,
+              audio_url: opt.audio_url,
+            },
+          });
+          oldToNewOptionId[opt.id] = newOpt.id;
+        }
+
+        for (const ca of q.correct_answers) {
+          const newOptionIds = (ca.option_ids ?? []).map((oid: string) => oldToNewOptionId[oid] ?? oid).filter(Boolean);
+          await tx.assessmentCorrectAnswer.create({
+            data: {
+              question_id: newQuestion.id,
+              answer_text: ca.answer_text,
+              answer_number: ca.answer_number,
+              answer_date: ca.answer_date,
+              option_ids: newOptionIds,
+              ...(ca.answer_json != null && { answer_json: ca.answer_json as any }),
+            },
+          });
+        }
+      }
+
+      return tx.assessment.findUnique({
+        where: { id: created.id },
+        include: {
+          subject: { select: { id: true, name: true, code: true } },
+          topic: { select: { id: true, title: true } },
+          createdBy: { select: { id: true, first_name: true, last_name: true } },
+        },
+      });
+    });
+
+    this.logger.log(colors.green(`Assessment duplicated: ${source.id} -> ${newAssessment!.id}`));
+    return ResponseHelper.success('Assessment duplicated successfully', newAssessment);
+  }
+
+  /**
    * Get all CBT quizzes created by a teacher for the current academic session
    * @param userId - User ID of the teacher
    * @param filters - Filters for status, subject (required), topic, assessment type, pagination
@@ -2299,6 +2468,31 @@ export class AssessmentService {
       });
     } catch (error) {
       this.logger.error(colors.red(`Error getting assessment attempts: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Get assessment with full details (assessment + questions + attempts) in one call.
+   * For library owner: single endpoint instead of GET :id, GET :id/questions, GET :id/attempts.
+   */
+  async getAssessmentWithDetailsForLibrary(assessmentId: string, schoolId: string, libraryContext: LibraryAssessmentContext) {
+    try {
+      this.logger.log(colors.cyan(`Getting full assessment details for library: ${assessmentId}`));
+
+      const [quizRes, questionsRes, attemptsRes] = await Promise.all([
+        this.getQuizById(assessmentId, '', libraryContext),
+        this.getAssessmentQuestions(assessmentId, '', libraryContext),
+        this.getAssessmentAttempts(assessmentId, '', schoolId, libraryContext),
+      ]);
+
+      return ResponseHelper.success('Assessment with details retrieved successfully', {
+        assessment: quizRes.data,
+        questions: questionsRes.data,
+        attempts: attemptsRes.data,
+      });
+    } catch (error) {
+      this.logger.error(colors.red(`Error getting assessment with details: ${error.message}`));
       throw error;
     }
   }

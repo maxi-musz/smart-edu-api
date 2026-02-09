@@ -1684,8 +1684,9 @@ export class StudentsService {
         const attemptCount = studentAttempts.length;
         const hasReachedMaxAttempts = attemptCount >= assessment.max_attempts;
         const latestAttempt = studentAttempts[0]; // Most recent attempt
+        const canViewGrading = assessment.student_can_view_grading ?? false;
 
-        // Calculate highest marks across all attempts
+        // Calculate highest marks across all attempts (only used when student can view grading)
         const highestScore = studentAttempts.length > 0 
           ? Math.max(...studentAttempts.map(attempt => attempt.total_score || 0))
           : 0;
@@ -1703,7 +1704,7 @@ export class StudentsService {
           duration: assessment.duration,
           total_points: assessment.total_points,
           max_attempts: assessment.max_attempts,
-          passing_score: assessment.passing_score,
+          passing_score: canViewGrading ? assessment.passing_score : null,
           questions_count: assessment.questions.length,
           subject: {
             id: assessment.subject.id,
@@ -1718,6 +1719,8 @@ export class StudentsService {
           due_date: assessment.end_date ? (assessment.end_date.toISOString()) : null,
           created_at: (assessment.createdAt.toISOString()),
           is_published: assessment.is_published,
+          shuffle_questions: assessment.shuffle_questions ?? false,
+          shuffle_options: assessment.shuffle_options ?? false,
           submissions: assessment.submissions || {
             total_submissions: 0,
             recent_submissions: [],
@@ -1731,21 +1734,31 @@ export class StudentsService {
               id: latestAttempt.id,
               attempt_number: latestAttempt.attempt_number,
               status: latestAttempt.status,
-              total_score: latestAttempt.total_score,
-              percentage: latestAttempt.percentage,
-              passed: latestAttempt.passed,
+              ...(canViewGrading
+                ? {
+                    total_score: latestAttempt.total_score,
+                    percentage: latestAttempt.percentage,
+                    passed: latestAttempt.passed,
+                  }
+                : {
+                    total_score: null,
+                    percentage: null,
+                    passed: null,
+                  }),
               submitted_at: latestAttempt.submitted_at?.toISOString()
             } : null
           },
-          student_can_view_grading: assessment.student_can_view_grading ?? true,
-          performance_summary: {
-            highest_score: highestScore,
-            highest_percentage: highestPercentage,
-            overall_achievable_mark: overallAchievableMark,
-            best_attempt: studentAttempts.length > 0 
-              ? studentAttempts.find(attempt => attempt.total_score === highestScore) || null
-              : null
-          },
+          student_can_view_grading: canViewGrading,
+          performance_summary: canViewGrading
+            ? {
+                highest_score: highestScore,
+                highest_percentage: highestPercentage,
+                overall_achievable_mark: overallAchievableMark,
+                best_attempt: studentAttempts.length > 0 
+                  ? studentAttempts.find(attempt => attempt.total_score === highestScore) || null
+                  : null
+              }
+            : null,
           _count: {
             questions: assessment.questions.length
           }
@@ -2099,6 +2112,8 @@ export class StudentsService {
         end_date: assessment.end_date ? assessment.end_date.toISOString() : null,
         created_at: assessment.createdAt.toISOString(),
         is_published: assessment.is_published,
+        shuffle_questions: assessment.shuffle_questions ?? false,
+        shuffle_options: assessment.shuffle_options ?? false,
         student_attempts: attemptCount,
         remaining_attempts: assessment.max_attempts - attemptCount
       };
@@ -2265,13 +2280,24 @@ export class StudentsService {
       this.logger.log(colors.blue(`   - Total answers: ${answers.length}`));
       this.logger.log(colors.blue(`   - Answers: ${JSON.stringify(answers, null, 2)}`));
 
+      // Normalize answers: frontend may send single option as "answer" (string) instead of "selected_options" (array)
+      const normalizedAnswers = (answers || []).map((a: any) => {
+        const normalized = { ...a };
+        if (normalized.selected_options == null && normalized.answer != null) {
+          normalized.selected_options = Array.isArray(normalized.answer)
+            ? normalized.answer
+            : [normalized.answer];
+        }
+        return normalized;
+      });
+
       // Process answers and calculate scores (outside transaction for validation)
       let totalScore = 0;
       let totalPoints = 0;
       const gradedAnswers: any[] = [];
       const studentAnswersToCreate: any[] = [];
 
-      for (const answer of answers) {
+      for (const answer of normalizedAnswers) {
         const question = assessment.questions.find(q => q.id === answer.question_id);
         if (!question) {
           this.logger.warn(colors.yellow(`⚠️ Question not found: ${answer.question_id}`));
@@ -2279,7 +2305,7 @@ export class StudentsService {
         }
 
         this.logger.log(colors.blue(`🔍 Processing answer for question ${answer.question_id}:`));
-        this.logger.log(colors.blue(`   - Question type: ${answer.question_type}`));
+        this.logger.log(colors.blue(`   - Question type: ${answer.question_type ?? question.question_type}`));
         this.logger.log(colors.blue(`   - Student answer: ${JSON.stringify(answer)}`));
         this.logger.log(colors.blue(`   - Question points: ${question.points}`));
 
@@ -2287,8 +2313,9 @@ export class StudentsService {
         let isCorrect = this.checkAnswerByType(answer, question);
         
         // Fallback: If no correct_answers configured, check against option is_correct
-        if (!isCorrect && question.question_type === 'MULTIPLE_CHOICE_SINGLE' && answer.selected_options?.length > 0) {
-          const selectedOptionId = answer.selected_options[0];
+        const selectedForFallback = answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
+        if (!isCorrect && question.question_type === 'MULTIPLE_CHOICE_SINGLE' && selectedForFallback.length > 0) {
+          const selectedOptionId = selectedForFallback[0];
           const selectedOption = question.options.find(opt => opt.id === selectedOptionId);
           isCorrect = selectedOption?.is_correct || false;
         }
@@ -2439,12 +2466,16 @@ export class StudentsService {
     const correctAnswer = correctAnswers[0]; // Assuming one correct answer per question
     this.logger.log(colors.cyan(`   - Using correct answer: ${JSON.stringify(correctAnswer)}`));
 
+    // Resolve selected options: support both selected_options array and single "answer" string
+    const selectedOptions = answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
+
     // Handle different question types
     switch (answer.question_type || question.question_type) {
       case 'MULTIPLE_CHOICE':
-        if (answer.selected_options && correctAnswer.option_ids) {
-          const studentOptions = answer.selected_options.sort();
-          const correctOptions = correctAnswer.option_ids.sort();
+      case 'MULTIPLE_CHOICE_SINGLE':
+        if (selectedOptions.length > 0 && correctAnswer.option_ids) {
+          const studentOptions = [...selectedOptions].sort();
+          const correctOptions = [...(correctAnswer.option_ids || [])].sort();
           const isCorrect = JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
           this.logger.log(colors.cyan(`   - Student options: ${JSON.stringify(studentOptions)}`));
           this.logger.log(colors.cyan(`   - Correct options: ${JSON.stringify(correctOptions)}`));
@@ -2454,8 +2485,8 @@ export class StudentsService {
         break;
 
       case 'TRUE_FALSE':
-        if (answer.selected_options && correctAnswer.option_ids) {
-          const studentAnswer = answer.selected_options[0]; // Should be "true" or "false"
+        if (selectedOptions.length > 0 && correctAnswer.option_ids) {
+          const studentAnswer = selectedOptions[0]; // Should be "true" or "false"
           const correctOption = correctAnswer.option_ids[0];
           const isCorrect = studentAnswer === correctOption;
           this.logger.log(colors.cyan(`   - Student answer: ${studentAnswer}`));
@@ -2529,10 +2560,11 @@ export class StudentsService {
 
     const correctAnswer = correctAnswers[0]; // Assuming one correct answer per question
 
-    // Check multiple choice answers
-    if (answer.selected_option_ids && correctAnswer.option_ids) {
-      const studentOptions = answer.selected_option_ids.sort();
-      const correctOptions = correctAnswer.option_ids.sort();
+    // Check multiple choice answers (support both selected_option_ids and selected_options)
+    const optionIds = answer.selected_option_ids ?? answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
+    if (optionIds.length > 0 && correctAnswer.option_ids) {
+      const studentOptions = [...optionIds].sort();
+      const correctOptions = [...(correctAnswer.option_ids || [])].sort();
       return JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
     }
 

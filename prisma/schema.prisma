@@ -50,69 +50,69 @@ model AcademicSession {
 }
 
 model School {
-  id                    String                    @id @default(cuid())
-  school_name           String
-  school_email          String                    @unique
-  school_phone          String
-  school_address        String
-  school_type           SchoolType
-  school_ownership      SchoolOwnership
-  status                SchoolStatus              @default(pending)
-  school_icon           Json?
-  cacId                 String?                   @unique
-  utilityBillId         String?                   @unique
-  taxClearanceId        String?                   @unique
-  platformId            String?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
-  academicSessions      AcademicSession[]
-  achievements          Achievement[]
-  assessments           Assessment[]
-  assessmentAttempts    AssessmentAttempt[]
-  assessmentSubmissions AssessmentSubmission[]
-  assignments           Assignment[]
-  assignmentGrades      AssignmentGrade[]
-  assignmentSubmissions AssignmentSubmission[]
-  attendanceRecords     AttendanceRecord[]
-  attendanceSessions    AttendanceSession[]
-  attendanceSettings    AttendanceSettings?
-  attendanceSummaries   AttendanceSummary[]
-  chatAnalytics         ChatAnalytics[]
-  chatContexts          ChatContext[]
-  chatConversations     ChatConversation[]
-  chatMessages          ChatMessage[]
-  classes               Class[]
-  deviceTokens          DeviceToken[]
-  documentChunks        DocumentChunk[]
-  finance               Finance?
-  gradingRubrics        GradingRubric[]
-  libraryResource       LibraryResource[]
-  liveClass             LiveClass[]
-  materialProcessings   MaterialProcessing[]
-  notifications         Notification[]
-  pdfMaterial           PDFMaterial[]
-  parents               Parent[]
-  subscriptionPlan      PlatformSubscriptionPlan?
-  cac                   Document?                 @relation("CACDoc", fields: [cacId], references: [id])
-  platform              Organisation?             @relation(fields: [platformId], references: [id])
-  tax_clearance         Document?                 @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
-  utility_bill          Document?                 @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
-  students              Student[]
-  subjects              Subject[]
-  supportInfo           SupportInfo?
-  teachers              Teacher[]
-  timeSlots             TimeSlot[]
-  results               Result[]
-  schedules             TimetableEntry[]
-  topics                Topic[]
-  users                 User[]
-  userSettings          UserSettings[]
-  videoContent          VideoContent[]
-  wallet                Wallet?
+  id                        String                     @id @default(cuid())
+  school_name               String
+  school_email              String                     @unique
+  school_phone              String
+  school_address            String
+  school_type               SchoolType
+  school_ownership          SchoolOwnership
+  status                    SchoolStatus               @default(pending)
+  school_icon               Json?
+  cacId                     String?                    @unique
+  utilityBillId             String?                    @unique
+  taxClearanceId            String?                    @unique
+  platformId                String?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  academicSessions          AcademicSession[]
+  achievements              Achievement[]
+  assessments               Assessment[]
+  assessmentAttempts        AssessmentAttempt[]
+  assessmentSubmissions     AssessmentSubmission[]
+  assignments               Assignment[]
+  assignmentGrades          AssignmentGrade[]
+  assignmentSubmissions     AssignmentSubmission[]
+  attendanceRecords         AttendanceRecord[]
+  attendanceSessions        AttendanceSession[]
+  attendanceSettings        AttendanceSettings?
+  attendanceSummaries       AttendanceSummary[]
+  chatAnalytics             ChatAnalytics[]
+  chatContexts              ChatContext[]
+  chatConversations         ChatConversation[]
+  chatMessages              ChatMessage[]
+  classes                   Class[]
+  deviceTokens              DeviceToken[]
+  documentChunks            DocumentChunk[]
+  finance                   Finance?
+  gradingRubrics            GradingRubric[]
+  libraryResource           LibraryResource[]
+  liveClass                 LiveClass[]
+  materialProcessings       MaterialProcessing[]
+  notifications             Notification[]
+  pdfMaterial               PDFMaterial[]
+  parents                   Parent[]
+  subscriptionPlan          PlatformSubscriptionPlan?
+  cac                       Document?                  @relation("CACDoc", fields: [cacId], references: [id])
+  platform                  Organisation?              @relation(fields: [platformId], references: [id])
+  tax_clearance             Document?                  @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
+  utility_bill              Document?                  @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
+  students                  Student[]
+  subjects                  Subject[]
+  supportInfo               SupportInfo?
+  teachers                  Teacher[]
+  timeSlots                 TimeSlot[]
+  results                   Result[]
+  schedules                 TimetableEntry[]
+  topics                    Topic[]
+  users                     User[]
+  userSettings              UserSettings[]
+  videoContent              VideoContent[]
+  wallet                    Wallet?
   // Multi-level access control relations
-  libraryResourceAccess  LibraryResourceAccess[]
-  schoolResourceAccess   SchoolResourceAccess[]
-  teacherResourceAccess TeacherResourceAccess[]
+  libraryResourceAccess     LibraryResourceAccess[]
+  schoolResourceAccess      SchoolResourceAccess[]
+  teacherResourceAccess     TeacherResourceAccess[]
   schoolResourceExclusions  SchoolResourceExclusion[]
   teacherResourceExclusions TeacherResourceExclusion[]
 }
@@ -211,8 +211,8 @@ model User {
   teacherAccessGranted             TeacherResourceAccess[]                  @relation("TeacherAccessGranter")
   studentAccessReceived            TeacherResourceAccess[]                  @relation("TeacherAccessStudent")
   schoolExclusionsBy               SchoolResourceExclusion[]                @relation("SchoolExclusionBy")
-  teacherExclusionsBy              TeacherResourceExclusion[]              @relation("TeacherExclusionBy")
-  teacherExclusionsForStudent      TeacherResourceExclusion[]              @relation("TeacherExclusionForStudent")
+  teacherExclusionsBy              TeacherResourceExclusion[]               @relation("TeacherExclusionBy")
+  teacherExclusionsForStudent      TeacherResourceExclusion[]               @relation("TeacherExclusionForStudent")
 }
 
 model Teacher {
@@ -325,29 +325,29 @@ model Parent {
 }
 
 model Class {
-  id                    String                  @id @default(cuid())
-  classId               Int                     @default(autoincrement())
-  name                  String
-  schoolId              String
-  academic_session_id   String
-  classTeacherId        String?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-  attendanceRecords     AttendanceRecord[]
-  attendanceSessions    AttendanceSession[]
-  attendanceSummaries   AttendanceSummary[]
-  academicSession       AcademicSession         @relation(fields: [academic_session_id], references: [id])
-  classTeacher          Teacher?                @relation("ClassTeacher", fields: [classTeacherId], references: [id])
-  school                School                  @relation(fields: [schoolId], references: [id])
-  payments              Payment[]
-  students              Student[]
-  performances          StudentPerformance[]
-  subjects              Subject[]
-  schedules             TimetableEntry[]
-  results               Result[]
+  id                        String                     @id @default(cuid())
+  classId                   Int                        @default(autoincrement())
+  name                      String
+  schoolId                  String
+  academic_session_id       String
+  classTeacherId            String?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  attendanceRecords         AttendanceRecord[]
+  attendanceSessions        AttendanceSession[]
+  attendanceSummaries       AttendanceSummary[]
+  academicSession           AcademicSession            @relation(fields: [academic_session_id], references: [id])
+  classTeacher              Teacher?                   @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  school                    School                     @relation(fields: [schoolId], references: [id])
+  payments                  Payment[]
+  students                  Student[]
+  performances              StudentPerformance[]
+  subjects                  Subject[]
+  schedules                 TimetableEntry[]
+  results                   Result[]
   // Multi-level access control relations
-  schoolResourceAccess   SchoolResourceAccess[]
-  teacherResourceAccess  TeacherResourceAccess[]
+  schoolResourceAccess      SchoolResourceAccess[]
+  teacherResourceAccess     TeacherResourceAccess[]
   teacherResourceExclusions TeacherResourceExclusion[]
 
   @@unique([schoolId, academic_session_id, classId])
@@ -636,7 +636,7 @@ model Organisation {
 }
 
 model VideoContent {
-  id           String                    @id @default(cuid())
+  id           String   @id @default(cuid())
   title        String
   description  String?
   url          String // Original video URL (MP4)
@@ -644,26 +644,26 @@ model VideoContent {
   schoolId     String?
   platformId   String
   uploadedById String
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   topic_id     String?
   duration     String?
   size         String?
-  status       String                    @default("published")
+  status       String   @default("published")
   thumbnail    Json?
-  views        Int                       @default(0)
-  order        Int                       @default(0)
+  views        Int      @default(0)
+  order        Int      @default(0)
 
   // HLS Adaptive Streaming (generated from source MP4)
   hlsPlaybackUrl String? // CloudFront URL to HLS master playlist (.m3u8)
   hlsS3Prefix    String? // S3 prefix where HLS files are stored (for cleanup)
   hlsStatus      HlsTranscodeStatus? // Transcode status: pending, processing, completed, failed
-  platform     Organisation              @relation(fields: [platformId], references: [id])
-  school       School?                   @relation(fields: [schoolId], references: [id])
-  topic        Topic?                    @relation(fields: [topic_id], references: [id])
-  uploadedBy   User                      @relation(fields: [uploadedById], references: [id])
-  videoViews   SchoolVideoView[]
-  watchHistory SchoolVideoWatchHistory[]
+  platform       Organisation              @relation(fields: [platformId], references: [id])
+  school         School?                   @relation(fields: [schoolId], references: [id])
+  topic          Topic?                    @relation(fields: [topic_id], references: [id])
+  uploadedBy     User                      @relation(fields: [uploadedById], references: [id])
+  videoViews     SchoolVideoView[]
+  watchHistory   SchoolVideoWatchHistory[]
 
   @@index([schoolId])
   @@index([platformId])
@@ -750,50 +750,54 @@ model Assignment {
 }
 
 model Assessment {
-  id                       String                 @id @default(cuid())
-  title                    String
-  description              String?
-  duration                 Int?
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
-  topic_id                 String?
-  order                    Int                    @default(0)
-  academic_session_id      String
-  allow_review             Boolean                @default(true)
-  auto_submit              Boolean                @default(false)
-  created_by               String
-  end_date                 DateTime?
-  grading_type             GradingType            @default(AUTOMATIC)
-  instructions             String?
-  is_published             Boolean                @default(false)
-  is_result_released       Boolean                @default(false)
-  max_attempts             Int                    @default(1)
-  passing_score            Float                  @default(50.0)
-  published_at             DateTime?
-  result_released_at       DateTime?
-  school_id                String
-  show_correct_answers     Boolean                @default(false)
-  show_feedback            Boolean                @default(true)
-  shuffle_options          Boolean                @default(false)
-  shuffle_questions        Boolean                @default(false)
-  start_date               DateTime?
-  tags                     String[]
-  time_limit               Int?
-  total_points             Float                  @default(100.0)
-  status                   QuizStatus             @default(DRAFT)
-  subject_id               String
-  assessment_type          AssessmentType         @default(CBT)
-  submissions              Json?
-  student_can_view_grading Boolean                @default(true)
-  academicSession          AcademicSession        @relation(fields: [academic_session_id], references: [id])
-  createdBy                User                   @relation(fields: [created_by], references: [id])
-  school                   School                 @relation(fields: [school_id], references: [id])
-  subject                  Subject                @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  topic                    Topic?                 @relation(fields: [topic_id], references: [id])
-  analytics                AssessmentAnalytics?
-  attempts                 AssessmentAttempt[]
-  questions                AssessmentQuestion[]
-  assessmentSubmissions    AssessmentSubmission[]
+  id                           String                 @id @default(cuid())
+  title                        String
+  description                  String?
+  duration                     Int?
+  createdAt                    DateTime               @default(now())
+  updatedAt                    DateTime               @updatedAt
+  topic_id                     String?
+  order                        Int                    @default(0)
+  academic_session_id          String
+  allow_review                 Boolean                @default(true)
+  auto_submit                  Boolean                @default(true)
+  created_by                   String
+  end_date                     DateTime?
+  grading_type                 GradingType            @default(AUTOMATIC)
+  instructions                 String?
+  is_published                 Boolean                @default(false)
+  is_result_released           Boolean                @default(false)
+  max_attempts                 Int                    @default(1)
+  passing_score                Float                  @default(50.0)
+  can_edit_assessment          Boolean                @default(true)
+  published_at                 DateTime?
+  result_released_at           DateTime?
+  // grade_released_by_teacher Boolean                @default(false)
+  // grade_released_by         Json?
+  school_id                    String
+  show_correct_answers         Boolean                @default(false)
+  show_feedback                Boolean                @default(true)
+  shuffle_options              Boolean                @default(false)
+  shuffle_questions            Boolean                @default(false)
+  student_completed_assessment Boolean                @default(false)
+  start_date                   DateTime?
+  tags                         String[]
+  time_limit                   Int?
+  total_points                 Float                  @default(100.0)
+  status                       QuizStatus             @default(DRAFT)
+  subject_id                   String
+  assessment_type              AssessmentType         @default(CBT)
+  submissions                  Json?
+  student_can_view_grading     Boolean                @default(false)
+  academicSession              AcademicSession        @relation(fields: [academic_session_id], references: [id])
+  createdBy                    User                   @relation(fields: [created_by], references: [id])
+  school                       School                 @relation(fields: [school_id], references: [id])
+  subject                      Subject                @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic                        Topic?                 @relation(fields: [topic_id], references: [id])
+  analytics                    AssessmentAnalytics?
+  attempts                     AssessmentAttempt[]
+  questions                    AssessmentQuestion[]
+  assessmentSubmissions        AssessmentSubmission[]
 
   @@index([school_id, academic_session_id])
   @@index([topic_id])
@@ -2305,11 +2309,11 @@ model LibraryResourceUser {
   last_name    String
   phone_number String?
 
-  role     LibraryUserRole @default(content_creator)
-  userType LibraryUserType @default(libraryresourceowner)
-  status   UserStatus      @default(active) // Reuses existing enum from main schema
-  permissions    String[] @default([]) // Permission codes from LibraryPermissionDefinition (e.g. manage_library_users, view_analytics)
-  permissionLevel Int?     // Elevated users: e.g. 10 = can manage library users; used alongside permissions array
+  role            LibraryUserRole @default(content_creator)
+  userType        LibraryUserType @default(libraryresourceowner)
+  status          UserStatus      @default(active) // Reuses existing enum from main schema
+  permissions     String[]        @default([]) // Permission codes from LibraryPermissionDefinition (e.g. manage_library_users, view_analytics)
+  permissionLevel Int? // Elevated users: e.g. 10 = can manage library users; used alongside permissions array
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2342,10 +2346,10 @@ model LibraryClass {
   name  String
   order Int    @default(1)
 
-  createdAt       DateTime                      @default(now())
-  updatedAt       DateTime                      @updatedAt
-  subjects        LibrarySubject[]
-  materialClasses LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryGeneralMaterial
+  createdAt                 DateTime                      @default(now())
+  updatedAt                 DateTime                      @updatedAt
+  subjects                  LibrarySubject[]
+  materialClasses           LibraryGeneralMaterialClass[] // Many-to-many relationship with LibraryGeneralMaterial
   teacherResourceExclusions TeacherResourceExclusion[]
 }
 
@@ -2366,16 +2370,16 @@ model LibrarySubject {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platform              LibraryPlatform          @relation(fields: [platformId], references: [id])
-  class                 LibraryClass?            @relation(fields: [classId], references: [id])
-  topics                LibraryTopic[]
-  videos                LibraryVideoLesson[]
-  materials             LibraryMaterial[]
-  assignments           LibraryAssignment[]
-  links                 LibraryLink[]
-  comments              LibraryComment[]
-  generalMaterials      LibraryGeneralMaterial[]
-  assessments           LibraryAssessment[]
+  platform                  LibraryPlatform            @relation(fields: [platformId], references: [id])
+  class                     LibraryClass?              @relation(fields: [classId], references: [id])
+  topics                    LibraryTopic[]
+  videos                    LibraryVideoLesson[]
+  materials                 LibraryMaterial[]
+  assignments               LibraryAssignment[]
+  links                     LibraryLink[]
+  comments                  LibraryComment[]
+  generalMaterials          LibraryGeneralMaterial[]
+  assessments               LibraryAssessment[]
   // Multi-level access control relations
   libraryResourceAccess     LibraryResourceAccess[]
   schoolResourceAccess      SchoolResourceAccess[]
@@ -3195,13 +3199,13 @@ model SchoolResourceExclusion {
   id           String   @id @default(cuid())
   schoolId     String
   platformId   String
-  subjectId    String   // Subject school owner turned off
-  excludedById String   // School director/admin who excluded
+  subjectId    String // Subject school owner turned off
+  excludedById String // School director/admin who excluded
   createdAt    DateTime @default(now())
 
-  school     School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school     School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   subject    LibrarySubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  excludedBy User   @relation("SchoolExclusionBy", fields: [excludedById], references: [id], onDelete: Cascade)
+  excludedBy User           @relation("SchoolExclusionBy", fields: [excludedById], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, platformId, subjectId])
   @@index([schoolId])
@@ -3215,10 +3219,10 @@ model TeacherResourceExclusion {
   teacherId      String
   schoolId       String
   subjectId      String
-  resourceType   String   // TOPIC | VIDEO | MATERIAL | ASSESSMENT
+  resourceType   String // TOPIC | VIDEO | MATERIAL | ASSESSMENT
   resourceId     String
-  classId        String?  // School class
-  libraryClassId String?  // Library class (e.g. JSS-1, Primary-1)
+  classId        String? // School class
+  libraryClassId String? // Library class (e.g. JSS-1, Primary-1)
   studentId      String?
   createdAt      DateTime @default(now())
 
@@ -3275,6 +3279,8 @@ enum AuditForType {
   onboard_students
   create_subject
   update_subject
+  release_results
+  unrelease_results
 }
 
 /// Who performed the action: school-side user or library-side user
@@ -3285,13 +3291,13 @@ enum AuditPerformedByType {
 
 /// Audit log for sensitive operations: who did what and when
 model AuditLog {
-  id                String               @id @default(cuid())
+  id                String                @id @default(cuid())
   audit_for_type    AuditForType
-  target_id         String?              // e.g. school id for onboard_school
-  performed_by_id   String?              // User id or LibraryResourceUser id
+  target_id         String? // e.g. school id for onboard_school
+  performed_by_id   String? // User id or LibraryResourceUser id
   performed_by_type AuditPerformedByType?
-  metadata          Json?                // Optional extra context
-  createdAt         DateTime             @default(now())
+  metadata          Json? // Optional extra context
+  createdAt         DateTime              @default(now())
 
   @@index([audit_for_type])
   @@index([target_id])

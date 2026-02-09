@@ -51,6 +51,25 @@ export class LibrarySchoolAssessmentsController {
     );
   }
 
+  @Post(':id/duplicate')
+  @ApiOperation({ summary: 'Duplicate an assessment (copy) for the same school/subject' })
+  @ApiParam({ name: 'schoolId', description: 'School ID' })
+  @ApiParam({ name: 'id', description: 'Assessment ID to duplicate' })
+  @ApiResponse({ status: 201, description: 'Assessment duplicated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Assessment not found' })
+  duplicate(
+    @Param('schoolId') schoolId: string,
+    @Param('id') assessmentId: string,
+    @Body() body: { created_by_user_id?: string },
+  ) {
+    return this.assessmentService.duplicateAssessment(
+      assessmentId,
+      { sub: '' },
+      this.ctx(schoolId, body?.created_by_user_id),
+    );
+  }
+
   @Get('')
   @ApiOperation({ summary: 'Get all assessments for a school subject (library owner)' })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
@@ -274,14 +293,22 @@ export class LibrarySchoolAssessmentsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get assessment by ID (library owner)' })
+  @ApiOperation({
+    summary: 'Get assessment by ID with full details (library owner)',
+    description:
+      'Returns assessment details, questions, and attempts in one response. Use this instead of separate GET :id, GET :id/questions, and GET :id/attempts.',
+  })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment retrieved successfully' })
+  @ApiResponse({ status: 200, description: 'Assessment with details retrieved successfully' })
   getById(
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.getQuizById(assessmentId, '', this.ctx(schoolId));
+    return this.assessmentService.getAssessmentWithDetailsForLibrary(
+      assessmentId,
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 }
