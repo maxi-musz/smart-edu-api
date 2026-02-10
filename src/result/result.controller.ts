@@ -36,11 +36,7 @@ export class ResultController {
     @Res() res: Response,
   ): Promise<void> {
     const user = (req as any).user;
-    const pdf = await this.resultService.getResultPdf(
-      user,
-      studentId,
-      academicSessionId,
-    );
+    const pdf = await this.resultService.getResultPdf(user, studentId, academicSessionId);
     const filename = `report-card-${studentId}-${academicSessionId}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

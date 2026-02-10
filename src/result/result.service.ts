@@ -11,7 +11,26 @@ import * as colors from 'colors';
 import {
   buildReportCardPdf,
   type ReportCardTemplateData,
+  type ReportCardSubjectResult,
 } from '../common/email-templates/report-card-template';
+
+/** Set to true to pad PDF with sample subjects for preview; set to false for production. Not exposed to frontend. */
+const ADD_SAMPLE_SUBJECTS_FOR_PDF_PREVIEW = false;
+
+/** Sample subjects used when ADD_SAMPLE_SUBJECTS_FOR_PDF_PREVIEW is true. Not saved. */
+const SAMPLE_SUBJECTS_FOR_PREVIEW: ReportCardSubjectResult[] = [
+  { subject_name: 'English Language', ca1: 15, ca2: 58, total_score: 73, total_max_score: 100, percentage: 73, grade: 'B' },
+  { subject_name: 'Mathematics', ca1: 18, ca2: 62, total_score: 80, total_max_score: 100, percentage: 80, grade: 'A' },
+  { subject_name: 'Basic Science', ca1: 12, ca2: 48, total_score: 60, total_max_score: 100, percentage: 60, grade: 'C' },
+  { subject_name: 'Social Studies', ca1: 14, ca2: 55, total_score: 69, total_max_score: 100, percentage: 69, grade: 'C' },
+  { subject_name: 'Civic Education', ca1: 17, ca2: 58, total_score: 75, total_max_score: 100, percentage: 75, grade: 'B' },
+  { subject_name: 'Computer Studies', ca1: 19, ca2: 68, total_score: 87, total_max_score: 100, percentage: 87, grade: 'A' },
+  { subject_name: 'Agricultural Science', ca1: 13, ca2: 52, total_score: 65, total_max_score: 100, percentage: 65, grade: 'C' },
+  { subject_name: 'Business Studies', ca1: 16, ca2: 60, total_score: 76, total_max_score: 100, percentage: 76, grade: 'B' },
+  { subject_name: 'Creative Arts', ca1: 18, ca2: 64, total_score: 82, total_max_score: 100, percentage: 82, grade: 'A' },
+  { subject_name: 'Home Economics', ca1: 15, ca2: 55, total_score: 70, total_max_score: 100, percentage: 70, grade: 'B' },
+  { subject_name: 'Physical Education', ca1: 17, ca2: 61, total_score: 78, total_max_score: 100, percentage: 78, grade: 'B' },
+];
 
 /** school_icon from DB: { url?: string; key?: string; ... } — resolve to buffer for PDF embedding */
 async function getSchoolLogoBuffer(
@@ -167,6 +186,15 @@ export class ResultService {
     const schoolIcon = result.school.school_icon as unknown;
     const schoolLogoBuffer = await getSchoolLogoBuffer(this.s3Service, schoolIcon);
 
+    let subjectResults: ReportCardTemplateData['subject_results'] =
+      (result.subject_results as ReportCardTemplateData['subject_results']) ?? [];
+    if (ADD_SAMPLE_SUBJECTS_FOR_PDF_PREVIEW) {
+      const real = subjectResults;
+      const needed = Math.max(0, 12 - real.length);
+      const samples = SAMPLE_SUBJECTS_FOR_PREVIEW.slice(0, needed);
+      subjectResults = [...real, ...samples];
+    }
+
     const templateData: ReportCardTemplateData = {
       school: {
         school_name: result.school.school_name,
@@ -182,7 +210,7 @@ export class ResultService {
       },
       total_students: result.total_students,
       class_position: result.class_position,
-      subject_results: (result.subject_results as ReportCardTemplateData['subject_results']) ?? [],
+      subject_results: subjectResults,
       total_score: result.total_score,
       overall_percentage: result.overall_percentage,
       overall_grade: result.overall_grade,
