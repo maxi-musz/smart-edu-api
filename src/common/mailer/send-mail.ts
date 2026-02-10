@@ -65,7 +65,7 @@ interface SendMailProps {
 
 ////////////////////////////////////////////////////////////            Generic send mail function
 export const sendMail = async (payload: SendMailProps): Promise<void> => {
-    console.log(colors.yellow("Sending mail..."))
+    console.log(colors.yellow(`Sending mail to: ${payload.to}`))
 
     try {
         const emailProvider = EmailProviderFactory.getProvider();

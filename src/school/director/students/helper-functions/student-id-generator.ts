@@ -1,6 +1,9 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 
-export async function generateUniqueStudentId(prisma: PrismaService): Promise<string> {
+/** Accepts PrismaService or a transaction client (tx) so IDs can be generated inside a transaction. */
+export async function generateUniqueStudentId(
+    prisma: PrismaService | Pick<PrismaService, 'student'>,
+): Promise<string> {
     const currentYear = new Date().getFullYear();
     const yearPrefix = currentYear.toString().slice(-2);
     

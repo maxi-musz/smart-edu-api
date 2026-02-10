@@ -13,6 +13,8 @@ interface UserOnboardData {
   phone: string;
   schoolName: string;
   className?: string;
+  /** When set, this password is used in the email instead of generating one (e.g. backend default password). */
+  password?: string;
 }
 
 /**
@@ -47,16 +49,19 @@ export async function sendTeacherOnboardEmail(userData: UserOnboardData): Promis
 }
 
 /**
- * Sends congratulatory email to onboarded student
+ * Sends congratulatory email to onboarded student.
+ * If userData.password is provided (e.g. backend default), that is used; otherwise a password is generated.
  */
 export async function sendStudentOnboardEmail(userData: UserOnboardData): Promise<void> {
   try {
-    const password = generateStrongPassword(
-      userData.firstName,
-      userData.lastName,
-      userData.email,
-      userData.phone
-    );
+    const password =
+      userData.password ??
+      generateStrongPassword(
+        userData.firstName,
+        userData.lastName,
+        userData.email,
+        userData.phone
+      );
 
     const emailHtml = studentOnboardEmailTemplate({
       ...userData,
@@ -70,7 +75,7 @@ export async function sendStudentOnboardEmail(userData: UserOnboardData): Promis
     });
 
     console.log(`✅ Student onboard email sent to: ${userData.email}`);
-    console.log(`🔐 Generated password: ${password}`);
+    console.log(`🔐 Password in email: ${userData.password ? 'default (from backend)' : 'generated'}`);
   } catch (error) {
     console.error(`❌ Failed to send student onboard email to ${userData.email}:`, error);
     throw error;

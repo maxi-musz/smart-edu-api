@@ -41,6 +41,37 @@ export interface OnboardOptions {
 
 @Injectable()
 export class AuthService {
+    /**
+     * Returns emails that already exist in User, Teacher, School.school_email, or LibraryResourceUser.
+     * Used to skip those when onboarding (e.g. students) and report them as failed.
+     */
+    private async getEmailsAlreadyInUse(emails: string[]): Promise<string[]> {
+        if (emails.length === 0) return [];
+        const normalized = [...new Set(emails.map((e) => e.toLowerCase().trim()).filter(Boolean))];
+        const inUser = await this.prisma.user.findMany({
+            where: { email: { in: normalized } },
+            select: { email: true },
+        });
+        const inTeacher = await this.prisma.teacher.findMany({
+            where: { email: { in: normalized } },
+            select: { email: true },
+        });
+        const inSchool = await this.prisma.school.findMany({
+            where: { school_email: { in: normalized } },
+            select: { school_email: true },
+        });
+        const inLibraryUser = await this.prisma.libraryResourceUser.findMany({
+            where: { email: { in: normalized } },
+            select: { email: true },
+        });
+        const found = new Set<string>([
+            ...inUser.map((u) => u.email.toLowerCase()),
+            ...inTeacher.map((t) => t.email.toLowerCase()),
+            ...inSchool.map((s) => s.school_email.toLowerCase()),
+            ...inLibraryUser.map((u) => u.email.toLowerCase()),
+        ]);
+        return normalized.filter((e) => found.has(e));
+    }
     private readonly logger = new Logger(AuthService.name);
 
     constructor(
@@ -1086,8 +1117,9 @@ export class AuthService {
             // Generate strong passwords for each teacher
             const teachersWithPasswords = await Promise.all(
                 dto.teachers.map(async (teacher) => {
-                    const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
-                    // const defaultPassword = `maximus123`;
+                    // const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
+                    const defaultPassword = `SmartEduHub123`;
+                    // const defaultPassword = `SmartEduHub123`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {
@@ -1226,23 +1258,26 @@ export class AuthService {
                 });
             }
 
-            // Check if any of the emails already exist
-            const existingEmails = await this.prisma.user.findMany({
-                where: {
-                    email: {
-                        in: dto.students.map(student => student.email.toLowerCase())
-                    }
-                }
-            });
+            // Emails already in use (User, Teacher, School.school_email, LibraryResourceUser) — skip these and report in response
+            const requestedEmails = dto.students.map((s) => s.email.toLowerCase().trim());
+            const emailsAlreadyInUse = await this.getEmailsAlreadyInUse(requestedEmails);
+            const failedEmails = [...emailsAlreadyInUse];
 
-            if (existingEmails.length > 0) {
-                console.log(colors.red("Some emails already exist in the system"));
-                throw new BadRequestException({
-                    success: false,
-                    message: "Some emails already exist in the system",
-                    error: existingEmails.map(u => u.email),
-                    statusCode: 400
+            const studentsToOnboard = dto.students.filter(
+                (s) => !emailsAlreadyInUse.includes(s.email.toLowerCase().trim())
+            );
+
+            if (studentsToOnboard.length === 0) {
+                return ResponseHelper.success("No new students to onboard; all emails already in use", {
+                    totalSuccessfullyOnboarded: 0,
+                    totalFailed: failedEmails.length,
+                    failedEmailsToOnboard: failedEmails,
+                    onboardedUsers: [],
                 });
+            }
+
+            if (failedEmails.length > 0) {
+                console.log(colors.yellow(`Skipping ${failedEmails.length} email(s) already in use: ${failedEmails.join(", ")}`));
             }
 
             // Get all classes for the school
@@ -1251,10 +1286,10 @@ export class AuthService {
             });
 
             // Validate that all default classes exist
-            const requestedClasses = dto.students.map(student => 
+            const requestedClasses = studentsToOnboard.map(student =>
                 student.default_class.toLowerCase().replace(/\s+/g, '')
             );
-            
+
             const invalidClasses = requestedClasses.filter(
                 className => !schoolClasses.some(c => c.name === className)
             );
@@ -1269,11 +1304,11 @@ export class AuthService {
                 });
             }
 
-            // Generate default password for each student (first 3 letters of first name + last 4 digits of phone)
+            // Generate default password for each student
             const studentsWithPasswords = await Promise.all(
-                dto.students.map(async (student) => {
+                studentsToOnboard.map(async (student) => {
                     // const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
-                    const defaultPassword = `Maximus123`;
+                    const defaultPassword = `SmartEduHub123`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
                     return {
@@ -1299,11 +1334,11 @@ export class AuthService {
             // Import student ID generator (relative path for runtime resolution from dist/)
             const { generateUniqueStudentId } = await import('../director/students/helper-functions/student-id-generator');
 
-            // Create users and student records (each in its own transaction for data integrity)
-            const students = await Promise.all(
-                studentsWithPasswords.map(async (studentData) => {
-                    return await this.prisma.$transaction(async (tx) => {
-                        // Create user
+            // Create all users and student records in a single transaction to avoid P2028 (transaction timeout under concurrency)
+            const students = await this.prisma.$transaction(
+                async (tx) => {
+                    const results: Array<{ user: Awaited<ReturnType<typeof tx.user.create>>; student: Awaited<ReturnType<typeof tx.student.create>> }> = [];
+                    for (const studentData of studentsWithPasswords) {
                         const user = await tx.user.create({
                             data: {
                                 email: studentData.email.toLowerCase(),
@@ -1316,15 +1351,12 @@ export class AuthService {
                             }
                         });
 
-                        // Find the class ID
-                        const classId = schoolClasses.find(c => 
+                        const classId = schoolClasses.find(c =>
                             c.name === studentData.default_class.toLowerCase().replace(/\s+/g, '')
                         )?.id;
 
-                        // Generate unique student ID
-                        const studentId = await generateUniqueStudentId(this.prisma);
+                        const studentId = await generateUniqueStudentId(tx);
 
-                        // Create student record
                         const student = await tx.student.create({
                             data: {
                                 school_id: existingSchool.id,
@@ -1338,37 +1370,41 @@ export class AuthService {
                         });
 
                         console.log(colors.green(`✅ Created student record for ${user.email} with ID: ${student.id}`));
-
-                        return { user, student };
-                    });
-                })
+                        results.push({ user, student });
+                    }
+                    return results;
+                },
+                { timeout: 60000 }
             );
 
             console.log(colors.green("Students created and enrolled successfully!"));
 
-            // Send congratulatory emails to all students
-            const emailPromises = students.map(async ({ user: student }) => {
+            // Send congratulatory emails one-by-one with delay to respect Resend rate limit (e.g. 2/sec)
+            const emailDelayMs = 1000; // 1 second between each email
+            for (let i = 0; i < students.length; i++) {
+                const { user: student } = students[i];
                 try {
-                    const studentData = dto.students.find(s => 
-                        s.email.toLowerCase() === student.email.toLowerCase()
+                    const studentData = studentsToOnboard.find(
+                        (s) => s.email.toLowerCase() === student.email.toLowerCase()
                     );
                     const className = studentData?.default_class || 'Unassigned';
-                    
+                    const defaultPassword = studentsWithPasswords[i]?.defaultPassword;
                     await sendStudentOnboardEmail({
                         firstName: student.first_name,
                         lastName: student.last_name,
                         email: student.email,
                         phone: student.phone_number,
                         schoolName: existingSchool.school_name,
-                        className: className
+                        className: className,
+                        password: defaultPassword,
                     });
                 } catch (emailError) {
                     console.log(colors.yellow(`⚠️ Failed to send email to ${student.email}: ${emailError.message}`));
                 }
-            });
-
-            // Wait for all emails to be sent (but don't fail if some emails fail)
-            await Promise.allSettled(emailPromises);
+                if (i < students.length - 1) {
+                    await new Promise((r) => setTimeout(r, emailDelayMs));
+                }
+            }
 
             const formatted_response = students.map(({ user }) => ({
                 id: user.id,
@@ -1382,18 +1418,41 @@ export class AuthService {
                 updated_at: formatDate(user.updatedAt)
             }));
 
-            if (options?.performedBy) {
-                await this.auditService.log({
-                    auditForType: AuditForType.onboard_students,
-                    targetId: existingSchool.id,
-                    performedById: options.performedBy.id,
-                    performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
-                });
-            }
+            // Audit log: onboard_students with full details of each onboarded student (first name, last name, email, password as used)
+            const onboardedDetails = students.map(({ user }, idx) => ({
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                password: studentsWithPasswords[idx]?.defaultPassword ?? null,
+            }));
+            await this.auditService.log({
+                auditForType: AuditForType.onboard_students,
+                targetId: existingSchool.id,
+                performedById: options?.performedBy?.id,
+                performedByType: options?.performedBy
+                    ? options.performedBy.type === 'library_user'
+                        ? AuditPerformedByType.library_user
+                        : AuditPerformedByType.school_user
+                    : undefined,
+                metadata: {
+                    totalOnboarded: students.length,
+                    onboardedStudents: onboardedDetails,
+                },
+            });
+
+            const totalSuccessfullyOnboarded = students.length;
+            const totalFailed = failedEmails.length;
 
             return ResponseHelper.success(
-                "Students onboarded successfully",
-                formatted_response
+                totalFailed > 0
+                    ? `Students onboarded with ${totalSuccessfullyOnboarded} succeeded, ${totalFailed} skipped (email already in use).`
+                    : "Students onboarded successfully",
+                {
+                    totalSuccessfullyOnboarded,
+                    totalFailed,
+                    failedEmailsToOnboard: failedEmails,
+                    onboardedUsers: formatted_response,
+                }
             );
 
         } catch (error) {
@@ -1453,7 +1512,7 @@ export class AuthService {
             // Generate default password for each director (first 3 letters of first name + last 4 digits of phone)
             const directorsWithPasswords = await Promise.all(
                 dto.directors.map(async (director) => {
-                    const defaultPassword = `maximus123`;
+                    const defaultPassword = `SmartEduHub123`;
                     // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                     const hashedPassword = await argon.hash(defaultPassword);
                     
@@ -1656,7 +1715,7 @@ export class AuthService {
                     // Generate passwords and create teachers
                     const teachersWithPasswords = await Promise.all(
                         dto.teachers.map(async (teacher) => {
-                            const defaultPassword = `maximus123`;
+                            const defaultPassword = `SmartEduHub123`;
                     // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                             const hashedPassword = await argon.hash(defaultPassword);
                             return {
@@ -1754,7 +1813,7 @@ export class AuthService {
                     // Generate passwords and create students
                     const studentsWithPasswords = await Promise.all(
                         dto.students.map(async (student) => {
-                            const defaultPassword = `maximus123`;
+                            const defaultPassword = `SmartEduHub123`;
                     // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                             const hashedPassword = await argon.hash(defaultPassword);
                             return {
@@ -1850,7 +1909,7 @@ export class AuthService {
                     // Generate passwords and create directors
                     const directorsWithPasswords = await Promise.all(
                         dto.directors.map(async (director) => {
-                            const defaultPassword = `maximus123`;
+                            const defaultPassword = `SmartEduHub123`;
                     // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
                             const hashedPassword = await argon.hash(defaultPassword);
                             return {
