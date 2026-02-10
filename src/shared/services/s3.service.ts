@@ -190,6 +190,19 @@ export class S3Service {
   }
 
   /**
+   * Get an S3 object as a Buffer (e.g. for embedding images in PDFs).
+   */
+  async getObjectAsBuffer(key: string): Promise<Buffer> {
+    const command = new GetObjectCommand({ Bucket: this.bucketName, Key: key });
+    const res: any = await this.s3Client.send(command);
+    const chunks: Buffer[] = [];
+    for await (const chunk of res.Body as AsyncIterable<Buffer>) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /**
    * Download an S3 object to a temporary file and return its path and contentType
    */
   async downloadToTempFile(key: string): Promise<{ filePath: string; contentType?: string }> {
