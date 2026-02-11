@@ -164,12 +164,8 @@ export class AuthService {
             }
 
             // randmon password generator used here
-            const randomPassword = generateStrongPassword("School", "Director", dto.school_email, dto.school_phone);
-
-            // hash the password 
-            const hashedPassword = await argon.hash(randomPassword);
-            console.log(colors.green("Hashed password: "), hashedPassword);
-
+            const hashedPassword = await argon.hash("SmartEduHub123");
+            
             // Prepare school icon object if uploaded
             const schoolIconData = schoolIconResult ? {
                 url: schoolIconResult.url,
@@ -633,23 +629,31 @@ export class AuthService {
                 }
             });
 
-            // if user does not exist, return error
+            // if user does not exist, then look under school table, before even goig to under library user table
             if (!existing_user) {
-                console.log(colors.red("User not found"));
-                return ResponseHelper.error("User not found", null, 404);
-            }
-
-            // if user is ofund under the users table, look under the libraryuser table also, and if user is found there, that means user is a library user, reject the login cause this endpointi s only for normal users not library users 
-            const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-                where: { email: existing_user.email.toLowerCase() },
-            });
-            if (libraryUser) {
-                this.logger.log(colors.yellow(`Library user attempted sign-in via school auth: ${payload.email}`));
-                return ResponseHelper.error(
-                    "User account not found",
-                    null,
-                    400
-                );
+                this.logger.log(colors.yellow(`User not found in users table, checking school table for email: ${payload.email}`));
+                const email_is_attached_to_school = await this.prisma.school.findFirst({
+                    where: { school_email: payload.email.toLowerCase() },
+                });
+                if (email_is_attached_to_school) {
+                    const new_user = await this.prisma.user.create({
+                        data: {
+                            email: payload.email.toLowerCase(),
+                            password: 'SmartEdu@01.',
+                            first_name: '',
+                            last_name: '',
+                            phone_number: '',
+                            school_id: email_is_attached_to_school.id,
+                            role: 'school_director',
+                            status: 'active',
+                        }
+                    });
+                    this.logger.log(colors.cyan(`Created User record for email attached to school: ${payload.email}`));
+                    return new_user;
+                } else {
+                    console.log(colors.red("User not found: (email does not exist in users table or school table)"));
+                    throw new NotFoundException("User not found");
+                }
             }
 
             // if user exists, confirm that the school is approved and if not apporved, show proper message that their school is currently undergoing approval process
@@ -756,7 +760,7 @@ export class AuthService {
     }
     //
     async requestPasswordResetOTP(payload: RequestPasswordResetDTO) {
-        this.logger.log(colors.blue("Requesting password reset otp..."))
+        this.logger.log(colors.magenta("Requesting password reset otp..."))
 
         try {
             const emailLower = payload.email.toLowerCase();
@@ -796,7 +800,7 @@ export class AuthService {
                     existing_user = await this.prisma.user.create({
                         data: {
                             email: emailLower,
-                            password: 'smartedu', // Placeholder - library users use LibraryResourceUser.password
+                            password: 'SmartEdu@01.', 
                             first_name: libraryUser.first_name,
                             last_name: libraryUser.last_name,
                             phone_number: libraryUser.phone_number || '+000-000-0000',
@@ -808,12 +812,31 @@ export class AuthService {
                     this.logger.log(colors.cyan(`Created User record for library user OTP storage: ${emailLower}`));
                 }
             } else {
-                // Regular user - check User table
+                // Not a library user: check User table first
                 existing_user = await this.prisma.user.findFirst({
-                    where: {
-                        email: emailLower
-                    }
+                    where: { email: emailLower }
                 });
+                // If not in User table, check if email is a school's school_email and create User for OTP
+                if (!existing_user) {
+                    const email_is_attached_to_school = await this.prisma.school.findFirst({
+                        where: { school_email: emailLower }
+                    });
+                    if (email_is_attached_to_school) {
+                        existing_user = await this.prisma.user.create({
+                            data: {
+                                email: emailLower,
+                                password: 'SmartEdu@01.',
+                                first_name: '',
+                                last_name: '',
+                                phone_number: '',
+                                school_id: email_is_attached_to_school.id,
+                                role: 'school_director',
+                                status: 'active',
+                            }
+                        });
+                        this.logger.log(colors.cyan(`Created User record for email attached to school: ${emailLower}`));
+                    }
+                }
             }
 
             // if user not found
