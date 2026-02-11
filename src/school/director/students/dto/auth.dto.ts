@@ -634,6 +634,7 @@ export class UpdateStudentDto {
         required: false
     })
     @IsString({ message: 'First name must be a string' })
+    @IsOptional()
     first_name?: string;
 
     @ApiProperty({
@@ -642,6 +643,7 @@ export class UpdateStudentDto {
         required: false
     })
     @IsString({ message: 'Last name must be a string' })
+    @IsOptional()
     last_name?: string;
 
     @ApiProperty({
@@ -650,6 +652,7 @@ export class UpdateStudentDto {
         required: false
     })
     @IsEmail({}, { message: 'Please provide a valid email address' })
+    @IsOptional()
     email?: string;
 
     @ApiProperty({
@@ -658,6 +661,7 @@ export class UpdateStudentDto {
         required: false
     })
     @IsString({ message: 'Phone number must be a string' })
+    @IsOptional()
     phone_number?: string;
 
     @ApiProperty({
@@ -665,7 +669,9 @@ export class UpdateStudentDto {
         example: 'https://example.com/photo.jpg',
         required: false
     })
-    display_picture?: any;
+    @IsOptional()
+    @IsString()
+    display_picture?: string;
 
     @ApiProperty({
         description: 'Gender of the student',
@@ -674,6 +680,7 @@ export class UpdateStudentDto {
         required: false
     })
     @IsString({ message: 'Gender must be a string' })
+    @IsOptional()
     gender?: 'male' | 'female' | 'other';
 
     @ApiProperty({
@@ -681,6 +688,8 @@ export class UpdateStudentDto {
         example: '2008-05-15',
         required: false
     })
+    @IsOptional()
+    @IsDateString()
     date_of_birth?: string;
 
     @ApiProperty({
@@ -688,6 +697,8 @@ export class UpdateStudentDto {
         example: 'STD/2024/001',
         required: false
     })
+    @IsOptional()
+    @IsString()
     admission_number?: string;
 
     @ApiProperty({
@@ -695,6 +706,8 @@ export class UpdateStudentDto {
         example: 'John Smith',
         required: false
     })
+    @IsOptional()
+    @IsString()
     guardian_name?: string;
 
     @ApiProperty({
@@ -702,6 +715,8 @@ export class UpdateStudentDto {
         example: '+2348012345678',
         required: false
     })
+    @IsOptional()
+    @IsString()
     guardian_phone?: string;
 
     @ApiProperty({
@@ -709,6 +724,8 @@ export class UpdateStudentDto {
         example: 'guardian@example.com',
         required: false
     })
+    @IsOptional()
+    @IsEmail()
     guardian_email?: string;
 
     @ApiProperty({
@@ -716,6 +733,8 @@ export class UpdateStudentDto {
         example: '123 Student Street, Lagos',
         required: false
     })
+    @IsOptional()
+    @IsString()
     address?: string;
 
     @ApiProperty({
@@ -723,6 +742,8 @@ export class UpdateStudentDto {
         example: '+2348012345678',
         required: false
     })
+    @IsOptional()
+    @IsString()
     emergency_contact?: string;
 
     @ApiProperty({
@@ -730,6 +751,8 @@ export class UpdateStudentDto {
         example: 'O+',
         required: false
     })
+    @IsOptional()
+    @IsString()
     blood_group?: string;
 
     @ApiProperty({
@@ -737,6 +760,8 @@ export class UpdateStudentDto {
         example: 'None',
         required: false
     })
+    @IsOptional()
+    @IsString()
     medical_conditions?: string;
 
     @ApiProperty({
@@ -744,6 +769,8 @@ export class UpdateStudentDto {
         example: 'None',
         required: false
     })
+    @IsOptional()
+    @IsString()
     allergies?: string;
 
     @ApiProperty({
@@ -751,6 +778,8 @@ export class UpdateStudentDto {
         example: 'Previous School Name',
         required: false
     })
+    @IsOptional()
+    @IsString()
     previous_school?: string;
 
     @ApiProperty({
@@ -758,6 +787,8 @@ export class UpdateStudentDto {
         example: 'JSS 2',
         required: false
     })
+    @IsOptional()
+    @IsString()
     academic_level?: string;
 
     @ApiProperty({
@@ -765,6 +796,8 @@ export class UpdateStudentDto {
         example: 'parent-uuid-here',
         required: false
     })
+    @IsOptional()
+    @IsString()
     parent_id?: string;
 
     @ApiProperty({
@@ -773,6 +806,7 @@ export class UpdateStudentDto {
         required: false
     })
     @IsString({ message: 'Class ID must be a string' })
+    @IsOptional()
     class_id?: string;
 
     @ApiProperty({
@@ -781,5 +815,7 @@ export class UpdateStudentDto {
         example: 'active',
         required: false
     })
+    @IsOptional()
+    @IsString()
     status?: 'active' | 'suspended' | 'inactive';
 }
