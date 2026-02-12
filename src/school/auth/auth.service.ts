@@ -1314,7 +1314,7 @@ export class AuthService {
             );
 
             const invalidClasses = requestedClasses.filter(
-                className => !schoolClasses.some(c => c.name === className)
+                className => !schoolClasses.some(c => c.name.toLowerCase().replace(/\s+/g, '') === className)
             );
 
             if (invalidClasses.length > 0) {
@@ -1375,7 +1375,7 @@ export class AuthService {
                         });
 
                         const classId = schoolClasses.find(c =>
-                            c.name === studentData.default_class.toLowerCase().replace(/\s+/g, '')
+                            c.name.toLowerCase().replace(/\s+/g, '') === studentData.default_class.toLowerCase().replace(/\s+/g, '')
                         )?.id;
 
                         const studentId = await generateUniqueStudentId(tx);
