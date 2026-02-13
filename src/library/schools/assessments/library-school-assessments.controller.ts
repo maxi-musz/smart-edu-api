@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Request,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -16,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import { AssessmentService, LibraryAssessmentContext } from '../../../school/teachers/assessments/assessment.service';
 import { CreateAssessmentDto, UpdateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentQuestionDto } from '../../../school/teachers/assessments/cbt-dto';
 import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
@@ -118,6 +120,54 @@ export class LibrarySchoolAssessmentsController {
     @Param('id') assessmentId: string,
   ) {
     return this.assessmentService.getAssessmentAttempts(assessmentId, '', schoolId, this.ctx(schoolId));
+  }
+
+  @Get(':id/attempts/download')
+  @ApiOperation({ summary: 'Download assessment results as Excel (library owner)' })
+  @ApiParam({ name: 'schoolId', description: 'School ID' })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiResponse({ status: 200, description: 'Excel file downloaded successfully' })
+  async downloadAttempts(
+    @Param('schoolId') schoolId: string,
+    @Param('id') assessmentId: string,
+    @Res() res: Response,
+  ) {
+    const excelBuffer = await this.assessmentService.downloadAssessmentResultsAsExcel(
+      assessmentId,
+      schoolId,
+      this.ctx(schoolId),
+    );
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="assessment-results-${assessmentId}.xlsx"`,
+    });
+
+    res.send(excelBuffer);
+  }
+
+  @Get(':id/attempts/download-pdf')
+  @ApiOperation({ summary: 'Download assessment results as PDF (library owner)' })
+  @ApiParam({ name: 'schoolId', description: 'School ID' })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiResponse({ status: 200, description: 'PDF file downloaded successfully' })
+  async downloadAttemptsPdf(
+    @Param('schoolId') schoolId: string,
+    @Param('id') assessmentId: string,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.assessmentService.downloadAssessmentResultsAsPdf(
+      assessmentId,
+      schoolId,
+      this.ctx(schoolId),
+    );
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="assessment-results-${assessmentId}.pdf"`,
+    });
+
+    res.send(pdfBuffer);
   }
 
   @Get(':id/attempts/:studentId')

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { TemEndpointController } from './tem-endpoint.controller';
+import { TemEndpointService } from './tem-endpoint.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -35,8 +37,8 @@ import { AuditModule } from 'src/audit/audit.module';
       inject: [ConfigService]
     })
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, ExcelProcessorService],
+  controllers: [AuthController, TemEndpointController],
+  providers: [AuthService, JwtStrategy, ExcelProcessorService, TemEndpointService],
   exports: [AuthService]
 })
 export class AuthModule {}

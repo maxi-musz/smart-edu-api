@@ -6,6 +6,13 @@ import * as colors from 'colors';
 import { CreateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentDto, UpdateAssessmentQuestionDto } from './cbt-dto';
 import { StorageService } from '../../../shared/services/providers/storage.service';
 import { AssessmentNotificationsService } from '../../../push-notifications/assessment/assessment-notifications.service';
+import * as XLSX from 'xlsx';
+import {
+  buildAssessmentResultsPdf,
+  type AssessmentResultsPdfData,
+  type AssessmentResultsPdfStudent,
+  type AssessmentResultsPdfClass,
+} from '../../../common/email-templates/assessment-results-template';
 
 /** When set, the assessment operation is performed by a library owner on behalf of a school. */
 export interface LibraryAssessmentContext {
@@ -2845,6 +2852,353 @@ export class AssessmentService {
       throw new NotFoundException('Topic not found or does not belong to this school');
     }
     return topic;
+  }
+
+  /**
+   * Download assessment results as an Excel buffer.
+   * Reuses the same data from getAssessmentAttempts but formats it into a spreadsheet.
+   *
+   * Columns: S/N, Student Name, Email, Status, Score, Percentage, Submitted, Position
+   */
+  async downloadAssessmentResultsAsExcel(
+    assessmentId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ): Promise<Buffer> {
+    try {
+      this.logger.log(colors.cyan(`Generating Excel results for assessment: ${assessmentId}`));
+
+      // Reuse the existing getAssessmentAttempts to get all data
+      const attemptsResponse = await this.getAssessmentAttempts(assessmentId, '', schoolId, libraryContext);
+      const data = attemptsResponse.data;
+
+      const assessmentTitle = data.assessment?.title || 'Assessment';
+      const stats = data.statistics || {};
+      const classes = data.classes || [];
+
+      // ══════════════════════════════════════════════════════════════
+      // Build the sheet manually — summary at top, then table below
+      // ══════════════════════════════════════════════════════════════
+      const sheetData: any[][] = [];
+
+      // Row 0: Assessment title
+      sheetData.push([assessmentTitle]);
+      sheetData.push([]); // blank row
+
+      // Rows 2-3: Stats row (label + value side by side, 3 pairs per row)
+      sheetData.push([
+        'Total Students', stats.totalStudents || 0, '',
+        'Attempted', stats.studentsAttempted || 0, '',
+        'Not Attempted', stats.studentsNotAttempted || 0,
+      ]);
+      sheetData.push([
+        'Total Attempts', stats.totalAttempts || 0, '',
+        'Avg Score', `${stats.averageScore || 0}%`, '',
+        'Completion', `${stats.completionRate || 0}%`,
+      ]);
+
+      sheetData.push([]); // blank row
+
+      // Class Breakdown header
+      sheetData.push(['Class Breakdown']);
+      sheetData.push(['Class', 'Students', 'Attempted', 'Not Attempted', 'Completion']);
+      for (const cls of classes) {
+        const completion = cls.totalStudents > 0
+          ? Math.round((cls.studentsAttempted / cls.totalStudents) * 100)
+          : 0;
+        sheetData.push([
+          cls.className,
+          cls.totalStudents,
+          cls.studentsAttempted,
+          cls.studentsNotAttempted,
+          `${completion}%`,
+        ]);
+      }
+
+      sheetData.push([]); // blank row
+
+      // ══════════════════════════════════════════════════════════════
+      // Student results — prepare data
+      // ══════════════════════════════════════════════════════════════
+      const attemptedStudents = (data.students || [])
+        .filter((s: any) => s.hasAttempted && s.latestAttempt)
+        .sort((a: any, b: any) => (b.latestAttempt.percentage || 0) - (a.latestAttempt.percentage || 0));
+
+      const notAttemptedStudents = (data.students || [])
+        .filter((s: any) => !s.hasAttempted);
+
+      // Assign positions (handle ties)
+      let position = 1;
+      for (let i = 0; i < attemptedStudents.length; i++) {
+        if (i > 0 && attemptedStudents[i].latestAttempt.percentage === attemptedStudents[i - 1].latestAttempt.percentage) {
+          attemptedStudents[i]._position = attemptedStudents[i - 1]._position;
+        } else {
+          attemptedStudents[i]._position = position;
+        }
+        position++;
+      }
+
+      // Table header row
+      const tableHeaders = [
+        'S/N', 'Student Name', 'Email', 'Class', 'Status',
+        'Score', 'Percentage', 'Total Score', 'Max Score',
+        'Grade', 'Time Spent (mins)', 'Submitted', 'Position',
+      ];
+      const tableHeaderRowIdx = sheetData.length;
+      sheetData.push(tableHeaders);
+
+      // Attempted students
+      let sn = 1;
+      for (const student of attemptedStudents) {
+        const attempt = student.latestAttempt;
+        const submittedDate = attempt.submittedAt
+          ? new Date(attempt.submittedAt).toLocaleString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric',
+              hour: 'numeric', minute: '2-digit', hour12: true,
+            })
+          : '';
+
+        sheetData.push([
+          sn++,
+          `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+          student.email || '',
+          student.className || '',
+          attempt.passed ? 'Passed' : 'Failed',
+          `${attempt.percentage || 0}% (${attempt.totalScore || 0}/${attempt.maxScore || 0})`,
+          attempt.percentage || 0,
+          attempt.totalScore || 0,
+          attempt.maxScore || 0,
+          attempt.gradeLetter || '',
+          attempt.timeSpent ? Math.round(attempt.timeSpent / 60) : '',
+          submittedDate,
+          this.formatPosition(student._position),
+        ]);
+      }
+
+      // Not-attempted students
+      for (const student of notAttemptedStudents) {
+        sheetData.push([
+          sn++,
+          `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+          student.email || '',
+          student.className || '',
+          'Not Attempted',
+          '-', '-', '-', '-', '-', '-', '-', '-',
+        ]);
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // Create the worksheet from the 2D array
+      // ══════════════════════════════════════════════════════════════
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+      // Column widths
+      ws['!cols'] = [
+        { wch: 6 },   // S/N
+        { wch: 32 },  // Student Name
+        { wch: 40 },  // Email
+        { wch: 15 },  // Class
+        { wch: 15 },  // Status
+        { wch: 20 },  // Score
+        { wch: 12 },  // Percentage
+        { wch: 12 },  // Total Score
+        { wch: 10 },  // Max Score
+        { wch: 8 },   // Grade
+        { wch: 16 },  // Time Spent
+        { wch: 26 },  // Submitted
+        { wch: 10 },  // Position
+      ];
+
+      // Auto-filter on the table header row so it opens as a filterable table
+      const lastDataRow = sheetData.length - 1;
+      const lastCol = tableHeaders.length - 1;
+      ws['!autofilter'] = {
+        ref: XLSX.utils.encode_range({
+          s: { r: tableHeaderRowIdx, c: 0 },
+          e: { r: lastDataRow, c: lastCol },
+        }),
+      };
+
+      // Merge the title cell across all columns for a clean header look
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, ws, 'Assessment Results');
+
+      this.logger.log(colors.green(`✅ Excel generated: ${sn - 1} student rows with summary`));
+
+      return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    } catch (error) {
+      this.logger.error(colors.red(`Error generating Excel results: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Download assessment results as a PDF buffer.
+   * Includes school header, statistics, class breakdown, and full student results table.
+   */
+  async downloadAssessmentResultsAsPdf(
+    assessmentId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ): Promise<Buffer> {
+    try {
+      this.logger.log(colors.cyan(`Generating PDF results for assessment: ${assessmentId}`));
+
+      const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
+
+      // Fetch school info
+      const school = await this.prisma.school.findFirst({
+        where: { id: effectiveSchoolId },
+        select: {
+          school_name: true,
+          school_address: true,
+          school_phone: true,
+          school_email: true,
+          school_icon: true,
+        },
+      });
+
+      // Try to fetch school logo as buffer
+      let schoolLogoBuffer: Buffer | null = null;
+      if (school?.school_icon && typeof school.school_icon === 'object') {
+        const iconObj = school.school_icon as Record<string, unknown>;
+        const url = typeof iconObj.url === 'string' ? iconObj.url : null;
+        if (url) {
+          try {
+            const resp = await fetch(url);
+            if (resp.ok) {
+              const ab = await resp.arrayBuffer();
+              schoolLogoBuffer = Buffer.from(ab);
+            }
+          } catch { /* no logo */ }
+        }
+      }
+
+      // Get attempts data (reuse existing method)
+      const attemptsResponse = await this.getAssessmentAttempts(assessmentId, '', schoolId, libraryContext);
+      const data = attemptsResponse.data;
+
+      const assessmentInfo = data.assessment || {};
+      const stats = data.statistics || {};
+
+      // Separate and sort students
+      const attemptedStudents = (data.students || [])
+        .filter((s: any) => s.hasAttempted && s.latestAttempt)
+        .sort((a: any, b: any) => (b.latestAttempt.percentage || 0) - (a.latestAttempt.percentage || 0));
+
+      const notAttemptedStudents = (data.students || [])
+        .filter((s: any) => !s.hasAttempted);
+
+      // Assign positions (handle ties)
+      let position = 1;
+      for (let i = 0; i < attemptedStudents.length; i++) {
+        if (i > 0 && attemptedStudents[i].latestAttempt.percentage === attemptedStudents[i - 1].latestAttempt.percentage) {
+          attemptedStudents[i]._position = attemptedStudents[i - 1]._position;
+        } else {
+          attemptedStudents[i]._position = position;
+        }
+        position++;
+      }
+
+      // Build PDF student rows
+      const pdfStudents: AssessmentResultsPdfStudent[] = [];
+      let sn = 1;
+
+      for (const student of attemptedStudents) {
+        const attempt = student.latestAttempt;
+        const submittedDate = attempt.submittedAt
+          ? new Date(attempt.submittedAt).toLocaleString('en-US', {
+              month: 'short', day: 'numeric', year: 'numeric',
+              hour: 'numeric', minute: '2-digit', hour12: true,
+            })
+          : '';
+
+        pdfStudents.push({
+          sn: sn++,
+          studentName: `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+          email: student.email || '',
+          className: student.className || '',
+          status: attempt.passed ? 'Passed' : 'Failed',
+          score: `${attempt.percentage || 0}% (${attempt.totalScore || 0}/${attempt.maxScore || 0})`,
+          percentage: attempt.percentage || 0,
+          submitted: submittedDate,
+          position: this.formatPosition(student._position),
+        });
+      }
+
+      for (const student of notAttemptedStudents) {
+        pdfStudents.push({
+          sn: sn++,
+          studentName: `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+          email: student.email || '',
+          className: student.className || '',
+          status: 'Not Attempted',
+          score: '-',
+          percentage: 0,
+          submitted: '-',
+          position: '-',
+        });
+      }
+
+      // Build class data
+      const pdfClasses: AssessmentResultsPdfClass[] = (data.classes || []).map((cls: any) => ({
+        className: cls.className,
+        totalStudents: cls.totalStudents,
+        studentsAttempted: cls.studentsAttempted,
+        studentsNotAttempted: cls.studentsNotAttempted,
+        completion: cls.totalStudents > 0
+          ? Math.round((cls.studentsAttempted / cls.totalStudents) * 100)
+          : 0,
+      }));
+
+      const pdfData: AssessmentResultsPdfData = {
+        school: {
+          school_name: school?.school_name || 'School',
+          school_address: school?.school_address,
+          school_phone: school?.school_phone,
+          school_email: school?.school_email,
+          school_logo: schoolLogoBuffer,
+        },
+        assessment: {
+          title: assessmentInfo.title || 'Assessment',
+          subject: assessmentInfo.subject?.name || null,
+          topic: assessmentInfo.topic?.title || null,
+          totalPoints: assessmentInfo.totalPoints,
+          passingScore: assessmentInfo.passingScore,
+        },
+        statistics: {
+          totalStudents: stats.totalStudents || 0,
+          studentsAttempted: stats.studentsAttempted || 0,
+          studentsNotAttempted: stats.studentsNotAttempted || 0,
+          totalAttempts: stats.totalAttempts || 0,
+          averageScore: stats.averageScore || 0,
+          completionRate: stats.completionRate || 0,
+        },
+        classes: pdfClasses,
+        students: pdfStudents,
+      };
+
+      const pdfBuffer = await buildAssessmentResultsPdf(pdfData);
+
+      this.logger.log(colors.green(`✅ PDF generated: ${pdfStudents.length} student rows`));
+
+      return pdfBuffer;
+    } catch (error) {
+      this.logger.error(colors.red(`Error generating PDF results: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /** Format position number with ordinal suffix (1st, 2nd, 3rd, etc.) */
+  private formatPosition(pos: number): string {
+    if (!pos) return '-';
+    const suffixes = ['th', 'st', 'nd', 'rd'];
+    const v = pos % 100;
+    return pos + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
   }
 
   /** Verify assessment exists and belongs to school (for library context). */

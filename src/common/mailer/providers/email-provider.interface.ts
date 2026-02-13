@@ -1,3 +1,9 @@
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
@@ -6,6 +12,7 @@ export interface SendEmailOptions {
     name?: string;
     address: string;
   };
+  attachments?: EmailAttachment[];
 }
 
 export interface IEmailProvider {

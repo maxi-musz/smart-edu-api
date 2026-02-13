@@ -32,6 +32,11 @@ export class ResendProvider implements IEmailProvider {
           to: options.to,
           subject: options.subject,
           html: options.html,
+          attachments: options.attachments?.map(att => ({
+            filename: att.filename,
+            content: att.content.toString('base64'),
+            content_type: att.contentType || 'application/octet-stream',
+          })),
         }),
       });
 

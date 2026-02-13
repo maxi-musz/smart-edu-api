@@ -5,6 +5,7 @@ import { onboardingSchoolAdminNotificationTemplate } from "../email-templates/on
 import { passwordResetTemplate } from "../email-templates/password-reset-template";
 import { loginOtpTemplate } from "../email-templates/login-otp-template";
 import { EmailProviderFactory } from "./providers/email-provider.factory";
+import { EmailAttachment } from "./providers/email-provider.interface";
 
 // Helper function to get the correct from email address based on provider
 const getFromEmailAddress = (): string => {
@@ -60,6 +61,7 @@ interface SendMailProps {
     to: string;
     subject: string;
     html: string;
+    attachments?: EmailAttachment[];
 }
 
 
@@ -78,6 +80,7 @@ export const sendMail = async (payload: SendMailProps): Promise<void> => {
                 name: "Smart Edu Hub",
                 address: getFromEmailAddress(),
             },
+            attachments: payload.attachments,
         });
         
     } catch (error) {

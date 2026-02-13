@@ -44,6 +44,12 @@ export class SendGridProvider implements IEmailProvider {
               value: options.html,
             },
           ],
+          attachments: options.attachments?.map(att => ({
+            content: att.content.toString('base64'),
+            filename: att.filename,
+            type: att.contentType || 'application/octet-stream',
+            disposition: 'attachment',
+          })),
         }),
       });
 

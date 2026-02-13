@@ -56,6 +56,9 @@ docs/AWS-MULTI-ENV/
 backups/
 *.backup
 *.bak
+docs/
+credentials.md
+
 
 # SSL certificates
 ssl/

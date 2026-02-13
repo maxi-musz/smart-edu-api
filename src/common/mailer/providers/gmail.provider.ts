@@ -27,7 +27,7 @@ export class GmailProvider implements IEmailProvider {
       const fromAddress = options.from?.address || process.env.EMAIL_USER as string;
       const fromName = options.from?.name || "Smart Edu Hub";
 
-      const mailOptions = {
+      const mailOptions: nodemailer.SendMailOptions = {
         from: {
           name: fromName,
           address: fromAddress,
@@ -35,6 +35,11 @@ export class GmailProvider implements IEmailProvider {
         to: options.to,
         subject: options.subject,
         html: options.html,
+        attachments: options.attachments?.map(att => ({
+          filename: att.filename,
+          content: att.content,
+          contentType: att.contentType || 'application/octet-stream',
+        })),
       };
 
       await this.transporter.sendMail(mailOptions);
