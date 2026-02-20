@@ -3,6 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../shared/services/s3.service';
 import { HlsTranscodeService } from '../../shared/services/hls-transcode.service';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
+import { VideoUploadService } from '../../video-upload/video-upload.service';
+import type { IVideoUploadHandler } from '../../video-upload/interfaces/video-upload-handler.interface';
 import { FileValidationHelper } from '../../shared/helper-functions/file-validation.helper';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { UploadLibraryVideoDto } from './dto/upload-video.dto';
@@ -11,11 +13,6 @@ import { CreateLibraryLinkDto } from './dto/create-link.dto';
 import { UpdateLibraryVideoDto } from './dto/update-video.dto';
 import { HlsTranscodeStatus } from '@prisma/client';
 import * as colors from 'colors';
-import * as ffmpeg from 'fluent-ffmpeg';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 
 @Injectable()
 export class ContentService {
@@ -26,10 +23,11 @@ export class ContentService {
     private readonly s3Service: S3Service,
     private readonly hlsTranscodeService: HlsTranscodeService,
     private readonly uploadProgressService: UploadProgressService,
+    private readonly videoUploadService: VideoUploadService,
   ) {}
 
   /**
-   * Start video upload session
+   * Start video upload session (delegates to central VideoUploadService with library handler).
    */
   async startVideoUploadSession(
     uploadDto: UploadLibraryVideoDto,
@@ -37,261 +35,91 @@ export class ContentService {
     thumbnailFile: Express.Multer.File | undefined,
     user: any,
   ) {
-    if (!videoFile) {
-      throw new BadRequestException('Video file is required');
-    }
+    const libraryUserRef: { platformId: string } = { platformId: '' };
 
-    const maxVideoSize = 500 * 1024 * 1024; // 500MB
-    if (videoFile.size > maxVideoSize) {
-      throw new BadRequestException('Video file size exceeds 500MB limit');
-    }
-
-    const totalBytes = videoFile.size + (thumbnailFile?.size || 0);
-    const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.platform_id || 'library', totalBytes);
-
-    this.uploadVideoWithProgress(uploadDto, videoFile, thumbnailFile, user, sessionId)
-      .catch(err => this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message));
-
-    return new ApiResponse(
-      true,
-      'Video upload started successfully',
-      {
-        sessionId,
-        progressEndpoint: `/api/v1/library/content/upload-progress/${sessionId}`,
-      },
-    );
-  }
-
-  /**
-   * Upload video with progress tracking
-   */
-  private async uploadVideoWithProgress(
-    uploadDto: UploadLibraryVideoDto,
-    videoFile: Express.Multer.File,
-    thumbnailFile: Express.Multer.File | undefined,
-    user: any,
-    sessionId: string,
-  ) {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Starting video upload: "${uploadDto.title}"`));
-
-    let smoother: NodeJS.Timeout | null = null;
-    let s3Key: string | undefined;
-    let thumbnailS3Key: string | undefined;
-    let s3UploadSucceeded = false;
-    let thumbnailUploadSucceeded = false;
-
-    try {
-      this.uploadProgressService.updateProgress(sessionId, 'validating', 0);
-
-      // Get library user and platform
-      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: user.sub },
-        select: { platformId: true },
-      });
-
-      if (!libraryUser) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Library user not found');
-        throw new NotFoundException('Library user not found');
-      }
-
-      // Validate topic and subject
-      const topic = await this.prisma.libraryTopic.findFirst({
-        where: {
-          id: uploadDto.topicId,
-          subjectId: uploadDto.subjectId,
-          platformId: libraryUser.platformId,
-        },
-        select: {
-          id: true,
-          title: true,
-          subject: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      });
-
-      if (!topic) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Topic not found or does not belong to your platform');
-        throw new NotFoundException('Topic not found or does not belong to your platform');
-      }
-
-      // Upload video with progress
-      const totalBytes = videoFile.size + (thumbnailFile?.size || 0);
-      let lastPercent = -1;
-      let lastKnownLoaded = 0;
-      let emittedLoaded = 0;
-      const onePercent = Math.max(1, Math.floor(totalBytes / 100));
-      const tickMs = 300;
-
-      this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
-      smoother = setInterval(() => {
-        if (emittedLoaded < lastKnownLoaded) {
-          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
-          emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
-          const percent = Math.floor((emittedLoaded / totalBytes) * 100);
-          if (percent > lastPercent) {
-            lastPercent = percent;
-            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
-          }
-        }
-      }, tickMs);
-
-      // Upload video to S3
-      const videoUploadResult = await this.s3Service.uploadFile(
-        videoFile,
-        `library/videos/platforms/${libraryUser.platformId}/subjects/${uploadDto.subjectId}/topics/${uploadDto.topicId}`,
-        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
-        (loaded) => {
-          lastKnownLoaded = Math.min(loaded, videoFile.size);
-        },
-      );
-
-      s3Key = videoUploadResult.key;
-      s3UploadSucceeded = true;
-
-      // Upload thumbnail if provided
-      let thumbnailUrl: string | null = null;
-      let thumbnailS3KeyResult: string | null = null;
-      if (thumbnailFile) {
-        const thumbResult = await this.s3Service.uploadFile(
-          thumbnailFile,
-          `library/video-thumbnails/platforms/${libraryUser.platformId}/subjects/${uploadDto.subjectId}/topics/${uploadDto.topicId}`,
-          `${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
-          (loaded) => {
-            lastKnownLoaded = Math.min(videoFile.size + loaded, totalBytes);
-          },
-        );
-        thumbnailUrl = thumbResult.url;
-        thumbnailS3KeyResult = thumbResult.key;
-        thumbnailS3Key = thumbResult.key;
-        thumbnailUploadSucceeded = true;
-      }
-
-      this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
-
-      // Extract video duration
-      this.logger.log(colors.cyan(`🎬 Extracting video duration...`));
-      const durationSeconds = await this.extractVideoDuration(videoFile);
-
-      // Get next order
-      const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
-        where: { topicId: uploadDto.topicId, platformId: libraryUser.platformId },
-        orderBy: { order: 'desc' },
-        select: { order: true },
-      });
-      const nextOrder = (lastVideo?.order || 0) + 1;
-
-      this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
-
-      // Save to database
-      const videoLesson = await this.prisma.$transaction(async (tx) => {
-        return await tx.libraryVideoLesson.create({
-          data: {
-            platformId: libraryUser.platformId,
-            subjectId: uploadDto.subjectId,
-            topicId: uploadDto.topicId,
-            uploadedById: user.sub,
-            title: uploadDto.title,
-            description: uploadDto.description ?? null,
-            videoUrl: videoUploadResult.url,
-            videoS3Key: s3Key,
-            thumbnailUrl: thumbnailUrl,
-            thumbnailS3Key: thumbnailS3KeyResult,
-            sizeBytes: videoFile.size,
-            durationSeconds: durationSeconds,
-            order: nextOrder,
-            status: 'published',
-            hlsStatus: HlsTranscodeStatus.pending, // Mark for HLS transcode
-          },
-          include: {
-            topic: {
-              select: {
-                id: true,
-                title: true,
-              },
-            },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
+    const handler: IVideoUploadHandler = {
+      validate: async () => {
+        const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+          where: { id: user.sub },
+          select: { platformId: true },
         });
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
-      });
-
-      // Complete
-      lastKnownLoaded = totalBytes;
-      emittedLoaded = totalBytes;
-      if (smoother) clearInterval(smoother);
-      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, videoLesson.id);
-
-      this.logger.log(colors.green(`✅ Video uploaded successfully: ${videoLesson.id}`));
-
-      // Save uploaded file to temp path for HLS transcode so we don't re-download from S3
-      // Multer uses memory storage by default, so videoFile.buffer has the data (not videoFile.path)
-      let localPathForTranscode: string | undefined;
-      const transcodeTempDir = path.join(os.tmpdir(), 'hls-transcode');
-      try {
-        fs.mkdirSync(transcodeTempDir, { recursive: true });
-        localPathForTranscode = path.join(transcodeTempDir, `upload_${videoLesson.id}_${Date.now()}.mp4`);
-        
-        if (videoFile?.path && fs.existsSync(videoFile.path)) {
-          // Disk storage: copy the file
-          fs.copyFileSync(videoFile.path, localPathForTranscode);
-        } else if (videoFile?.buffer) {
-          // Memory storage: write buffer to file
-          fs.writeFileSync(localPathForTranscode, videoFile.buffer);
-        } else {
-          this.logger.warn(colors.yellow(`⚠️ No local file or buffer available, will use S3`));
-          localPathForTranscode = undefined;
+        if (!libraryUser) {
+          throw new NotFoundException('Library user not found');
         }
-      } catch (copyErr) {
-        this.logger.warn(colors.yellow(`⚠️ Could not save for local transcode, will use S3: ${copyErr.message}`));
-        localPathForTranscode = undefined;
-      }
-
-      // Trigger HLS transcode in background (use local file when available to skip S3 download)
-      this.hlsTranscodeService.transcodeLibraryVideo(videoLesson.id, localPathForTranscode ? { localFilePath: localPathForTranscode } : undefined)
-        .then(() => this.logger.log(colors.green(`✅ HLS transcode completed for: ${videoLesson.id}`)))
-        .catch((err) => this.logger.error(colors.red(`❌ HLS transcode failed for ${videoLesson.id}: ${err.message}`)));
-
-      return videoLesson;
-    } catch (error) {
-      if (smoother) clearInterval(smoother);
-      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
-
-      // Rollback: Delete uploaded files if DB save failed
-      if (s3UploadSucceeded && s3Key) {
-        try {
-          await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from storage`));
-        } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback video file: ${deleteError.message}`));
+        const topic = await this.prisma.libraryTopic.findFirst({
+          where: {
+            id: uploadDto.topicId,
+            subjectId: uploadDto.subjectId,
+            platformId: libraryUser.platformId,
+          },
+          select: { id: true },
+        });
+        if (!topic) {
+          throw new NotFoundException('Topic not found or does not belong to your platform');
         }
-      }
-      if (thumbnailUploadSucceeded && thumbnailS3Key) {
-        try {
-          await this.s3Service.deleteFile(thumbnailS3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from storage`));
-        } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback thumbnail file: ${deleteError.message}`));
-        }
-      }
+        libraryUserRef.platformId = libraryUser.platformId;
+      },
+      getVideoS3Key: () =>
+        `library/videos/platforms/${libraryUserRef.platformId}/subjects/${uploadDto.subjectId}/topics/${uploadDto.topicId}/${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
+      getThumbnailS3Key: (originalName: string) =>
+        `library/video-thumbnails/platforms/${libraryUserRef.platformId}/subjects/${uploadDto.subjectId}/topics/${uploadDto.topicId}/${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${originalName.split('.').pop()}`,
+      persistVideo: async (params) => {
+        const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
+          where: { topicId: uploadDto.topicId, platformId: libraryUserRef.platformId },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        const nextOrder = (lastVideo?.order ?? 0) + 1;
+        const videoLesson = await this.prisma.$transaction(
+          async (tx) =>
+            tx.libraryVideoLesson.create({
+              data: {
+                platformId: libraryUserRef.platformId,
+                subjectId: uploadDto.subjectId,
+                topicId: uploadDto.topicId,
+                uploadedById: user.sub,
+                title: uploadDto.title,
+                description: uploadDto.description ?? null,
+                videoUrl: params.videoUrl,
+                videoS3Key: params.videoS3Key,
+                thumbnailUrl: params.thumbnailUrl,
+                thumbnailS3Key: params.thumbnailS3Key,
+                sizeBytes: params.sizeBytes,
+                durationSeconds: params.durationSeconds,
+                order: nextOrder,
+                status: 'published',
+                hlsStatus: HlsTranscodeStatus.pending,
+              },
+              select: { id: true },
+            }),
+          { maxWait: 5000, timeout: 15000 },
+        );
+        return { id: videoLesson.id };
+      },
+      triggerHls: async (videoId, localFilePath) => {
+        await this.hlsTranscodeService.transcodeLibraryVideo(
+          videoId,
+          localFilePath ? { localFilePath } : undefined,
+        );
+      },
+    };
 
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
-        throw error;
-      }
+    const result = this.videoUploadService.startVideoUploadSession({
+      videoFile,
+      thumbnailFile,
+      userId: user.sub,
+      progressContextId: user.platform_id || 'library',
+      handler,
+      title: uploadDto.title,
+      description: uploadDto.description ?? null,
+      maxVideoSizeBytes: 500 * 1024 * 1024,
+      logLabel: 'LIBRARY CONTENT',
+    });
 
-      this.logger.error(colors.red(`Error uploading video: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to upload video');
-    }
+    return new ApiResponse(true, 'Video upload started successfully', {
+      sessionId: result.sessionId,
+      progressEndpoint: `/api/v1/library/content/upload-progress/${result.sessionId}`,
+    });
   }
 
   /**
@@ -1633,46 +1461,5 @@ export class ContentService {
     }
   }
 
-  /**
-   * Helper: Extract video duration from video file buffer
-   */
-  private async extractVideoDuration(videoFile: Express.Multer.File): Promise<number | null> {
-    return new Promise((resolve) => {
-      try {
-        // Create a temporary file from the buffer
-        const tempDir = os.tmpdir();
-        const tempFilePath = path.join(tempDir, `temp_video_${Date.now()}_${videoFile.originalname}`);
-        
-        fs.writeFileSync(tempFilePath, videoFile.buffer);
-        
-        // Use ffprobe to get video metadata
-        ffmpeg.ffprobe(tempFilePath, (err, metadata) => {
-          // Clean up temp file
-          try {
-            fs.unlinkSync(tempFilePath);
-          } catch (cleanupErr) {
-            this.logger.warn(colors.yellow(`⚠️ Failed to clean up temp file: ${cleanupErr.message}`));
-          }
-
-          if (err) {
-            this.logger.warn(colors.yellow(`⚠️ Could not extract video duration: ${err.message}`));
-            return resolve(null);
-          }
-
-          const duration = metadata?.format?.duration;
-          if (duration && !isNaN(duration)) {
-            this.logger.log(colors.cyan(`📹 Video duration: ${Math.floor(duration)} seconds`));
-            return resolve(Math.floor(duration));
-          }
-
-          this.logger.warn(colors.yellow(`⚠️ Video duration not found in metadata`));
-          return resolve(null);
-        });
-      } catch (error) {
-        this.logger.warn(colors.yellow(`⚠️ Error extracting video duration: ${error.message}`));
-        return resolve(null);
-      }
-    });
-  }
 }
 

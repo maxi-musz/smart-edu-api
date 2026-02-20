@@ -6,9 +6,17 @@ import { LibraryAuthModule } from '../library-auth/library-auth.module';
 import { S3Module } from '../../shared/services/s3.module';
 import { HlsTranscodeModule } from '../../shared/services/hls-transcode.module';
 import { UploadModule } from '../../shared/upload/upload.module';
+import { VideoUploadModule } from '../../video-upload/video-upload.module';
 
 @Module({
-  imports: [PrismaModule, LibraryAuthModule, S3Module, HlsTranscodeModule, UploadModule],
+  imports: [
+    PrismaModule,
+    LibraryAuthModule,
+    S3Module,
+    HlsTranscodeModule,
+    UploadModule,
+    VideoUploadModule,
+  ],
   controllers: [ContentController],
   providers: [ContentService],
   exports: [ContentService],

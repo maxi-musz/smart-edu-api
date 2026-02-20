@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { TopicsService } from './topics.service';
-import { UploadProgressService } from '../../ai-chat/upload-progress.service';
+import { VideoUploadService } from '../../../video-upload/video-upload.service';
 import { Observable } from 'rxjs';
 import { CreateTopicRequestDto } from './dto/create-topic-request.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
@@ -37,7 +37,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 export class TopicsController {
   constructor(
     private readonly topicsService: TopicsService,
-    private readonly uploadProgressService: UploadProgressService,
+    private readonly videoUploadService: VideoUploadService,
   ) {}
   @Post('process-for-chat/:materialId')
   @ApiOperation({ summary: 'Process a material for AI chat (chunk + embed) if not already processed' })
@@ -300,11 +300,11 @@ export class TopicsController {
   @ApiOperation({ summary: 'Stream video upload progress via SSE' })
   getVideoUploadProgress(@Param('sessionId') sessionId: string): Observable<MessageEvent> {
     return new Observable(observer => {
-      const current = this.uploadProgressService.getCurrentProgress(sessionId);
+      const current = this.videoUploadService.getProgress(sessionId);
       if (current) {
         observer.next({ data: JSON.stringify(current) } as MessageEvent);
       }
-      const unsubscribe = this.uploadProgressService.subscribeToProgress(sessionId, (progress) => {
+      const unsubscribe = this.videoUploadService.subscribeToProgress(sessionId, (progress) => {
         observer.next({ data: JSON.stringify(progress) } as MessageEvent);
         if (progress.stage === 'completed' || progress.stage === 'error') {
           observer.complete();

@@ -943,7 +943,7 @@ export class StudentsService {
    * @param topicId - Topic ID
    */
   async getTopicContent(user: any, topicId: string) {
-    this.logger.log(colors.cyan(`🔄 Starting to fetch content for topic: ${topicId}`));
+    this.logger.log(colors.cyan(`[Student Service]🔄 Starting to fetch content for topic: ${topicId}`));
     
     try {
       // Fetch user from database to get school_id
@@ -1012,6 +1012,7 @@ export class StudentsService {
             url: true,
             thumbnail: true,
             duration: true,
+            hlsStatus: true,
             order: true,
             size: true,
             views: true,

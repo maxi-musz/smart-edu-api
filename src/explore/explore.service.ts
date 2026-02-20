@@ -155,10 +155,12 @@ export class ExploreService {
         subjectsCount: cls._count.subjects
       }));
 
+      // const formatted_subject_name=  
+
       // Format subjects data
       const formattedSubjects = subjects.map(subject => ({
         id: subject.id,
-        name: subject.name,
+        name: subject.name + " " + subject.class?.name,
         code: subject.code,
         description: subject.description,
         color: subject.color,

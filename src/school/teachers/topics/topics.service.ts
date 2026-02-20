@@ -11,6 +11,8 @@ import { ResponseHelper } from '../../../shared/helper-functions/response.helper
 import { S3Service } from '../../../shared/services/s3.service';
 import { HlsTranscodeService } from '../../../shared/services/hls-transcode.service';
 import { UploadProgressService } from '../../ai-chat/upload-progress.service';
+import { VideoUploadService } from '../../../video-upload/video-upload.service';
+import type { IVideoUploadHandler } from '../../../video-upload/interfaces/video-upload-handler.interface';
 import { DocumentProcessingService } from '../../ai-chat/services';
 import { HlsTranscodeStatus } from '@prisma/client';
 import * as colors from 'colors';
@@ -35,6 +37,7 @@ export class TopicsService {
     private readonly s3Service: S3Service,
     private readonly hlsTranscodeService: HlsTranscodeService,
     private readonly uploadProgressService: UploadProgressService,
+    private readonly videoUploadService: VideoUploadService,
     private readonly documentProcessingService: DocumentProcessingService,
   ) {}
 
@@ -971,12 +974,12 @@ export class TopicsService {
       // Validate file sizes
       this.logger.log(colors.blue(`📁 Validating file sizes...`));
       
-      const maxVideoSize = 300 * 1024 * 1024; // 300MB
+      const maxVideoSize = 500 * 1024 * 1024; // 500MB
       const maxThumbnailSize = 10 * 1024 * 1024; // 10MB
       
       if (videoFile.size > maxVideoSize) {
-        this.logger.error(colors.red(`❌ Video file too large: ${(videoFile.size / 1024 / 1024).toFixed(2)}MB (max: 300MB)`));
-        throw new BadRequestException('Video file size exceeds 300MB limit');
+        this.logger.error(colors.red(`❌ Video file too large: ${(videoFile.size / 1024 / 1024).toFixed(2)}MB (max: 500MB)`));
+        throw new BadRequestException('Video file size exceeds 500MB limit');
       }
       
       if (thumbnailFile && thumbnailFile.size > maxThumbnailSize) {
@@ -1165,10 +1168,10 @@ export class TopicsService {
     user: any,
     sessionId: string
   ): Promise<VideoLessonResponseDto> {
-    const maxVideoSize = 100 * 1024 * 1024; // 100MB per user request
+    const maxVideoSize = 500 * 1024 * 1024; // 500MB
     if (videoFile.size > maxVideoSize) {
-      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Video exceeds 100MB limit');
-      throw new BadRequestException('Video file size exceeds 100MB limit');
+      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Video exceeds 500MB limit');
+      throw new BadRequestException('Video file size exceeds 500MB limit');
     }
 
     try {
@@ -1458,7 +1461,8 @@ export class TopicsService {
   }
 
   /**
-   * Start a video upload session and return sessionId (async upload)
+   * Start a video upload session and return sessionId (async upload).
+   * Uses central VideoUploadService; HLS is always triggered after persist.
    */
   async startVideoUploadSession(
     uploadDto: UploadVideoLessonDto,
@@ -1470,17 +1474,109 @@ export class TopicsService {
       throw new BadRequestException('Video file is required');
     }
 
-    const totalBytes = videoFile.size + (thumbnailFile?.size || 0);
-    const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.school_id, totalBytes);
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { id: true, school_id: true },
+    });
+    if (!dbUser) {
+      throw new NotFoundException('User not found');
+    }
+    const schoolId = dbUser.school_id;
+    const userId = dbUser.id;
 
-    this.uploadVideoLessonWithProgress(uploadDto, videoFile, thumbnailFile, user, sessionId)
-      .catch(err => this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message));
+    function formatDurationSeconds(seconds: number | null): string {
+      if (seconds == null || seconds <= 0) return '00:00:00';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    const handler: IVideoUploadHandler = {
+      validate: async () => {
+        const subject = await this.prisma.subject.findFirst({
+          where: { id: uploadDto.subject_id, schoolId },
+        });
+        if (!subject) {
+          throw new NotFoundException('Subject not found or does not belong to this school');
+        }
+        const topic = await this.prisma.topic.findFirst({
+          where: {
+            id: uploadDto.topic_id,
+            subject_id: uploadDto.subject_id,
+            school_id: schoolId,
+            is_active: true,
+          },
+        });
+        if (!topic) {
+          throw new NotFoundException('Topic not found or does not belong to this subject');
+        }
+      },
+      getVideoS3Key: () =>
+        `lecture-videos/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}/${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
+      getThumbnailS3Key: (originalName: string) =>
+        `thumbnails/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}/${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${originalName.split('.').pop()}`,
+      persistVideo: async (params) => {
+        const s3Platform = await this.prisma.organisation.upsert({
+          where: { name: 'AWS S3' },
+          update: {},
+          create: { name: 'AWS S3', email: 's3@smart-edu.com' },
+        });
+        const lastVideo = await this.prisma.videoContent.findFirst({
+          where: { topic_id: uploadDto.topic_id, schoolId },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        const nextOrder = (lastVideo?.order ?? 0) + 1;
+        const videoContent = await this.prisma.videoContent.create({
+          data: {
+            title: uploadDto.title.toLowerCase(),
+            description: (uploadDto.description ?? '').toLowerCase(),
+            topic_id: uploadDto.topic_id,
+            schoolId,
+            platformId: s3Platform.id,
+            uploadedById: userId,
+            order: nextOrder,
+            url: params.videoUrl,
+            videoS3Key: params.videoS3Key,
+            duration: formatDurationSeconds(params.durationSeconds),
+            size: `${(params.sizeBytes / 1024 / 1024).toFixed(2)} MB`,
+            thumbnail: params.thumbnailUrl && params.thumbnailS3Key
+              ? { secure_url: params.thumbnailUrl, public_id: params.thumbnailS3Key }
+              : undefined,
+            status: 'published',
+            views: 0,
+            hlsStatus: HlsTranscodeStatus.pending,
+          },
+          select: { id: true },
+        });
+        return { id: videoContent.id };
+      },
+      triggerHls: async (videoId, localFilePath) => {
+        await this.hlsTranscodeService.transcodeSchoolVideo(
+          videoId,
+          localFilePath ? { localFilePath } : undefined,
+        );
+      },
+    };
+
+    const result = this.videoUploadService.startVideoUploadSession({
+      videoFile,
+      thumbnailFile,
+      userId: user.sub,
+      progressContextId: schoolId ?? user.school_id ?? 'teacher',
+      handler,
+      title: uploadDto.title,
+      description: uploadDto.description ?? null,
+      maxVideoSizeBytes: 500 * 1024 * 1024,
+      logLabel: 'TEACHER TOPICS',
+    });
 
     return {
       success: true,
       message: 'Upload started',
-      data: { sessionId },
-      statusCode: 202
+      data: { sessionId: result.sessionId },
+      statusCode: 202,
     };
   }
 
@@ -1488,7 +1584,8 @@ export class TopicsService {
    * Get current video upload status for polling
    */
   async getVideoUploadStatus(sessionId: string) {
-    const progress = this.uploadProgressService.getCurrentProgress(sessionId);
+    // Use VideoUploadService so we read from the same UploadProgressService instance that created the session
+    const progress = this.videoUploadService.getProgress(sessionId);
     if (!progress) {
       throw new BadRequestException('Upload session not found');
     }
