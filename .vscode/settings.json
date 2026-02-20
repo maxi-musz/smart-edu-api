@@ -6,6 +6,7 @@
   "files.associations": {
     "*.prisma": "prisma"
   },
-  "prisma.trace.server": "off"
+  "prisma.trace.server": "off",
+  "makefile.configureOnOpen": false
 }
 

@@ -845,22 +845,30 @@ export class AuthService {
                 throw new NotFoundException("User not found");
             }
 
-            // generate 6-character alphanumeric OTP
-            const otp = generateOTP();
-            const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+            const now = new Date();
+            const existingExpiry = existing_user.otp_expires_at ? new Date(existing_user.otp_expires_at) : null;
+            const hasValidOtp = existing_user.otp && existingExpiry && existingExpiry > now;
 
-            // Update OTP for the user (stored in User table for both regular and library users)
-            await this.prisma.user.update({
-                where: {
-                    id: existing_user.id
-                },
-                data: {
-                    otp: otp,
-                    otp_expires_at: otpExpiresAt,
-                } as Prisma.UserUpdateInput
-            });
+            let otp: string;
 
-            // TODO: Send OTP via email
+            if (hasValidOtp) {
+                // Resend the same OTP if it hasn't expired
+                otp = existing_user.otp as string;
+                this.logger.log(colors.cyan(`Resending existing OTP (expires ${existingExpiry.toISOString})`));
+            } else {
+                // Generate new OTP and save
+                otp = generateOTP();
+                const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
+                await this.prisma.user.update({
+                    where: { id: existing_user.id },
+                    data: {
+                        otp,
+                        otp_expires_at: otpExpiresAt,
+                    } as Prisma.UserUpdateInput
+                });
+            }
+
             await sendPasswordResetOtp({
                 email: payload.email,
                 otp
