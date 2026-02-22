@@ -1580,6 +1580,22 @@ export class StudentsService {
 
       const subjectIds = studentClass.subjects.map(subject => subject.id);
 
+      // Auto-close assessments whose end_date has passed so list and filters show correct status
+      const now = new Date();
+      const expiredResult = await this.prisma.assessment.updateMany({
+        where: {
+          academic_session_id: currentSession.id,
+          subject_id: { in: subjectIds },
+          is_published: true,
+          status: { in: ['PUBLISHED', 'ACTIVE'] },
+          end_date: { lt: now },
+        },
+        data: { status: 'CLOSED' },
+      });
+      if (expiredResult.count > 0) {
+        this.logger.log(colors.yellow(`Auto-closed ${expiredResult.count} expired assessment(s)`));
+      }
+
       this.logger.log(colors.green(`✅ Student found: ${user.email}`));
       this.logger.log(colors.green(`✅ Student class: ${studentClass.name}`));
       this.logger.log(colors.green(`✅ Subjects in class: ${subjectIds.length}`));
@@ -2085,9 +2101,18 @@ export class StudentsService {
         this.logger.error(colors.red(`❌ Assessment has not started yet: ${assessmentId}`));
         return new ApiResponse(false, 'Assessment has not started yet', null);
       }
+      // If end_date has passed, mark as CLOSED and tell the student the assessment has closed
+      if (assessment.end_date && new Date(assessment.end_date) < now) {
+        this.logger.log(colors.yellow(`Assessment ${assessmentId} has expired (end_date passed), updating status to CLOSED`));
+        await this.prisma.assessment.update({
+          where: { id: assessmentId },
+          data: { status: 'CLOSED' },
+        }).catch(() => { /* ignore update errors */ });
+        return new ApiResponse(false, 'Assessment has closed', { assessment_closed: true, end_date: assessment.end_date?.toISOString() ?? null });
+      }
       if (assessment.status && assessment.status === 'CLOSED') {
-        this.logger.error(colors.red(`❌ Assessment has expired: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment has expired', null);
+        this.logger.error(colors.red(`❌ Assessment status: ${assessment.status}, Assessment has closed`));
+        return new ApiResponse(false, 'Assessment has closed', { assessment_closed: true });
       }
 
       // Check student's attempt count
@@ -2185,7 +2210,7 @@ export class StudentsService {
    */
   async submitAssessment(user: any, assessmentId: string, submissionData: any) {
     this.logger.log(colors.cyan(`Submitting assessment for student: ${user.email}, assessment: ${assessmentId}`));
-    this.logger.log(colors.blue(`Submission data: ${JSON.stringify(submissionData)}`));
+    // this.logger.log(colors.blue(`Submission data: ${JSON.stringify(submissionData)}`));
 
     try {
       // Get full user data with school_id
@@ -2263,15 +2288,20 @@ export class StudentsService {
       }
 
       // Check if assessment is still active
-      const now = new Date();
-      if (assessment.start_date && assessment.start_date > now) {
-        this.logger.error(colors.red(`❌ Assessment has not started yet: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment has not started yet', null);
-      }
-      if (assessment.end_date && assessment.end_date < now) {
-        this.logger.error(colors.red(`❌ Assessment has expired: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment has expired', null);
-      }
+      // const now = new Date();
+      // if (assessment.start_date && assessment.start_date > now) {
+      //   this.logger.error(colors.red(`❌ Assessment has not started yet: ${assessmentId}`));
+      //   return new ApiResponse(false, 'Assessment has not started yet', null);
+      // }
+      // if (assessment.end_date && new Date(assessment.end_date) < now) {
+      //   this.logger.error(colors.red(`❌ Assessment has expired: ${assessmentId}`));
+      //   // Optionally mark as CLOSED so next fetch questions returns "closed" consistently
+      //   await this.prisma.assessment.update({
+      //     where: { id: assessmentId },
+      //     data: { status: 'CLOSED' },
+      //   }).catch(() => {});
+      //   return new ApiResponse(false, 'Assessment has expired', { assessment_expired: true });
+      // }
 
       // Check student's attempt count
       const attemptCount = await this.prisma.assessmentAttempt.count({

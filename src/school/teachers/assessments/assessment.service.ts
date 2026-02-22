@@ -500,6 +500,24 @@ export class AssessmentService {
       // Calculate pagination
       const skip = (pageNum - 1) * limitNum;
 
+      // Auto-close assessments whose end_date has passed so list shows correct status
+      const expiredWhere: any = {
+        academic_session_id: currentSessionId.id,
+        school_id: schoolId,
+        status: { in: ['PUBLISHED', 'ACTIVE'] },
+        end_date: { lt: new Date() },
+      };
+      if (!isDirector) {
+        expiredWhere.created_by = userId;
+      }
+      const expiredResult = await this.prisma.assessment.updateMany({
+        where: expiredWhere,
+        data: { status: 'CLOSED' },
+      });
+      if (expiredResult.count > 0) {
+        this.logger.log(colors.yellow(`[Assessment Service] Auto-closed ${expiredResult.count} expired assessment(s)`));
+      }
+
       // Get all assessments grouped by type
       const [allAssessments, assessmentTypeCounts] = await Promise.all([
         this.prisma.assessment.findMany({
@@ -578,7 +596,7 @@ export class AssessmentService {
       }
 
       // Return all assessments grouped by type
-      this.logger.log(colors.green(`Found ${allAssessments.length} assessments for teacher`));
+      this.logger.log(colors.green(`[Assessment Service] Found ${allAssessments.length} assessments for teacher`));
       return ResponseHelper.success(
         'Assessments retrieved successfully',
         {
@@ -1860,7 +1878,12 @@ export class AssessmentService {
       }
 
       const updateData: any = { ...updateQuizDto };
-      
+
+      // Don't pass empty assessment_type to Prisma (enum expects a valid value)
+      if (updateData.assessment_type === '' || updateData.assessment_type === undefined) {
+        delete updateData.assessment_type;
+      }
+
       // Convert date strings to Date objects
       if (updateQuizDto.start_date) {
         updateData.start_date = new Date(updateQuizDto.start_date);
@@ -1874,8 +1897,14 @@ export class AssessmentService {
       const isBeingUnpublished = updateQuizDto.status === 'DRAFT' && wasPublished;
       const isBeingPublished = (updateQuizDto.status === 'PUBLISHED' || updateQuizDto.status === 'ACTIVE') && !wasPublished;
 
-      // If status is being changed to PUBLISHED/ACTIVE, set published_at
+      // If status is being changed to PUBLISHED/ACTIVE, ensure end_date is not already past
       if (isBeingPublished) {
+        const effectiveEndDate = updateData.end_date ?? existingQuiz.end_date;
+        if (effectiveEndDate && new Date(effectiveEndDate) < new Date()) {
+          throw new BadRequestException(
+            'Cannot publish an assessment that has already expired. Please set an end date in the future first.',
+          );
+        }
         updateData.is_published = true;
         updateData.published_at = new Date();
         if (!updateData.status) {
@@ -2028,6 +2057,14 @@ export class AssessmentService {
       if (existingQuiz.questions.length === 0) {
         this.logger.error(colors.red(`Quiz ${quizId} has no questions`));
         throw new BadRequestException('Cannot publish quiz without questions');
+      }
+
+      const now = new Date();
+      if (existingQuiz.end_date && new Date(existingQuiz.end_date) < now) {
+        this.logger.error(colors.red(`Cannot publish quiz ${quizId}: end date has already passed`));
+        throw new BadRequestException(
+          'Cannot publish an assessment that has already expired. Please set an end date in the future first.',
+        );
       }
 
       const quiz = await this.prisma.assessment.update({
