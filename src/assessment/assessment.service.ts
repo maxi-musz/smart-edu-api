@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import { Logger } from '@nestjs/common';
 import * as colors from 'colors';
-import { CreateNewAssessmentDto, GetAssessmentsQueryDto, UpdateAssessmentDto } from './dto';
+import { CreateNewAssessmentDto, GetAssessmentsQueryDto, UpdateAssessmentDto, SubmitAssessmentDto } from './dto';
 import { StorageService } from '../shared/services/providers/storage.service';
 import { AssessmentNotificationsService } from '../push-notifications/assessment/assessment-notifications.service';
 import { AssessmentType, Prisma } from '@prisma/client';
@@ -1745,5 +1745,1091 @@ export class AssessmentService {
       assessment: updatedAssessment,
       assessmentContext: 'library',
     });
+  }
+
+  // ========================================
+  // GET ASSESSMENT QUESTIONS (FOR TAKING)
+  // ========================================
+
+  /**
+   * Get assessment questions for a student/user to take an assessment
+   * 
+   * For school students: Validates class enrollment and subject access
+   * For library users: Validates platform access
+   * 
+   * @param assessmentId - Assessment ID
+   * @param user - User object (from JWT)
+   */
+  async getAssessmentQuestions(assessmentId: string, user: any) {
+    try {
+      this.logger.log(colors.cyan(`Fetching assessment questions for user: ${user.sub}, assessment: ${assessmentId}`));
+
+      // Detect user context
+      const userContext = await this.detectUserContext(user.sub);
+
+      if (!userContext) {
+        this.logger.error(colors.red(`User not found in any context: ${user.sub}`));
+        throw new NotFoundException('User not found');
+      }
+
+      this.logger.log(colors.cyan(`User context detected: ${userContext.type}`));
+
+      // Route based on user context
+      if (userContext.type === 'library_owner') {
+        // Library owners can preview questions but this endpoint is for students primarily
+        return await this.getLibraryAssessmentQuestions(assessmentId, userContext.platformId!, userContext.userId, true);
+      } else if (userContext.type === 'student') {
+        return await this.getSchoolAssessmentQuestions(assessmentId, userContext);
+      } else {
+        // Teachers/Directors/Admins can preview questions
+        return await this.getSchoolAssessmentQuestionsForPreview(assessmentId, userContext);
+      }
+    } catch (error) {
+      this.logger.error(colors.red(`Error fetching assessment questions: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Get school assessment questions for a student
+   */
+  private async getSchoolAssessmentQuestions(assessmentId: string, userContext: UserContext) {
+    this.logger.log(colors.cyan(`[SCHOOL STUDENT] Fetching assessment questions: ${assessmentId}`));
+
+    // Get student record with class info
+    const student = await this.prisma.student.findFirst({
+      where: {
+        user_id: userContext.userId,
+        school_id: userContext.schoolId,
+      },
+      select: {
+        id: true,
+        current_class_id: true,
+        school_id: true,
+      },
+    });
+
+    if (!student) {
+      this.logger.error(colors.red(`Student not found: ${userContext.userId}`));
+      throw new NotFoundException('Student not found');
+    }
+
+    if (!student.current_class_id) {
+      this.logger.error(colors.red(`Student not assigned to a class: ${userContext.userId}`));
+      throw new BadRequestException('Student is not assigned to any class');
+    }
+
+    // Get current academic session
+    const currentSession = await this.prisma.academicSession.findFirst({
+      where: {
+        school_id: student.school_id,
+        is_current: true,
+      },
+    });
+
+    if (!currentSession) {
+      this.logger.error(colors.red(`No current academic session found`));
+      throw new BadRequestException('No current academic session found');
+    }
+
+    // Get student's class with subjects
+    const studentClass = await this.prisma.class.findUnique({
+      where: { id: student.current_class_id },
+      include: {
+        subjects: {
+          where: { academic_session_id: currentSession.id },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!studentClass) {
+      this.logger.error(colors.red(`Student class not found`));
+      throw new NotFoundException('Student class not found');
+    }
+
+    const subjectIds = studentClass.subjects.map(s => s.id);
+
+    // Get the assessment with questions
+    const assessment = await this.prisma.assessment.findFirst({
+      where: {
+        id: assessmentId,
+        school_id: student.school_id,
+        academic_session_id: currentSession.id,
+        subject_id: { in: subjectIds },
+        status: { in: ['PUBLISHED', 'ACTIVE'] },
+      },
+      include: {
+        subject: {
+          select: { id: true, name: true, code: true, color: true },
+        },
+        createdBy: {
+          select: { id: true, first_name: true, last_name: true },
+        },
+        questions: {
+          include: {
+            options: {
+              select: { id: true, option_text: true, order: true },
+              orderBy: { order: 'asc' },
+            },
+          },
+          orderBy: { order: 'asc' },
+        },
+      },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Assessment not found or not available: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found or not available');
+    }
+
+    // Validate date range
+    const now = new Date();
+    if (assessment.start_date && assessment.start_date > now) {
+      this.logger.warn(colors.yellow(`Assessment has not started yet: ${assessmentId}`));
+      throw new BadRequestException('Assessment has not started yet');
+    }
+
+    if (assessment.end_date && assessment.end_date < now) {
+      this.logger.warn(colors.yellow(`Assessment has expired: ${assessmentId}`));
+      // Auto-close expired assessment
+      await this.prisma.assessment.update({
+        where: { id: assessmentId },
+        data: { status: 'CLOSED' },
+      }).catch(() => {});
+      throw new BadRequestException('Assessment has expired');
+    }
+
+    // Check attempt count
+    const attemptCount = await this.prisma.assessmentAttempt.count({
+      where: {
+        assessment_id: assessmentId,
+        student_id: student.id,
+      },
+    });
+
+    if (attemptCount >= assessment.max_attempts) {
+      this.logger.warn(colors.yellow(`Maximum attempts reached: ${assessmentId}`));
+      throw new ForbiddenException('Maximum attempts reached for this assessment');
+    }
+
+    // Format response (hide correct answers)
+    const questions = assessment.questions.map(q => {
+      let options = q.options.map(o => ({
+        id: o.id,
+        text: o.option_text,
+        order: o.order,
+      }));
+
+      // Shuffle options if enabled
+      if (assessment.shuffle_options) {
+        options = this.shuffleArray(options);
+      }
+
+      return {
+        id: q.id,
+        question_text: q.question_text,
+        question_type: q.question_type,
+        points: q.points,
+        order: q.order,
+        image_url: q.image_url,
+        audio_url: q.audio_url,
+        video_url: q.video_url,
+        is_required: q.is_required,
+        options,
+      };
+    });
+
+    // Shuffle questions if enabled
+    const finalQuestions = assessment.shuffle_questions ? this.shuffleArray(questions) : questions;
+
+    this.logger.log(colors.green(`[SCHOOL STUDENT] Questions retrieved: ${finalQuestions.length}`));
+
+    return ResponseHelper.success('Assessment questions retrieved successfully', {
+      assessment: {
+        id: assessment.id,
+        title: assessment.title,
+        description: assessment.description,
+        instructions: assessment.instructions,
+        duration: assessment.duration,
+        time_limit: assessment.time_limit,
+        total_points: assessment.total_points,
+        max_attempts: assessment.max_attempts,
+        passing_score: assessment.passing_score,
+        auto_submit: assessment.auto_submit,
+        start_date: assessment.start_date,
+        end_date: assessment.end_date,
+        subject: assessment.subject,
+        teacher: {
+          id: assessment.createdBy.id,
+          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+        },
+      },
+      questions: finalQuestions,
+      total_questions: finalQuestions.length,
+      student_attempts: attemptCount,
+      remaining_attempts: assessment.max_attempts - attemptCount,
+      assessmentContext: 'school',
+    });
+  }
+
+  /**
+   * Get school assessment questions for preview (teachers/directors/admins)
+   */
+  private async getSchoolAssessmentQuestionsForPreview(assessmentId: string, userContext: UserContext) {
+    this.logger.log(colors.cyan(`[SCHOOL PREVIEW] Fetching assessment questions: ${assessmentId}`));
+
+    // Build where clause based on role
+    const whereClause: Prisma.AssessmentWhereInput = {
+      id: assessmentId,
+      school_id: userContext.schoolId,
+    };
+
+    // Teachers can only preview their own assessments or those for subjects they teach
+    if (userContext.type === 'teacher') {
+      const teacherSubjects = await this.prisma.teacherSubject.findMany({
+        where: { teacher: { user_id: userContext.userId } },
+        select: { subjectId: true },
+      });
+      const subjectIds = teacherSubjects.map(ts => ts.subjectId);
+      whereClause.OR = [
+        { created_by: userContext.userId },
+        { subject_id: { in: subjectIds } },
+      ];
+    }
+
+    const assessment = await this.prisma.assessment.findFirst({
+      where: whereClause,
+      include: {
+        subject: {
+          select: { id: true, name: true, code: true, color: true },
+        },
+        createdBy: {
+          select: { id: true, first_name: true, last_name: true },
+        },
+        questions: {
+          include: {
+            options: {
+              select: { id: true, option_text: true, is_correct: true, order: true },
+              orderBy: { order: 'asc' },
+            },
+            correct_answers: {
+              select: { id: true, answer_text: true, option_ids: true },
+            },
+          },
+          orderBy: { order: 'asc' },
+        },
+        _count: {
+          select: { attempts: true },
+        },
+      },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Assessment not found or access denied: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found or you do not have access');
+    }
+
+    // Format questions with correct answers (for preview)
+    const questions = assessment.questions.map(q => ({
+      id: q.id,
+      question_text: q.question_text,
+      question_type: q.question_type,
+      points: q.points,
+      order: q.order,
+      image_url: q.image_url,
+      audio_url: q.audio_url,
+      video_url: q.video_url,
+      is_required: q.is_required,
+      explanation: q.explanation,
+      difficulty_level: q.difficulty_level,
+      options: q.options.map(o => ({
+        id: o.id,
+        text: o.option_text,
+        is_correct: o.is_correct,
+        order: o.order,
+      })),
+      correct_answers: q.correct_answers.map(ca => ({
+        id: ca.id,
+        answer_text: ca.answer_text,
+        option_ids: ca.option_ids,
+      })),
+    }));
+
+    this.logger.log(colors.green(`[SCHOOL PREVIEW] Questions retrieved: ${questions.length}`));
+
+    return ResponseHelper.success('Assessment questions retrieved successfully (preview mode)', {
+      assessment: {
+        id: assessment.id,
+        title: assessment.title,
+        description: assessment.description,
+        instructions: assessment.instructions,
+        duration: assessment.duration,
+        time_limit: assessment.time_limit,
+        total_points: assessment.total_points,
+        max_attempts: assessment.max_attempts,
+        passing_score: assessment.passing_score,
+        status: assessment.status,
+        is_published: assessment.is_published,
+        start_date: assessment.start_date,
+        end_date: assessment.end_date,
+        subject: assessment.subject,
+        teacher: {
+          id: assessment.createdBy.id,
+          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+        },
+        total_attempts: assessment._count.attempts,
+      },
+      questions,
+      total_questions: questions.length,
+      isPreview: true,
+      assessmentContext: 'school',
+    });
+  }
+
+  /**
+   * Get library assessment questions for a user
+   */
+  private async getLibraryAssessmentQuestions(
+    assessmentId: string,
+    platformId: string,
+    userId: string,
+    isOwner: boolean = false
+  ) {
+    this.logger.log(colors.cyan(`[LIBRARY] Fetching assessment questions: ${assessmentId}`));
+
+    const assessment = await this.prisma.libraryAssessment.findFirst({
+      where: {
+        id: assessmentId,
+        platformId: platformId,
+        ...(isOwner ? {} : { status: { in: ['PUBLISHED', 'ACTIVE'] } }),
+      },
+      include: {
+        subject: {
+          select: { id: true, name: true, code: true },
+        },
+        createdBy: {
+          select: { id: true, first_name: true, last_name: true },
+        },
+        questions: {
+          include: {
+            options: {
+              select: { id: true, optionText: true, isCorrect: true, order: true },
+              orderBy: { order: 'asc' },
+            },
+            correctAnswers: {
+              select: { id: true, answerText: true, optionIds: true },
+            },
+          },
+          orderBy: { order: 'asc' },
+        },
+        _count: {
+          select: { attempts: true },
+        },
+      },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found or not available');
+    }
+
+    // If owner, show preview with correct answers
+    if (isOwner) {
+      const questions = assessment.questions.map(q => ({
+        id: q.id,
+        question_text: q.questionText,
+        question_type: q.questionType,
+        points: q.points,
+        order: q.order,
+        image_url: q.imageUrl,
+        audio_url: q.audioUrl,
+        video_url: q.videoUrl,
+        is_required: q.isRequired,
+        explanation: q.explanation,
+        difficulty_level: q.difficultyLevel,
+        options: q.options.map(o => ({
+          id: o.id,
+          text: o.optionText,
+          is_correct: o.isCorrect,
+          order: o.order,
+        })),
+        correct_answers: q.correctAnswers.map(ca => ({
+          id: ca.id,
+          answer_text: ca.answerText,
+          option_ids: ca.optionIds,
+        })),
+      }));
+
+      this.logger.log(colors.green(`[LIBRARY PREVIEW] Questions retrieved: ${questions.length}`));
+
+      return ResponseHelper.success('Assessment questions retrieved successfully (preview mode)', {
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          description: assessment.description,
+          instructions: assessment.instructions,
+          duration: assessment.duration,
+          timeLimit: assessment.timeLimit,
+          totalPoints: assessment.totalPoints,
+          maxAttempts: assessment.maxAttempts,
+          passingScore: assessment.passingScore,
+          status: assessment.status,
+          isPublished: assessment.isPublished,
+          startDate: assessment.startDate,
+          endDate: assessment.endDate,
+          subject: assessment.subject,
+          createdBy: {
+            id: assessment.createdBy.id,
+            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+          },
+          totalAttempts: assessment._count.attempts,
+        },
+        questions,
+        total_questions: questions.length,
+        isPreview: true,
+        assessmentContext: 'library',
+      });
+    }
+
+    // For regular users taking the assessment
+    const now = new Date();
+    if (assessment.startDate && assessment.startDate > now) {
+      throw new BadRequestException('Assessment has not started yet');
+    }
+
+    if (assessment.endDate && assessment.endDate < now) {
+      await this.prisma.libraryAssessment.update({
+        where: { id: assessmentId },
+        data: { status: 'CLOSED' },
+      }).catch(() => {});
+      throw new BadRequestException('Assessment has expired');
+    }
+
+    // Check attempt count for the user
+    const attemptCount = await this.prisma.libraryAssessmentAttempt.count({
+      where: {
+        assessmentId: assessmentId,
+        userId: userId,
+      },
+    });
+
+    if (attemptCount >= assessment.maxAttempts) {
+      throw new ForbiddenException('Maximum attempts reached for this assessment');
+    }
+
+    // Format questions (hide correct answers)
+    const questions = assessment.questions.map(q => {
+      let options = q.options.map(o => ({
+        id: o.id,
+        text: o.optionText,
+        order: o.order,
+      }));
+
+      if (assessment.shuffleOptions) {
+        options = this.shuffleArray(options);
+      }
+
+      return {
+        id: q.id,
+        question_text: q.questionText,
+        question_type: q.questionType,
+        points: q.points,
+        order: q.order,
+        image_url: q.imageUrl,
+        audio_url: q.audioUrl,
+        video_url: q.videoUrl,
+        is_required: q.isRequired,
+        options,
+      };
+    });
+
+    const finalQuestions = assessment.shuffleQuestions ? this.shuffleArray(questions) : questions;
+
+    this.logger.log(colors.green(`[LIBRARY] Questions retrieved: ${finalQuestions.length}`));
+
+    return ResponseHelper.success('Assessment questions retrieved successfully', {
+      assessment: {
+        id: assessment.id,
+        title: assessment.title,
+        description: assessment.description,
+        instructions: assessment.instructions,
+        duration: assessment.duration,
+        timeLimit: assessment.timeLimit,
+        totalPoints: assessment.totalPoints,
+        maxAttempts: assessment.maxAttempts,
+        passingScore: assessment.passingScore,
+        autoSubmit: assessment.autoSubmit,
+        startDate: assessment.startDate,
+        endDate: assessment.endDate,
+        subject: assessment.subject,
+        createdBy: {
+          id: assessment.createdBy.id,
+          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+        },
+      },
+      questions: finalQuestions,
+      total_questions: finalQuestions.length,
+      user_attempts: attemptCount,
+      remaining_attempts: assessment.maxAttempts - attemptCount,
+      assessmentContext: 'library',
+    });
+  }
+
+  /**
+   * Fisher-Yates shuffle algorithm
+   */
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  // ========================================
+  // SUBMIT ASSESSMENT METHODS
+  // ========================================
+
+  /**
+   * Submit assessment answers (unified endpoint)
+   * 
+   * Routes to appropriate handler based on user context:
+   * - School students: Submit to school AssessmentAttempt/AssessmentResponse
+   * - Library users: Submit to LibraryAssessmentAttempt/LibraryAssessmentResponse
+   * 
+   * @param assessmentId - Assessment ID
+   * @param submitDto - Submission data with answers
+   * @param user - User object (from JWT)
+   */
+  async submitAssessment(
+    assessmentId: string,
+    submitDto: SubmitAssessmentDto,
+    user: any
+  ) {
+    try {
+      this.logger.log(colors.cyan(`Submitting assessment: ${assessmentId} for user: ${user.sub}`));
+
+      // Detect user context
+      const userContext = await this.detectUserContext(user.sub);
+
+      if (!userContext) {
+        this.logger.error(colors.red(`User not found in any context: ${user.sub}`));
+        throw new NotFoundException('User not found');
+      }
+
+      this.logger.log(colors.cyan(`User context detected: ${userContext.type}`));
+
+      // Only students and library users can submit
+      if (userContext.type === 'library_owner') {
+        // Library owners can submit (they might be testing)
+        return await this.submitLibraryAssessment(assessmentId, submitDto, userContext.platformId!, userContext.userId);
+      } else if (userContext.type === 'student') {
+        return await this.submitSchoolAssessment(assessmentId, submitDto, userContext);
+      } else {
+        // Teachers/Directors/Admins cannot submit assessments
+        this.logger.warn(colors.yellow(`Non-student attempted to submit assessment: ${user.sub}`));
+        throw new ForbiddenException('Only students can submit assessments');
+      }
+    } catch (error) {
+      this.logger.error(colors.red(`Error submitting assessment: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Submit school assessment
+   */
+  private async submitSchoolAssessment(
+    assessmentId: string,
+    submitDto: SubmitAssessmentDto,
+    userContext: UserContext
+  ) {
+    this.logger.log(colors.cyan(`[SCHOOL] Submitting assessment: ${assessmentId}`));
+
+    // Get student record
+    const student = await this.prisma.student.findFirst({
+      where: {
+        user_id: userContext.userId,
+        school_id: userContext.schoolId,
+      },
+      select: {
+        id: true,
+        current_class_id: true,
+        school_id: true,
+      },
+    });
+
+    if (!student) {
+      this.logger.error(colors.red(`Student not found: ${userContext.userId}`));
+      throw new NotFoundException('Student not found');
+    }
+
+    // Get current academic session
+    const currentSession = await this.prisma.academicSession.findFirst({
+      where: {
+        school_id: student.school_id,
+        is_current: true,
+      },
+    });
+
+    if (!currentSession) {
+      this.logger.error(colors.red(`No current academic session found`));
+      throw new BadRequestException('No current academic session found');
+    }
+
+    // Get the assessment with questions
+    const assessment = await this.prisma.assessment.findFirst({
+      where: {
+        id: assessmentId,
+        school_id: student.school_id,
+        academic_session_id: currentSession.id,
+        status: { in: ['PUBLISHED', 'ACTIVE'] },
+      },
+      include: {
+        questions: {
+          include: {
+            correct_answers: true,
+            options: {
+              select: { id: true, is_correct: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Assessment not found or not available: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found or not available');
+    }
+
+    // Check attempt count
+    const attemptCount = await this.prisma.assessmentAttempt.count({
+      where: {
+        assessment_id: assessmentId,
+        student_id: userContext.userId,
+      },
+    });
+
+    if (attemptCount >= assessment.max_attempts) {
+      this.logger.warn(colors.yellow(`Maximum attempts reached: ${assessmentId}`));
+      throw new ForbiddenException('Maximum attempts reached for this assessment');
+    }
+
+    // Normalize answers
+    const normalizedAnswers = this.normalizeAnswers(submitDto.answers);
+
+    // Grade answers
+    const { gradedAnswers, totalScore, totalPoints } = this.gradeSchoolAnswers(
+      normalizedAnswers,
+      assessment.questions
+    );
+
+    // Calculate final scores
+    const percentage = totalPoints > 0 ? (totalScore / totalPoints) * 100 : 0;
+    const passed = percentage >= assessment.passing_score;
+    const grade = this.calculateGrade(percentage);
+    const timeSpent = submitDto.time_taken || 0;
+
+    // Create attempt and responses in transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create attempt
+      const attempt = await tx.assessmentAttempt.create({
+        data: {
+          assessment_id: assessmentId,
+          student_id: userContext.userId,
+          school_id: student.school_id,
+          academic_session_id: currentSession.id,
+          attempt_number: attemptCount + 1,
+          status: 'GRADED',
+          started_at: new Date(),
+          submitted_at: submitDto.submission_time ? new Date(submitDto.submission_time) : new Date(),
+          time_spent: timeSpent,
+          total_score: totalScore,
+          max_score: assessment.total_points,
+          percentage: percentage,
+          passed: passed,
+          is_graded: true,
+          graded_at: new Date(),
+          grade_letter: grade,
+        },
+      });
+
+      // Create responses
+      const responses = await Promise.all(
+        gradedAnswers.map((answer) =>
+          tx.assessmentResponse.create({
+            data: {
+              attempt_id: attempt.id,
+              question_id: answer.question_id,
+              student_id: userContext.userId,
+              text_answer: answer.text_answer || null,
+              numeric_answer: answer.numeric_answer || null,
+              date_answer: answer.date_answer || null,
+              selected_options: answer.selected_options || [],
+              is_correct: answer.is_correct,
+              points_earned: answer.points_earned,
+              max_points: answer.max_points,
+            },
+          })
+        )
+      );
+
+      return { attempt, responses };
+    });
+
+    this.logger.log(colors.green(`[SCHOOL] Assessment submitted: ${totalScore}/${totalPoints} (${percentage.toFixed(1)}%)`));
+
+    return ResponseHelper.success('Assessment submitted successfully', {
+      attempt_id: result.attempt.id,
+      assessment_id: assessmentId,
+      total_score: totalScore,
+      total_points: totalPoints,
+      percentage: percentage,
+      passed: passed,
+      grade: grade,
+      answers: gradedAnswers.map((a) => ({
+        question_id: a.question_id,
+        is_correct: a.is_correct,
+        points_earned: a.points_earned,
+        max_points: a.max_points,
+      })),
+      submission_metadata: {
+        total_questions: submitDto.total_questions,
+        questions_answered: submitDto.questions_answered,
+        questions_skipped: submitDto.questions_skipped,
+        submission_status: submitDto.submission_status,
+        device_info: submitDto.device_info,
+      },
+      submitted_at: result.attempt.submitted_at,
+      time_spent: timeSpent,
+      attempt_number: result.attempt.attempt_number,
+      remaining_attempts: assessment.max_attempts - (attemptCount + 1),
+      assessmentContext: 'school',
+    });
+  }
+
+  /**
+   * Submit library assessment
+   */
+  private async submitLibraryAssessment(
+    assessmentId: string,
+    submitDto: SubmitAssessmentDto,
+    platformId: string,
+    userId: string
+  ) {
+    this.logger.log(colors.cyan(`[LIBRARY] Submitting assessment: ${assessmentId}`));
+
+    // Get the assessment with questions
+    const assessment = await this.prisma.libraryAssessment.findFirst({
+      where: {
+        id: assessmentId,
+        platformId: platformId,
+        status: { in: ['PUBLISHED', 'ACTIVE'] },
+      },
+      include: {
+        questions: {
+          include: {
+            correctAnswers: true,
+            options: {
+              select: { id: true, isCorrect: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found or not available');
+    }
+
+    // Check attempt count
+    const attemptCount = await this.prisma.libraryAssessmentAttempt.count({
+      where: {
+        assessmentId: assessmentId,
+        userId: userId,
+      },
+    });
+
+    if (attemptCount >= assessment.maxAttempts) {
+      this.logger.warn(colors.yellow(`Maximum attempts reached: ${assessmentId}`));
+      throw new ForbiddenException('Maximum attempts reached for this assessment');
+    }
+
+    // Normalize answers
+    const normalizedAnswers = this.normalizeAnswers(submitDto.answers);
+
+    // Grade answers
+    const { gradedAnswers, totalScore, totalPoints } = this.gradeLibraryAnswers(
+      normalizedAnswers,
+      assessment.questions
+    );
+
+    // Calculate final scores
+    const percentage = totalPoints > 0 ? (totalScore / totalPoints) * 100 : 0;
+    const passed = percentage >= assessment.passingScore;
+    const grade = this.calculateGrade(percentage);
+    const timeSpent = submitDto.time_taken || 0;
+
+    // Create attempt and responses in transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create attempt
+      const attempt = await tx.libraryAssessmentAttempt.create({
+        data: {
+          assessmentId: assessmentId,
+          userId: userId,
+          attemptNumber: attemptCount + 1,
+          status: 'GRADED',
+          startedAt: new Date(),
+          submittedAt: submitDto.submission_time ? new Date(submitDto.submission_time) : new Date(),
+          timeSpent: timeSpent,
+          totalScore: totalScore,
+          maxScore: assessment.totalPoints,
+          percentage: percentage,
+          passed: passed,
+          isGraded: true,
+          gradedAt: new Date(),
+          gradeLetter: grade,
+        },
+      });
+
+      // Create responses
+      const responses = await Promise.all(
+        gradedAnswers.map((answer) =>
+          tx.libraryAssessmentResponse.create({
+            data: {
+              attemptId: attempt.id,
+              questionId: answer.question_id,
+              userId: userId,
+              textAnswer: answer.text_answer || null,
+              numericAnswer: answer.numeric_answer || null,
+              dateAnswer: answer.date_answer || null,
+              selectedOptions: answer.selected_options || [],
+              isCorrect: answer.is_correct,
+              pointsEarned: answer.points_earned,
+              maxPoints: answer.max_points,
+            },
+          })
+        )
+      );
+
+      return { attempt, responses };
+    });
+
+    this.logger.log(colors.green(`[LIBRARY] Assessment submitted: ${totalScore}/${totalPoints} (${percentage.toFixed(1)}%)`));
+
+    return ResponseHelper.success('Assessment submitted successfully', {
+      attempt_id: result.attempt.id,
+      assessment_id: assessmentId,
+      total_score: totalScore,
+      total_points: totalPoints,
+      percentage: percentage,
+      passed: passed,
+      grade: grade,
+      answers: gradedAnswers.map((a) => ({
+        question_id: a.question_id,
+        is_correct: a.is_correct,
+        points_earned: a.points_earned,
+        max_points: a.max_points,
+      })),
+      submission_metadata: {
+        total_questions: submitDto.total_questions,
+        questions_answered: submitDto.questions_answered,
+        questions_skipped: submitDto.questions_skipped,
+        submission_status: submitDto.submission_status,
+        device_info: submitDto.device_info,
+      },
+      submitted_at: result.attempt.submittedAt,
+      time_spent: timeSpent,
+      attempt_number: result.attempt.attemptNumber,
+      remaining_attempts: assessment.maxAttempts - (attemptCount + 1),
+      assessmentContext: 'library',
+    });
+  }
+
+  /**
+   * Normalize answers from frontend format
+   */
+  private normalizeAnswers(answers: any[]): any[] {
+    return (answers || []).map((a: any) => {
+      const normalized = { ...a };
+      // Support both selected_options array and single "answer" string
+      if (normalized.selected_options == null && normalized.answer != null) {
+        normalized.selected_options = Array.isArray(normalized.answer)
+          ? normalized.answer
+          : [normalized.answer];
+      }
+      return normalized;
+    });
+  }
+
+  /**
+   * Grade school assessment answers
+   */
+  private gradeSchoolAnswers(answers: any[], questions: any[]): {
+    gradedAnswers: any[];
+    totalScore: number;
+    totalPoints: number;
+  } {
+    let totalScore = 0;
+    let totalPoints = 0;
+    const gradedAnswers: any[] = [];
+
+    for (const answer of answers) {
+      const question = questions.find((q) => q.id === answer.question_id);
+      if (!question) {
+        this.logger.warn(colors.yellow(`Question not found: ${answer.question_id}`));
+        continue;
+      }
+
+      const isCorrect = this.checkAnswerCorrectness(answer, question, 'school');
+      const pointsEarned = isCorrect ? question.points : 0;
+
+      gradedAnswers.push({
+        question_id: answer.question_id,
+        question_type: answer.question_type || question.question_type,
+        is_correct: isCorrect,
+        points_earned: pointsEarned,
+        max_points: question.points,
+        selected_options: answer.selected_options || [],
+        text_answer: answer.text_answer,
+        numeric_answer: answer.question_type === 'NUMERIC' && answer.text_answer ? parseFloat(answer.text_answer) : null,
+        date_answer: answer.question_type === 'DATE' && answer.text_answer ? new Date(answer.text_answer) : null,
+      });
+
+      totalScore += pointsEarned;
+      totalPoints += question.points;
+    }
+
+    return { gradedAnswers, totalScore, totalPoints };
+  }
+
+  /**
+   * Grade library assessment answers
+   */
+  private gradeLibraryAnswers(answers: any[], questions: any[]): {
+    gradedAnswers: any[];
+    totalScore: number;
+    totalPoints: number;
+  } {
+    let totalScore = 0;
+    let totalPoints = 0;
+    const gradedAnswers: any[] = [];
+
+    for (const answer of answers) {
+      const question = questions.find((q) => q.id === answer.question_id);
+      if (!question) {
+        this.logger.warn(colors.yellow(`Question not found: ${answer.question_id}`));
+        continue;
+      }
+
+      const isCorrect = this.checkAnswerCorrectness(answer, question, 'library');
+      const pointsEarned = isCorrect ? question.points : 0;
+
+      gradedAnswers.push({
+        question_id: answer.question_id,
+        question_type: answer.question_type || question.questionType,
+        is_correct: isCorrect,
+        points_earned: pointsEarned,
+        max_points: question.points,
+        selected_options: answer.selected_options || [],
+        text_answer: answer.text_answer,
+        numeric_answer: answer.question_type === 'NUMERIC' && answer.text_answer ? parseFloat(answer.text_answer) : null,
+        date_answer: answer.question_type === 'DATE' && answer.text_answer ? new Date(answer.text_answer) : null,
+      });
+
+      totalScore += pointsEarned;
+      totalPoints += question.points;
+    }
+
+    return { gradedAnswers, totalScore, totalPoints };
+  }
+
+  /**
+   * Check if an answer is correct
+   */
+  private checkAnswerCorrectness(answer: any, question: any, context: 'school' | 'library'): boolean {
+    // Get correct answers based on context (different field names)
+    const correctAnswers = context === 'school' ? question.correct_answers : question.correctAnswers;
+    const questionType = context === 'school' ? question.question_type : question.questionType;
+
+    if (!correctAnswers || correctAnswers.length === 0) {
+      // Fallback: check options' is_correct flag
+      const selectedOptions = answer.selected_options || [];
+      if (selectedOptions.length > 0) {
+        const options = question.options || [];
+        const correctOptionIds = options
+          .filter((o: any) => (context === 'school' ? o.is_correct : o.isCorrect))
+          .map((o: any) => o.id);
+        
+        if (correctOptionIds.length > 0) {
+          const studentOptions = [...selectedOptions].sort();
+          const correctSorted = [...correctOptionIds].sort();
+          return JSON.stringify(studentOptions) === JSON.stringify(correctSorted);
+        }
+      }
+      return false;
+    }
+
+    const correctAnswer = correctAnswers[0];
+    const selectedOptions = answer.selected_options || [];
+    const optionIds = context === 'school' ? correctAnswer.option_ids : correctAnswer.optionIds;
+
+    switch (questionType) {
+      case 'MULTIPLE_CHOICE':
+      case 'MULTIPLE_CHOICE_SINGLE':
+      case 'TRUE_FALSE':
+        if (selectedOptions.length > 0 && optionIds) {
+          const studentOptions = [...selectedOptions].sort();
+          const correctOptions = [...(optionIds || [])].sort();
+          return JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
+        }
+        break;
+
+      case 'FILL_IN_BLANK':
+      case 'SHORT_ANSWER':
+        const answerText = context === 'school' ? correctAnswer.answer_text : correctAnswer.answerText;
+        if (answer.text_answer && answerText) {
+          return answer.text_answer.toLowerCase().trim() === answerText.toLowerCase().trim();
+        }
+        break;
+
+      case 'NUMERIC':
+        const answerNumber = context === 'school' ? correctAnswer.answer_number : correctAnswer.answerNumber;
+        if (answer.text_answer && answerNumber !== undefined) {
+          const studentNumber = parseFloat(answer.text_answer);
+          return !isNaN(studentNumber) && Math.abs(studentNumber - answerNumber) < 0.01;
+        }
+        break;
+
+      case 'DATE':
+        const answerDate = context === 'school' ? correctAnswer.answer_date : correctAnswer.answerDate;
+        if (answer.text_answer && answerDate) {
+          const studentDate = new Date(answer.text_answer);
+          const correctDate = new Date(answerDate);
+          return !isNaN(studentDate.getTime()) && studentDate.getTime() === correctDate.getTime();
+        }
+        break;
+
+      case 'ESSAY':
+        // Essays require manual grading, return false for auto-grade
+        return false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Calculate grade based on percentage
+   */
+  private calculateGrade(percentage: number): string {
+    if (percentage >= 80) return 'A';
+    if (percentage >= 70) return 'B';
+    if (percentage >= 60) return 'C';
+    if (percentage >= 50) return 'D';
+    if (percentage >= 40) return 'E';
+    return 'F';
   }
 }

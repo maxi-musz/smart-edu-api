@@ -1503,3 +1503,728 @@ Authorization: Bearer <token>
    - For teachers, they must teach the target subject
 
 4. **Date Validation:** When publishing (changing status to `PUBLISHED` or `ACTIVE`), the `end_date` must be in the future.
+
+---
+
+## Get Assessment Questions (For Taking Assessment)
+
+Fetches assessment questions for a student/user to take the assessment. This endpoint is specifically for students attempting an assessment.
+
+### Endpoint
+
+```
+GET /assessment/:id/questions
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Path Parameters
+
+| Parameter | Type   | Required | Description    |
+| --------- | ------ | -------- | -------------- |
+| `id`      | string | Yes      | Assessment ID  |
+
+---
+
+### Validation Checks
+
+1. **Assessment Status:** Must be `PUBLISHED` or `ACTIVE`
+2. **Date Range:** Current time must be within `start_date` and `end_date`
+3. **Attempt Limit:** User must have remaining attempts (`attempts < max_attempts`)
+4. **Access Control:**
+   - School students: Must be enrolled in a class with the assessment's subject
+   - Library users: Must have access to the platform
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                                |
+| ------------------- | --------------------------------------------------------------------- |
+| **Library Owner**   | Preview mode: All questions with correct answers (for verification)  |
+| **School Director** | Preview mode: All questions with correct answers                      |
+| **School Admin**    | Preview mode: All questions with correct answers                      |
+| **Teacher**         | Preview mode: Questions with correct answers (for subjects they teach)|
+| **Student**         | Take mode: Questions without correct answers (for taking assessment)  |
+
+---
+
+### Success Response (Student Taking Assessment)
+
+**Status Code:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Assessment questions retrieved successfully",
+  "data": {
+    "assessment": {
+      "id": "assessment_abc123",
+      "title": "Mathematics Mid-Term Quiz",
+      "description": "Test your algebra skills",
+      "instructions": "Answer all questions. You have 60 minutes.",
+      "duration": 60,
+      "time_limit": 60,
+      "total_points": 100,
+      "max_attempts": 2,
+      "passing_score": 50,
+      "auto_submit": true,
+      "start_date": "2026-02-20T09:00:00.000Z",
+      "end_date": "2026-02-28T23:59:59.000Z",
+      "subject": {
+        "id": "subject_abc123",
+        "name": "Mathematics",
+        "code": "MATH101",
+        "color": "#3B82F6"
+      },
+      "teacher": {
+        "id": "user_xyz789",
+        "name": "John Doe"
+      }
+    },
+    "questions": [
+      {
+        "id": "question_abc123",
+        "question_text": "What is the value of x in 2x + 5 = 15?",
+        "question_type": "MULTIPLE_CHOICE",
+        "points": 5,
+        "order": 1,
+        "image_url": null,
+        "audio_url": null,
+        "video_url": null,
+        "is_required": true,
+        "options": [
+          {
+            "id": "option_1",
+            "text": "5",
+            "order": 1
+          },
+          {
+            "id": "option_2",
+            "text": "10",
+            "order": 2
+          },
+          {
+            "id": "option_3",
+            "text": "7.5",
+            "order": 3
+          },
+          {
+            "id": "option_4",
+            "text": "3",
+            "order": 4
+          }
+        ]
+      },
+      {
+        "id": "question_def456",
+        "question_text": "Simplify: 3(x + 2) - 2(x - 1)",
+        "question_type": "MULTIPLE_CHOICE",
+        "points": 5,
+        "order": 2,
+        "image_url": null,
+        "audio_url": null,
+        "video_url": null,
+        "is_required": true,
+        "options": [
+          {
+            "id": "option_5",
+            "text": "x + 8",
+            "order": 1
+          },
+          {
+            "id": "option_6",
+            "text": "x + 4",
+            "order": 2
+          },
+          {
+            "id": "option_7",
+            "text": "5x + 4",
+            "order": 3
+          },
+          {
+            "id": "option_8",
+            "text": "x + 6",
+            "order": 4
+          }
+        ]
+      }
+    ],
+    "total_questions": 2,
+    "student_attempts": 0,
+    "remaining_attempts": 2,
+    "assessmentContext": "school"
+  }
+}
+```
+
+> **Note:** Correct answers are NOT included in the student response. Options may be shuffled if `shuffle_options` is enabled on the assessment.
+
+---
+
+### Success Response (Teacher/Director Preview)
+
+**Status Code:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Assessment questions retrieved successfully (preview mode)",
+  "data": {
+    "assessment": {
+      "id": "assessment_abc123",
+      "title": "Mathematics Mid-Term Quiz",
+      "description": "Test your algebra skills",
+      "instructions": "Answer all questions. You have 60 minutes.",
+      "duration": 60,
+      "time_limit": 60,
+      "total_points": 100,
+      "max_attempts": 2,
+      "passing_score": 50,
+      "status": "DRAFT",
+      "is_published": false,
+      "start_date": "2026-02-20T09:00:00.000Z",
+      "end_date": "2026-02-28T23:59:59.000Z",
+      "subject": {
+        "id": "subject_abc123",
+        "name": "Mathematics",
+        "code": "MATH101",
+        "color": "#3B82F6"
+      },
+      "teacher": {
+        "id": "user_xyz789",
+        "name": "John Doe"
+      },
+      "total_attempts": 45
+    },
+    "questions": [
+      {
+        "id": "question_abc123",
+        "question_text": "What is the value of x in 2x + 5 = 15?",
+        "question_type": "MULTIPLE_CHOICE",
+        "points": 5,
+        "order": 1,
+        "image_url": null,
+        "audio_url": null,
+        "video_url": null,
+        "is_required": true,
+        "explanation": "Subtract 5 from both sides, then divide by 2.",
+        "difficulty_level": "MEDIUM",
+        "options": [
+          {
+            "id": "option_1",
+            "text": "5",
+            "is_correct": true,
+            "order": 1
+          },
+          {
+            "id": "option_2",
+            "text": "10",
+            "is_correct": false,
+            "order": 2
+          },
+          {
+            "id": "option_3",
+            "text": "7.5",
+            "is_correct": false,
+            "order": 3
+          },
+          {
+            "id": "option_4",
+            "text": "3",
+            "is_correct": false,
+            "order": 4
+          }
+        ],
+        "correct_answers": [
+          {
+            "id": "correct_1",
+            "answer_text": "5",
+            "option_ids": ["option_1"]
+          }
+        ]
+      }
+    ],
+    "total_questions": 1,
+    "isPreview": true,
+    "assessmentContext": "school"
+  }
+}
+```
+
+> **Note:** Preview mode includes `is_correct` flags on options, `correct_answers`, `explanation`, and `difficulty_level`.
+
+---
+
+### Success Response (Library Owner Preview)
+
+**Status Code:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Assessment questions retrieved successfully (preview mode)",
+  "data": {
+    "assessment": {
+      "id": "lib-assessment-uuid",
+      "title": "Library Mathematics Quiz",
+      "description": "Basic math concepts",
+      "instructions": "Complete all questions",
+      "duration": 45,
+      "timeLimit": 45,
+      "totalPoints": 100,
+      "maxAttempts": 3,
+      "passingScore": 60,
+      "status": "DRAFT",
+      "isPublished": false,
+      "startDate": "2024-01-20T00:00:00.000Z",
+      "endDate": "2024-02-15T23:59:59.000Z",
+      "subject": {
+        "id": "subject-uuid",
+        "name": "Mathematics",
+        "code": "MATH"
+      },
+      "createdBy": {
+        "id": "library-owner-uuid",
+        "name": "John Owner"
+      },
+      "totalAttempts": 150
+    },
+    "questions": [
+      {
+        "id": "lib-question-uuid",
+        "question_text": "What is 2 + 2?",
+        "question_type": "MULTIPLE_CHOICE",
+        "points": 5,
+        "order": 1,
+        "image_url": null,
+        "audio_url": null,
+        "video_url": null,
+        "is_required": true,
+        "explanation": "Basic addition",
+        "difficulty_level": "EASY",
+        "options": [
+          {
+            "id": "option-1",
+            "text": "4",
+            "is_correct": true,
+            "order": 1
+          },
+          {
+            "id": "option-2",
+            "text": "5",
+            "is_correct": false,
+            "order": 2
+          }
+        ],
+        "correct_answers": [
+          {
+            "id": "correct-1",
+            "answer_text": "4",
+            "option_ids": ["option-1"]
+          }
+        ]
+      }
+    ],
+    "total_questions": 1,
+    "isPreview": true,
+    "assessmentContext": "library"
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Assessment Not Started
+
+```json
+{
+  "success": false,
+  "message": "Assessment has not started yet",
+  "statusCode": 400
+}
+```
+
+#### 400 Bad Request - Assessment Expired
+
+```json
+{
+  "success": false,
+  "message": "Assessment has expired",
+  "statusCode": 400
+}
+```
+
+#### 400 Bad Request - Student Not in Class
+
+```json
+{
+  "success": false,
+  "message": "Student is not assigned to any class",
+  "statusCode": 400
+}
+```
+
+#### 403 Forbidden - Maximum Attempts Reached
+
+```json
+{
+  "success": false,
+  "message": "Maximum attempts reached for this assessment",
+  "statusCode": 403
+}
+```
+
+#### 404 Not Found - Assessment Not Found
+
+```json
+{
+  "success": false,
+  "message": "Assessment not found or not available",
+  "statusCode": 404
+}
+```
+
+#### 404 Not Found - Student Not Found
+
+```json
+{
+  "success": false,
+  "message": "Student not found",
+  "statusCode": 404
+}
+```
+
+---
+
+### Notes
+
+1. **Question Shuffling:** If `shuffle_questions` is enabled on the assessment, questions are returned in random order.
+
+2. **Option Shuffling:** If `shuffle_options` is enabled on the assessment, options within each question are returned in random order.
+
+3. **Correct Answers Hidden:** For students taking the assessment, correct answers are never included in the response. Only preview mode (teachers/directors/admins/owners) includes correct answer information.
+
+4. **Auto-Close on Expiry:** If a student tries to fetch questions for an assessment whose `end_date` has passed, the assessment status is automatically updated to `CLOSED`.
+
+5. **Assessment Types:** This endpoint works for all assessment types (`CBT`, `QUIZ`, `EXAM`, etc.).
+
+---
+
+## Submit Assessment
+
+Submits student/user answers for an assessment and auto-grades where possible.
+
+### Endpoint
+
+```
+POST /assessment/:id/submit
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Path Parameters
+
+| Parameter | Type   | Required | Description    |
+| --------- | ------ | -------- | -------------- |
+| `id`      | string | Yes      | Assessment ID  |
+
+---
+
+### Validation Checks
+
+1. **Assessment Status:** Must be `PUBLISHED` or `ACTIVE`
+2. **Attempt Limit:** User must have remaining attempts (`attempts < max_attempts`)
+3. **Access Control:**
+   - School students: Must be enrolled in a class with the assessment's subject
+   - Library users: Must have access to the platform
+4. **Role Restriction:** Only students (and library owners for testing) can submit
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                |
+| ------------------- | ----------------------------------------------------- |
+| **Library Owner**   | Can submit (for testing their own assessments)        |
+| **School Director** | ❌ Cannot submit assessments                          |
+| **School Admin**    | ❌ Cannot submit assessments                          |
+| **Teacher**         | ❌ Cannot submit assessments                          |
+| **Student**         | ✅ Can submit assessments for subjects in their class |
+
+---
+
+### Request Body
+
+| Field                  | Type     | Required | Description                                      |
+| ---------------------- | -------- | -------- | ------------------------------------------------ |
+| `answers`              | array    | Yes      | Array of answer objects                          |
+| `answers[].question_id`| string   | Yes      | Question ID                                      |
+| `answers[].question_type`| string | No       | Question type                                   |
+| `answers[].selected_options`| string[] | No  | Selected option IDs (for multiple choice)       |
+| `answers[].answer`     | string   | No       | Single answer (alternative to selected_options)  |
+| `answers[].text_answer`| string   | No       | Text answer (for essay, fill-in-blank)          |
+| `submission_time`      | datetime | No       | Submission timestamp (ISO string)                |
+| `time_taken`           | number   | No       | Time taken in seconds                            |
+| `total_questions`      | number   | No       | Total questions (metadata)                       |
+| `questions_answered`   | number   | No       | Questions answered (metadata)                    |
+| `questions_skipped`    | number   | No       | Questions skipped (metadata)                     |
+| `submission_status`    | string   | No       | `COMPLETED`, `TIMED_OUT`, `AUTO_SUBMITTED`       |
+| `device_info`          | object   | No       | Device tracking info                             |
+
+---
+
+### Example Request
+
+```bash
+POST /assessment/clxyz123abc/submit
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "answers": [
+    {
+      "question_id": "question_abc123",
+      "question_type": "MULTIPLE_CHOICE",
+      "selected_options": ["option_1"]
+    },
+    {
+      "question_id": "question_def456",
+      "question_type": "FILL_IN_BLANK",
+      "text_answer": "42"
+    },
+    {
+      "question_id": "question_ghi789",
+      "question_type": "TRUE_FALSE",
+      "answer": "option_true"
+    }
+  ],
+  "submission_time": "2026-02-23T14:30:00.000Z",
+  "time_taken": 1800,
+  "total_questions": 3,
+  "questions_answered": 3,
+  "questions_skipped": 0,
+  "submission_status": "COMPLETED",
+  "device_info": {
+    "device_type": "mobile",
+    "os": "iOS 17.2",
+    "app_version": "2.5.0"
+  }
+}
+```
+
+---
+
+### Success Response (School Student)
+
+**Status Code:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Assessment submitted successfully",
+  "data": {
+    "attempt_id": "attempt_abc123",
+    "assessment_id": "clxyz123abc",
+    "total_score": 85,
+    "total_points": 100,
+    "percentage": 85,
+    "passed": true,
+    "grade": "A",
+    "answers": [
+      {
+        "question_id": "question_abc123",
+        "is_correct": true,
+        "points_earned": 5,
+        "max_points": 5
+      },
+      {
+        "question_id": "question_def456",
+        "is_correct": true,
+        "points_earned": 10,
+        "max_points": 10
+      },
+      {
+        "question_id": "question_ghi789",
+        "is_correct": false,
+        "points_earned": 0,
+        "max_points": 5
+      }
+    ],
+    "submission_metadata": {
+      "total_questions": 3,
+      "questions_answered": 3,
+      "questions_skipped": 0,
+      "submission_status": "COMPLETED",
+      "device_info": {
+        "device_type": "mobile",
+        "os": "iOS 17.2",
+        "app_version": "2.5.0"
+      }
+    },
+    "submitted_at": "2026-02-23T14:30:00.000Z",
+    "time_spent": 1800,
+    "attempt_number": 1,
+    "remaining_attempts": 1,
+    "assessmentContext": "school"
+  }
+}
+```
+
+---
+
+### Success Response (Library User)
+
+**Status Code:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Assessment submitted successfully",
+  "data": {
+    "attempt_id": "lib-attempt-uuid",
+    "assessment_id": "lib-assessment-uuid",
+    "total_score": 90,
+    "total_points": 100,
+    "percentage": 90,
+    "passed": true,
+    "grade": "A",
+    "answers": [
+      {
+        "question_id": "lib-question-1",
+        "is_correct": true,
+        "points_earned": 10,
+        "max_points": 10
+      }
+    ],
+    "submission_metadata": {
+      "total_questions": 10,
+      "questions_answered": 10,
+      "questions_skipped": 0,
+      "submission_status": "COMPLETED",
+      "device_info": null
+    },
+    "submitted_at": "2024-01-23T14:30:00.000Z",
+    "time_spent": 1200,
+    "attempt_number": 1,
+    "remaining_attempts": 2,
+    "assessmentContext": "library"
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - No Current Session
+
+```json
+{
+  "success": false,
+  "message": "No current academic session found",
+  "statusCode": 400
+}
+```
+
+#### 403 Forbidden - Maximum Attempts Reached
+
+```json
+{
+  "success": false,
+  "message": "Maximum attempts reached for this assessment",
+  "statusCode": 403
+}
+```
+
+#### 403 Forbidden - Non-Student Attempting to Submit
+
+```json
+{
+  "success": false,
+  "message": "Only students can submit assessments",
+  "statusCode": 403
+}
+```
+
+#### 404 Not Found - Assessment Not Found
+
+```json
+{
+  "success": false,
+  "message": "Assessment not found or not available",
+  "statusCode": 404
+}
+```
+
+#### 404 Not Found - Student Not Found
+
+```json
+{
+  "success": false,
+  "message": "Student not found",
+  "statusCode": 404
+}
+```
+
+---
+
+### Auto-Grading Logic
+
+| Question Type          | Grading Method                                      |
+| ---------------------- | --------------------------------------------------- |
+| `MULTIPLE_CHOICE`      | Compare selected option IDs with correct option IDs |
+| `MULTIPLE_CHOICE_SINGLE`| Compare single selected option with correct option |
+| `TRUE_FALSE`           | Compare selected option with correct option         |
+| `FILL_IN_BLANK`        | Case-insensitive text comparison                    |
+| `SHORT_ANSWER`         | Case-insensitive text comparison                    |
+| `NUMERIC`              | Tolerance-based comparison (±0.01)                  |
+| `DATE`                 | Exact date match                                    |
+| `ESSAY`                | Returns `is_correct: false` (requires manual review)|
+
+---
+
+### Grade Scale
+
+| Percentage | Grade |
+| ---------- | ----- |
+| 80-100%    | A     |
+| 70-79%     | B     |
+| 60-69%     | C     |
+| 50-59%     | D     |
+| 40-49%     | E     |
+| < 40%      | F     |
+
+---
+
+### Notes
+
+1. **Answer Format Flexibility:** The endpoint accepts both `selected_options` (array) and `answer` (single string). If `answer` is provided without `selected_options`, it will be converted to `selected_options: [answer]`.
+
+2. **Question Type Detection:** If `question_type` is not provided in the answer, it will be retrieved from the question record.
+
+3. **Score Recalculation:** Even if `total_points_earned` is provided by the frontend, the backend recalculates the score for accuracy.
+
+4. **Essay Grading:** Essays require manual grading. They will initially be marked as incorrect with 0 points. Teachers/admins can grade them manually later.
+
+5. **Attempt Tracking:** Each submission creates a new attempt record. The attempt number is automatically incremented.
+
+6. **Remaining Attempts:** The response includes `remaining_attempts` so the frontend can display how many attempts are left.

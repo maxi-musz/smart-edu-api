@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Patch, Body, Query, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { AssessmentService } from './assessment.service';
-import { CreateNewAssessmentDto, GetAssessmentsQueryDto, UpdateAssessmentDto } from './dto';
+import { CreateNewAssessmentDto, GetAssessmentsQueryDto, UpdateAssessmentDto, SubmitAssessmentDto } from './dto';
 import { UnifiedJwtGuard } from './guards';
 import { GetUser } from '../school/auth/decorator/get-user-decorator';
 
@@ -110,6 +110,8 @@ export class AssessmentController {
     return this.assessmentService.getAssessmentDetails(assessmentId, user);
   }
 
+//   Update an assessment
+// 
   @Patch(':id')
   @ApiOperation({
     summary: 'Update Assessment (Partial Update)',
@@ -145,5 +147,79 @@ export class AssessmentController {
     @GetUser() user: any
   ) {
     return this.assessmentService.updateAssessment(assessmentId, updateAssessmentDto, user);
+  }
+
+//   Get Questions for an assessment so student can take/work on an assessment 
+  @Get(':id/questions')
+  @ApiOperation({
+    summary: 'Get Assessment Questions for Taking Assessment',
+    description: `
+      Fetches assessment questions for a student/user to take the assessment.
+      This endpoint is specifically for students attempting an assessment.
+      
+      **Validation Checks:**
+      - Assessment must be PUBLISHED or ACTIVE
+      - Assessment must be within start_date and end_date range
+      - User must have remaining attempts (attempts < max_attempts)
+      - For school students: Must be enrolled in a class with the assessment's subject
+      - For library users: Must have access to the platform
+      
+      **Response:**
+      - Assessment metadata (title, duration, instructions, etc.)
+      - Questions with options (correct answers hidden unless explicitly allowed)
+      - Current attempt count and remaining attempts
+      
+      **Note:** Questions may be shuffled if shuffle_questions is enabled on the assessment.
+    `
+  })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiResponse({ status: 200, description: 'Assessment questions retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Assessment not available or expired' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Maximum attempts reached or access denied' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  async getAssessmentQuestions(
+    @Param('id') assessmentId: string,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.getAssessmentQuestions(assessmentId, user);
+  }
+
+  @Post(':id/submit')
+  @ApiOperation({
+    summary: 'Submit Assessment Answers',
+    description: `
+      Submits student/user answers for an assessment and auto-grades where possible.
+      
+      **Validation Checks:**
+      - Assessment must be PUBLISHED or ACTIVE
+      - Assessment must be within date range (or not enforce strict timing)
+      - User must have remaining attempts
+      - For school students: Must be enrolled in a class with the assessment's subject
+      - For library users: Must have access to the platform
+      
+      **Auto-Grading:**
+      - MULTIPLE_CHOICE, TRUE_FALSE: Compared against correct option IDs
+      - FILL_IN_BLANK: Case-insensitive text match
+      - NUMERIC: Tolerance-based comparison (±0.01)
+      - ESSAY: Marked as requiring manual review (0 points initially)
+      
+      **Response:**
+      - Attempt ID and score details
+      - Per-question breakdown with is_correct flags
+      - Grade letter and pass/fail status
+    `
+  })
+  @ApiParam({ name: 'id', description: 'Assessment ID' })
+  @ApiBody({ type: SubmitAssessmentDto })
+  @ApiResponse({ status: 200, description: 'Assessment submitted successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Assessment not available, expired, or invalid data' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Maximum attempts reached or access denied' })
+  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  async submitAssessment(
+    @Param('id') assessmentId: string,
+    @Body() submitDto: SubmitAssessmentDto,
+    @GetUser() user: any
+  ) {
+    return this.assessmentService.submitAssessment(assessmentId, submitDto, user);
   }
 }
