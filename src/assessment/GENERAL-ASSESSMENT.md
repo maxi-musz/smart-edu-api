@@ -81,6 +81,30 @@ GET /assessment?page=1&limit=10&status=PUBLISHED&subject_id=clxyz123&sort_by=cre
       "closed": 4,
       "archived": 0
     },
+    "sessions": [
+      {
+        "id": "session_abc123",
+        "academic_year": "2025/2026",
+        "term": "SECOND",
+        "start_year": 2025,
+        "end_year": 2026,
+        "start_date": "2026-01-06T00:00:00.000Z",
+        "end_date": "2026-04-15T00:00:00.000Z",
+        "is_current": true,
+        "status": "active"
+      },
+      {
+        "id": "session_xyz789",
+        "academic_year": "2025/2026",
+        "term": "FIRST",
+        "start_year": 2025,
+        "end_year": 2026,
+        "start_date": "2025-09-01T00:00:00.000Z",
+        "end_date": "2025-12-20T00:00:00.000Z",
+        "is_current": false,
+        "status": "completed"
+      }
+    ],
     "pagination": {
       "page": 1,
       "limit": 20,
@@ -166,6 +190,24 @@ GET /assessment?page=1&limit=10&status=PUBLISHED&subject_id=clxyz123&sort_by=cre
 | `archived`  | number | Count of assessments with ARCHIVED status |
 
 > **Note:** Analytics counts respect role-based access but ignore any status filter applied.
+
+#### `sessions[]`
+
+Last 5 academic sessions/terms for the school (ordered by most recent first). Useful for filtering assessments by different sessions.
+
+| Field          | Type     | Description                                    |
+| -------------- | -------- | ---------------------------------------------- |
+| `id`           | string   | Academic session ID                            |
+| `academic_year`| string   | Academic year (e.g., "2025/2026")              |
+| `term`         | enum     | Academic term: `FIRST`, `SECOND`, `THIRD`      |
+| `start_year`   | number   | Starting year of the academic year             |
+| `end_year`     | number   | Ending year of the academic year               |
+| `start_date`   | datetime | Session start date                             |
+| `end_date`     | datetime | Session end date                               |
+| `is_current`   | boolean  | Whether this is the current active session     |
+| `status`       | enum     | Session status: `active`, `completed`, etc.    |
+
+> **Note:** This field is only returned for school users, not library owners.
 
 #### `pagination`
 
@@ -2228,3 +2270,1576 @@ Authorization: Bearer <token>
 5. **Attempt Tracking:** Each submission creates a new attempt record. The attempt number is automatically incremented.
 
 6. **Remaining Attempts:** The response includes `remaining_attempts` so the frontend can display how many attempts are left.
+
+---
+
+## Duplicate Assessment
+
+Creates a copy of an existing assessment with a new title. Useful for teachers who want to reuse questions from previous assessments or create variations with shuffled content.
+
+### Endpoint
+
+```
+POST /assessment/:id/duplicate
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                    |
+| ------------------- | --------------------------------------------------------- |
+| **Library Owner**   | Can duplicate any LibraryAssessment in their platform     |
+| **School Director** | Can duplicate any assessment in their school              |
+| **School Admin**    | Can duplicate any assessment in their school              |
+| **Teacher**         | Can duplicate assessments for subjects they teach         |
+| **Student**         | ❌ Cannot duplicate assessments                           |
+
+---
+
+### Path Parameters
+
+| Parameter | Type   | Required | Description                      |
+| --------- | ------ | -------- | -------------------------------- |
+| `id`      | string | Yes      | Source Assessment ID to duplicate |
+
+---
+
+### Request Body
+
+```json
+{
+  "new_title": "Mathematics Test - Week 2",
+  "shuffle_questions": true,
+  "shuffle_options": true,
+  "new_description": "Updated version of the mathematics test"
+}
+```
+
+### Body Parameters
+
+| Field              | Type    | Required | Default | Description                                          |
+| ------------------ | ------- | -------- | ------- | ---------------------------------------------------- |
+| `new_title`        | string  | Yes      | -       | Title for the new duplicated assessment (3-200 chars) |
+| `shuffle_questions`| boolean | No       | `false` | Randomizes question order in the new assessment      |
+| `shuffle_options`  | boolean | No       | `false` | Randomizes option order within each question         |
+| `new_description`  | string  | No       | -       | Optional new description. If omitted, copies from source |
+
+---
+
+### What Gets Copied
+
+| Component              | Copied? | Notes                                              |
+| ---------------------- | ------- | -------------------------------------------------- |
+| Assessment metadata    | ✅      | Title, instructions, duration, passing score, etc. |
+| Questions              | ✅      | All question properties including media URLs       |
+| Question options       | ✅      | All options with is_correct flags                  |
+| Correct answers        | ✅      | Option IDs are remapped to new option IDs          |
+| Hints & explanations   | ✅      | Preserved for each question                        |
+| Status                 | ❌      | Always set to `DRAFT`                              |
+| is_published           | ❌      | Always set to `false`                              |
+| start_date / end_date  | ❌      | Reset to `null` - user must set new dates          |
+| Attempts & submissions | ❌      | Not copied - starts fresh                          |
+
+---
+
+### Shuffle Behavior
+
+#### `shuffle_questions: true`
+- Questions are randomly reordered in the new assessment
+- New `order` values are assigned (1, 2, 3, ...)
+- The shuffled order is saved permanently in the new assessment
+
+#### `shuffle_options: true`
+- Options within each question are randomly reordered
+- New `order` values are assigned to options
+- The shuffled order is saved permanently
+
+#### Combined Shuffling
+When both are `true`, both questions AND options are shuffled, creating a significantly different assessment variant.
+
+---
+
+### Success Response (201)
+
+```json
+{
+  "success": true,
+  "message": "Assessment duplicated successfully",
+  "data": {
+    "assessment": {
+      "id": "clx456abc...",
+      "title": "Mathematics Test - Week 2",
+      "description": "Updated version of the mathematics test",
+      "status": "DRAFT",
+      "is_published": false,
+      "start_date": null,
+      "end_date": null,
+      "duration": 60,
+      "total_points": 100,
+      "passing_score": 50,
+      "shuffle_questions": true,
+      "shuffle_options": true,
+      "created_at": "2026-02-23T10:30:00.000Z",
+      "subject": {
+        "id": "clx...",
+        "name": "Mathematics",
+        "code": "MATH"
+      },
+      "topic": {
+        "id": "clx...",
+        "title": "Algebra"
+      },
+      "createdBy": {
+        "id": "clx...",
+        "first_name": "John",
+        "last_name": "Doe"
+      },
+      "_count": {
+        "questions": 20
+      }
+    },
+    "source_assessment_id": "clx123abc...",
+    "shuffle_applied": {
+      "questions": true,
+      "options": true
+    }
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Invalid Data
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "new_title",
+      "message": "new_title must be between 3 and 200 characters"
+    }
+  ]
+}
+```
+
+#### 400 Bad Request - No Active Session (School)
+```json
+{
+  "success": false,
+  "message": "No current academic session found"
+}
+```
+
+#### 403 Forbidden - Student Attempt
+```json
+{
+  "success": false,
+  "message": "Students cannot duplicate assessments"
+}
+```
+
+#### 403 Forbidden - Teacher Access Denied
+```json
+{
+  "success": false,
+  "message": "You do not have access to duplicate this assessment"
+}
+```
+
+#### 404 Not Found - Assessment Not Found
+```json
+{
+  "success": false,
+  "message": "Assessment not found"
+}
+```
+
+---
+
+### Use Cases
+
+1. **Reuse Questions:** Teacher created a great test last term and wants to use the same questions this term with a new title.
+
+2. **Create Variants:** Teacher wants multiple versions of the same test with shuffled questions/options to prevent cheating.
+
+3. **Quick Setup:** Instead of manually entering 50 questions again, duplicate an existing assessment and modify as needed.
+
+4. **Template-Based Creation:** Use a "master" assessment as a template and create variations for different classes.
+
+---
+
+### Notes
+
+1. **Draft Status:** The new assessment is always created with `DRAFT` status. The user must publish it separately after reviewing.
+
+2. **Date Reset:** `start_date` and `end_date` are reset to `null`. The user must set new dates before publishing.
+
+3. **New Session:** For school assessments, the duplicated assessment belongs to the current academic session.
+
+4. **Option ID Remapping:** When options are copied, new IDs are generated. The `correct_answers` table references are automatically updated to point to the new option IDs.
+
+---
+
+## Add Questions to an Assessment
+
+Adds one or more questions (with options and correct answers) to an existing assessment. Supports bulk creation via JSON body.
+
+### Endpoint
+
+```
+POST /assessment/:id/questions
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                    |
+| ------------------- | --------------------------------------------------------- |
+| **Library Owner**   | Can add questions to their platform assessments           |
+| **School Director** | Can add questions to any assessment in their school       |
+| **School Admin**    | Can add questions to any assessment in their school       |
+| **Teacher**         | Can add questions to their own assessments only           |
+| **Student**         | ❌ Cannot add questions                                   |
+
+---
+
+### Restrictions
+
+- Cannot add questions to assessments with status: `PUBLISHED`, `ACTIVE`, `CLOSED`, or `ARCHIVED`
+- Assessment must be in `DRAFT` status to accept new questions
+- At least one question is required in the request body
+
+---
+
+### Request Body
+
+```json
+{
+  "questions": [
+    {
+      "question_text": "What is the capital of France?",
+      "question_type": "MULTIPLE_CHOICE_SINGLE",
+      "points": 5.0,
+      "order": 1,
+      "is_required": true,
+      "time_limit": 30,
+      "difficulty_level": "MEDIUM",
+      "explanation": "Paris is the capital and largest city of France.",
+      "image_url": "https://example.com/question-image.png",
+      "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/question_123.png",
+      "audio_url": "https://example.com/audio.mp3",
+      "video_url": "https://example.com/video.mp4",
+      "show_hint": true,
+      "hint_text": "Think about European capitals",
+      "options": [
+        { "option_text": "London", "is_correct": false, "order": 1 },
+        { "option_text": "Paris", "is_correct": true, "order": 2 },
+        { "option_text": "Berlin", "is_correct": false, "order": 3 },
+        { "option_text": "Madrid", "is_correct": false, "order": 4 }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### Question Types Supported
+
+| Question Type              | Options Required | Correct Answers Field | Description                                  |
+| -------------------------- | ---------------- | --------------------- | -------------------------------------------- |
+| `MULTIPLE_CHOICE_SINGLE`   | ✅ Yes           | Auto from `is_correct` | Single correct option                        |
+| `MULTIPLE_CHOICE_MULTIPLE` | ✅ Yes           | Auto from `is_correct` | Multiple correct options                     |
+| `TRUE_FALSE`               | ✅ Yes (2 only)  | Auto from `is_correct` | Two options: True and False                  |
+| `SHORT_ANSWER`             | ❌ No            | `correct_answers[]`    | Brief text response                          |
+| `LONG_ANSWER` / `ESSAY`    | ❌ No            | Optional               | Extended text (manual grading)               |
+| `FILL_IN_BLANK`            | ❌ No            | `correct_answers[].answer_text` | Exact text match (case-insensitive) |
+| `NUMERIC`                  | ❌ No            | `correct_answers[].answer_number` | Number with tolerance (±0.01)    |
+| `DATE`                     | ❌ No            | `correct_answers[].answer_date`   | Date comparison                  |
+| `MATCHING` / `ORDERING`    | ❌ No            | `correct_answers[].answer_json`   | Complex JSON structure           |
+
+---
+
+### Question Fields Reference
+
+| Field                    | Type    | Required | Default  | Description                                                 |
+| ------------------------ | ------- | -------- | -------- | ----------------------------------------------------------- |
+| `question_text`          | string  | ✅       | -        | The question text displayed to users                        |
+| `question_type`          | enum    | ✅       | -        | One of the question types above                             |
+| `order`                  | number  | No       | Auto     | Display order (auto-appended after last if not provided)    |
+| `points`                 | number  | No       | `1.0`    | Points awarded for correct answer                           |
+| `is_required`            | boolean | No       | `true`   | Whether the question must be answered                       |
+| `time_limit`             | number  | No       | -        | Time limit in seconds for this question                     |
+| `difficulty_level`       | enum    | No       | `MEDIUM` | `EASY`, `MEDIUM`, `HARD`, `EXPERT`                          |
+| `image_url`              | string  | No       | -        | Image URL displayed with the question                       |
+| `image_s3_key`           | string  | No       | -        | S3 key for the question image (for cleanup)                 |
+| `audio_url`              | string  | No       | -        | Audio URL to play with the question                         |
+| `video_url`              | string  | No       | -        | Video URL to display with the question                      |
+| `explanation`            | string  | No       | -        | Explanation shown after answering (max 2000 chars)          |
+| `show_hint`              | boolean | No       | `false`  | Whether to show a hint                                      |
+| `hint_text`              | string  | No       | -        | Hint text (max 1000 chars)                                  |
+| `allow_multiple_attempts`| boolean | No       | `false`  | Whether the student can retry this question                 |
+| `min_length`             | number  | No       | -        | Min text length (for SHORT_ANSWER/LONG_ANSWER)              |
+| `max_length`             | number  | No       | -        | Max text length (for SHORT_ANSWER/LONG_ANSWER)              |
+| `min_value`              | number  | No       | -        | Min numeric value (for NUMERIC)                             |
+| `max_value`              | number  | No       | -        | Max numeric value (for NUMERIC)                             |
+| `options`                | array   | No       | -        | Array of `QuestionOptionDto` (for MCQ/TRUE_FALSE)           |
+| `correct_answers`        | array   | No       | -        | Array of `CorrectAnswerDto` (for non-MCQ types)             |
+
+---
+
+### Option Fields Reference
+
+| Field          | Type    | Required | Default | Description                                     |
+| -------------- | ------- | -------- | ------- | ----------------------------------------------- |
+| `option_text`  | string  | ✅       | -       | The option text displayed to users              |
+| `is_correct`   | boolean | ✅       | -       | Whether this is a correct answer                |
+| `order`        | number  | No       | Auto    | Display order (auto-assigned if not provided)   |
+| `image_url`    | string  | No       | -       | Image URL displayed with the option             |
+| `image_s3_key` | string  | No       | -       | S3 key for the option image (for cleanup)       |
+| `audio_url`    | string  | No       | -       | Audio URL for the option                        |
+
+---
+
+### Correct Answer Fields Reference
+
+| Field          | Type   | Required | Description                                     |
+| -------------- | ------ | -------- | ----------------------------------------------- |
+| `answer_text`  | string | No       | Text answer (for FILL_IN_BLANK, SHORT_ANSWER)   |
+| `answer_number`| number | No       | Numeric answer (for NUMERIC)                    |
+| `answer_date`  | string | No       | Date answer ISO string (for DATE)               |
+| `answer_json`  | object | No       | JSON answer (for MATCHING, ORDERING)            |
+
+---
+
+### Auto-Behaviors
+
+1. **Auto-Ordering:** If `order` is not provided, questions are appended after the last existing question (e.g., if 5 questions exist, the new one gets order 6).
+
+2. **Auto Correct Answer Records:** For MCQ/TRUE_FALSE types, a `correct_answer` record is automatically created linking all options marked `is_correct: true`.
+
+3. **Total Points Recalculation:** The assessment's `total_points` is automatically recalculated after adding questions.
+
+---
+
+### Example: Multiple Choice Question
+
+```json
+{
+  "questions": [
+    {
+      "question_text": "What is 2 + 2?",
+      "question_type": "MULTIPLE_CHOICE_SINGLE",
+      "points": 2.0,
+      "options": [
+        { "option_text": "3", "is_correct": false },
+        { "option_text": "4", "is_correct": true },
+        { "option_text": "5", "is_correct": false }
+      ]
+    }
+  ]
+}
+```
+
+### Example: True/False Question
+
+```json
+{
+  "questions": [
+    {
+      "question_text": "The Earth is flat.",
+      "question_type": "TRUE_FALSE",
+      "points": 1.0,
+      "options": [
+        { "option_text": "True", "is_correct": false },
+        { "option_text": "False", "is_correct": true }
+      ]
+    }
+  ]
+}
+```
+
+### Example: Fill in the Blank
+
+```json
+{
+  "questions": [
+    {
+      "question_text": "The process by which plants make food is called ___.",
+      "question_type": "FILL_IN_BLANK",
+      "points": 3.0,
+      "correct_answers": [
+        { "answer_text": "Photosynthesis" }
+      ]
+    }
+  ]
+}
+```
+
+### Example: Numeric Question
+
+```json
+{
+  "questions": [
+    {
+      "question_text": "What is the square root of 144?",
+      "question_type": "NUMERIC",
+      "points": 2.0,
+      "min_value": 0,
+      "max_value": 1000,
+      "correct_answers": [
+        { "answer_number": 12 }
+      ]
+    }
+  ]
+}
+```
+
+### Example: Batch (Multiple Questions at Once)
+
+```json
+{
+  "questions": [
+    {
+      "question_text": "What is the capital of Nigeria?",
+      "question_type": "MULTIPLE_CHOICE_SINGLE",
+      "points": 2.0,
+      "options": [
+        { "option_text": "Lagos", "is_correct": false },
+        { "option_text": "Abuja", "is_correct": true },
+        { "option_text": "Kano", "is_correct": false }
+      ]
+    },
+    {
+      "question_text": "Water boils at 100°C at sea level.",
+      "question_type": "TRUE_FALSE",
+      "points": 1.0,
+      "options": [
+        { "option_text": "True", "is_correct": true },
+        { "option_text": "False", "is_correct": false }
+      ]
+    },
+    {
+      "question_text": "Explain the process of mitosis.",
+      "question_type": "ESSAY",
+      "points": 10.0,
+      "min_length": 50,
+      "max_length": 2000
+    }
+  ]
+}
+```
+
+---
+
+### Success Response (201)
+
+```json
+{
+  "success": true,
+  "message": "Questions added successfully",
+  "data": {
+    "assessment_id": "clx123abc...",
+    "questions_added": 3,
+    "total_questions": 8,
+    "questions": [
+      {
+        "id": "clxq1...",
+        "question_text": "What is the capital of Nigeria?",
+        "question_type": "MULTIPLE_CHOICE_SINGLE",
+        "order": 6,
+        "points": 2.0,
+        "options": [
+          { "id": "clxo1...", "option_text": "Lagos", "is_correct": false },
+          { "id": "clxo2...", "option_text": "Abuja", "is_correct": true },
+          { "id": "clxo3...", "option_text": "Kano", "is_correct": false }
+        ],
+        "correct_answers": [
+          { "id": "clxa1...", "option_ids": ["clxo2..."] }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Assessment Status
+```json
+{
+  "success": false,
+  "message": "Cannot add questions to a published or active assessment. Change status to DRAFT first."
+}
+```
+
+#### 400 Bad Request - Validation Error
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": [
+    {
+      "field": "questions.0.question_text",
+      "message": "question_text must be a string and is required"
+    }
+  ]
+}
+```
+
+#### 403 Forbidden - Student Attempt
+```json
+{
+  "success": false,
+  "message": "Students cannot add questions to assessments"
+}
+```
+
+#### 403 Forbidden - Teacher Access Denied
+```json
+{
+  "success": false,
+  "message": "You do not have access to this assessment"
+}
+```
+
+#### 404 Not Found
+```json
+{
+  "success": false,
+  "message": "Assessment not found"
+}
+```
+
+---
+
+## Add Question with Images (Atomic)
+
+Creates a single question with optional image uploads for the **question itself** and/or its **options** — all in one atomic multipart request. If any step fails, all uploaded images are automatically cleaned up from S3.
+
+### Endpoint
+
+```
+POST /assessment/:id/questions/with-image
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Content Type
+
+```
+Content-Type: multipart/form-data
+```
+
+> **Important:** This endpoint uses `multipart/form-data`, NOT `application/json`. The question data is sent as a JSON string in the `questionData` field.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                    |
+| ------------------- | --------------------------------------------------------- |
+| **Library Owner**   | Can add questions to their platform assessments           |
+| **School Director** | Can add questions to any assessment in their school       |
+| **School Admin**    | Can add questions to any assessment in their school       |
+| **Teacher**         | Can add questions to their own assessments only           |
+| **Student**         | ❌ Cannot add questions                                   |
+
+---
+
+### Restrictions
+
+- Cannot add questions to assessments with status: `PUBLISHED`, `ACTIVE`, `CLOSED`, or `ARCHIVED`
+- Image file types allowed: `JPEG`, `PNG`, `GIF`, `WEBP`
+- Max image file size: **5MB** per image
+- Max option images: **10** per request
+
+---
+
+### Form Data Fields
+
+| Field           | Type     | Required | Description                                                                          |
+| --------------- | -------- | -------- | ------------------------------------------------------------------------------------ |
+| `questionData`  | string   | ✅       | JSON string containing the question data (same structure as `/questions` body)       |
+| `image`         | file     | No       | Image file for the **question** itself                                               |
+| `optionImages`  | file[]   | No       | Image files for **options**, matched by `imageIndex` in the options array            |
+
+---
+
+### How Option Image Matching Works
+
+Option images are matched to their corresponding options using the `imageIndex` field:
+
+1. You upload N files under the `optionImages` field — they receive indices 0, 1, 2, ...
+2. In your `questionData` JSON, each option that should receive an image specifies `"imageIndex": N` matching the file's index
+3. The service uploads each file, then injects the resulting `image_url` and `image_s3_key` into the matching option
+
+```
+optionImages[0] → matches option with "imageIndex": 0
+optionImages[1] → matches option with "imageIndex": 1
+...
+```
+
+---
+
+### Example: cURL Request
+
+```bash
+curl -X POST "https://api.example.com/assessment/clx123abc/questions/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F "image=@/path/to/question-diagram.png" \
+  -F "optionImages=@/path/to/option-a-image.jpg" \
+  -F "optionImages=@/path/to/option-b-image.jpg" \
+  -F 'questionData={
+    "question_text": "Which animal is shown in each option?",
+    "question_type": "MULTIPLE_CHOICE_SINGLE",
+    "points": 5,
+    "difficulty_level": "EASY",
+    "options": [
+      { "option_text": "A dog", "is_correct": false, "imageIndex": 0 },
+      { "option_text": "A cat", "is_correct": true, "imageIndex": 1 },
+      { "option_text": "A bird", "is_correct": false }
+    ]
+  }'
+```
+
+In this example:
+- `image` → uploaded as the **question image** (the diagram)
+- `optionImages[0]` → matched to option "A dog" (which has `"imageIndex": 0`)
+- `optionImages[1]` → matched to option "A cat" (which has `"imageIndex": 1`)
+- Option "A bird" has no `imageIndex`, so it gets no image
+
+---
+
+### Example: Question Image Only (No Option Images)
+
+```bash
+curl -X POST "https://api.example.com/assessment/clx123abc/questions/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F "image=@/path/to/chart.png" \
+  -F 'questionData={
+    "question_text": "Based on the chart above, what was the highest value?",
+    "question_type": "NUMERIC",
+    "points": 3,
+    "correct_answers": [
+      { "answer_number": 95 }
+    ]
+  }'
+```
+
+---
+
+### Example: Option Images Only (No Question Image)
+
+```bash
+curl -X POST "https://api.example.com/assessment/clx123abc/questions/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F "optionImages=@/path/to/flag-nigeria.png" \
+  -F "optionImages=@/path/to/flag-ghana.png" \
+  -F "optionImages=@/path/to/flag-kenya.png" \
+  -F 'questionData={
+    "question_text": "Which flag belongs to Nigeria?",
+    "question_type": "MULTIPLE_CHOICE_SINGLE",
+    "points": 2,
+    "options": [
+      { "option_text": "Flag A", "is_correct": true, "imageIndex": 0 },
+      { "option_text": "Flag B", "is_correct": false, "imageIndex": 1 },
+      { "option_text": "Flag C", "is_correct": false, "imageIndex": 2 }
+    ]
+  }'
+```
+
+---
+
+### Example: No Images (JSON-Only via Multipart)
+
+You can also use this endpoint without any images — just send `questionData` alone:
+
+```bash
+curl -X POST "https://api.example.com/assessment/clx123abc/questions/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F 'questionData={
+    "question_text": "What is 5 × 7?",
+    "question_type": "NUMERIC",
+    "points": 1,
+    "correct_answers": [
+      { "answer_number": 35 }
+    ]
+  }'
+```
+
+> **Tip:** If you don't need images at all, prefer using `POST /assessment/:id/questions` (JSON body) instead for simplicity.
+
+---
+
+### S3 Storage Paths
+
+Images are stored in organized S3 folders:
+
+| User Type        | Path Pattern                                                                    |
+| ---------------- | ------------------------------------------------------------------------------- |
+| **School users** | `assessment-images/schools/{schoolId}/assessments/{assessmentId}/question_*.png` |
+| **School users** | `assessment-images/schools/{schoolId}/assessments/{assessmentId}/option_*.png`   |
+| **Library owner**| `assessment-images/platforms/{platformId}/assessments/{assessmentId}/question_*.png` |
+| **Library owner**| `assessment-images/platforms/{platformId}/assessments/{assessmentId}/option_*.png`   |
+
+---
+
+### Atomic Guarantee & Rollback
+
+This endpoint guarantees **no orphaned files** on S3:
+
+1. All images (question + options) are uploaded to S3 first
+2. The question is created in the database with all image URLs
+3. **If database creation fails**, ALL previously uploaded images are deleted from S3
+
+```
+Upload question image ──► Upload option images ──► Create question in DB
+                                                         │
+                                                    ❌ FAILS?
+                                                         │
+                                                  Delete ALL uploaded
+                                                  images from S3
+```
+
+This is why we chose a single atomic endpoint instead of a separate "upload image" endpoint — it prevents orphaned images that would accumulate in S3 when users upload images but never complete the question creation.
+
+---
+
+### Success Response (201)
+
+```json
+{
+  "success": true,
+  "message": "Questions added successfully",
+  "data": {
+    "assessment_id": "clx123abc...",
+    "questions_added": 1,
+    "total_questions": 6,
+    "questions": [
+      {
+        "id": "clxq1...",
+        "question_text": "Which animal is shown in each option?",
+        "question_type": "MULTIPLE_CHOICE_SINGLE",
+        "order": 6,
+        "points": 5.0,
+        "image_url": "https://s3.amazonaws.com/.../question_1708700000_diagram.png",
+        "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/question_1708700000_diagram.png",
+        "options": [
+          {
+            "id": "clxo1...",
+            "option_text": "A dog",
+            "is_correct": false,
+            "image_url": "https://s3.amazonaws.com/.../option_1708700001_0_dog.jpg",
+            "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/option_1708700001_0_dog.jpg"
+          },
+          {
+            "id": "clxo2...",
+            "option_text": "A cat",
+            "is_correct": true,
+            "image_url": "https://s3.amazonaws.com/.../option_1708700001_1_cat.jpg",
+            "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/option_1708700001_1_cat.jpg"
+          },
+          {
+            "id": "clxo3...",
+            "option_text": "A bird",
+            "is_correct": false,
+            "image_url": null,
+            "image_s3_key": null
+          }
+        ],
+        "correct_answers": [
+          { "id": "clxa1...", "option_ids": ["clxo2..."] }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Invalid JSON
+```json
+{
+  "success": false,
+  "message": "Invalid JSON in questionData field"
+}
+```
+
+#### 400 Bad Request - Invalid Image Type
+```json
+{
+  "success": false,
+  "message": "Invalid image file type: photo.bmp. Allowed: JPEG, PNG, GIF, WEBP"
+}
+```
+
+#### 400 Bad Request - Image Too Large
+```json
+{
+  "success": false,
+  "message": "Image file large-photo.png exceeds 5MB limit"
+}
+```
+
+#### 400 Bad Request - Assessment Status
+```json
+{
+  "success": false,
+  "message": "Cannot add questions to a published, active, closed, or archived assessment"
+}
+```
+
+#### 403 Forbidden - Student Attempt
+```json
+{
+  "success": false,
+  "message": "Students cannot add questions to assessments"
+}
+```
+
+#### 403 Forbidden - Teacher Access Denied
+```json
+{
+  "success": false,
+  "message": "You do not have access to this assessment"
+}
+```
+
+#### 404 Not Found
+```json
+{
+  "success": false,
+  "message": "Assessment not found or you do not have access to it"
+}
+```
+
+---
+
+### Frontend Integration Notes
+
+#### Using `FormData` in JavaScript/TypeScript
+
+```typescript
+const formData = new FormData();
+
+// Question image (optional)
+formData.append('image', questionImageFile);
+
+// Option images (optional) - order matters!
+formData.append('optionImages', optionAImageFile);  // index 0
+formData.append('optionImages', optionBImageFile);  // index 1
+
+// Question data as JSON string
+formData.append('questionData', JSON.stringify({
+  question_text: "Which animal is shown?",
+  question_type: "MULTIPLE_CHOICE_SINGLE",
+  points: 5,
+  options: [
+    { option_text: "A dog", is_correct: false, imageIndex: 0 },
+    { option_text: "A cat", is_correct: true, imageIndex: 1 },
+    { option_text: "A bird", is_correct: false },
+  ],
+}));
+
+const response = await fetch(`/assessment/${assessmentId}/questions/with-image`, {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${token}` },
+  body: formData,
+  // Do NOT set Content-Type — the browser sets it with the boundary
+});
+```
+
+#### Using Axios
+
+```typescript
+const formData = new FormData();
+formData.append('image', questionImageFile);
+formData.append('optionImages', optionAImage);
+formData.append('optionImages', optionBImage);
+formData.append('questionData', JSON.stringify(questionData));
+
+const { data } = await axios.post(
+  `/assessment/${assessmentId}/questions/with-image`,
+  formData,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'multipart/form-data',
+    },
+  }
+);
+```
+
+---
+
+### When to Use Which Endpoint
+
+| Scenario                                         | Endpoint                                    |
+| ------------------------------------------------ | ------------------------------------------- |
+| Adding questions with **no images**              | `POST /assessment/:id/questions` (JSON)     |
+| Adding questions with **pre-existing image URLs** | `POST /assessment/:id/questions` (JSON)    |
+| Adding a question with **new image uploads**     | `POST /assessment/:id/questions/with-image` |
+| Adding a question with **option images**         | `POST /assessment/:id/questions/with-image` |
+| **Batch** adding multiple questions (no images)  | `POST /assessment/:id/questions` (JSON)     |
+
+5. **Media URLs:** Media URLs (images, audio, video) are copied as-is. They still point to the original files in storage.
+
+---
+
+## Update a Question in an Assessment
+
+Updates a single question in an assessment. Supports updating question fields, media, options, and correct answers.
+
+### Endpoint
+
+```
+PATCH /assessment/:id/questions/:questionId
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                    |
+| ------------------- | --------------------------------------------------------- |
+| **Library Owner**   | Can update questions in their platform assessments        |
+| **School Director** | Can update questions in any assessment in their school    |
+| **School Admin**    | Can update questions in any assessment in their school    |
+| **Teacher**         | Can update questions in their own assessments only        |
+| **Student**         | ❌ Cannot update questions                                |
+
+---
+
+### Restrictions
+
+- Cannot update questions in assessments with status: `PUBLISHED` or `ACTIVE`
+- Assessment must be in `DRAFT` (or `CLOSED`) status to accept updates
+
+---
+
+### Smart Merge Behavior for Options
+
+The endpoint uses **smart merge logic** for options:
+
+1. **To UPDATE an existing option:** Include the `id` field. Only fields you provide will be updated (images preserved if not provided).
+2. **To CREATE a new option:** Omit the `id` field. Must include `option_text` and `is_correct`.
+3. **Options NOT in the array:** Are left unchanged (not deleted).
+
+This allows you to:
+- Update just the text of one option without affecting images
+- Add new options without touching existing ones
+- Update multiple options selectively
+
+---
+
+### Request Body
+
+All fields are optional. Only provided fields will be updated.
+
+#### Example 1: Update Option Text Only (Preserves Images)
+
+```json
+{
+  "options": [
+    { 
+      "id": "existing-option-id-1",
+      "option_text": "Updated text only"
+      // Image URLs are preserved automatically
+    }
+  ]
+}
+```
+
+#### Example 2: Update Option Image Only
+
+```json
+{
+  "options": [
+    { 
+      "id": "existing-option-id-1",
+      "image_url": "https://example.com/new-image.png",
+      "image_s3_key": "assessment-images/.../new_image.png"
+      // option_text and is_correct are preserved automatically
+    }
+  ]
+}
+```
+
+#### Example 3: Update Multiple Fields
+
+```json
+{
+  "question_text": "What is the capital of France?",
+  "points": 4,
+  "difficulty_level": "EASY",
+  "options": [
+    { 
+      "id": "existing-option-id-1",
+      "option_text": "Paris", 
+      "is_correct": true 
+    },
+    { 
+      "id": "existing-option-id-2",
+      "option_text": "London", 
+      "is_correct": false 
+    }
+  ]
+}
+```
+
+#### Example 4: Add New Option (No `id`)
+
+```json
+{
+  "options": [
+    { 
+      "option_text": "Madrid",
+      "is_correct": false,
+      "order": 4
+      // No id = creates new option
+    }
+  ]
+}
+```
+
+#### Example 5: Update Question Text Only
+
+```json
+{
+  "question_text": "Updated question text",
+  "explanation": "Updated explanation"
+  // Options and images remain unchanged
+}
+```
+
+---
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Question updated successfully",
+  "data": {
+    "assessment_id": "clx123abc...",
+    "question": {
+      "id": "clxq1...",
+      "question_text": "What is the capital of France?",
+      "question_type": "MULTIPLE_CHOICE_SINGLE",
+      "points": 4,
+      "order": 2,
+      "options": [
+        { "id": "clxo1...", "option_text": "Paris", "is_correct": true },
+        { "id": "clxo2...", "option_text": "London", "is_correct": false }
+      ],
+      "correct_answers": [
+        { "id": "clxa1...", "option_ids": ["clxo1..."] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Assessment Status
+```json
+{
+  "success": false,
+  "message": "Cannot update questions in a PUBLISHED assessment. Change the status to DRAFT first."
+}
+```
+
+#### 400 Bad Request - Invalid Options
+```json
+{
+  "success": false,
+  "message": "Each option must include option_text"
+}
+```
+
+#### 403 Forbidden - Student Attempt
+```json
+{
+  "success": false,
+  "message": "Students cannot update questions"
+}
+```
+
+#### 404 Not Found
+```json
+{
+  "success": false,
+  "message": "Question not found"
+}
+```
+
+---
+
+### Notes
+
+1. **PATCH Behavior:** Only fields included in the request body are updated. Omitted fields retain their current values.
+
+2. **Smart Merge for Options:** 
+   - Options with `id`: Updated (only provided fields change)
+   - Options without `id`: Created as new options
+   - Options not in array: Left unchanged
+   - This preserves images/data unless explicitly replaced
+
+3. **Option Requirements:**
+   - **Updating existing option:** Only `id` is required; other fields are optional
+   - **Creating new option:** Must include `option_text` and `is_correct`
+
+4. **Correct Answers:** For MCQ/TRUE_FALSE, correct answers are automatically rebuilt from `options[].is_correct`.
+
+5. **Media Cleanup:** If you update `image_url` with a new S3 key, the old image is automatically deleted from storage.
+
+6. **Partial Updates:** You can update just one option without affecting others. Send only the options you want to change.
+
+---
+
+## Update a Question with Image Uploads
+
+Updates a question with new image file uploads (multipart/form-data). Handles uploading new images, deleting old images from S3, and updating the question atomically.
+
+### Endpoint
+
+```
+PATCH /assessment/:id/questions/:questionId/with-image
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Content Type
+
+```
+Content-Type: multipart/form-data
+```
+
+> **Important:** This endpoint uses `multipart/form-data` for file uploads, NOT `application/json`.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                    |
+| ------------------- | --------------------------------------------------------- |
+| **Library Owner**   | Can update questions in their platform assessments        |
+| **School Director** | Can update questions in any assessment in their school    |
+| **School Admin**    | Can update questions in any assessment in their school    |
+| **Teacher**         | Can update questions in their own assessments only        |
+| **Student**         | ❌ Cannot update questions                                |
+
+---
+
+### Restrictions
+
+- Cannot update questions in assessments with status: `PUBLISHED` or `ACTIVE`
+- Image file types allowed: `JPEG`, `PNG`, `GIF`, `WEBP`
+- Max image file size: **5MB** per image
+- Atomicity: If upload fails, all changes are rolled back (including S3 deletions)
+
+---
+
+### Form Data Fields
+
+| Field                     | Type     | Required | Description                                                                 |
+| ------------------------- | -------- | -------- | --------------------------------------------------------------------------- |
+| `questionData`            | string   | Yes      | JSON string with update data (same structure as regular PATCH)              |
+| `oldQuestionImageS3Key`   | string   | No       | S3 key of old question image to delete                                      |
+| `newQuestionImage`        | file     | No       | New question image file                                                     |
+| `optionImageUpdates`      | string   | No       | JSON array of `{ optionId, oldS3Key }` for options to update                |
+| `newOptionImages`         | file[]   | No       | New option image files (matched by index to `optionImageUpdates`)           |
+
+---
+
+### How It Works
+
+1. **Delete Old Images:** Old images are deleted from S3 using the provided S3 keys
+2. **Upload New Images:** New image files are uploaded to S3
+3. **Update Question:** Question is updated with new image URLs
+4. **Rollback on Failure:** If any step fails, all uploaded images are deleted from S3
+
+### Option Image Matching
+
+Option images are matched to options using the `optionImageUpdates` array:
+
+```json
+[
+  { "optionId": "option-id-1", "oldS3Key": "old-s3-key-1" },
+  { "optionId": "option-id-2", "oldS3Key": "old-s3-key-2" }
+]
+```
+
+- `optionImageUpdates[0]` → `newOptionImages[0]` → updates option with `optionId: "option-id-1"`
+- `optionImageUpdates[1]` → `newOptionImages[1]` → updates option with `optionId: "option-id-2"`
+
+---
+
+### Example: Update Question Image Only
+
+```bash
+curl -X PATCH "https://api.example.com/assessment/clx123/questions/clxq456/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F 'questionData={"question_text":"Updated question text"}' \
+  -F "oldQuestionImageS3Key=assessment-images/schools/xxx/assessments/yyy/question_old.png" \
+  -F "newQuestionImage=@/path/to/new-question-image.png"
+```
+
+---
+
+### Example: Update Option Image Only
+
+```bash
+curl -X PATCH "https://api.example.com/assessment/clx123/questions/clxq456/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F 'questionData={}' \
+  -F 'optionImageUpdates=[{"optionId":"opt-1","oldS3Key":"old-key-1"}]' \
+  -F "newOptionImages=@/path/to/new-option-image.jpg"
+```
+
+---
+
+### Example: Update Multiple Option Images
+
+```bash
+curl -X PATCH "https://api.example.com/assessment/clx123/questions/clxq456/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F 'questionData={"question_text":"Which flag is correct?"}' \
+  -F 'optionImageUpdates=[
+    {"optionId":"opt-1","oldS3Key":"old-flag-1.png"},
+    {"optionId":"opt-2","oldS3Key":"old-flag-2.png"}
+  ]' \
+  -F "newOptionImages=@/path/to/new-flag-1.png" \
+  -F "newOptionImages=@/path/to/new-flag-2.png"
+```
+
+---
+
+### Example: Update Both Question and Option Images
+
+```bash
+curl -X PATCH "https://api.example.com/assessment/clx123/questions/clxq456/with-image" \
+  -H "Authorization: Bearer <token>" \
+  -F 'questionData={"question_text":"Updated question","points":5}' \
+  -F "oldQuestionImageS3Key=old-question-key.png" \
+  -F "newQuestionImage=@/path/to/new-question.png" \
+  -F 'optionImageUpdates=[{"optionId":"opt-1","oldS3Key":"old-opt.png"}]' \
+  -F "newOptionImages=@/path/to/new-option.png"
+```
+
+---
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Question updated successfully",
+  "data": {
+    "assessment_id": "clx123abc...",
+    "question": {
+      "id": "clxq1...",
+      "question_text": "Updated question text",
+      "question_type": "MULTIPLE_CHOICE_SINGLE",
+      "points": 5,
+      "order": 2,
+      "image_url": "https://s3.amazonaws.com/.../question_1708700000_new.png",
+      "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/question_1708700000_new.png",
+      "options": [
+        {
+          "id": "clxo1...",
+          "option_text": "Option A",
+          "is_correct": true,
+          "image_url": "https://s3.amazonaws.com/.../option_1708700001_0_new.jpg",
+          "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/option_1708700001_0_new.jpg"
+        },
+        {
+          "id": "clxo2...",
+          "option_text": "Option B",
+          "is_correct": false,
+          "image_url": "https://existing-option-image.com/unchanged.png",
+          "image_s3_key": "assessment-images/.../option_unchanged.png"
+        }
+      ],
+      "correct_answers": [
+        { "id": "clxa1...", "option_ids": ["clxo1..."] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Missing questionData
+```json
+{
+  "success": false,
+  "message": "questionData field is required"
+}
+```
+
+#### 400 Bad Request - Invalid JSON
+```json
+{
+  "success": false,
+  "message": "Invalid JSON in questionData field"
+}
+```
+
+#### 400 Bad Request - Invalid Image Type
+```json
+{
+  "success": false,
+  "message": "Invalid image file type: photo.bmp. Allowed: JPEG, PNG, GIF, WEBP"
+}
+```
+
+#### 400 Bad Request - Image Too Large
+```json
+{
+  "success": false,
+  "message": "Image file large-photo.png exceeds 5MB limit"
+}
+```
+
+#### 400 Bad Request - Mismatch Error
+```json
+{
+  "success": false,
+  "message": "Mismatch between optionImageUpdates and newOptionImages count"
+}
+```
+
+#### 400 Bad Request - Assessment Status
+```json
+{
+  "success": false,
+  "message": "Cannot update questions in a PUBLISHED assessment. Change the status to DRAFT first."
+}
+```
+
+#### 403 Forbidden - Student Attempt
+```json
+{
+  "success": false,
+  "message": "Students cannot update questions"
+}
+```
+
+#### 404 Not Found
+```json
+{
+  "success": false,
+  "message": "Question not found"
+}
+```
+
+---
+
+### Frontend Integration (TypeScript)
+
+```typescript
+const formData = new FormData();
+
+// Question data
+formData.append('questionData', JSON.stringify({
+  question_text: 'Updated question',
+  points: 5,
+}));
+
+// Update question image
+if (newQuestionImageFile) {
+  formData.append('oldQuestionImageS3Key', existingQuestion.image_s3_key);
+  formData.append('newQuestionImage', newQuestionImageFile);
+}
+
+// Update option images
+if (optionImageUpdates.length > 0) {
+  formData.append('optionImageUpdates', JSON.stringify([
+    { optionId: 'opt-1', oldS3Key: 'old-key-1' },
+    { optionId: 'opt-2', oldS3Key: 'old-key-2' },
+  ]));
+  
+  optionImageFiles.forEach(file => {
+    formData.append('newOptionImages', file);
+  });
+}
+
+const response = await fetch(
+  `/assessment/${assessmentId}/questions/${questionId}/with-image`,
+  {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData,
+    // Do NOT set Content-Type — browser sets it with boundary
+  }
+);
+```
+
+---
+
+### Notes
+
+1. **Atomicity:** All image operations are atomic. If the database update fails, all newly uploaded images are automatically deleted from S3.
+
+2. **Old Image Cleanup:** Old images are deleted from S3 before new images are uploaded, ensuring no orphaned files.
+
+3. **S3 Storage Paths:**
+   - School: `assessment-images/schools/{schoolId}/assessments/{assessmentId}/`
+   - Library: `assessment-images/platforms/{platformId}/assessments/{assessmentId}/`
+
+4. **File Naming:** Uploaded files are sanitized and timestamped: `question_1708700000_sanitized_filename.png`
+
+5. **Rollback Mechanism:** If any error occurs during the update, all uploaded images are deleted from S3, preventing orphaned files.
+
+6. **Use Cases:**
+   - Update question image without changing text
+   - Update option images without changing option text
+   - Replace low-quality images with high-quality versions
+   - Fix incorrect images in options
+
+---
+
+## Delete a Question from an Assessment
+
+Deletes a single question from an assessment. Also removes its options, correct answers, responses, and media.
+
+### Endpoint
+
+```
+DELETE /assessment/:id/questions/:questionId
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                    |
+| ------------------- | --------------------------------------------------------- |
+| **Library Owner**   | Can delete questions from their platform assessments      |
+| **School Director** | Can delete questions from any assessment in their school  |
+| **School Admin**    | Can delete questions from any assessment in their school  |
+| **Teacher**         | Can delete questions from their own assessments only      |
+| **Student**         | ❌ Cannot delete questions                                |
+
+---
+
+### Restrictions
+
+- Cannot delete questions from assessments with status: `PUBLISHED` or `ACTIVE`
+
+---
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Question deleted successfully",
+  "data": {
+    "assessment_id": "clx123abc...",
+    "deleted_question_id": "clxq1...",
+    "message": "Question and all associated media have been removed"
+  }
+}
+```
+
+---
+
+### Error Responses
+
+#### 400 Bad Request - Assessment Status
+```json
+{
+  "success": false,
+  "message": "Cannot delete questions from a PUBLISHED assessment. Change the status to DRAFT first."
+}
+```
+
+#### 403 Forbidden - Student Attempt
+```json
+{
+  "success": false,
+  "message": "Students cannot delete questions"
+}
+```
+
+#### 404 Not Found
+```json
+{
+  "success": false,
+  "message": "Question not found"
+}
+```
+
+---
+
+### Notes
+
+1. **Cascade Cleanup:** Options, correct answers, and responses for the question are deleted automatically.
+2. **Media Cleanup:** Any question/option images are removed from storage.

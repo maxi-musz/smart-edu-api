@@ -842,17 +842,18 @@ model AssessmentQuestion {
 }
 
 model AssessmentOption {
-  id          String               @id @default(cuid())
-  question_id String
-  option_text String
-  order       Int
-  is_correct  Boolean              @default(false)
-  image_url   String?
-  audio_url   String?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  question    AssessmentQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  responses   AssessmentResponse[] @relation("ResponseOptions")
+  id           String               @id @default(cuid())
+  question_id  String
+  option_text  String
+  order        Int
+  is_correct   Boolean              @default(false)
+  image_url    String?
+  image_s3_key String?
+  audio_url    String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  question     AssessmentQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  responses    AssessmentResponse[] @relation("ResponseOptions")
 
   @@index([question_id, order])
 }
@@ -2898,6 +2899,7 @@ model LibraryAssessmentOption {
   order      Int
   isCorrect  Boolean  @default(false)
   imageUrl   String?
+  imageS3Key String?
   audioUrl   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

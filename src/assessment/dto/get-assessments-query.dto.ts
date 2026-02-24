@@ -114,8 +114,10 @@ export class GetAssessmentsQueryDto {
     example: true,
   })
   @IsOptional()
-  @Type(() => Boolean)
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value === 'true' || value === true;
+  })
   is_published?: boolean;
 
   // ========================================
