@@ -270,13 +270,10 @@ export class SubjectService {
     const subjectName = dto.subject_name.toLowerCase();
     const description = dto.description?.toLowerCase();
 
-    const existingSchool = options?.schoolId
-      ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
-      : user
-        ? await this.prisma.school.findFirst({
-            where: { school_email: user.email },
-          })
-        : null;
+    const schoolId = options?.schoolId || user?.school_id;
+    const existingSchool = schoolId
+      ? await this.prisma.school.findUnique({ where: { id: schoolId } })
+      : null;
 
     if (!existingSchool) {
       this.logger.error('School not found');
@@ -429,13 +426,10 @@ export class SubjectService {
   async editSubject(user: User | null, subjectId: string, dto: EditSubjectDto, options?: EditSubjectOptions) {
     this.logger.log(colors.cyan(`Editing subject: ${subjectId}`));
 
-    const existingSchool = options?.schoolId
-      ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
-      : user
-        ? await this.prisma.school.findFirst({
-            where: { school_email: user.email },
-          })
-        : null;
+    const schoolId = options?.schoolId || user?.school_id;
+    const existingSchool = schoolId
+      ? await this.prisma.school.findUnique({ where: { id: schoolId } })
+      : null;
 
     if (!existingSchool) {
       this.logger.error('School not found');
