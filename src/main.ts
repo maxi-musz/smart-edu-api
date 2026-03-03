@@ -8,6 +8,7 @@ import { HlsTranscodeService } from './shared/services/hls-transcode.service';
 import { S3Service } from './shared/services/s3.service';
 import { CloudFrontService } from './shared/services/cloudfront.service';
 import { MediaConvertTranscodeProvider } from './shared/services/transcode-providers/mediaconvert.provider';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -81,6 +82,16 @@ async function bootstrap() {
     },
     customSiteTitle: 'Smart Edu Hub API Documentation',
   });
+
+  // Ensure database is reachable before starting HTTP server
+  try {
+    const prisma = app.get(PrismaService);
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (err) {
+    console.error(colors.red('❌ Failed to connect to the database on startup. Server will not start.'));
+    console.error(err);
+    process.exit(1);
+  }
 
   await app.listen(process.env.PORT ?? 3000);
 

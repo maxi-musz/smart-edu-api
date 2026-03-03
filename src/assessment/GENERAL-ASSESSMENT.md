@@ -1,5 +1,280 @@
 # Assessment API Documentation
 
+## Create Assessment
+
+Creates a new assessment. The endpoint automatically detects user type based on JWT token and routes to the appropriate creation flow (school or library).
+
+### Endpoint
+
+```
+POST /assessment/createnewassessment
+```
+
+### Authorization
+
+```
+Bearer <token>
+```
+
+Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
+
+---
+
+### Role-Based Access
+
+| Role                | Access                                                              |
+| ------------------- | ------------------------------------------------------------------- |
+| **Library Owner**   | Creates a LibraryAssessment in their platform                       |
+| **School Director** | Creates a school Assessment — unrestricted access to all subjects   |
+| **School Admin**    | Creates a school Assessment — unrestricted access to all subjects   |
+| **Teacher**         | Creates a school Assessment — only for subjects they are assigned to |
+
+> **Note:** Students cannot create assessments. Library owners access `LibraryAssessment` table, while school users access `Assessment` table.
+
+---
+
+### Request Body
+
+| Field               | Type     | Required | Default      | Description                                                                 |
+| ------------------- | -------- | -------- | ------------ | --------------------------------------------------------------------------- |
+| `title`             | string   | **Yes**  | -            | Title of the assessment                                                     |
+| `description`       | string   | No       | -            | Description of the assessment                                               |
+| `instructions`      | string   | No       | -            | Instructions for students taking the assessment                             |
+| `subject_id`        | string   | **Yes**  | -            | Subject ID (school Subject or LibrarySubject depending on user type)        |
+| `topic_id`          | string   | No       | -            | Topic ID for topic-specific assessments                                     |
+| `duration`          | number   | No       | -            | Duration in minutes (min: 1, max: 300)                                      |
+| `max_attempts`      | number   | No       | `1`          | Maximum number of attempts allowed (min: 1, max: 10)                        |
+| `passing_score`     | number   | No       | `50`         | Passing score percentage (min: 0, max: 100)                                 |
+| `total_points`      | number   | No       | `100`        | Total possible points (min: 1)                                              |
+| `shuffle_questions` | boolean  | No       | `false`      | Whether to shuffle question order                                           |
+| `shuffle_options`   | boolean  | No       | `false`      | Whether to shuffle options order                                            |
+| `show_correct_answers` | boolean | No    | `false`      | Whether to show correct answers after submission                            |
+| `show_feedback`     | boolean  | No       | `true`       | Whether to show feedback after submission                                   |
+| `allow_review`      | boolean  | No       | `true`       | Whether to allow students to review their answers                           |
+| `start_date`        | string   | No       | `null`       | Assessment start date (ISO 8601 format)                                     |
+| `end_date`          | string   | No       | now + 2 days | Assessment end date (ISO 8601 format)                                       |
+| `time_limit`        | number   | No       | -            | Time limit in minutes, overrides duration (min: 1, max: 300)               |
+| `grading_type`      | enum     | No       | `AUTOMATIC`  | Grading type: `AUTOMATIC`, `MANUAL`, `MIXED`                               |
+| `auto_submit`       | boolean  | No       | `false`      | Whether to auto-submit when time expires                                    |
+| `tags`              | string[] | No       | `[]`         | Tags for categorizing the assessment                                        |
+| `assessment_type`   | enum     | No       | `CBT`        | Type: `CBT`, `ASSIGNMENT`, `EXAM`, `OTHER`, `FORMATIVE`, `SUMMATIVE`, `DIAGNOSTIC`, `BENCHMARK`, `PRACTICE`, `MOCK_EXAM`, `QUIZ`, `TEST` |
+
+---
+
+### Example Request
+
+```bash
+POST /assessment/createnewassessment
+Content-Type: application/json
+
+{
+  "title": "Mathematics Quiz - Chapter 1",
+  "description": "Test your understanding of basic algebra concepts",
+  "instructions": "Answer all questions carefully. You have 30 minutes to complete this quiz.",
+  "subject_id": "subject_abc123",
+  "topic_id": "topic_xyz789",
+  "duration": 30,
+  "max_attempts": 2,
+  "passing_score": 60,
+  "total_points": 100,
+  "shuffle_questions": true,
+  "shuffle_options": false,
+  "show_correct_answers": true,
+  "show_feedback": true,
+  "allow_review": true,
+  "start_date": "2026-03-10T09:00:00Z",
+  "end_date": "2026-03-15T23:59:59Z",
+  "time_limit": 45,
+  "grading_type": "AUTOMATIC",
+  "auto_submit": true,
+  "tags": ["algebra", "mathematics", "chapter1"],
+  "assessment_type": "CBT"
+}
+```
+
+---
+
+### Success Response (School Users)
+
+**Status Code:** `201 Created`
+
+```json
+{
+  "success": true,
+  "message": "School assessment created successfully",
+  "data": {
+    "id": "assessment_abc123",
+    "title": "Mathematics Quiz - Chapter 1",
+    "description": "Test your understanding of basic algebra concepts",
+    "instructions": "Answer all questions carefully. You have 30 minutes to complete this quiz.",
+    "subject_id": "subject_abc123",
+    "topic_id": "topic_xyz789",
+    "school_id": "school_123",
+    "academic_session_id": "session_456",
+    "created_by": "user_789",
+    "duration": 30,
+    "max_attempts": 2,
+    "passing_score": 60,
+    "total_points": 100,
+    "shuffle_questions": true,
+    "shuffle_options": false,
+    "show_correct_answers": true,
+    "show_feedback": true,
+    "allow_review": true,
+    "start_date": "2026-03-10T09:00:00.000Z",
+    "end_date": "2026-03-15T23:59:59.000Z",
+    "time_limit": 45,
+    "grading_type": "AUTOMATIC",
+    "auto_submit": true,
+    "assessment_type": "CBT",
+    "tags": ["algebra", "mathematics", "chapter1"],
+    "status": "DRAFT",
+    "is_published": false,
+    "subject": {
+      "id": "subject_abc123",
+      "name": "Mathematics",
+      "code": "MATH"
+    },
+    "topic": {
+      "id": "topic_xyz789",
+      "title": "Basic Algebra"
+    },
+    "createdBy": {
+      "id": "user_789",
+      "first_name": "John",
+      "last_name": "Doe"
+    },
+    "assessmentContext": "school"
+  }
+}
+```
+
+---
+
+### Success Response (Library Owners)
+
+**Status Code:** `201 Created`
+
+```json
+{
+  "success": true,
+  "message": "Library assessment created successfully",
+  "data": {
+    "id": "lib_assessment_abc123",
+    "platformId": "platform_123",
+    "subjectId": "lib_subject_abc",
+    "topicId": "lib_topic_xyz",
+    "createdById": "lib_user_789",
+    "title": "Mathematics Quiz - Chapter 1",
+    "description": "Test your understanding of basic algebra concepts",
+    "instructions": "Answer all questions carefully. You have 30 minutes to complete this quiz.",
+    "assessmentType": "CBT",
+    "gradingType": "AUTOMATIC",
+    "duration": 30,
+    "maxAttempts": 2,
+    "passingScore": 60,
+    "totalPoints": 100,
+    "shuffleQuestions": true,
+    "shuffleOptions": false,
+    "showCorrectAnswers": true,
+    "showFeedback": true,
+    "allowReview": true,
+    "startDate": "2026-03-10T09:00:00.000Z",
+    "endDate": "2026-03-15T23:59:59.000Z",
+    "timeLimit": 45,
+    "autoSubmit": true,
+    "tags": ["algebra", "mathematics", "chapter1"],
+    "status": "DRAFT",
+    "isPublished": false,
+    "subject": {
+      "id": "lib_subject_abc",
+      "name": "Mathematics",
+      "code": "MATH"
+    },
+    "topic": {
+      "id": "lib_topic_xyz",
+      "title": "Basic Algebra"
+    },
+    "createdBy": {
+      "id": "lib_user_789",
+      "first_name": "Jane",
+      "last_name": "Library"
+    },
+    "assessmentContext": "library"
+  }
+}
+```
+
+---
+
+### Error Responses
+
+| Status Code | Description                                                                     |
+| ----------- | ------------------------------------------------------------------------------- |
+| `400`       | Bad request — Invalid data, missing required fields, or no current academic session |
+| `403`       | Forbidden — Teacher does not have access to the specified subject/topic         |
+| `404`       | Not found — Subject, topic, teacher, or school not found                        |
+
+**Example Error (Teacher not assigned to subject):**
+
+```json
+{
+  "success": false,
+  "message": "Teacher does not have access to this subject",
+  "statusCode": 403
+}
+```
+
+**Example Error (No active academic session — school users):**
+
+```json
+{
+  "success": false,
+  "message": "No current academic session found for the school",
+  "statusCode": 400
+}
+```
+
+---
+
+### Assessment Type Limits (School Only)
+
+The following limits are enforced **per subject per term** (academic session) for school assessments:
+
+| Assessment Type | Max Per Subject Per Term |
+| --------------- | ----------------------- |
+| `CBT`           | **2**                   |
+| `EXAM`          | **1**                   |
+| `ASSIGNMENT`    | Unlimited               |
+| `QUIZ`          | Unlimited               |
+| `TEST`          | Unlimited               |
+| All others      | Unlimited               |
+
+If the limit is reached, the endpoint returns a `400 Bad Request`:
+
+```json
+{
+  "success": false,
+  "message": "Maximum of 2 CBT assessment(s) allowed per subject per term. This subject already has 2.",
+  "statusCode": 400
+}
+```
+
+> **Note:** These limits apply only to school assessments. Library assessments are not subject to per-term limits.
+
+---
+
+### Notes
+
+- All assessments are created with `status: "DRAFT"` and `is_published: false` by default.
+- For school users, the assessment is automatically linked to the current active academic session.
+- Library assessments are not tied to academic sessions.
+- If `end_date` is not provided, it defaults to 2 days from the creation time.
+- The `assessmentContext` field in the response (`"school"` or `"library"`) indicates which table the assessment was created in.
+- Teachers must be assigned to the specified `subject_id` to create an assessment. Directors and admins have unrestricted access.
+
+---
+
 ## Get All Assessments
 
 Fetches assessments with pagination, filtering, search, and role-based access control.

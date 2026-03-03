@@ -187,6 +187,33 @@ export class SchoolAssessmentService {
       createdByUserId = userContext.userId;
     }
 
+    // Enforce per-type limits: max 2 CBT, max 1 EXAM per subject per term
+    const assessmentType = (createAssessmentDto.assessment_type as AssessmentType) || AssessmentType.CBT;
+    const typeLimits: Partial<Record<AssessmentType, number>> = {
+      [AssessmentType.CBT]: 2,
+      [AssessmentType.EXAM]: 1,
+    };
+
+    const maxAllowed = typeLimits[assessmentType];
+    if (maxAllowed !== undefined) {
+      const existingCount = await this.prisma.assessment.count({
+        where: {
+          subject_id: createAssessmentDto.subject_id,
+          academic_session_id: academicSessionId,
+          assessment_type: assessmentType,
+        },
+      });
+
+      if (existingCount >= maxAllowed) {
+        const typeLabel = assessmentType === AssessmentType.EXAM ? 'exam' : 'CBT';
+        this.logger.error(colors.red(`Maximum of ${maxAllowed} ${typeLabel} assessment(s) allowed per subject per term. This subject already has ${existingCount}.`));
+        throw new BadRequestException(
+          `Maximum of ${maxAllowed} ${typeLabel} assessment(s) allowed per subject per term. ` +
+          `This subject already has ${existingCount}.`,
+        );
+      }
+    }
+
     // Create the school assessment
     const assessment = await this.prisma.assessment.create({
       data: {
