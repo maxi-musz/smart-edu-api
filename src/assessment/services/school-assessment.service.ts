@@ -938,7 +938,10 @@ export class SchoolAssessmentService {
     }
 
     const publishedStatuses = ['PUBLISHED', 'ACTIVE'];
-    if (publishedStatuses.includes(existingAssessment.status)) {
+    const isStatusChangeOnly = updateDto.status && Object.keys(updateDto).filter(k => updateDto[k] !== undefined).length === 1;
+    const isDemotingToDraft = updateDto.status === 'DRAFT' || updateDto.status === 'CLOSED' || updateDto.status === 'ARCHIVED';
+
+    if (publishedStatuses.includes(existingAssessment.status) && !(isStatusChangeOnly && isDemotingToDraft)) {
       this.logger.warn(colors.yellow(`Cannot update published assessment: ${assessmentId} (status: ${existingAssessment.status})`));
       throw new BadRequestException(
         `Cannot update assessment with status "${existingAssessment.status}". Change status to DRAFT first to make modifications.`
@@ -1013,9 +1016,19 @@ export class SchoolAssessmentService {
     }
 
     if (updateDto.status) {
-      const isBeingPublished = ['PUBLISHED', 'ACTIVE'].includes(updateDto.status) && !existingAssessment.is_published;
+      const isBeingPublished = ['PUBLISHED', 'ACTIVE'].includes(updateDto.status);
 
       if (isBeingPublished) {
+        const questionCount = await this.prisma.assessmentQuestion.count({
+          where: { assessment_id: assessmentId },
+        });
+
+        if (questionCount === 0) {
+          throw new BadRequestException(
+            'Cannot publish or activate an assessment with no questions. Add at least one question first.'
+          );
+        }
+
         const effectiveEndDate = updateData.end_date ?? existingAssessment.end_date;
         if (effectiveEndDate && new Date(effectiveEndDate) < new Date()) {
           throw new BadRequestException(
