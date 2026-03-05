@@ -107,15 +107,24 @@ export class LibraryUsersController {
     return this.libraryUsersService.updatePermission(platformId, id, dto.action, dto.permissionCode);
   }
 
-  /** Update a library user (elevated only). */
+  /** Update a library user (elevated only). Send only the fields to update (e.g. { "permissions": ["manage_library_users"], "permissionLevel": 10 }). Also accepts { "data": { ... } } wrapper. */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryElevatedGuard)
   @ApiResponse({ status: 200, description: 'Library user updated' })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async update(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateLibraryUserDto) {
+  async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     const platformId = req.libraryUser.platformId;
+    const raw = body?.data && typeof body.data === 'object' ? body.data : body;
+    const allowedKeys = [
+      'email', 'password', 'first_name', 'last_name', 'phone_number',
+      'role', 'userType', 'permissions', 'permissionLevel',
+    ] as const;
+    const dto = allowedKeys.reduce((acc, key) => {
+      if (raw[key] !== undefined) acc[key] = raw[key];
+      return acc;
+    }, {} as UpdateLibraryUserDto);
     return this.libraryUsersService.update(platformId, id, dto);
   }
 

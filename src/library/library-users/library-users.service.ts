@@ -449,6 +449,42 @@ export class LibraryUsersService {
     return new ApiResponse(true, 'Available permissions retrieved successfully', permissions);
   }
 
+  /**
+   * Returns the first permission code from the catalog (by id). Used to auto-grant when a library has only 1–2 users.
+   */
+  async getFirstPermissionCode(): Promise<string | null> {
+    const first = await this.prisma.libraryPermissionDefinition.findFirst({
+      orderBy: { id: 'asc' },
+      select: { code: true },
+    });
+    return first?.code ?? null;
+  }
+
+  /**
+   * If the platform has ≤2 users, ensure the given user has the first permission (so they can manage others).
+   * Idempotent: only adds if missing.
+   */
+  async ensureFirstPermissionIfSmallPlatform(platformId: string, userId: string): Promise<boolean> {
+    const userCount = await this.prisma.libraryResourceUser.count({ where: { platformId } });
+    if (userCount > 2) return false;
+
+    const firstCode = await this.getFirstPermissionCode();
+    if (!firstCode) return false;
+
+    const user = await this.prisma.libraryResourceUser.findFirst({
+      where: { id: userId, platformId },
+      select: { id: true, permissions: true },
+    });
+    if (!user || (user.permissions ?? []).includes(firstCode)) return false;
+
+    await this.prisma.libraryResourceUser.update({
+      where: { id: userId },
+      data: { permissions: [...(user.permissions ?? []), firstCode] },
+    });
+    this.logger.log(colors.cyan(`[LIBRARY USERS] Auto-granted first permission "${firstCode}" to user ${userId} (platform has ${userCount} user(s))`));
+    return true;
+  }
+
   /** Create a library user under the platform (elevated only). Auto-generates strong password if not provided; sends onboarding emails to new user and creator. */
   async create(
     platformId: string,
@@ -502,6 +538,16 @@ export class LibraryUsersService {
         createdAt: true,
       },
     });
+
+    // If this library has only 1–2 users, auto-attach first permission so they can manage others
+    const didAttach = await this.ensureFirstPermissionIfSmallPlatform(platformId, user.id);
+    if (didAttach) {
+      const refreshed = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.id },
+        select: { permissions: true },
+      });
+      if (refreshed) (user as any).permissions = refreshed.permissions;
+    }
 
     try {
       const [library, creator] = await Promise.all([
