@@ -958,6 +958,7 @@ export class SchoolAssessmentService {
       });
 
       if (!subject) {
+        this.logger.error(colors.red(`Subject not found in this school: ${updateDto.subject_id}`));
         throw new NotFoundException('Subject not found in this school');
       }
 
@@ -970,6 +971,7 @@ export class SchoolAssessmentService {
         });
 
         if (!teacherSubject) {
+          this.logger.error(colors.red(`You do not teach this subject: ${updateDto.subject_id}`));
           throw new ForbiddenException('You do not teach this subject');
         }
       }
@@ -986,6 +988,7 @@ export class SchoolAssessmentService {
       });
 
       if (!topic) {
+        this.logger.error(colors.red(`Topic not found or does not belong to the specified subject: ${updateDto.topic_id}`));
         throw new NotFoundException('Topic not found or does not belong to the specified subject');
       }
     }
