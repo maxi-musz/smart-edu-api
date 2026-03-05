@@ -695,6 +695,7 @@ export class LibraryExamBodyAssessmentService {
       data: {
         isPublished: true,
         publishedAt: new Date(),
+        status: 'active', // so it appears in explore
       },
     });
 
@@ -722,6 +723,127 @@ export class LibraryExamBodyAssessmentService {
 
     this.logger.log(colors.green(`✅ Assessment unpublished: ${assessment.title}`));
     return new ApiResponse(true, 'Assessment unpublished successfully', assessment);
+  }
+
+  /**
+   * List attempts for an assessment (library owners) – who practiced, how many times.
+   * Returns analytics (total attempts, unique users) and paginated attempt list.
+   */
+  async getAttemptsForAssessment(
+    user: any,
+    examBodyId: string,
+    assessmentId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<ApiResponse<any>> {
+    const platformId = await this.getPlatformId(user.sub);
+
+    const assessment = await this.prisma.examBodyAssessment.findFirst({
+      where: { id: assessmentId, examBodyId, platformId },
+      select: { id: true, title: true },
+    });
+
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    const [totalAttempts, uniqueUsersCount, attempts] = await Promise.all([
+      this.prisma.examBodyAssessmentAttempt.count({
+        where: { assessmentId },
+      }),
+      this.prisma.examBodyAssessmentAttempt.groupBy({
+        by: ['userId'],
+        where: { assessmentId },
+      }).then((groups) => groups.length),
+      this.prisma.examBodyAssessmentAttempt.findMany({
+        where: { assessmentId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              first_name: true,
+              last_name: true,
+            },
+          },
+        },
+        orderBy: { submittedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalAttempts / limit);
+
+    return new ApiResponse(true, 'Attempts retrieved successfully', {
+      assessment: { id: assessment.id, title: assessment.title },
+      analytics: {
+        totalAttempts,
+        uniqueUsersCount,
+      },
+      attempts,
+      pagination: {
+        page,
+        limit,
+        total: totalAttempts,
+        totalPages,
+      },
+    });
+  }
+
+  /**
+   * Get a single attempt with responses (library owners) – view a specific submission.
+   */
+  async getAttemptById(
+    user: any,
+    examBodyId: string,
+    assessmentId: string,
+    attemptId: string,
+  ): Promise<ApiResponse<any>> {
+    const platformId = await this.getPlatformId(user.sub);
+
+    const assessment = await this.prisma.examBodyAssessment.findFirst({
+      where: { id: assessmentId, examBodyId, platformId },
+      select: { id: true },
+    });
+
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    const attempt = await this.prisma.examBodyAssessmentAttempt.findFirst({
+      where: { id: attemptId, assessmentId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            first_name: true,
+            last_name: true,
+          },
+        },
+        responses: {
+          include: {
+            question: {
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                points: true,
+                order: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!attempt) {
+      throw new NotFoundException('Attempt not found');
+    }
+
+    return new ApiResponse(true, 'Attempt retrieved successfully', attempt);
   }
 
   private async updateAssessmentTotalPoints(assessmentId: string) {

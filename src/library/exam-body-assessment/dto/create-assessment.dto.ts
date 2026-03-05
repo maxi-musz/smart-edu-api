@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsInt, Min, IsBoolean, IsNumber, IsEnum } from 'class-validator';
-import { AssessmentType } from '@prisma/client';
+import { AssessmentType, ExamBodyStatus } from '@prisma/client';
 
 export class CreateLibraryExamBodyAssessmentDto {
   @ApiProperty({ example: 'WAEC Mathematics 2024/2025' })
@@ -64,4 +64,13 @@ export class CreateLibraryExamBodyAssessmentDto {
   @IsBoolean()
   @IsOptional()
   showExplanation?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ExamBodyStatus,
+    example: ExamBodyStatus.active,
+    description: 'Assessment status. Only active assessments appear in explore when published.',
+  })
+  @IsEnum(ExamBodyStatus)
+  @IsOptional()
+  status?: ExamBodyStatus;
 }

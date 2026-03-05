@@ -244,3 +244,39 @@ export const UnpublishLibraryExamBodyAssessmentDocs = {
     description: 'Assessment not found',
   }),
 };
+
+export const GetLibraryExamBodyAttemptsDocs = {
+  operation: ApiOperation({
+    summary: 'List attempts for an assessment (library owners)',
+    description:
+      'Returns who practiced, how many total attempts, unique users count, and paginated list of attempts for this assessment.',
+  }),
+  paramAssessmentId: ApiParam({ name: 'id', description: 'Assessment ID' }),
+  queryPage: ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' }),
+  queryLimit: ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' }),
+  response200: ApiResponse({
+    status: 200,
+    description: 'Attempts and analytics retrieved successfully',
+  }),
+  response404: ApiResponse({
+    status: 404,
+    description: 'Assessment not found',
+  }),
+};
+
+export const GetLibraryExamBodyAttemptByIdDocs = {
+  operation: ApiOperation({
+    summary: 'Get a single attempt with responses (library owners)',
+    description: 'Returns one submission with user info and question responses for viewing.',
+  }),
+  paramAssessmentId: ApiParam({ name: 'id', description: 'Assessment ID' }),
+  paramAttemptId: ApiParam({ name: 'attemptId', description: 'Attempt ID' }),
+  response200: ApiResponse({
+    status: 200,
+    description: 'Attempt retrieved successfully',
+  }),
+  response404: ApiResponse({
+    status: 404,
+    description: 'Assessment or attempt not found',
+  }),
+};

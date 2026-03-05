@@ -511,8 +511,8 @@
 ```
 
 **Required Fields:** `title`  
-**Optional Fields:** All others  
-**Note:** `maxAttempts: null` means unlimited attempts
+**Optional Fields:** All others, including **`status`** (`"active"` \| `"inactive"` \| `"archived"`; default `"active"`).  
+**Note:** `maxAttempts: null` means unlimited attempts. Only **active** assessments appear in explore when published.
 
 **Success Response (201):**
 
@@ -703,7 +703,7 @@
 **Content-Type:** `application/json`  
 **Auth:** Required (Library JWT + Owner/Manager role)
 
-**Request Body:** Same as create (all optional)
+**Request Body:** Same as create (all optional). Includes optional **`status`** (`"active"` \| `"inactive"` \| `"archived"`). Only **active** assessments appear in explore when published.
 
 **Success Response (200):** Same structure as create (without questions)
 
@@ -730,6 +730,8 @@
 
 **Endpoint:** `PATCH /exam-bodies/:examBodyId/assessments/:id/publish`  
 **Auth:** Required (Library JWT + Owner/Manager role)
+
+Publishing sets `isPublished: true`, `publishedAt`, and **`status: 'active'`** so the assessment appears in the explore (public) list. Only assessments that are both published and active are shown to learners.
 
 **Success Response (200):**
 
@@ -765,6 +767,305 @@
   }
 }
 ```
+
+---
+
+### 4.8 List Attempts (Who Practiced, How Many Times)
+
+**Endpoint:** `GET /exam-bodies/:examBodyId/assessments/:id/attempts?page=1&limit=20`  
+**Auth:** Required (Library JWT + Owner/Manager role)
+
+**Query Parameters (Optional):**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| page | number | 1 | Page number (1-based) |
+| limit | number | 20 | Items per page |
+
+**Description:** Returns who practiced this assessment: total attempts, unique users count, and a paginated list of attempts. Each attempt includes user identity and score so the frontend can show tables, charts, or leaderboards.
+
+**Success Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Attempts retrieved successfully",
+  "data": {
+    "assessment": {
+      "id": "assessment_123",
+      "title": "WAEC Mathematics 2024/2025"
+    },
+    "analytics": {
+      "totalAttempts": 150,
+      "uniqueUsersCount": 42
+    },
+    "attempts": [
+      {
+        "id": "attempt_abc001",
+        "assessmentId": "assessment_123",
+        "userId": "user_xyz",
+        "attemptNumber": 2,
+        "status": "GRADED",
+        "startedAt": "2026-01-15T14:00:00.000Z",
+        "submittedAt": "2026-01-15T14:30:00.000Z",
+        "timeSpent": 3600,
+        "totalScore": 75,
+        "maxScore": 100,
+        "percentage": 75,
+        "passed": true,
+        "isGraded": true,
+        "gradedAt": "2026-01-15T14:30:05.000Z",
+        "createdAt": "2026-01-15T14:00:00.000Z",
+        "updatedAt": "2026-01-15T14:30:05.000Z",
+        "user": {
+          "id": "user_xyz",
+          "email": "student@example.com",
+          "first_name": "Jane",
+          "last_name": "Doe"
+        }
+      },
+      {
+        "id": "attempt_abc002",
+        "assessmentId": "assessment_123",
+        "userId": "user_abc",
+        "attemptNumber": 1,
+        "status": "GRADED",
+        "startedAt": "2026-01-15T10:00:00.000Z",
+        "submittedAt": "2026-01-15T10:45:00.000Z",
+        "timeSpent": 2700,
+        "totalScore": 88,
+        "maxScore": 100,
+        "percentage": 88,
+        "passed": true,
+        "isGraded": true,
+        "gradedAt": "2026-01-15T10:45:02.000Z",
+        "createdAt": "2026-01-15T10:00:00.000Z",
+        "updatedAt": "2026-01-15T10:45:02.000Z",
+        "user": {
+          "id": "user_abc",
+          "email": "another@example.com",
+          "first_name": "John",
+          "last_name": "Smith"
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 150,
+      "totalPages": 8
+    }
+  }
+}
+```
+
+**Response structure (TypeScript):**
+
+```typescript
+{
+  success: true;
+  message: string;
+  data: {
+    assessment: {
+      id: string;
+      title: string;
+    };
+    analytics: {
+      totalAttempts: number;
+      uniqueUsersCount: number;
+    };
+    attempts: Array<{
+      id: string;
+      assessmentId: string;
+      userId: string;
+      attemptNumber: number;
+      status: "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED" | "GRADED" | "EXPIRED";
+      startedAt: string | null;
+      submittedAt: string | null;
+      timeSpent: number | null;
+      totalScore: number;
+      maxScore: number;
+      percentage: number;
+      passed: boolean;
+      isGraded: boolean;
+      gradedAt: string | null;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        id: string;
+        email: string;
+        first_name: string;
+        last_name: string;
+      };
+    }>;
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
+}
+```
+
+**UI use:** Use `analytics` for summary cards (e.g. “150 attempts by 42 users”). Use `attempts` for a table: user name/email, attempt #, score, percentage, passed, submitted date, time spent. Use `pagination` for “Page 1 of 8” and next/prev.
+
+---
+
+### 4.9 Get Attempt by ID (View a Specific Submission)
+
+**Endpoint:** `GET /exam-bodies/:examBodyId/assessments/:id/attempts/:attemptId`  
+**Auth:** Required (Library JWT + Owner/Manager role)
+
+**Description:** Returns a single attempt with user info and all question responses so the library owner can view one submission in full (answers, points, correct/incorrect per question).
+
+**Success Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Attempt retrieved successfully",
+  "data": {
+    "id": "attempt_abc001",
+    "assessmentId": "assessment_123",
+    "userId": "user_xyz",
+    "attemptNumber": 1,
+    "status": "GRADED",
+    "startedAt": "2026-01-15T14:00:00.000Z",
+    "submittedAt": "2026-01-15T14:30:00.000Z",
+    "timeSpent": 1800,
+    "totalScore": 80,
+    "maxScore": 100,
+    "percentage": 80,
+    "passed": true,
+    "isGraded": true,
+    "gradedAt": "2026-01-15T14:30:05.000Z",
+    "createdAt": "2026-01-15T14:00:00.000Z",
+    "updatedAt": "2026-01-15T14:30:05.000Z",
+    "user": {
+      "id": "user_xyz",
+      "email": "student@example.com",
+      "first_name": "Jane",
+      "last_name": "Doe"
+    },
+    "responses": [
+      {
+        "id": "resp_001",
+        "attemptId": "attempt_abc001",
+        "questionId": "q_001",
+        "userId": "user_xyz",
+        "textAnswer": null,
+        "numericAnswer": null,
+        "dateAnswer": null,
+        "selectedOptions": ["option_correct_id"],
+        "fileUrls": [],
+        "answerJson": null,
+        "isCorrect": true,
+        "pointsEarned": 5,
+        "maxPoints": 5,
+        "feedback": null,
+        "isGraded": true,
+        "createdAt": "2026-01-15T14:30:00.000Z",
+        "updatedAt": "2026-01-15T14:30:00.000Z",
+        "question": {
+          "id": "q_001",
+          "questionText": "What is 2 + 2?",
+          "questionType": "MULTIPLE_CHOICE_SINGLE",
+          "points": 5,
+          "order": 1
+        }
+      },
+      {
+        "id": "resp_002",
+        "attemptId": "attempt_abc001",
+        "questionId": "q_002",
+        "userId": "user_xyz",
+        "textAnswer": "Paris",
+        "numericAnswer": null,
+        "dateAnswer": null,
+        "selectedOptions": [],
+        "fileUrls": [],
+        "answerJson": null,
+        "isCorrect": true,
+        "pointsEarned": 2,
+        "maxPoints": 2,
+        "feedback": null,
+        "isGraded": true,
+        "createdAt": "2026-01-15T14:30:00.000Z",
+        "updatedAt": "2026-01-15T14:30:00.000Z",
+        "question": {
+          "id": "q_002",
+          "questionText": "Capital of France?",
+          "questionType": "SHORT_ANSWER",
+          "points": 2,
+          "order": 2
+        }
+      }
+    ]
+  }
+}
+```
+
+**Response structure (TypeScript):**
+
+```typescript
+{
+  success: true;
+  message: string;
+  data: {
+    id: string;
+    assessmentId: string;
+    userId: string;
+    attemptNumber: number;
+    status: "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED" | "GRADED" | "EXPIRED";
+    startedAt: string | null;
+    submittedAt: string | null;
+    timeSpent: number | null;
+    totalScore: number;
+    maxScore: number;
+    percentage: number;
+    passed: boolean;
+    isGraded: boolean;
+    gradedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    user: {
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+    };
+    responses: Array<{
+      id: string;
+      attemptId: string;
+      questionId: string;
+      userId: string;
+      textAnswer: string | null;
+      numericAnswer: number | null;
+      dateAnswer: string | null;
+      selectedOptions: string[];
+      fileUrls: string[];
+      answerJson: object | null;
+      isCorrect: boolean | null;
+      pointsEarned: number;
+      maxPoints: number;
+      feedback: string | null;
+      isGraded: boolean;
+      createdAt: string;
+      updatedAt: string;
+      question: {
+        id: string;
+        questionText: string;
+        questionType: string;
+        points: number;
+        order: number;
+      };
+    }>;
+  };
+}
+```
+
+**UI use:** Show attempt header (user name/email, attempt #, total score, percentage, passed, submitted at, time spent). Below, render one block per `responses` item: `question.questionText`, question type, and the answer (e.g. `selectedOptions`, `textAnswer`, `numericAnswer`, or `answerJson` depending on type). Show `pointsEarned` / `maxPoints` and `isCorrect` (and optional `feedback`) per question.
 
 ---
 

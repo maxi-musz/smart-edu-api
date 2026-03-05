@@ -149,7 +149,7 @@ export class ExploreExamBodyService {
   ): Promise<ApiResponse<any>> {
     this.logger.log(
       colors.cyan(
-        `📚 Fetching assessments for exam body: ${examBodyId}, subject: ${subjectId}, year: ${yearId}`,
+        `📚 Fetching assessments for exam body: ${examBodyId}, subject: ${subjectId ?? '(all)'}, year: ${yearId ?? '(all)'}`,
       ),
     );
 
@@ -187,10 +187,11 @@ export class ExploreExamBodyService {
       }
     }
 
-    // Build where clause
+    // Build where clause (only active, published assessments appear in explore)
     const where: any = {
       examBodyId,
       isPublished: true,
+      status: 'active',
     };
 
     if (subjectId) {
@@ -221,6 +222,10 @@ export class ExploreExamBodyService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    this.logger.log(
+      colors.green(`📚 Assessments returned: ${assessments.length} for exam body ${examBodyId}`),
+    );
 
     return new ApiResponse(true, 'Assessments retrieved successfully', assessments);
   }

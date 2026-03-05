@@ -22,6 +22,8 @@ import {
   DeleteLibraryExamBodyQuestionDocs,
   PublishLibraryExamBodyAssessmentDocs,
   UnpublishLibraryExamBodyAssessmentDocs,
+  GetLibraryExamBodyAttemptsDocs,
+  GetLibraryExamBodyAttemptByIdDocs,
 } from './docs/exam-body-assessment.docs';
 
 @ApiTags('Exam Body Assessments')
@@ -84,6 +86,46 @@ export class LibraryExamBodyAssessmentController {
     @Param('id') id: string,
   ) {
     return this.service.findOneAssessment(req.user, examBodyId, id);
+  }
+
+  // List attempts for an assessment (who practiced, how many times, paginated)
+  @Get(':id/attempts')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
+  @GetLibraryExamBodyAttemptsDocs.operation
+  @GetLibraryExamBodyAttemptsDocs.paramAssessmentId
+  @GetLibraryExamBodyAttemptsDocs.queryPage
+  @GetLibraryExamBodyAttemptsDocs.queryLimit
+  @GetLibraryExamBodyAttemptsDocs.response200
+  @GetLibraryExamBodyAttemptsDocs.response404
+  getAttemptsForAssessment(
+    @Request() req: any,
+    @Param('examBodyId') examBodyId: string,
+    @Param('id') assessmentId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 20;
+    return this.service.getAttemptsForAssessment(req.user, examBodyId, assessmentId, pageNum, limitNum);
+  }
+
+  // Get a single attempt with responses (view a specific submission)
+  @Get(':id/attempts/:attemptId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
+  @GetLibraryExamBodyAttemptByIdDocs.operation
+  @GetLibraryExamBodyAttemptByIdDocs.paramAssessmentId
+  @GetLibraryExamBodyAttemptByIdDocs.paramAttemptId
+  @GetLibraryExamBodyAttemptByIdDocs.response200
+  @GetLibraryExamBodyAttemptByIdDocs.response404
+  getAttemptById(
+    @Request() req: any,
+    @Param('examBodyId') examBodyId: string,
+    @Param('id') assessmentId: string,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.service.getAttemptById(req.user, examBodyId, assessmentId, attemptId);
   }
 
   // Update assessment metadata (title, description, maxAttempts, etc.)
