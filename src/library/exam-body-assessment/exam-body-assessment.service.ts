@@ -230,6 +230,7 @@ export class LibraryExamBodyAssessmentService {
                 optionText: optionData.optionText,
                 order: optionData.order || 0,
                 isCorrect: optionData.isCorrect || false,
+                imageUrl: optionData.imageUrl,
               },
             });
           })
@@ -264,8 +265,9 @@ export class LibraryExamBodyAssessmentService {
     assessmentId: string,
     questionDataString: string,
     imageFile?: Express.Multer.File,
+    optionImageFiles: Express.Multer.File[] = [],
   ): Promise<ApiResponse<any>> {
-    let uploadedImageKey: string | undefined;
+    const uploadedImageKeys: string[] = [];
 
     try {
       this.logger.log(colors.cyan(`📝 Creating question with image for assessment: ${assessmentId}`));
@@ -291,6 +293,9 @@ export class LibraryExamBodyAssessmentService {
         throw new NotFoundException('Assessment not found');
       }
 
+      // Base folder for all question/option images for this assessment
+      const s3Folder = `exam-body-assessment-images/platforms/${platformId}/assessments/${assessmentId}`;
+
       // Upload image to S3 if provided
       if (imageFile) {
         this.logger.log(colors.blue(`📤 Uploading image: ${imageFile.originalname}`));
@@ -307,12 +312,11 @@ export class LibraryExamBodyAssessmentService {
         }
 
         // Upload to S3
-        const s3Folder = `exam-body-assessment-images/platforms/${platformId}/assessments/${assessmentId}`;
         const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
         try {
           const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
-          uploadedImageKey = uploadResult.key;
+          uploadedImageKeys.push(uploadResult.key);
 
           // Add image data to DTO
           (createQuestionDto as any).imageUrl = uploadResult.url;
@@ -324,6 +328,49 @@ export class LibraryExamBodyAssessmentService {
         }
       }
 
+      // Upload option images if provided
+      if (optionImageFiles.length > 0 && createQuestionDto.options?.length) {
+        for (let i = 0; i < optionImageFiles.length; i++) {
+          const optionFile = optionImageFiles[i];
+          this.logger.log(colors.blue(`📤 Uploading option image [${i}]: ${optionFile.originalname}`));
+
+          const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+          if (!allowedMimeTypes.includes(optionFile.mimetype)) {
+            throw new BadRequestException('Invalid image file type. Allowed: JPEG, PNG, GIF, WEBP');
+          }
+
+          const maxSize = 5 * 1024 * 1024; // 5MB
+          if (optionFile.size > maxSize) {
+            throw new BadRequestException('Image file size exceeds 5MB limit');
+          }
+
+          const optionFileName = `option_${Date.now()}_${i}_${optionFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+          try {
+            const uploadResult = await this.storageService.uploadFile(optionFile, s3Folder, optionFileName);
+            uploadedImageKeys.push(uploadResult.key);
+
+            const matchingOption = (createQuestionDto.options as any[]).find(
+              (opt: any) => opt.imageIndex === i,
+            );
+
+            if (matchingOption) {
+              matchingOption.imageUrl = uploadResult.url;
+              this.logger.log(colors.green(`✅ Option image [${i}] uploaded and matched to option`));
+            } else {
+              this.logger.warn(
+                colors.yellow(
+                  `⚠️ Option image [${i}] uploaded but no option in questionData.options has imageIndex=${i}`,
+                ),
+              );
+            }
+          } catch (optionUploadError: any) {
+            this.logger.error(colors.red(`❌ Option image upload failed: ${optionUploadError.message}`));
+            throw new BadRequestException(`Failed to upload option image: ${optionUploadError.message}`);
+          }
+        }
+      }
+
       // Create question in database
       try {
         const question = await this.createQuestion(user, examBodyId, assessmentId, createQuestionDto);
@@ -331,13 +378,19 @@ export class LibraryExamBodyAssessmentService {
         return question;
       } catch (questionError) {
         // Question creation failed - rollback image upload
-        if (uploadedImageKey) {
-          this.logger.warn(colors.yellow(`⚠️  Question creation failed. Rolling back image upload: ${uploadedImageKey}`));
-          try {
-            await this.storageService.deleteFile(uploadedImageKey);
-            this.logger.log(colors.green(`✅ Orphaned image deleted from S3`));
-          } catch (deleteError: any) {
-            this.logger.error(colors.red(`❌ Failed to delete orphaned image: ${deleteError.message}`));
+        if (uploadedImageKeys.length > 0) {
+          this.logger.warn(
+            colors.yellow(
+              `⚠️  Question creation failed. Rolling back ${uploadedImageKeys.length} uploaded image(s).`,
+            ),
+          );
+          for (const key of uploadedImageKeys) {
+            try {
+              await this.storageService.deleteFile(key);
+              this.logger.log(colors.green(`✅ Orphaned image deleted from S3: ${key}`));
+            } catch (deleteError: any) {
+              this.logger.error(colors.red(`❌ Failed to delete orphaned image ${key}: ${deleteError.message}`));
+            }
           }
         }
         throw questionError;
@@ -377,6 +430,7 @@ export class LibraryExamBodyAssessmentService {
     questionId: string,
     updateDto: UpdateLibraryExamBodyQuestionDto,
     imageFile?: Express.Multer.File,
+    optionImageFiles: Express.Multer.File[] = [],
   ): Promise<ApiResponse<any>> {
     const platformId = await this.getPlatformId(user.sub);
 
@@ -394,6 +448,9 @@ export class LibraryExamBodyAssessmentService {
     let imageUrl: string | undefined;
     let imageS3Key: string | undefined;
     let oldImageS3Key: string | undefined;
+
+    // Base folder for all images (question + options) for this assessment
+    const s3Folder = `exam-body-assessment-images/platforms/${platformId}/assessments/${existingQuestion.assessment.id}`;
 
     // Handle image upload if new file provided
     if (imageFile) {
@@ -414,7 +471,6 @@ export class LibraryExamBodyAssessmentService {
       oldImageS3Key = existingQuestion.imageUrl ? this.extractS3KeyFromUrl(existingQuestion.imageUrl) : undefined;
 
       // Upload new image to S3
-      const s3Folder = `exam-body-assessment-images/platforms/${platformId}/assessments/${existingQuestion.assessment.id}`;
       const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
       try {
@@ -434,6 +490,48 @@ export class LibraryExamBodyAssessmentService {
     } else if ((updateDto as any).imageUrl !== undefined) {
       // If imageUrl is provided in DTO, use it
       imageUrl = (updateDto as any).imageUrl;
+    }
+
+    // Handle option image uploads, mapped via imageIndex on each option
+    if (optionImageFiles.length > 0 && updateDto.options?.length) {
+      for (let i = 0; i < optionImageFiles.length; i++) {
+        const optionFile = optionImageFiles[i];
+        this.logger.log(colors.blue(`📤 Uploading option image [${i}] for question: ${questionId}`));
+
+        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedMimeTypes.includes(optionFile.mimetype)) {
+          throw new BadRequestException('Invalid image file type. Allowed: JPEG, PNG, GIF, WEBP');
+        }
+
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (optionFile.size > maxSize) {
+          throw new BadRequestException('Image file size exceeds 5MB limit');
+        }
+
+        const optionFileName = `option_${Date.now()}_${i}_${optionFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+        try {
+          const uploadResult = await this.storageService.uploadFile(optionFile, s3Folder, optionFileName);
+
+          const matchingOption = (updateDto.options as any[]).find(
+            (opt: any) => opt.imageIndex === i,
+          );
+
+          if (matchingOption) {
+            matchingOption.imageUrl = uploadResult.url;
+            this.logger.log(colors.green(`✅ Option image [${i}] uploaded and matched to option`));
+          } else {
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ Option image [${i}] uploaded but no option in updateDto.options has imageIndex=${i}`,
+              ),
+            );
+          }
+        } catch (optionUploadError: any) {
+          this.logger.error(colors.red(`❌ Option image upload failed: ${optionUploadError.message}`));
+          throw new BadRequestException(`Failed to upload option image: ${optionUploadError.message}`);
+        }
+      }
     }
 
     const result = await this.prisma.$transaction(async (prisma) => {
@@ -472,6 +570,7 @@ export class LibraryExamBodyAssessmentService {
                 optionText: optionData.optionText,
                 order: optionData.order || 0,
                 isCorrect: optionData.isCorrect || false,
+                imageUrl: optionData.imageUrl,
               },
             });
           })

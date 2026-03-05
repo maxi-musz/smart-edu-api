@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, Request, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, Request, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { LibraryOwnerGuard } from '../library-auth/guard/library-owner.guard';
 import { LibraryExamBodyAssessmentService } from './exam-body-assessment.service';
@@ -137,7 +137,12 @@ export class LibraryExamBodyAssessmentController {
   @Post(':id/questions/with-image')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'optionImages', maxCount: 10 },
+    ]),
+  )
   @ApiConsumes('multipart/form-data')
   @CreateLibraryExamBodyQuestionDocs.operation
   @CreateLibraryExamBodyQuestionDocs.response201
@@ -148,9 +153,22 @@ export class LibraryExamBodyAssessmentController {
     @Param('examBodyId') examBodyId: string,
     @Param('id') assessmentId: string,
     @Body('questionData') questionDataString: string,
-    @UploadedFile() imageFile?: Express.Multer.File,
+    @UploadedFiles()
+    files?: {
+      image?: Express.Multer.File[];
+      optionImages?: Express.Multer.File[];
+    },
   ) {
-    return this.service.createQuestionWithImage(req.user, examBodyId, assessmentId, questionDataString, imageFile);
+    const imageFile = files?.image?.[0];
+    const optionImageFiles = files?.optionImages || [];
+    return this.service.createQuestionWithImage(
+      req.user,
+      examBodyId,
+      assessmentId,
+      questionDataString,
+      imageFile,
+      optionImageFiles,
+    );
   }
 
   // Get all questions for an assessment (with options and correct answers)
@@ -167,11 +185,16 @@ export class LibraryExamBodyAssessmentController {
     return this.service.getQuestions(req.user, examBodyId, assessmentId);
   }
 
-  // Update a question (supports image upload/replacement via multipart/form-data)
+  // Update a question (supports JSON or multipart with image and option images)
   @Patch('questions/:questionId')
   @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
-  @UseInterceptors(FileInterceptor('image'))
-  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'optionImages', maxCount: 10 },
+    ]),
+  )
+  @ApiConsumes('application/json', 'multipart/form-data')
   @UpdateLibraryExamBodyQuestionDocs.operation
   @UpdateLibraryExamBodyQuestionDocs.body
   @UpdateLibraryExamBodyQuestionDocs.response200
@@ -180,10 +203,30 @@ export class LibraryExamBodyAssessmentController {
     @Request() req: any,
     @Param('examBodyId') examBodyId: string,
     @Param('questionId') questionId: string,
-    @Body() updateDto: UpdateLibraryExamBodyQuestionDto,
-    @UploadedFile() imageFile?: Express.Multer.File,
+    @Body('questionData') questionDataString: string | undefined,
+    @Body() body: any,
+    @UploadedFiles()
+    files?: {
+      image?: Express.Multer.File[];
+      optionImages?: Express.Multer.File[];
+    },
   ) {
-    return this.service.updateQuestion(req.user, examBodyId, questionId, updateDto, imageFile);
+    const imageFile = files?.image?.[0];
+    const optionImageFiles = files?.optionImages || [];
+
+    // Support both JSON body and multipart with questionData JSON string
+    let updateDto: UpdateLibraryExamBodyQuestionDto;
+    if (questionDataString) {
+      try {
+        updateDto = JSON.parse(questionDataString);
+      } catch {
+        throw new BadRequestException('Invalid JSON in questionData field');
+      }
+    } else {
+      updateDto = body as UpdateLibraryExamBodyQuestionDto;
+    }
+
+    return this.service.updateQuestion(req.user, examBodyId, questionId, updateDto, imageFile, optionImageFiles);
   }
 
   // Delete only the image from a question (keeps the question, removes image from S3)
