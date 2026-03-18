@@ -184,47 +184,52 @@ export class StudentsService {
         };
       }) || [];
 
-      // Get pending assessments (published assessments with attempts remaining)
-      const pendingAssessments = await this.prisma.assessment.findMany({
-        where: {
-          school_id: student.school_id,
-          academic_session_id: currentSession.id,
-          status: 'PUBLISHED',
-          is_published: true,
-          AND: [
-            {
-              OR: [
-                { start_date: null },
-                { start_date: { lte: new Date() } }
-              ]
-            },
-            {
-              OR: [
-                { end_date: null },
-                { end_date: { gte: new Date() } }
-              ]
-            }
-          ]
-        },
-        include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          _count: {
-            select: {
-              attempts: {
-                where: {
-                  student_id: user.sub
+      // Get pending assessments only for subjects the student is enrolled in (same scope as GET /assessment list)
+      const classSubjectIds = studentClass?.subjects?.map((s: { id: string }) => s.id) ?? [];
+      const pendingAssessments =
+        classSubjectIds.length === 0
+          ? []
+          : await this.prisma.assessment.findMany({
+              where: {
+                school_id: student.school_id,
+                academic_session_id: currentSession.id,
+                subject_id: { in: classSubjectIds },
+                status: 'PUBLISHED',
+                is_published: true,
+                AND: [
+                  {
+                    OR: [
+                      { start_date: null },
+                      { start_date: { lte: new Date() } }
+                    ]
+                  },
+                  {
+                    OR: [
+                      { end_date: null },
+                      { end_date: { gte: new Date() } }
+                    ]
+                  }
+                ]
+              },
+              include: {
+                subject: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true
+                  }
+                },
+                _count: {
+                  select: {
+                    attempts: {
+                      where: {
+                        student_id: user.sub
+                      }
+                    }
+                  }
                 }
               }
-            }
-          }
-        }
-      });
+            });
 
       // Filter assessments where student hasn't reached max attempts
       const availableAssessments = pendingAssessments.filter(assessment => 

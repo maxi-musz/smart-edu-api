@@ -39,34 +39,39 @@ export class UserService {
       }
 
       const student = fullUser.student;
-      
 
-      // Get student's class
-      const studentClass = await this.prisma.class.findUnique({
-        where: { id: student.current_class_id || undefined }
-      });
-
-      if (!studentClass) {
-        this.logger.error(colors.red(`❌ Student class not found: ${student.current_class_id}`));
-        return new ApiResponse(false, 'Student class not found', null);
-      }
-
-      // Get current academic session
+      // Get current academic session (is_current flag is source of truth)
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          status: 'active'
-        },
-        orderBy: {
-          createdAt: 'desc'
+          is_current: true
         }
       });
+
+      // Get student's class (if assigned) with class teacher
+      let studentClass: { id: string; name: string | null; classTeacher?: { id: string; first_name: string; last_name: string; display_picture: unknown } | null } | null = null;
+      if (student.current_class_id) {
+        const cls = await this.prisma.class.findUnique({
+          where: { id: student.current_class_id },
+          include: {
+            classTeacher: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                display_picture: true
+              }
+            }
+          }
+        });
+        if (cls) studentClass = cls;
+      }
 
       // Get student's assessment attempts for performance calculation
       const assessmentAttempts = await this.prisma.assessmentAttempt.findMany({
         where: {
           student_id: user.sub,
-          academic_session_id: currentSession?.id
+          ...(currentSession?.id && { academic_session_id: currentSession.id })
         },
         include: {
           assessment: {
@@ -87,41 +92,47 @@ export class UserService {
       const totalPossibleScore = assessmentAttempts.reduce((sum, attempt) => sum + (attempt.max_score || 0), 0);
       const averageScore = totalPossibleScore > 0 ? (totalScore / totalPossibleScore) * 100 : 0;
 
-      // Get class rank (simplified - would need more complex logic for real ranking)
-      const classStudents = await this.prisma.student.count({
-        where: { current_class_id: studentClass.id }
-      });
+      // Class student count and subjects only when student has a class
+      let classStudents = 0;
+      let subjectsEnrolled: Array<{ id: string; name: string; code: string | null; color: string; teacher_name: string }> = [];
 
-      // Get subjects for the class
-      const classSubjects = await this.prisma.subject.findMany({
-        where: { classId: studentClass.id },
-        include: {
-          teacherSubjects: {
-            include: {
-              teacher: {
-                select: {
-                  id: true,
-                  first_name: true,
-                  last_name: true
+      if (studentClass && currentSession?.id) {
+        classStudents = await this.prisma.student.count({
+          where: { current_class_id: studentClass.id }
+        });
+
+        // Subjects for this class in the current academic session only
+        const classSubjects = await this.prisma.subject.findMany({
+          where: {
+            classId: studentClass.id,
+            academic_session_id: currentSession.id
+          },
+          include: {
+            teacherSubjects: {
+              include: {
+                teacher: {
+                  select: {
+                    id: true,
+                    first_name: true,
+                    last_name: true
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
 
-      // Get subjects enrolled
-      const subjectsEnrolled = classSubjects.map(subject => {
-        const teacher = subject.teacherSubjects[0]?.teacher;
-        return {
-          id: subject.id,
-          name: subject.name,
-          code: subject.code,
-          teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : 'No teacher assigned',
-          status: 'active',
-          credits: 3 // Default credits - would need to be stored in schema
-        };
-      });
+        subjectsEnrolled = classSubjects.map(subject => {
+          const teacher = subject.teacherSubjects[0]?.teacher;
+          return {
+            id: subject.id,
+            name: subject.name,
+            code: subject.code,
+            color: subject.color ?? '#3B82F6',
+            teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : 'No teacher assigned'
+          };
+        });
+      }
 
       // Mock recent achievements (would need to be stored in database)
       const recentAchievements = [
@@ -141,19 +152,28 @@ export class UserService {
         }
       ];
 
+      // Get school basic info
+      const school = await this.prisma.school.findUnique({
+        where: { id: student.school_id },
+        select: { id: true, school_name: true }
+      });
+
       // Build response data
       const responseData = {
         general_info: {
+          school: school ? { id: school.id, name: school.school_name } : null,
           student: {
             id: student.id,
+            user_id: fullUser.id,
             name: `${fullUser.first_name} ${fullUser.last_name}`,
             email: fullUser.email,
             phone: fullUser.phone_number || null,
             date_of_birth: student.date_of_birth?.toISOString().split('T')[0] || null,
-            display_picture: fullUser.display_picture || 'https://example.com/avatars/default.jpg',
+            display_picture: fullUser.display_picture || null,
             student_id: student.student_id || null,
-            emergency_contact_name: student.emergency_contact || null,
-            emergency_contact_phone: student.emergency_contact || null,
+            admission_number: student.admission_number || null,
+            emergency_contact_name: student.guardian_name || student.emergency_contact || null,
+            emergency_contact_phone: student.guardian_phone || student.emergency_contact || null,
             address: {
               street: student.address || null,
               city: student.city || null,
@@ -162,19 +182,29 @@ export class UserService {
               postal_code: student.postal_code || null
             }
           },
-          student_class: {
-            id: studentClass.id,
-            name: studentClass.name || null,
-            level: 'Senior Secondary 3', // Mock level - would need to be stored in schema
-            section: 'A' // Mock section - would need to be stored in schema
-          },
-          current_session: {
-            id: currentSession?.id || null,
-            academic_year: currentSession?.academic_year || null,
-            term: currentSession?.term || null,
-            start_date: currentSession?.start_date?.toISOString().split('T')[0] || null,
-            end_date: currentSession?.end_date?.toISOString().split('T')[0] || null
-          }
+          student_class: studentClass
+            ? {
+                id: studentClass.id,
+                name: studentClass.name || null,
+                class_teacher: studentClass.classTeacher
+                  ? {
+                      id: studentClass.classTeacher.id,
+                      name: `${studentClass.classTeacher.first_name} ${studentClass.classTeacher.last_name}`,
+                      display_picture: studentClass.classTeacher.display_picture ?? null
+                    }
+                  : null
+              }
+            : null,
+          current_session: currentSession
+            ? {
+                id: currentSession.id,
+                academic_year: currentSession.academic_year,
+                term: currentSession.term,
+                start_date: currentSession.start_date?.toISOString().split('T')[0] ?? null,
+                end_date: currentSession.end_date?.toISOString().split('T')[0] ?? null,
+                is_current: currentSession.is_current
+              }
+            : null
         },
         academic_info: {
           subjects_enrolled: subjectsEnrolled,

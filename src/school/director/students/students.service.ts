@@ -149,8 +149,8 @@ export class StudentsService {
             search = '',
             status,
             class_id,
-            sort_by = 'createdAt',
-            sort_order = 'desc'
+            sort_by = 'name',
+            sort_order = 'asc'
         } = dto;
 
         // Log only what frontend is sending
@@ -217,9 +217,15 @@ export class StudentsService {
                     }
                 }
             },
-            orderBy: {
-                [sort_by === 'name' ? 'first_name' : sort_by]: sort_order
-            },
+            orderBy:
+                sort_by === 'name'
+                    ? [
+                        { first_name: sort_order },
+                        { last_name: sort_order },
+                    ]
+                    : [
+                        { [sort_by]: sort_order },
+                    ],
             skip,
             take: limit
         });

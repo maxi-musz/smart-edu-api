@@ -29,7 +29,7 @@ export class ClassesService {
       );
     }
 
-    this.logger.log(colors.cyan(`Fetching all classes for school: ${userData.school_id}`));
+    // this.logger.log(colors.cyan(`Fetching all classes for school: ${userData.school_id}`));
 
     // Fetch classes with their teachers
     const classes = await this.prisma.class.findMany({
@@ -54,8 +54,8 @@ export class ClassesService {
     });
 
     // Debug: Log the class IDs being returned
-    const classIds = classes.map(c => ({ id: c.id, name: c.name }));
-    this.logger.log(colors.yellow(`📋 fetch-all-classes returning class IDs: ${JSON.stringify(classIds)}`));
+    // const classIds = classes.map(c => ({ id: c.id, name: c.name }));
+    // this.logger.log(colors.yellow(`📋 fetch-all-classes returning class IDs: ${JSON.stringify(classIds)}`));
 
     // Fetch all teachers in the school
     const teachers = await this.prisma.user.findMany({

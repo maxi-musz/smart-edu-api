@@ -164,7 +164,7 @@ export class AuthService {
             }
 
             // randmon password generator used here
-            const hashedPassword = await argon.hash("SmartEduHub123");
+            const hashedPassword = await argon.hash("SmartEduHub@123");
             
             // Prepare school icon object if uploaded
             const schoolIconData = schoolIconResult ? {
