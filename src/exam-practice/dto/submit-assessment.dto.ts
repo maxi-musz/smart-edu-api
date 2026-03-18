@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, IsDateString, Min } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  IsDateString,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ExamQuestionResponseDto {
@@ -38,4 +46,3 @@ export class SubmitExamAssessmentDto {
   @Min(0)
   timeSpent?: number;
 }
-

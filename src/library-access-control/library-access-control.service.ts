@@ -1,22 +1,22 @@
-import { 
-  Injectable, 
-  Logger, 
-  NotFoundException, 
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
   BadRequestException,
   ForbiddenException,
-  InternalServerErrorException 
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { 
-  GrantAccessDto, 
-  GrantBulkAccessDto, 
+import {
+  GrantAccessDto,
+  GrantBulkAccessDto,
   UpdateAccessDto,
   RevokeAccessDto,
   ExcludeResourceDto,
   QuerySchoolsWithAccessDto,
   QuerySchoolAccessDetailsDto,
   LibraryResourceType,
-  AccessLevel
+  AccessLevel,
 } from './dto';
 import * as colors from 'colors';
 
@@ -30,14 +30,19 @@ export class LibraryAccessControlService {
    * Grant a school access to library resources
    */
   async grantAccess(libraryUser: any, dto: GrantAccessDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Granting access to school: ${dto.schoolId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ACCESS] Granting access to school: ${dto.schoolId}`,
+      ),
+    );
 
     try {
       // Get library user's platform
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true, role: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true, role: true },
+        });
 
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
@@ -103,7 +108,9 @@ export class LibraryAccessControlService {
           },
         });
 
-        this.logger.log(colors.green(`✅ Reactivated access grant: ${updated.id}`));
+        this.logger.log(
+          colors.green(`✅ Reactivated access grant: ${updated.id}`),
+        );
         return {
           success: true,
           message: 'Access reactivated successfully',
@@ -135,19 +142,23 @@ export class LibraryAccessControlService {
               school_email: true,
             },
           },
-          subject: dto.subjectId ? {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
-          } : undefined,
-          topic: dto.topicId ? {
-            select: {
-              id: true,
-              title: true,
-            },
-          } : undefined,
+          subject: dto.subjectId
+            ? {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                },
+              }
+            : undefined,
+          topic: dto.topicId
+            ? {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              }
+            : undefined,
         },
       });
 
@@ -167,17 +178,25 @@ export class LibraryAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Access granted successfully: ${accessGrant.id}`));
+      this.logger.log(
+        colors.green(`✅ Access granted successfully: ${accessGrant.id}`),
+      );
       return {
         success: true,
         message: 'Access granted successfully',
         data: accessGrant,
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error granting access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error granting access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to grant access');
     }
   }
@@ -186,14 +205,19 @@ export class LibraryAccessControlService {
    * Grant multiple schools access to the same resource
    */
   async grantBulkAccess(libraryUser: any, dto: GrantBulkAccessDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Bulk granting access to ${dto.schoolIds.length} schools`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ACCESS] Bulk granting access to ${dto.schoolIds.length} schools`,
+      ),
+    );
 
     try {
       // Get library user's platform
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
 
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
@@ -212,9 +236,11 @@ export class LibraryAccessControlService {
       });
 
       if (schools.length !== dto.schoolIds.length) {
-        const foundIds = schools.map(s => s.id);
-        const missingIds = dto.schoolIds.filter(id => !foundIds.includes(id));
-        throw new BadRequestException(`Some schools not found or inactive: ${missingIds.join(', ')}`);
+        const foundIds = schools.map((s) => s.id);
+        const missingIds = dto.schoolIds.filter((id) => !foundIds.includes(id));
+        throw new BadRequestException(
+          `Some schools not found or inactive: ${missingIds.join(', ')}`,
+        );
       }
 
       // Create access grants for each school
@@ -264,13 +290,17 @@ export class LibraryAccessControlService {
               notes: dto.notes,
             },
           });
-        })
+        }),
       );
 
-      const successful = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
+      const successful = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
 
-      this.logger.log(colors.green(`✅ Bulk access grant completed: ${successful} successful, ${failed} failed`));
+      this.logger.log(
+        colors.green(
+          `✅ Bulk access grant completed: ${successful} successful, ${failed} failed`,
+        ),
+      );
 
       return {
         success: true,
@@ -287,10 +317,16 @@ export class LibraryAccessControlService {
         },
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error in bulk access grant: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error in bulk access grant: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to grant bulk access');
     }
   }
@@ -299,14 +335,17 @@ export class LibraryAccessControlService {
    * Update an existing access grant
    */
   async updateAccess(libraryUser: any, accessId: string, dto: UpdateAccessDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Updating access grant: ${accessId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY ACCESS] Updating access grant: ${accessId}`),
+    );
 
     try {
       // Get library user's platform
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
 
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
@@ -321,7 +360,9 @@ export class LibraryAccessControlService {
       });
 
       if (!existingAccess) {
-        throw new NotFoundException('Access grant not found or does not belong to your platform');
+        throw new NotFoundException(
+          'Access grant not found or does not belong to your platform',
+        );
       }
 
       // Update
@@ -355,7 +396,9 @@ export class LibraryAccessControlService {
         changes: dto,
       });
 
-      this.logger.log(colors.green(`✅ Access updated successfully: ${accessId}`));
+      this.logger.log(
+        colors.green(`✅ Access updated successfully: ${accessId}`),
+      );
       return {
         success: true,
         message: 'Access updated successfully',
@@ -365,7 +408,10 @@ export class LibraryAccessControlService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error updating access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error updating access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to update access');
     }
   }
@@ -373,15 +419,22 @@ export class LibraryAccessControlService {
   /**
    * Revoke access
    */
-  async revokeAccess(libraryUser: any, accessId: string, dto?: RevokeAccessDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Revoking access grant: ${accessId}`));
+  async revokeAccess(
+    libraryUser: any,
+    accessId: string,
+    dto?: RevokeAccessDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`[LIBRARY ACCESS] Revoking access grant: ${accessId}`),
+    );
 
     try {
       // Get library user's platform
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
 
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
@@ -396,7 +449,9 @@ export class LibraryAccessControlService {
       });
 
       if (!existingAccess) {
-        throw new NotFoundException('Access grant not found or does not belong to your platform');
+        throw new NotFoundException(
+          'Access grant not found or does not belong to your platform',
+        );
       }
 
       // Soft delete by setting isActive to false
@@ -420,7 +475,9 @@ export class LibraryAccessControlService {
         changes: { reason: dto?.reason },
       });
 
-      this.logger.log(colors.green(`✅ Access revoked successfully: ${accessId}`));
+      this.logger.log(
+        colors.green(`✅ Access revoked successfully: ${accessId}`),
+      );
       return {
         success: true,
         message: 'Access revoked successfully',
@@ -430,7 +487,10 @@ export class LibraryAccessControlService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error revoking access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error revoking access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to revoke access');
     }
   }
@@ -440,13 +500,18 @@ export class LibraryAccessControlService {
    * When library owner grants a subject, all children are on by default; this turns one off.
    */
   async excludeResource(libraryUser: any, dto: ExcludeResourceDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Excluding resource for school: ${dto.schoolId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ACCESS] Excluding resource for school: ${dto.schoolId}`,
+      ),
+    );
 
     try {
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
       }
@@ -457,14 +522,25 @@ export class LibraryAccessControlService {
       if (dto.resourceType === LibraryResourceType.VIDEO && !dto.videoId) {
         throw new BadRequestException('videoId is required for VIDEO');
       }
-      if (dto.resourceType === LibraryResourceType.MATERIAL && !dto.materialId) {
+      if (
+        dto.resourceType === LibraryResourceType.MATERIAL &&
+        !dto.materialId
+      ) {
         throw new BadRequestException('materialId is required for MATERIAL');
       }
-      if (dto.resourceType === LibraryResourceType.ASSESSMENT && !dto.assessmentId) {
-        throw new BadRequestException('assessmentId is required for ASSESSMENT');
+      if (
+        dto.resourceType === LibraryResourceType.ASSESSMENT &&
+        !dto.assessmentId
+      ) {
+        throw new BadRequestException(
+          'assessmentId is required for ASSESSMENT',
+        );
       }
 
-      await this.validateResourceIds(libraryResourceUser.platformId, dto as any);
+      await this.validateResourceIds(
+        libraryResourceUser.platformId,
+        dto as any,
+      );
 
       const existing = await this.prisma.libraryResourceAccess.findFirst({
         where: {
@@ -480,13 +556,25 @@ export class LibraryAccessControlService {
 
       if (existing) {
         if (!existing.isActive) {
-          return { success: true, message: 'Resource already excluded', data: existing };
+          return {
+            success: true,
+            message: 'Resource already excluded',
+            data: existing,
+          };
         }
         const updated = await this.prisma.libraryResourceAccess.update({
           where: { id: existing.id },
-          data: { isActive: false, notes: 'Excluded (turned off) by library owner', updatedAt: new Date() },
+          data: {
+            isActive: false,
+            notes: 'Excluded (turned off) by library owner',
+            updatedAt: new Date(),
+          },
         });
-        return { success: true, message: 'Resource excluded successfully', data: updated };
+        return {
+          success: true,
+          message: 'Resource excluded successfully',
+          data: updated,
+        };
       }
 
       const created = await this.prisma.libraryResourceAccess.create({
@@ -506,12 +594,22 @@ export class LibraryAccessControlService {
         },
       });
       this.logger.log(colors.green(`✅ Resource excluded: ${created.id}`));
-      return { success: true, message: 'Resource excluded successfully', data: created };
+      return {
+        success: true,
+        message: 'Resource excluded successfully',
+        data: created,
+      };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error excluding resource: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error excluding resource: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to exclude resource');
     }
   }
@@ -520,13 +618,18 @@ export class LibraryAccessControlService {
    * Include (turn on) a resource that was previously excluded.
    */
   async includeResource(libraryUser: any, dto: ExcludeResourceDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Including resource for school: ${dto.schoolId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ACCESS] Including resource for school: ${dto.schoolId}`,
+      ),
+    );
 
     try {
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
       }
@@ -545,19 +648,34 @@ export class LibraryAccessControlService {
       });
 
       if (!existing) {
-        return { success: true, message: 'Resource was not excluded', data: null };
+        return {
+          success: true,
+          message: 'Resource was not excluded',
+          data: null,
+        };
       }
 
       await this.prisma.libraryResourceAccess.delete({
         where: { id: existing.id },
       });
-      this.logger.log(colors.green(`✅ Resource included (exclusion removed): ${existing.id}`));
-      return { success: true, message: 'Resource included successfully', data: { id: existing.id, removed: true } };
+      this.logger.log(
+        colors.green(
+          `✅ Resource included (exclusion removed): ${existing.id}`,
+        ),
+      );
+      return {
+        success: true,
+        message: 'Resource included successfully',
+        data: { id: existing.id, removed: true },
+      };
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error including resource: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error including resource: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to include resource');
     }
   }
@@ -565,21 +683,34 @@ export class LibraryAccessControlService {
   /**
    * Get all schools with access to platform resources
    */
-  async getSchoolsWithAccess(libraryUser: any, query: QuerySchoolsWithAccessDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Fetching schools with access`));
+  async getSchoolsWithAccess(
+    libraryUser: any,
+    query: QuerySchoolsWithAccessDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`[LIBRARY ACCESS] Fetching schools with access`),
+    );
 
     try {
       // Get library user's platform
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
 
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
       }
 
-      const { page = 1, limit = 20, resourceType, subjectId, isActive, search } = query;
+      const {
+        page = 1,
+        limit = 20,
+        resourceType,
+        subjectId,
+        isActive,
+        search,
+      } = query;
       const skip = (page - 1) * limit;
 
       // Build where clause
@@ -601,7 +732,9 @@ export class LibraryAccessControlService {
       }
 
       // Get total count
-      const totalCount = await this.prisma.libraryResourceAccess.count({ where });
+      const totalCount = await this.prisma.libraryResourceAccess.count({
+        where,
+      });
 
       // Get paginated results
       const accessGrants = await this.prisma.libraryResourceAccess.findMany({
@@ -636,7 +769,9 @@ export class LibraryAccessControlService {
 
       const totalPages = Math.ceil(totalCount / limit);
 
-      this.logger.log(colors.green(`✅ Retrieved ${accessGrants.length} access grants`));
+      this.logger.log(
+        colors.green(`✅ Retrieved ${accessGrants.length} access grants`),
+      );
 
       return {
         success: true,
@@ -655,23 +790,37 @@ export class LibraryAccessControlService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching schools: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to fetch schools with access');
+      this.logger.error(
+        colors.red(`❌ Error fetching schools: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch schools with access',
+      );
     }
   }
 
   /**
    * Get detailed access information for a specific school
    */
-  async getSchoolAccessDetails(libraryUser: any, schoolId: string, query: QuerySchoolAccessDetailsDto) {
-    this.logger.log(colors.cyan(`[LIBRARY ACCESS] Fetching access details for school: ${schoolId}`));
+  async getSchoolAccessDetails(
+    libraryUser: any,
+    schoolId: string,
+    query: QuerySchoolAccessDetailsDto,
+  ) {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ACCESS] Fetching access details for school: ${schoolId}`,
+      ),
+    );
 
     try {
       // Get library user's platform
-      const libraryResourceUser = await this.prisma.libraryResourceUser.findUnique({
-        where: { id: libraryUser.sub },
-        select: { platformId: true },
-      });
+      const libraryResourceUser =
+        await this.prisma.libraryResourceUser.findUnique({
+          where: { id: libraryUser.sub },
+          select: { platformId: true },
+        });
 
       if (!libraryResourceUser) {
         throw new NotFoundException('Library user not found');
@@ -703,10 +852,7 @@ export class LibraryAccessControlService {
       if (query.isActive !== undefined) where.isActive = query.isActive;
 
       if (!query.includeExpired) {
-        where.OR = [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ];
+        where.OR = [{ expiresAt: null }, { expiresAt: { gt: new Date() } }];
       }
 
       // Get all access grants for this school
@@ -761,7 +907,11 @@ export class LibraryAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Retrieved ${accessGrants.length} access grants for school`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${accessGrants.length} access grants for school`,
+        ),
+      );
 
       return {
         success: true,
@@ -771,8 +921,10 @@ export class LibraryAccessControlService {
           accessGrants,
           summary: {
             total: accessGrants.length,
-            active: accessGrants.filter(a => a.isActive).length,
-            expired: accessGrants.filter(a => a.expiresAt && a.expiresAt < new Date()).length,
+            active: accessGrants.filter((a) => a.isActive).length,
+            expired: accessGrants.filter(
+              (a) => a.expiresAt && a.expiresAt < new Date(),
+            ).length,
             byResourceType: this.groupByResourceType(accessGrants),
           },
         },
@@ -781,8 +933,13 @@ export class LibraryAccessControlService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching school access details: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to fetch school access details');
+      this.logger.error(
+        colors.red(`❌ Error fetching school access details: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch school access details',
+      );
     }
   }
 
@@ -793,7 +950,10 @@ export class LibraryAccessControlService {
   /**
    * Validate resource IDs based on resource type
    */
-  private async validateResourceIds(platformId: string, dto: Partial<GrantAccessDto | GrantBulkAccessDto>) {
+  private async validateResourceIds(
+    platformId: string,
+    dto: Partial<GrantAccessDto | GrantBulkAccessDto>,
+  ) {
     switch (dto.resourceType) {
       case LibraryResourceType.ALL:
         // No validation needed
@@ -805,7 +965,11 @@ export class LibraryAccessControlService {
             'When granting access to a subject, subjectId is required. Include subjectId in the request body.',
           );
         }
-        this.logger.log(colors.cyan(`[LIBRARY ACCESS] Validating subject ID: ${dto.subjectId}`));
+        this.logger.log(
+          colors.cyan(
+            `[LIBRARY ACCESS] Validating subject ID: ${dto.subjectId}`,
+          ),
+        );
         const subject = await this.prisma.librarySubject.findFirst({
           where: { id: dto.subjectId, platformId },
         });
@@ -823,7 +987,7 @@ export class LibraryAccessControlService {
             subjectId: dto.subjectId,
           });
         }
-        break;  
+        break;
 
       case LibraryResourceType.TOPIC:
         if (!dto.topicId) {
@@ -919,7 +1083,9 @@ export class LibraryAccessControlService {
       });
     } catch (error) {
       // Don't fail the operation if audit logging fails
-      this.logger.error(colors.yellow(`⚠️ Failed to log audit trail: ${error.message}`));
+      this.logger.error(
+        colors.yellow(`⚠️ Failed to log audit trail: ${error.message}`),
+      );
     }
   }
 

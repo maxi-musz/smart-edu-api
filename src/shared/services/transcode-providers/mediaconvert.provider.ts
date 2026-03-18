@@ -40,10 +40,10 @@ import * as colors from 'colors';
 /**
  * AWS MediaConvert-based transcoding provider.
  * Submits jobs to AWS MediaConvert (managed service) for transcoding.
- * 
+ *
  * Pros: Fast, scalable, no server CPU usage, reliable
  * Cons: ~$0.015-0.024 per minute of output (varies by region/codec)
- * 
+ *
  * Required env vars:
  * - AWS_MEDIACONVERT_ENDPOINT (from your AWS account - find in MediaConvert console)
  * - AWS_MEDIACONVERT_ROLE_ARN (IAM role with S3 + MediaConvert permissions)
@@ -53,7 +53,7 @@ import * as colors from 'colors';
 @Injectable()
 export class MediaConvertTranscodeProvider implements TranscodeProvider {
   readonly name = 'AWS MediaConvert';
-  
+
   private readonly logger = new Logger(MediaConvertTranscodeProvider.name);
   private readonly client: MediaConvertClient;
   private readonly roleArn: string;
@@ -63,10 +63,14 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
   constructor(private readonly configService: ConfigService) {
     const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
     // Use custom endpoint if set; otherwise use standard regional endpoint (no need to find "Account" in console)
-    const customEndpoint = this.configService.get<string>('AWS_MEDIACONVERT_ENDPOINT');
-    const endpoint = customEndpoint || `https://mediaconvert.${region}.amazonaws.com`;
+    const customEndpoint = this.configService.get<string>(
+      'AWS_MEDIACONVERT_ENDPOINT',
+    );
+    const endpoint =
+      customEndpoint || `https://mediaconvert.${region}.amazonaws.com`;
 
-    this.roleArn = this.configService.get<string>('AWS_MEDIACONVERT_ROLE_ARN') || '';
+    this.roleArn =
+      this.configService.get<string>('AWS_MEDIACONVERT_ROLE_ARN') || '';
     // Bucket name is always taken from AWS_S3_BUCKET; you point this env var
     // to the correct bucket per environment (dev/staging/prod).
     this.bucketName = this.configService.get<string>('AWS_S3_BUCKET') || '';
@@ -78,7 +82,8 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
       endpoint,
       credentials: {
         accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID') || '',
-        secretAccessKey: this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '',
+        secretAccessKey:
+          this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '',
       },
     });
 
@@ -93,9 +98,17 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
    */
   logStatus(): void {
     if (this.roleArnMissing) {
-      this.logger.warn(colors.yellow(`⚠️ AWS_MEDIACONVERT_ROLE_ARN not set - MediaConvert will fail if used`));
+      this.logger.warn(
+        colors.yellow(
+          `⚠️ AWS_MEDIACONVERT_ROLE_ARN not set - MediaConvert will fail if used`,
+        ),
+      );
     } else {
-      this.logger.log(colors.green(`✅ MediaConvert provider initialized (region: ${this.region}, bucket: ${this.bucketName})`));
+      this.logger.log(
+        colors.green(
+          `✅ MediaConvert provider initialized (region: ${this.region}, bucket: ${this.bucketName})`,
+        ),
+      );
     }
   }
 
@@ -106,14 +119,18 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
       // Note: MediaConvert always reads from S3, can't use localFilePath
       // If localFilePath was provided, it was already uploaded to S3 by the caller
 
-      this.logger.log(colors.blue(`🚀 Submitting MediaConvert job for: ${sourceS3Key}`));
+      this.logger.log(
+        colors.blue(`🚀 Submitting MediaConvert job for: ${sourceS3Key}`),
+      );
 
       // Create the job
       const jobId = await this.createJob(sourceS3Key, hlsS3Prefix);
       this.logger.log(colors.cyan(`📋 MediaConvert job created: ${jobId}`));
 
       // Wait for completion
-      this.logger.log(colors.blue(`⏳ Waiting for MediaConvert job to complete...`));
+      this.logger.log(
+        colors.blue(`⏳ Waiting for MediaConvert job to complete...`),
+      );
       await this.waitForJobCompletion(jobId);
 
       this.logger.log(colors.green(`✅ MediaConvert job completed: ${jobId}`));
@@ -127,7 +144,10 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
   /**
    * Create a MediaConvert job for HLS transcoding
    */
-  private async createJob(sourceS3Key: string, hlsS3Prefix: string): Promise<string> {
+  private async createJob(
+    sourceS3Key: string,
+    hlsS3Prefix: string,
+  ): Promise<string> {
     const inputUri = `s3://${this.bucketName}/${sourceS3Key}`;
     // Use a fixed base name 'main' so outputs are consistently named:
     // main.m3u8 (master), main_1080p.m3u8, main_1080p_00001.ts, etc.
@@ -251,7 +271,9 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
         case JobStatus.COMPLETE:
           return;
         case JobStatus.ERROR:
-          throw new Error(`MediaConvert job failed: ${response.Job?.ErrorMessage || 'Unknown error'}`);
+          throw new Error(
+            `MediaConvert job failed: ${response.Job?.ErrorMessage || 'Unknown error'}`,
+          );
         case JobStatus.CANCELED:
           throw new Error('MediaConvert job was canceled');
         case JobStatus.SUBMITTED:
@@ -265,7 +287,9 @@ export class MediaConvertTranscodeProvider implements TranscodeProvider {
       }
     }
 
-    throw new Error(`MediaConvert job timed out after ${maxWaitTime / 60000} minutes`);
+    throw new Error(
+      `MediaConvert job timed out after ${maxWaitTime / 60000} minutes`,
+    );
   }
 
   private sleep(ms: number): Promise<void> {

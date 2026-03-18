@@ -7,7 +7,11 @@ import { AcademicSessionService } from 'src/academic-session/academic-session.se
 import { RegisterDeviceDto, DeviceType } from './dto/register-device.dto';
 import { UnregisterDeviceDto } from './dto/unregister-device.dto';
 import { SendPushDto } from './dto/send-push.dto';
-import { IPushMessage, IPushNotificationData, ISendPushNotification } from './interfaces/push-notification.interface';
+import {
+  IPushMessage,
+  IPushNotificationData,
+  ISendPushNotification,
+} from './interfaces/push-notification.interface';
 
 @Injectable()
 export class PushNotificationsService {
@@ -16,30 +20,37 @@ export class PushNotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService
+    private readonly academicSessionService: AcademicSessionService,
   ) {}
 
   // Register device token
   async registerDevice(user: User | any, dto: RegisterDeviceDto) {
     try {
       // 1. Get full user data with school_id
-      const userId = user.id || (user as any).sub || 'unknown';
+      const userId = user.id || user.sub || 'unknown';
       const fullUser = await this.prisma.user.findFirst({
         where: { id: userId },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
 
       if (!fullUser || !fullUser.school_id) {
-        this.logger.error(colors.red("Device registration failed: User not found or missing school_id"));
-        return ResponseHelper.error('User not found or invalid school data', 400);
+        this.logger.error(
+          colors.red(
+            'Device registration failed: User not found or missing school_id',
+          ),
+        );
+        return ResponseHelper.error(
+          'User not found or invalid school data',
+          400,
+        );
       }
 
       // 2. Check if token already exists
       const existingToken = await this.prisma.deviceToken.findUnique({
-        where: { token: dto.token }
+        where: { token: dto.token },
       });
 
-      let deviceToken:any;
+      let deviceToken: any;
 
       if (existingToken) {
         // Update existing token
@@ -50,8 +61,8 @@ export class PushNotificationsService {
             user_id: fullUser.id,
             school_id: fullUser.school_id,
             isActive: true,
-            updatedAt: new Date()
-          }
+            updatedAt: new Date(),
+          },
         });
       } else {
         // Create new token
@@ -61,8 +72,8 @@ export class PushNotificationsService {
             deviceType: dto.deviceType,
             user_id: fullUser.id,
             school_id: fullUser.school_id,
-            isActive: true
-          }
+            isActive: true,
+          },
         });
       }
 
@@ -72,17 +83,24 @@ export class PushNotificationsService {
           user_id: fullUser.id,
           school_id: fullUser.school_id,
           token: { not: dto.token },
-          isActive: true
+          isActive: true,
         },
-        data: { isActive: false }
+        data: { isActive: false },
       });
 
       this.logger.log(colors.green(`✅ Device token registered`));
-      return ResponseHelper.success('Device registered successfully', deviceToken);
-
+      return ResponseHelper.success(
+        'Device registered successfully',
+        deviceToken,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Failed to register device: ${error.message}`));
-      return ResponseHelper.error(`Failed to register device: ${error.message}`, 500);
+      this.logger.error(
+        colors.red(`Failed to register device: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to register device: ${error.message}`,
+        500,
+      );
     }
   }
 
@@ -94,12 +112,15 @@ export class PushNotificationsService {
       // 1. Get full user data with school_id
       const fullUser = await this.prisma.user.findFirst({
         where: { id: user.id },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
 
       if (!fullUser || !fullUser.school_id) {
-        this.logger.error(colors.red("User not found or missing school_id"));
-        return ResponseHelper.error('User not found or invalid school data', 400);
+        this.logger.error(colors.red('User not found or missing school_id'));
+        return ResponseHelper.error(
+          'User not found or invalid school data',
+          400,
+        );
       }
 
       // 2. Find and deactivate the token
@@ -107,8 +128,8 @@ export class PushNotificationsService {
         where: {
           token: dto.token,
           user_id: fullUser.id,
-          school_id: fullUser.school_id
-        }
+          school_id: fullUser.school_id,
+        },
       });
 
       if (!deviceToken) {
@@ -118,33 +139,47 @@ export class PushNotificationsService {
       // Deactivate the token
       await this.prisma.deviceToken.update({
         where: { id: deviceToken.id },
-        data: { isActive: false }
+        data: { isActive: false },
       });
 
-      this.logger.log(colors.green(`✅ Device token unregistered: ${dto.token}`));
+      this.logger.log(
+        colors.green(`✅ Device token unregistered: ${dto.token}`),
+      );
 
       return ResponseHelper.success('Device unregistered successfully', null);
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to unregister device: ${error.message}`), error);
-      return ResponseHelper.error(`Failed to unregister device: ${error.message}`, 500);
+      this.logger.error(
+        colors.red(`❌ Failed to unregister device: ${error.message}`),
+        error,
+      );
+      return ResponseHelper.error(
+        `Failed to unregister device: ${error.message}`,
+        500,
+      );
     }
   }
 
   // Send push notification to specific users
   async sendPushNotification(user: User, dto: SendPushDto) {
-    this.logger.log(colors.cyan(`Sending push notification to ${dto.recipients.length} recipients`));
+    this.logger.log(
+      colors.cyan(
+        `Sending push notification to ${dto.recipients.length} recipients`,
+      ),
+    );
 
     try {
       // 1. Get full user data with school_id
       const fullUser = await this.prisma.user.findFirst({
         where: { id: user.id },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
 
       if (!fullUser || !fullUser.school_id) {
-        this.logger.error(colors.red("User not found or missing school_id"));
-        return ResponseHelper.error('User not found or invalid school data', 400);
+        this.logger.error(colors.red('User not found or missing school_id'));
+        return ResponseHelper.error(
+          'User not found or invalid school data',
+          400,
+        );
       }
 
       // 2. Get device tokens for recipients
@@ -152,54 +187,80 @@ export class PushNotificationsService {
         where: {
           user_id: { in: dto.recipients },
           school_id: fullUser.school_id,
-          isActive: true
+          isActive: true,
         },
-        select: { token: true }
+        select: { token: true },
       });
 
       if (deviceTokens.length === 0) {
-        this.logger.warn(colors.yellow('No active device tokens found for recipients'));
-        return ResponseHelper.success('No active devices found for recipients', { sent: 0, total: dto.recipients.length });
+        this.logger.warn(
+          colors.yellow('No active device tokens found for recipients'),
+        );
+        return ResponseHelper.success(
+          'No active devices found for recipients',
+          { sent: 0, total: dto.recipients.length },
+        );
       }
 
       // 3. Prepare push messages
-      const messages: IPushMessage[] = deviceTokens.map(deviceToken => ({
+      const messages: IPushMessage[] = deviceTokens.map((deviceToken) => ({
         to: deviceToken.token,
         sound: 'default',
         title: dto.title,
         body: dto.body,
         data: dto.data || {},
-        badge: 1
+        badge: 1,
       }));
 
       // 4. Send push notifications
       const result = await this.sendToExpo(messages);
 
-      this.logger.log(colors.green(`✅ Push notification sent to ${deviceTokens.length} devices`));
+      this.logger.log(
+        colors.green(
+          `✅ Push notification sent to ${deviceTokens.length} devices`,
+        ),
+      );
 
       return ResponseHelper.success('Push notification sent successfully', {
         sent: deviceTokens.length,
         total: dto.recipients.length,
-        result
+        result,
       });
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to send push notification: ${error.message}`), error);
-      return ResponseHelper.error(`Failed to send push notification: ${error.message}`, 500);
+      this.logger.error(
+        colors.red(`❌ Failed to send push notification: ${error.message}`),
+        error,
+      );
+      return ResponseHelper.error(
+        `Failed to send push notification: ${error.message}`,
+        500,
+      );
     }
   }
 
   // Send push notification based on notification type (used by other services)
   async sendNotificationByType(notificationData: ISendPushNotification) {
-    this.logger.log(colors.cyan(`Sending notification by type: ${notificationData.notificationType}`));
+    this.logger.log(
+      colors.cyan(
+        `Sending notification by type: ${notificationData.notificationType}`,
+      ),
+    );
 
     try {
       let userIds: string[] = [];
       const schoolId = notificationData.schoolId;
 
       // Validate required schoolId for school-scoped types
-      if (!schoolId && ['all', 'teachers', 'students', 'school_director'].includes(String(notificationData.notificationType))) {
-        return { success: false, message: 'schoolId is required for this notification type' };
+      if (
+        !schoolId &&
+        ['all', 'teachers', 'students', 'school_director'].includes(
+          String(notificationData.notificationType),
+        )
+      ) {
+        return {
+          success: false,
+          message: 'schoolId is required for this notification type',
+        };
       }
 
       // Get user IDs based on notification type
@@ -225,71 +286,105 @@ export class PushNotificationsService {
       }
 
       if (userIds.length === 0) {
-        this.logger.warn(colors.yellow('No recipients found for notification type'));
+        this.logger.warn(
+          colors.yellow('No recipients found for notification type'),
+        );
         return { success: false, message: 'No recipients found' };
       }
 
       // Get device tokens for these users
-      this.logger.log(colors.cyan(`   Looking for device tokens for ${userIds.length} users: ${JSON.stringify(userIds)}`));
+      this.logger.log(
+        colors.cyan(
+          `   Looking for device tokens for ${userIds.length} users: ${JSON.stringify(userIds)}`,
+        ),
+      );
       this.logger.log(colors.cyan(`   School ID: ${schoolId}`));
-      
+
       const deviceTokens = await this.prisma.deviceToken.findMany({
         where: {
           user_id: { in: userIds },
           school_id: schoolId as string,
-          isActive: true
+          isActive: true,
         },
-        select: { token: true, user_id: true }
+        select: { token: true, user_id: true },
       });
 
-      this.logger.log(colors.cyan(`   Found ${deviceTokens.length} active device tokens`));
+      this.logger.log(
+        colors.cyan(`   Found ${deviceTokens.length} active device tokens`),
+      );
       if (deviceTokens.length > 0) {
-        this.logger.log(colors.cyan(`   Device token user IDs: ${JSON.stringify(deviceTokens.map(dt => dt.user_id))}`));
+        this.logger.log(
+          colors.cyan(
+            `   Device token user IDs: ${JSON.stringify(deviceTokens.map((dt) => dt.user_id))}`,
+          ),
+        );
       }
 
       if (deviceTokens.length === 0) {
-        this.logger.warn(colors.yellow('No active device tokens found for recipients'));
+        this.logger.warn(
+          colors.yellow('No active device tokens found for recipients'),
+        );
         // Debug: Check if there are any device tokens for these users (even inactive)
         const allTokens = await this.prisma.deviceToken.findMany({
           where: {
             user_id: { in: userIds },
-            school_id: schoolId as string
+            school_id: schoolId as string,
           },
-          select: { user_id: true, isActive: true, token: true }
+          select: { user_id: true, isActive: true, token: true },
         });
-        this.logger.warn(colors.yellow(`   Debug: Found ${allTokens.length} total device tokens (active + inactive) for these users`));
+        this.logger.warn(
+          colors.yellow(
+            `   Debug: Found ${allTokens.length} total device tokens (active + inactive) for these users`,
+          ),
+        );
         if (allTokens.length > 0) {
-          this.logger.warn(colors.yellow(`   Token details: ${JSON.stringify(allTokens.map(t => ({ user_id: t.user_id, isActive: t.isActive })))}`));
+          this.logger.warn(
+            colors.yellow(
+              `   Token details: ${JSON.stringify(allTokens.map((t) => ({ user_id: t.user_id, isActive: t.isActive })))}`,
+            ),
+          );
         } else {
-          this.logger.warn(colors.yellow(`   ⚠️ No device tokens found at all for these user IDs. Students need to register their devices via POST /push-notifications/register-device`));
-          this.logger.warn(colors.yellow(`   User IDs that need device registration: ${JSON.stringify(userIds)}`));
+          this.logger.warn(
+            colors.yellow(
+              `   ⚠️ No device tokens found at all for these user IDs. Students need to register their devices via POST /push-notifications/register-device`,
+            ),
+          );
+          this.logger.warn(
+            colors.yellow(
+              `   User IDs that need device registration: ${JSON.stringify(userIds)}`,
+            ),
+          );
         }
         return { success: false, message: 'No active devices found' };
       }
 
       // Prepare and send push messages
-      const messages: IPushMessage[] = deviceTokens.map(deviceToken => ({
+      const messages: IPushMessage[] = deviceTokens.map((deviceToken) => ({
         to: deviceToken.token,
         sound: 'default',
         title: notificationData.title,
         body: notificationData.body,
         data: notificationData.data || {},
-        badge: 1
+        badge: 1,
       }));
 
       const result = await this.sendToExpo(messages);
 
-      this.logger.log(colors.green(`✅ Notification sent to ${deviceTokens.length} devices`));
+      this.logger.log(
+        colors.green(`✅ Notification sent to ${deviceTokens.length} devices`),
+      );
 
-      return { 
-        success: true, 
-        sent: deviceTokens.length, 
+      return {
+        success: true,
+        sent: deviceTokens.length,
         total: userIds.length,
-        result 
+        result,
       };
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to send notification by type: ${error.message}`), error);
+      this.logger.error(
+        colors.red(`❌ Failed to send notification by type: ${error.message}`),
+        error,
+      );
       return { success: false, message: error.message };
     }
   }
@@ -298,7 +393,7 @@ export class PushNotificationsService {
   private async sendToExpo(messages: IPushMessage[]) {
     try {
       const headers: Record<string, string> = {
-        'Accept': 'application/json',
+        Accept: 'application/json',
         'Accept-encoding': 'gzip, deflate',
         'Content-Type': 'application/json',
       };
@@ -313,14 +408,17 @@ export class PushNotificationsService {
       });
 
       const result = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(`Expo API error: ${JSON.stringify(result)}`);
       }
 
       return result;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Expo API error: ${error.message}`), error);
+      this.logger.error(
+        colors.red(`❌ Expo API error: ${error.message}`),
+        error,
+      );
       throw error;
     }
   }
@@ -329,43 +427,45 @@ export class PushNotificationsService {
   private async getAllUserIdsInSchool(schoolId: string): Promise<string[]> {
     const users = await this.prisma.user.findMany({
       where: { school_id: schoolId },
-      select: { id: true }
+      select: { id: true },
     });
-    return users.map(user => user.id);
+    return users.map((user) => user.id);
   }
 
   private async getTeacherUserIdsInSchool(schoolId: string): Promise<string[]> {
     const teachers = await this.prisma.teacher.findMany({
       where: { school_id: schoolId },
-      select: { user_id: true }
+      select: { user_id: true },
     });
-    return teachers.map(teacher => teacher.user_id);
+    return teachers.map((teacher) => teacher.user_id);
   }
 
   private async getStudentUserIdsInSchool(schoolId: string): Promise<string[]> {
     const students = await this.prisma.student.findMany({
       where: { school_id: schoolId },
-      select: { user_id: true }
+      select: { user_id: true },
     });
-    return students.map(student => student.user_id);
+    return students.map((student) => student.user_id);
   }
 
-  private async getDirectorUserIdsInSchool(schoolId: string): Promise<string[]> {
+  private async getDirectorUserIdsInSchool(
+    schoolId: string,
+  ): Promise<string[]> {
     const directors = await this.prisma.user.findMany({
-      where: { 
+      where: {
         school_id: schoolId,
-        role: 'school_director'
+        role: 'school_director',
       },
-      select: { id: true }
+      select: { id: true },
     });
-    return directors.map(director => director.id);
+    return directors.map((director) => director.id);
   }
 
   private async getAdminUserIds(): Promise<string[]> {
     const admins = await this.prisma.user.findMany({
       where: { role: 'super_admin' },
-      select: { id: true }
+      select: { id: true },
     });
-    return admins.map(admin => admin.id);
+    return admins.map((admin) => admin.id);
   }
 }

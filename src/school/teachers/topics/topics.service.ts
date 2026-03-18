@@ -1,11 +1,20 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 import { CreateTopicDto } from './dto/create-topic.dto';
 import { CreateTopicRequestDto } from './dto/create-topic-request.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
 import { TopicResponseDto } from './dto/topic-response.dto';
-import { UploadVideoLessonDto, VideoLessonResponseDto, UploadProgressDto } from './dto/upload-video-lesson.dto';
+import {
+  UploadVideoLessonDto,
+  VideoLessonResponseDto,
+  UploadProgressDto,
+} from './dto/upload-video-lesson.dto';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 
 import { S3Service } from '../../../shared/services/s3.service';
@@ -45,7 +54,7 @@ export class TopicsService {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -55,16 +64,26 @@ export class TopicsService {
     const schoolId = dbUser.school_id;
     const userId = dbUser.id;
 
-    this.logger.log(colors.cyan(`Creating topic: ${createTopicRequestDto.title} for subject: ${createTopicRequestDto.subject_id}`));
+    this.logger.log(
+      colors.cyan(
+        `Creating topic: ${createTopicRequestDto.title} for subject: ${createTopicRequestDto.subject_id}`,
+      ),
+    );
 
     // Get current active academic session automatically (or use provided one)
-    let currentSessionId = await this.academicSessionService.getCurrentSessionId(schoolId);
+    const currentSessionId =
+      await this.academicSessionService.getCurrentSessionId(schoolId);
     if (!currentSessionId) {
-      this.logger.error(colors.red('No active academic session found for this school'));
-      throw new NotFoundException('No active academic session found for this school');
+      this.logger.error(
+        colors.red('No active academic session found for this school'),
+      );
+      throw new NotFoundException(
+        'No active academic session found for this school',
+      );
     } else {
       // Validate provided academic session
-      const academicSessionResponse = await this.academicSessionService.findOne(currentSessionId);
+      const academicSessionResponse =
+        await this.academicSessionService.findOne(currentSessionId);
       if (!academicSessionResponse.success || !academicSessionResponse.data) {
         throw new NotFoundException('Academic session not found');
       }
@@ -80,7 +99,9 @@ export class TopicsService {
     });
 
     if (!subject) {
-      throw new NotFoundException(`Subject not found or does not belong to this school and academic session (${currentSessionId})`);
+      throw new NotFoundException(
+        `Subject not found or does not belong to this school and academic session (${currentSessionId})`,
+      );
     }
 
     // Check if topic with same title already exists in the subject and academic session
@@ -93,7 +114,9 @@ export class TopicsService {
     });
 
     if (existingTopic) {
-      throw new BadRequestException(`Topic with title "${createTopicRequestDto.title}" already exists in this subject`);
+      throw new BadRequestException(
+        `Topic with title "${createTopicRequestDto.title}" already exists in this subject`,
+      );
     }
 
     // Get the next order number for the subject (always auto-assign)
@@ -156,15 +179,19 @@ export class TopicsService {
     this.logger.log(colors.green(`Topic created successfully: ${topic.id}`));
     return ResponseHelper.created(
       'Topic created successfully',
-      this.mapToResponseDto(topic)
+      this.mapToResponseDto(topic),
     );
   }
 
-  async getAllTopics(user: any, subjectId?: string, academicSessionId?: string) {
+  async getAllTopics(
+    user: any,
+    subjectId?: string,
+    academicSessionId?: string,
+  ) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -216,24 +243,18 @@ export class TopicsService {
           },
         },
       },
-      orderBy: [
-        { subject_id: 'asc' },
-        { order: 'asc' },
-      ],
+      orderBy: [{ subject_id: 'asc' }, { order: 'asc' }],
     });
 
-    const data = topics.map(topic => this.mapToResponseDto(topic));
-    return ResponseHelper.success(
-      'Topics retrieved successfully',
-      data
-    );
+    const data = topics.map((topic) => this.mapToResponseDto(topic));
+    return ResponseHelper.success('Topics retrieved successfully', data);
   }
 
   async getTopicById(topicId: string, user: any) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -288,15 +309,19 @@ export class TopicsService {
 
     return ResponseHelper.success(
       'Topic retrieved successfully',
-      this.mapToResponseDto(topic)
+      this.mapToResponseDto(topic),
     );
   }
 
-  async updateTopic(topicId: string, updateTopicDto: UpdateTopicDto, user: any) {
+  async updateTopic(
+    topicId: string,
+    updateTopicDto: UpdateTopicDto,
+    user: any,
+  ) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -333,8 +358,14 @@ export class TopicsService {
       });
 
       if (titleConflict) {
-        this.logger.error(colors.red(`Topic with title "${updateTopicDto.title}" already exists in this subject`));
-        throw new BadRequestException(`Topic with title "${updateTopicDto.title}" already exists in this subject`);
+        this.logger.error(
+          colors.red(
+            `Topic with title "${updateTopicDto.title}" already exists in this subject`,
+          ),
+        );
+        throw new BadRequestException(
+          `Topic with title "${updateTopicDto.title}" already exists in this subject`,
+        );
       }
     }
 
@@ -343,7 +374,10 @@ export class TopicsService {
       data: {
         title: updateTopicDto.title,
         description: updateTopicDto.description,
-        is_active: updateTopicDto.is_active !== undefined ? updateTopicDto.is_active : undefined,
+        is_active:
+          updateTopicDto.is_active !== undefined
+            ? updateTopicDto.is_active
+            : undefined,
       },
       include: {
         subject: {
@@ -381,7 +415,7 @@ export class TopicsService {
     this.logger.log(colors.green(`Topic updated successfully: ${topicId}`));
     return ResponseHelper.success(
       'Topic updated successfully',
-      this.mapToResponseDto(updatedTopic)
+      this.mapToResponseDto(updatedTopic),
     );
   }
 
@@ -389,7 +423,7 @@ export class TopicsService {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -418,7 +452,9 @@ export class TopicsService {
     });
 
     if (contentCount > 0) {
-      throw new BadRequestException(`Cannot delete topic. It has ${contentCount} content item(s) associated with it.`);
+      throw new BadRequestException(
+        `Cannot delete topic. It has ${contentCount} content item(s) associated with it.`,
+      );
     }
 
     await this.prisma.topic.delete({
@@ -428,12 +464,16 @@ export class TopicsService {
     this.logger.log(colors.green(`Topic deleted successfully: ${topicId}`));
   }
 
-  async reorderTopics(subjectId: string, topicOrders: { id: string; order: number }[], user: any): Promise<void> {
+  async reorderTopics(
+    subjectId: string,
+    topicOrders: { id: string; order: number }[],
+    user: any,
+  ): Promise<void> {
     this.logger.log(colors.cyan(`Reordering topics for subject: ${subjectId}`));
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -465,7 +505,7 @@ export class TopicsService {
         is_active: true,
       },
       orderBy: { order: 'asc' },
-      select: { id: true, order: true }
+      select: { id: true, order: true },
     });
 
     if (allTopics.length === 0) {
@@ -474,8 +514,10 @@ export class TopicsService {
     }
 
     // Create a map of current topic positions
-    const currentPositions = new Map(allTopics.map(topic => [topic.id, topic.order]));
-    
+    const currentPositions = new Map(
+      allTopics.map((topic) => [topic.id, topic.order]),
+    );
+
     // Process each reorder request
     for (const topicOrder of topicOrders) {
       const topicId = topicOrder.id;
@@ -483,7 +525,9 @@ export class TopicsService {
       const currentPosition = currentPositions.get(topicId);
 
       if (currentPosition === undefined) {
-        throw new BadRequestException(`Topic ${topicId} not found in subject ${subjectId}`);
+        throw new BadRequestException(
+          `Topic ${topicId} not found in subject ${subjectId}`,
+        );
       }
 
       if (newPosition === currentPosition) {
@@ -500,13 +544,13 @@ export class TopicsService {
             school_id: schoolId,
             order: {
               gte: currentPosition + 1,
-              lte: newPosition
+              lte: newPosition,
             },
-            id: { not: topicId } // Don't update the moved topic yet
+            id: { not: topicId }, // Don't update the moved topic yet
           },
           data: {
-            order: { decrement: 1 }
-          }
+            order: { decrement: 1 },
+          },
         });
       } else {
         // Moving UP: shift topics between new and current position DOWN by 1
@@ -517,38 +561,45 @@ export class TopicsService {
             school_id: schoolId,
             order: {
               gte: newPosition,
-              lt: currentPosition
+              lt: currentPosition,
             },
-            id: { not: topicId } // Don't update the moved topic yet
+            id: { not: topicId }, // Don't update the moved topic yet
           },
           data: {
-            order: { increment: 1 }
-          }
+            order: { increment: 1 },
+          },
         });
       }
 
       // Now update the moved topic to its new position
       await this.prisma.topic.update({
         where: { id: topicId },
-        data: { order: newPosition }
+        data: { order: newPosition },
       });
 
       // Update our local position map
       currentPositions.set(topicId, newPosition);
     }
 
-    this.logger.log(colors.green(`Topics reordered successfully for subject: ${subjectId}`));
+    this.logger.log(
+      colors.green(`Topics reordered successfully for subject: ${subjectId}`),
+    );
   }
 
   /**
    * Reorder a single topic to a new position (drag and drop)
    * This method handles shifting other topics automatically
    */
-  async reorderSingleTopic(subjectId: string, topicId: string, newPosition: number, user: any) {
+  async reorderSingleTopic(
+    subjectId: string,
+    topicId: string,
+    newPosition: number,
+    user: any,
+  ) {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -558,7 +609,11 @@ export class TopicsService {
 
     const schoolId = dbUser.school_id;
 
-    this.logger.log(colors.cyan(`Reordering topic ${topicId} to position ${newPosition} in subject ${subjectId}`));
+    this.logger.log(
+      colors.cyan(
+        `Reordering topic ${topicId} to position ${newPosition} in subject ${subjectId}`,
+      ),
+    );
 
     // Validate subject exists and belongs to the school
     const subject = await this.prisma.subject.findFirst({
@@ -590,7 +645,9 @@ export class TopicsService {
     const currentPosition = topicToMove.order;
 
     if (newPosition === currentPosition) {
-      this.logger.log(colors.yellow(`Topic is already at position ${newPosition}`));
+      this.logger.log(
+        colors.yellow(`Topic is already at position ${newPosition}`),
+      );
       return; // No change needed
     }
 
@@ -604,7 +661,9 @@ export class TopicsService {
     });
 
     if (newPosition < 1 || newPosition > totalTopics) {
-      throw new BadRequestException(`New position must be between 1 and ${totalTopics}`);
+      throw new BadRequestException(
+        `New position must be between 1 and ${totalTopics}`,
+      );
     }
 
     // Use a transaction to ensure data consistency
@@ -618,13 +677,13 @@ export class TopicsService {
             school_id: schoolId,
             order: {
               gte: currentPosition + 1,
-              lte: newPosition
+              lte: newPosition,
             },
-            id: { not: topicId } // Don't update the moved topic yet
+            id: { not: topicId }, // Don't update the moved topic yet
           },
           data: {
-            order: { decrement: 1 }
-          }
+            order: { decrement: 1 },
+          },
         });
       } else {
         // Moving UP: shift topics between new and current position DOWN by 1
@@ -635,24 +694,28 @@ export class TopicsService {
             school_id: schoolId,
             order: {
               gte: newPosition,
-              lt: currentPosition
+              lt: currentPosition,
             },
-            id: { not: topicId } // Don't update the moved topic yet
+            id: { not: topicId }, // Don't update the moved topic yet
           },
           data: {
-            order: { increment: 1 }
-          }
+            order: { increment: 1 },
+          },
         });
       }
 
       // Now update the moved topic to its new position
       await tx.topic.update({
         where: { id: topicId },
-        data: { order: newPosition }
+        data: { order: newPosition },
       });
     });
 
-    this.logger.log(colors.green(`Topic ${topicId} moved from position ${currentPosition} to ${newPosition} successfully`));
+    this.logger.log(
+      colors.green(
+        `Topic ${topicId} moved from position ${currentPosition} to ${newPosition} successfully`,
+      ),
+    );
     return new ApiResponse(true, 'Topic moved successfully', null);
   }
 
@@ -660,7 +723,7 @@ export class TopicsService {
     // Fetch user from database to get school_id
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { id: true, school_id: true }
+      select: { id: true, school_id: true },
     });
 
     if (!dbUser) {
@@ -713,11 +776,8 @@ export class TopicsService {
       },
     });
 
-    const data = topics.map(topic => this.mapToResponseDto(topic));
-    return ResponseHelper.success(
-      'Topics retrieved successfully',
-      data
-    );
+    const data = topics.map((topic) => this.mapToResponseDto(topic));
+    return ResponseHelper.success('Topics retrieved successfully', data);
   }
 
   private mapToResponseDto(topic: any): TopicResponseDto {
@@ -741,18 +801,24 @@ export class TopicsService {
    * Get all content for a specific topic including videos, materials, assignments, etc.
    */
   async getTopicContent(topicId: string, user: any) {
-    this.logger.log(colors.cyan(`🔄 Starting to fetch content for topic: ${topicId}`));
-    
+    this.logger.log(
+      colors.cyan(`🔄 Starting to fetch content for topic: ${topicId}`),
+    );
+
     try {
       // Fetch user from database to get school_id
-      this.logger.log(colors.blue(`📋 Fetching user details for topic content...`));
+      this.logger.log(
+        colors.blue(`📋 Fetching user details for topic content...`),
+      );
       const dbUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
 
       if (!dbUser) {
-        this.logger.error(colors.red(`❌ User not found for topic content fetch`));
+        this.logger.error(
+          colors.red(`❌ User not found for topic content fetch`),
+        );
         throw new NotFoundException('User not found');
       }
 
@@ -787,7 +853,7 @@ export class TopicsService {
         assignments,
         quizzes,
         liveClasses,
-        libraryResources
+        libraryResources,
       ] = await Promise.all([
         // Videos
         this.prisma.videoContent.findMany({
@@ -910,7 +976,9 @@ export class TopicsService {
       this.logger.log(colors.blue(`   - Assignments: ${assignments.length}`));
       this.logger.log(colors.blue(`   - Quizzes: ${quizzes.length}`));
       this.logger.log(colors.blue(`   - Live Classes: ${liveClasses.length}`));
-      this.logger.log(colors.blue(`   - Library Resources: ${libraryResources.length}`));
+      this.logger.log(
+        colors.blue(`   - Library Resources: ${libraryResources.length}`),
+      );
 
       // Calculate content summary
       const contentSummary = {
@@ -920,8 +988,13 @@ export class TopicsService {
         totalQuizzes: quizzes.length,
         totalLiveClasses: liveClasses.length,
         totalLibraryResources: libraryResources.length,
-        totalContent: videos.length + materials.length + assignments.length + 
-                     quizzes.length + liveClasses.length + libraryResources.length,
+        totalContent:
+          videos.length +
+          materials.length +
+          assignments.length +
+          quizzes.length +
+          liveClasses.length +
+          libraryResources.length,
       };
 
       // Build response
@@ -941,20 +1014,27 @@ export class TopicsService {
         updatedAt: formatDate(topic.updatedAt),
       };
 
-      this.logger.log(colors.green(`🎉 Successfully retrieved content for topic "${topic.title}": ${contentSummary.totalContent} total items`));
-      
-      return ResponseHelper.success(
-        'Topic content retrieved successfully',
-        response
+      this.logger.log(
+        colors.green(
+          `🎉 Successfully retrieved content for topic "${topic.title}": ${contentSummary.totalContent} total items`,
+        ),
       );
 
+      return ResponseHelper.success(
+        'Topic content retrieved successfully',
+        response,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching topic content for ${topicId}: ${error.message}`));
-      
+      this.logger.error(
+        colors.red(
+          `❌ Error fetching topic content for ${topicId}: ${error.message}`,
+        ),
+      );
+
       if (error instanceof NotFoundException) {
         throw error;
       }
-      
+
       throw new Error(`Failed to fetch topic content: ${error.message}`);
     }
   }
@@ -966,24 +1046,34 @@ export class TopicsService {
     uploadDto: UploadVideoLessonDto,
     videoFile: Express.Multer.File,
     thumbnailFile: Express.Multer.File | undefined,
-    user: any
+    user: any,
   ): Promise<VideoLessonResponseDto> {
-    this.logger.log(colors.cyan(`🎬 Starting video lesson upload: "${uploadDto.title}"`));
-    
+    this.logger.log(
+      colors.cyan(`🎬 Starting video lesson upload: "${uploadDto.title}"`),
+    );
+
     try {
       // Validate file sizes
       this.logger.log(colors.blue(`📁 Validating file sizes...`));
-      
+
       const maxVideoSize = 500 * 1024 * 1024; // 500MB
       const maxThumbnailSize = 10 * 1024 * 1024; // 10MB
-      
+
       if (videoFile.size > maxVideoSize) {
-        this.logger.error(colors.red(`❌ Video file too large: ${(videoFile.size / 1024 / 1024).toFixed(2)}MB (max: 500MB)`));
+        this.logger.error(
+          colors.red(
+            `❌ Video file too large: ${(videoFile.size / 1024 / 1024).toFixed(2)}MB (max: 500MB)`,
+          ),
+        );
         throw new BadRequestException('Video file size exceeds 500MB limit');
       }
-      
+
       if (thumbnailFile && thumbnailFile.size > maxThumbnailSize) {
-        this.logger.error(colors.red(`❌ Thumbnail file too large: ${(thumbnailFile.size / 1024 / 1024).toFixed(2)}MB (max: 10MB)`));
+        this.logger.error(
+          colors.red(
+            `❌ Thumbnail file too large: ${(thumbnailFile.size / 1024 / 1024).toFixed(2)}MB (max: 10MB)`,
+          ),
+        );
         throw new BadRequestException('Thumbnail file size exceeds 10MB limit');
       }
 
@@ -991,7 +1081,7 @@ export class TopicsService {
       this.logger.log(colors.blue(`📋 Fetching user details...`));
       const dbUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
 
       if (!dbUser) {
@@ -1013,8 +1103,12 @@ export class TopicsService {
       });
 
       if (!subject) {
-        this.logger.error(colors.red(`❌ Subject not found: ${uploadDto.subject_id}`));
-        throw new NotFoundException('Subject not found or does not belong to this school');
+        this.logger.error(
+          colors.red(`❌ Subject not found: ${uploadDto.subject_id}`),
+        );
+        throw new NotFoundException(
+          'Subject not found or does not belong to this school',
+        );
       }
 
       // Validate topic exists and belongs to the subject
@@ -1029,40 +1123,52 @@ export class TopicsService {
       });
 
       if (!topic) {
-        this.logger.error(colors.red(`❌ Topic not found: ${uploadDto.topic_id}`));
-        throw new NotFoundException('Topic not found or does not belong to this subject');
+        this.logger.error(
+          colors.red(`❌ Topic not found: ${uploadDto.topic_id}`),
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to this subject',
+        );
       }
 
-      this.logger.log(colors.blue(`✅ Subject and topic validated successfully`));
+      this.logger.log(
+        colors.blue(`✅ Subject and topic validated successfully`),
+      );
 
       // Use S3 for video uploads (much faster than Cloudinary)
-      this.logger.log(colors.blue(`🚀 Starting S3 video upload (much faster than Cloudinary)...`));
-      
+      this.logger.log(
+        colors.blue(
+          `🚀 Starting S3 video upload (much faster than Cloudinary)...`,
+        ),
+      );
+
       const videoUploadResult = await this.s3Service.uploadFile(
         videoFile,
         `lecture-videos/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
-        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`
+        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
       );
 
-               this.logger.log(colors.green(`✅ Video uploaded successfully to S3`));
+      this.logger.log(colors.green(`✅ Video uploaded successfully to S3`));
 
       // Upload thumbnail to S3 if provided
       let thumbnailResult: any = null;
       if (thumbnailFile) {
         this.logger.log(colors.blue(`🖼️ Uploading thumbnail to S3...`));
-        
+
         const thumbnailUploadResult = await this.s3Service.uploadFile(
           thumbnailFile,
           `thumbnails/schools/${schoolId}/subjects/${uploadDto.subject_id}/topics/${uploadDto.topic_id}`,
-          `${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`
+          `${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
         );
-        
+
         thumbnailResult = {
           secure_url: thumbnailUploadResult.url,
-          public_id: thumbnailUploadResult.key
+          public_id: thumbnailUploadResult.key,
         };
-        
-        this.logger.log(colors.green(`✅ Thumbnail uploaded successfully to S3`));
+
+        this.logger.log(
+          colors.green(`✅ Thumbnail uploaded successfully to S3`),
+        );
       }
 
       // Calculate video duration and size
@@ -1070,7 +1176,9 @@ export class TopicsService {
       const videoDuration = await this.extractVideoDuration(videoFile);
 
       // Get the next order number for videos in this topic
-      this.logger.log(colors.blue(`📊 Getting next order number for videos in topic...`));
+      this.logger.log(
+        colors.blue(`📊 Getting next order number for videos in topic...`),
+      );
       const lastVideo = await this.prisma.videoContent.findFirst({
         where: {
           topic_id: uploadDto.topic_id,
@@ -1079,7 +1187,7 @@ export class TopicsService {
         orderBy: {
           order: 'desc',
         },
-        select: { order: true }
+        select: { order: true },
       });
 
       const nextOrder = (lastVideo?.order || 0) + 1;
@@ -1087,7 +1195,7 @@ export class TopicsService {
 
       // Create video content record in database
       this.logger.log(colors.blue(`💾 Saving video lesson to database...`));
-      
+
       const videoContent = await this.prisma.videoContent.create({
         data: {
           title: uploadDto.title.toLowerCase(),
@@ -1100,12 +1208,14 @@ export class TopicsService {
           url: videoUploadResult.url, // S3 URL
           duration: videoDuration,
           size: videoSize,
-          thumbnail: thumbnailResult ? {
-            secure_url: thumbnailResult.secure_url,
-            public_id: thumbnailResult.public_id
-          } : undefined,
+          thumbnail: thumbnailResult
+            ? {
+                secure_url: thumbnailResult.secure_url,
+                public_id: thumbnailResult.public_id,
+              }
+            : undefined,
           status: 'published',
-          views: 0
+          views: 0,
         },
         include: {
           topic: {
@@ -1115,20 +1225,26 @@ export class TopicsService {
               subject: {
                 select: {
                   id: true,
-                  name: true
-                }
-              }
-            }
-          }
-        }
+                  name: true,
+                },
+              },
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`🎉 Video lesson "${uploadDto.title}" uploaded successfully!`));
+      this.logger.log(
+        colors.green(
+          `🎉 Video lesson "${uploadDto.title}" uploaded successfully!`,
+        ),
+      );
       this.logger.log(colors.blue(`📊 Video Details:`));
       this.logger.log(colors.blue(`   - Size: ${videoSize}`));
       this.logger.log(colors.blue(`   - Duration: ${videoDuration}`));
       this.logger.log(colors.blue(`   - URL: ${videoContent.url}`));
-      this.logger.log(colors.blue(`   - Thumbnail: ${thumbnailResult ? 'Yes' : 'No'}`));
+      this.logger.log(
+        colors.blue(`   - Thumbnail: ${thumbnailResult ? 'Yes' : 'No'}`),
+      );
 
       // Return the created video lesson
       return {
@@ -1144,16 +1260,20 @@ export class TopicsService {
         topic_id: uploadDto.topic_id,
         uploaded_by: userId,
         createdAt: videoContent.createdAt,
-        updatedAt: videoContent.updatedAt
+        updatedAt: videoContent.updatedAt,
       };
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error uploading video lesson: ${error.message}`));
-      
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      this.logger.error(
+        colors.red(`❌ Error uploading video lesson: ${error.message}`),
+      );
+
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      
+
       throw new Error(`Failed to upload video lesson: ${error.message}`);
     }
   }
@@ -1166,11 +1286,17 @@ export class TopicsService {
     videoFile: Express.Multer.File,
     thumbnailFile: Express.Multer.File | undefined,
     user: any,
-    sessionId: string
+    sessionId: string,
   ): Promise<VideoLessonResponseDto> {
     const maxVideoSize = 500 * 1024 * 1024; // 500MB
     if (videoFile.size > maxVideoSize) {
-      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Video exceeds 500MB limit');
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        undefined,
+        undefined,
+        'Video exceeds 500MB limit',
+      );
       throw new BadRequestException('Video file size exceeds 500MB limit');
     }
 
@@ -1178,24 +1304,58 @@ export class TopicsService {
       this.uploadProgressService.updateProgress(sessionId, 'validating', 0);
 
       // Fetch user
-      const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { id: true, school_id: true } });
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { id: true, school_id: true },
+      });
       if (!dbUser) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'User not found');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'User not found',
+        );
         throw new NotFoundException('User not found');
       }
       const schoolId = dbUser.school_id;
       const userId = dbUser.id;
 
       // Validate subject and topic
-      const subject = await this.prisma.subject.findFirst({ where: { id: uploadDto.subject_id, schoolId } });
+      const subject = await this.prisma.subject.findFirst({
+        where: { id: uploadDto.subject_id, schoolId },
+      });
       if (!subject) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Subject not found');
-        throw new NotFoundException('Subject not found or does not belong to this school');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'Subject not found',
+        );
+        throw new NotFoundException(
+          'Subject not found or does not belong to this school',
+        );
       }
-      const topic = await this.prisma.topic.findFirst({ where: { id: uploadDto.topic_id, subject_id: uploadDto.subject_id, school_id: schoolId, is_active: true } });
+      const topic = await this.prisma.topic.findFirst({
+        where: {
+          id: uploadDto.topic_id,
+          subject_id: uploadDto.subject_id,
+          school_id: schoolId,
+          is_active: true,
+        },
+      });
       if (!topic) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Topic not found');
-        throw new NotFoundException('Topic not found or does not belong to this subject');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'Topic not found',
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to this subject',
+        );
       }
 
       // Upload video to S3 with progress callback (smooth, monotonic, combined with thumb later)
@@ -1203,18 +1363,25 @@ export class TopicsService {
       let lastPercent = -1;
       // Smoothing state
       let lastKnownLoaded = 0; // bytes acknowledged from S3 callbacks
-      let emittedLoaded = 0;   // bytes we have emitted to clients
+      let emittedLoaded = 0; // bytes we have emitted to clients
       const onePercent = Math.max(1, Math.floor(totalBytes / 100));
       const tickMs = 300;
       this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
       const smoother = setInterval(() => {
         if (emittedLoaded < lastKnownLoaded) {
-          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
+          const delta = Math.max(
+            onePercent,
+            Math.floor((lastKnownLoaded - emittedLoaded) / 3),
+          );
           emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
           const percent = Math.floor((emittedLoaded / totalBytes) * 100);
           if (percent > lastPercent) {
             lastPercent = percent;
-            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
+            this.uploadProgressService.updateProgress(
+              sessionId,
+              'uploading',
+              emittedLoaded,
+            );
           }
         }
       }, tickMs);
@@ -1225,7 +1392,7 @@ export class TopicsService {
         `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
         (loaded) => {
           lastKnownLoaded = Math.min(loaded, videoFile.size);
-        }
+        },
       );
       const videoS3Key = videoUploadResult.key;
       this.logger.log(colors.blue(`📤 Video uploaded to S3: ${videoS3Key}`));
@@ -1240,44 +1407,73 @@ export class TopicsService {
           `${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${thumbnailFile.originalname.split('.').pop()}`,
           (loaded) => {
             lastKnownLoaded = Math.min(videoFile.size + loaded, totalBytes);
-          }
+          },
         );
         thumbnailS3Key = thumbRes.key;
         thumbnailResult = { secure_url: thumbRes.url, public_id: thumbRes.key };
-        this.logger.log(colors.blue(`📤 Thumbnail uploaded to S3: ${thumbnailS3Key}`));
+        this.logger.log(
+          colors.blue(`📤 Thumbnail uploaded to S3: ${thumbnailS3Key}`),
+        );
       }
 
       this.uploadProgressService.updateProgress(sessionId, 'processing');
-      
+
       // Process video (remux/transcode) and extract metadata
       let finalVideoUrl: string;
       let videoSize: string;
       let videoDuration: string;
-      
+
       try {
         // Remux/transcode to MP4 if needed, then replace URL
-        const processed = await this.ensureMp4FromUrl(videoUploadResult.url, uploadDto.title);
+        const processed = await this.ensureMp4FromUrl(
+          videoUploadResult.url,
+          uploadDto.title,
+        );
         finalVideoUrl = processed?.url || videoUploadResult.url;
         videoSize = (videoFile.size / 1024 / 1024).toFixed(2) + ' MB';
         videoDuration = await this.extractVideoDuration(videoFile);
       } catch (processingError) {
         // Rollback: Delete S3 files if processing fails
-        this.logger.error(colors.red(`❌ Video processing failed, rolling back S3 uploads...`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, `Video processing failed: ${processingError.message}`);
-        
+        this.logger.error(
+          colors.red(`❌ Video processing failed, rolling back S3 uploads...`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          `Video processing failed: ${processingError.message}`,
+        );
+
         try {
           await this.s3Service.deleteFile(videoS3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`));
-          
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`,
+            ),
+          );
+
           if (thumbnailS3Key) {
             await this.s3Service.deleteFile(thumbnailS3Key);
-            this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`));
+            this.logger.log(
+              colors.yellow(
+                `🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`,
+              ),
+            );
           }
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 files: ${deleteError.message}`));
-          this.logger.error(colors.red(`⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to rollback S3 files: ${deleteError.message}`,
+            ),
+          );
+          this.logger.error(
+            colors.red(
+              `⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`,
+            ),
+          );
         }
-        
+
         throw processingError;
       }
 
@@ -1293,36 +1489,62 @@ export class TopicsService {
           update: {},
           create: {
             name: 'AWS S3',
-            email: 's3@smart-edu.com'
-          }
+            email: 's3@smart-edu.com',
+          },
         });
         this.logger.log(colors.green(`✅ S3 platform ready: ${s3Platform.id}`));
       } catch (platformError) {
-        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, `Platform setup failed: ${platformError.message}`);
-        
+        this.logger.error(
+          colors.red(`❌ Platform creation failed: ${platformError.message}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          `Platform setup failed: ${platformError.message}`,
+        );
+
         // Rollback: Delete S3 files if platform setup fails
         try {
           await this.s3Service.deleteFile(videoS3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`));
-          
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`,
+            ),
+          );
+
           if (thumbnailS3Key) {
             await this.s3Service.deleteFile(thumbnailS3Key);
-            this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`));
+            this.logger.log(
+              colors.yellow(
+                `🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`,
+              ),
+            );
           }
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 files: ${deleteError.message}`));
-          this.logger.error(colors.red(`⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to rollback S3 files: ${deleteError.message}`,
+            ),
+          );
+          this.logger.error(
+            colors.red(
+              `⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`,
+            ),
+          );
         }
-        
-        throw new BadRequestException(`Failed to get/create S3 platform: ${platformError.message}`);
+
+        throw new BadRequestException(
+          `Failed to get/create S3 platform: ${platformError.message}`,
+        );
       }
 
       // Next order
       const lastVideo = await this.prisma.videoContent.findFirst({
         where: { topic_id: uploadDto.topic_id, schoolId },
         orderBy: { order: 'desc' },
-        select: { order: true }
+        select: { order: true },
       });
       const nextOrder = (lastVideo?.order || 0) + 1;
 
@@ -1342,62 +1564,121 @@ export class TopicsService {
             videoS3Key: videoS3Key, // Store S3 key for HLS transcode
             duration: videoDuration,
             size: videoSize,
-            thumbnail: thumbnailResult ? {
-              secure_url: thumbnailResult.secure_url,
-              public_id: thumbnailResult.public_id
-            } : undefined,
+            thumbnail: thumbnailResult
+              ? {
+                  secure_url: thumbnailResult.secure_url,
+                  public_id: thumbnailResult.public_id,
+                }
+              : undefined,
             status: 'published',
             views: 0,
             hlsStatus: HlsTranscodeStatus.pending, // Mark for HLS transcode
           },
           include: {
-            topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
-          }
+            topic: {
+              select: {
+                id: true,
+                title: true,
+                subject: { select: { id: true, name: true } },
+              },
+            },
+          },
         });
-        this.logger.log(colors.green(`✅ Video saved to database: ${videoContent.id}`));
+        this.logger.log(
+          colors.green(`✅ Video saved to database: ${videoContent.id}`),
+        );
       } catch (dbError) {
         // Rollback: Delete S3 files if DB save fails
-        this.logger.error(colors.red(`❌ Database save failed, rolling back S3 uploads...`));
+        this.logger.error(
+          colors.red(`❌ Database save failed, rolling back S3 uploads...`),
+        );
         this.logger.error(colors.red(`   Error details: ${dbError.message}`));
-        this.logger.error(colors.red(`   Error code: ${(dbError as any).code || 'N/A'}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, `Database save failed: ${dbError.message}`);
-        
+        this.logger.error(
+          colors.red(`   Error code: ${dbError.code || 'N/A'}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          `Database save failed: ${dbError.message}`,
+        );
+
         try {
           // Delete video from S3
           await this.s3Service.deleteFile(videoS3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`));
-          
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted video from S3: ${videoS3Key}`,
+            ),
+          );
+
           // Delete thumbnail from S3 if it exists
           if (thumbnailS3Key) {
             try {
               await this.s3Service.deleteFile(thumbnailS3Key);
-              this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`));
+              this.logger.log(
+                colors.yellow(
+                  `🗑️ Rolled back: Deleted thumbnail from S3: ${thumbnailS3Key}`,
+                ),
+              );
             } catch (thumbDeleteError) {
-              this.logger.error(colors.red(`❌ Failed to delete thumbnail: ${thumbDeleteError.message}`));
+              this.logger.error(
+                colors.red(
+                  `❌ Failed to delete thumbnail: ${thumbDeleteError.message}`,
+                ),
+              );
             }
           } else {
             this.logger.log(colors.yellow(`ℹ️ No thumbnail to rollback`));
           }
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 files: ${deleteError.message}`));
-          this.logger.error(colors.red(`⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to rollback S3 files: ${deleteError.message}`,
+            ),
+          );
+          this.logger.error(
+            colors.red(
+              `⚠️ Manual cleanup required - Video: ${videoS3Key}, Thumbnail: ${thumbnailS3Key || 'N/A'}`,
+            ),
+          );
         }
-        
+
         throw dbError;
       }
 
       // Ensure final state is 100%
       lastKnownLoaded = totalBytes;
       emittedLoaded = totalBytes;
-      this.uploadProgressService.updateProgress(sessionId, 'processing', emittedLoaded);
-      this.uploadProgressService.updateProgress(sessionId, 'saving', emittedLoaded);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'processing',
+        emittedLoaded,
+      );
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'saving',
+        emittedLoaded,
+      );
       clearInterval(smoother);
-      
+
       // Mark as completed with 100% progress and video ID
-      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, 'Upload completed successfully!', undefined, videoContent.id);
-      
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'completed',
+        totalBytes,
+        'Upload completed successfully!',
+        undefined,
+        videoContent.id,
+      );
+
       // Comprehensive success logging
-      this.logger.log(colors.green(`🎉 Video lesson "${uploadDto.title}" uploaded successfully!`));
+      this.logger.log(
+        colors.green(
+          `🎉 Video lesson "${uploadDto.title}" uploaded successfully!`,
+        ),
+      );
       this.logger.log(colors.blue(`📊 Upload Summary:`));
       this.logger.log(colors.blue(`   - Session ID: ${sessionId}`));
       this.logger.log(colors.blue(`   - Video ID: ${videoContent.id}`));
@@ -1406,10 +1687,14 @@ export class TopicsService {
       this.logger.log(colors.blue(`   - Duration: ${videoDuration}`));
       this.logger.log(colors.blue(`   - S3 Video Key: ${videoS3Key}`));
       if (thumbnailS3Key) {
-        this.logger.log(colors.blue(`   - S3 Thumbnail Key: ${thumbnailS3Key}`));
+        this.logger.log(
+          colors.blue(`   - S3 Thumbnail Key: ${thumbnailS3Key}`),
+        );
       }
       this.logger.log(colors.blue(`   - Topic: ${videoContent.topic.title}`));
-      this.logger.log(colors.blue(`   - Subject: ${videoContent.topic.subject.name}`));
+      this.logger.log(
+        colors.blue(`   - Subject: ${videoContent.topic.subject.name}`),
+      );
 
       // Save uploaded file to temp path for HLS transcode so we don't re-download from S3
       // Multer uses memory storage by default, so videoFile.buffer has the data (not videoFile.path)
@@ -1417,8 +1702,11 @@ export class TopicsService {
       const transcodeTempDir = path.join(os.tmpdir(), 'hls-transcode');
       try {
         fs.mkdirSync(transcodeTempDir, { recursive: true });
-        localPathForTranscode = path.join(transcodeTempDir, `upload_school_${videoContent.id}_${Date.now()}.mp4`);
-        
+        localPathForTranscode = path.join(
+          transcodeTempDir,
+          `upload_school_${videoContent.id}_${Date.now()}.mp4`,
+        );
+
         if (videoFile?.path && fs.existsSync(videoFile.path)) {
           // Disk storage: copy the file
           fs.copyFileSync(videoFile.path, localPathForTranscode);
@@ -1426,18 +1714,42 @@ export class TopicsService {
           // Memory storage: write buffer to file
           fs.writeFileSync(localPathForTranscode, videoFile.buffer);
         } else {
-          this.logger.warn(colors.yellow(`⚠️ No local file or buffer available, will use S3`));
+          this.logger.warn(
+            colors.yellow(`⚠️ No local file or buffer available, will use S3`),
+          );
           localPathForTranscode = undefined;
         }
       } catch (copyErr) {
-        this.logger.warn(colors.yellow(`⚠️ Could not save for local transcode, will use S3: ${copyErr.message}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Could not save for local transcode, will use S3: ${copyErr.message}`,
+          ),
+        );
         localPathForTranscode = undefined;
       }
 
       // Trigger HLS transcode in background (use local file when available to skip S3 download)
-      this.hlsTranscodeService.transcodeSchoolVideo(videoContent.id, localPathForTranscode ? { localFilePath: localPathForTranscode } : undefined)
-        .then(() => this.logger.log(colors.green(`✅ HLS transcode completed for school video: ${videoContent.id}`)))
-        .catch((err) => this.logger.error(colors.red(`❌ HLS transcode failed for school video ${videoContent.id}: ${err.message}`)));
+      this.hlsTranscodeService
+        .transcodeSchoolVideo(
+          videoContent.id,
+          localPathForTranscode
+            ? { localFilePath: localPathForTranscode }
+            : undefined,
+        )
+        .then(() =>
+          this.logger.log(
+            colors.green(
+              `✅ HLS transcode completed for school video: ${videoContent.id}`,
+            ),
+          ),
+        )
+        .catch((err) =>
+          this.logger.error(
+            colors.red(
+              `❌ HLS transcode failed for school video ${videoContent.id}: ${err.message}`,
+            ),
+          ),
+        );
 
       return {
         id: videoContent.id,
@@ -1452,10 +1764,16 @@ export class TopicsService {
         topic_id: uploadDto.topic_id,
         uploaded_by: userId,
         createdAt: videoContent.createdAt,
-        updatedAt: videoContent.updatedAt
+        updatedAt: videoContent.updatedAt,
       };
     } catch (error) {
-      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        undefined,
+        undefined,
+        error.message,
+      );
       throw error;
     }
   }
@@ -1468,7 +1786,7 @@ export class TopicsService {
     uploadDto: UploadVideoLessonDto,
     videoFile: Express.Multer.File,
     thumbnailFile: Express.Multer.File | undefined,
-    user: any
+    user: any,
   ) {
     if (!videoFile) {
       throw new BadRequestException('Video file is required');
@@ -1498,7 +1816,9 @@ export class TopicsService {
           where: { id: uploadDto.subject_id, schoolId },
         });
         if (!subject) {
-          throw new NotFoundException('Subject not found or does not belong to this school');
+          throw new NotFoundException(
+            'Subject not found or does not belong to this school',
+          );
         }
         const topic = await this.prisma.topic.findFirst({
           where: {
@@ -1509,7 +1829,9 @@ export class TopicsService {
           },
         });
         if (!topic) {
-          throw new NotFoundException('Topic not found or does not belong to this subject');
+          throw new NotFoundException(
+            'Topic not found or does not belong to this subject',
+          );
         }
       },
       getVideoS3Key: () =>
@@ -1541,9 +1863,13 @@ export class TopicsService {
             videoS3Key: params.videoS3Key,
             duration: formatDurationSeconds(params.durationSeconds),
             size: `${(params.sizeBytes / 1024 / 1024).toFixed(2)} MB`,
-            thumbnail: params.thumbnailUrl && params.thumbnailS3Key
-              ? { secure_url: params.thumbnailUrl, public_id: params.thumbnailS3Key }
-              : undefined,
+            thumbnail:
+              params.thumbnailUrl && params.thumbnailS3Key
+                ? {
+                    secure_url: params.thumbnailUrl,
+                    public_id: params.thumbnailS3Key,
+                  }
+                : undefined,
             status: 'published',
             views: 0,
             hlsStatus: HlsTranscodeStatus.pending,
@@ -1589,21 +1915,25 @@ export class TopicsService {
     if (!progress) {
       throw new BadRequestException('Upload session not found');
     }
-    
+
     // Log the progress for debugging
-    this.logger.log(colors.cyan(`📊 Upload progress for ${sessionId}: stage=${progress.stage}, progress=${progress.progress}%`));
-    
+    this.logger.log(
+      colors.cyan(
+        `📊 Upload progress for ${sessionId}: stage=${progress.stage}, progress=${progress.progress}%`,
+      ),
+    );
+
     // Ensure progress is 100% when stage is completed
     const finalProgress = {
       ...progress,
-      progress: progress.stage === 'completed' ? 100 : progress.progress
+      progress: progress.stage === 'completed' ? 100 : progress.progress,
     };
-    
+
     return {
       success: true,
       message: 'Upload status retrieved',
       data: finalProgress,
-      statusCode: 200
+      statusCode: 200,
     };
   }
 
@@ -1611,16 +1941,21 @@ export class TopicsService {
    * Extract video duration from uploaded file using fluent-ffmpeg
    * Industry standard approach - uses fluent-ffmpeg library for safe, reliable video metadata extraction
    */
-  private async extractVideoDuration(videoFile: Express.Multer.File): Promise<string> {
+  private async extractVideoDuration(
+    videoFile: Express.Multer.File,
+  ): Promise<string> {
     return new Promise((resolve) => {
       try {
         // Use OS temp directory (better practice than project directory)
         const tempDir = os.tmpdir();
-        const tempFilePath = path.join(tempDir, `temp_video_${Date.now()}_${Math.random().toString(36).substring(7)}_${videoFile.originalname}`);
-        
+        const tempFilePath = path.join(
+          tempDir,
+          `temp_video_${Date.now()}_${Math.random().toString(36).substring(7)}_${videoFile.originalname}`,
+        );
+
         // Write buffer to temp file
         fs.writeFileSync(tempFilePath, videoFile.buffer);
-        
+
         // Use fluent-ffmpeg's ffprobe for safe metadata extraction
         ffmpeg.ffprobe(tempFilePath, (err, metadata) => {
           // Always clean up temp file
@@ -1629,18 +1964,34 @@ export class TopicsService {
               fs.unlinkSync(tempFilePath);
             }
           } catch (cleanupErr) {
-            this.logger.warn(colors.yellow(`⚠️ Failed to clean up temp file: ${cleanupErr.message}`));
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ Failed to clean up temp file: ${cleanupErr.message}`,
+              ),
+            );
           }
 
           if (err) {
-            this.logger.warn(colors.yellow(`⚠️ Could not extract video duration: ${err.message}`));
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ Could not extract video duration: ${err.message}`,
+              ),
+            );
             return resolve('00:00:00');
           }
 
           const durationSeconds = metadata?.format?.duration;
-          
-          if (!durationSeconds || isNaN(durationSeconds) || durationSeconds <= 0) {
-            this.logger.warn(colors.yellow(`⚠️ Video duration not found in metadata or invalid`));
+
+          if (
+            !durationSeconds ||
+            isNaN(durationSeconds) ||
+            durationSeconds <= 0
+          ) {
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ Video duration not found in metadata or invalid`,
+              ),
+            );
             return resolve('00:00:00');
           }
 
@@ -1648,15 +1999,21 @@ export class TopicsService {
           const hours = Math.floor(durationSeconds / 3600);
           const minutes = Math.floor((durationSeconds % 3600) / 60);
           const seconds = Math.floor(durationSeconds % 60);
-          
+
           const formattedDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-          
-          this.logger.log(colors.blue(`📹 Extracted video duration: ${formattedDuration} (${durationSeconds.toFixed(2)}s)`));
-          
+
+          this.logger.log(
+            colors.blue(
+              `📹 Extracted video duration: ${formattedDuration} (${durationSeconds.toFixed(2)}s)`,
+            ),
+          );
+
           return resolve(formattedDuration);
         });
       } catch (error) {
-        this.logger.error(colors.red(`❌ Error extracting video duration: ${error.message}`));
+        this.logger.error(
+          colors.red(`❌ Error extracting video duration: ${error.message}`),
+        );
         return resolve('00:00:00');
       }
     });
@@ -1666,7 +2023,10 @@ export class TopicsService {
    * Ensure we have an MP4 copy of the uploaded video URL.
    * If source is already MP4, returns undefined. Otherwise downloads, remuxes/transcodes, uploads MP4 and returns new URL.
    */
-  private async ensureMp4FromUrl(sourceUrl: string, baseTitle: string): Promise<{ url: string } | undefined> {
+  private async ensureMp4FromUrl(
+    sourceUrl: string,
+    baseTitle: string,
+  ): Promise<{ url: string } | undefined> {
     try {
       if (sourceUrl.toLowerCase().endsWith('.mp4')) return undefined;
 
@@ -1680,20 +2040,33 @@ export class TopicsService {
       // Try remux first (copy codecs)
       const mp4Temp = filePath.replace(/\.[^/.]+$/, '') + '_remux.mp4';
       try {
-        await exec(`ffmpeg -y -i ${JSON.stringify(filePath)} -c copy -movflags +faststart ${JSON.stringify(mp4Temp)}`);
+        await exec(
+          `ffmpeg -y -i ${JSON.stringify(filePath)} -c copy -movflags +faststart ${JSON.stringify(mp4Temp)}`,
+        );
       } catch {
         // Fallback: visually lossless transcode
-        await exec(`ffmpeg -y -i ${JSON.stringify(filePath)} -c:v libx264 -preset veryslow -crf 18 -c:a aac -b:a 192k -movflags +faststart ${JSON.stringify(mp4Temp)}`);
+        await exec(
+          `ffmpeg -y -i ${JSON.stringify(filePath)} -c:v libx264 -preset veryslow -crf 18 -c:a aac -b:a 192k -movflags +faststart ${JSON.stringify(mp4Temp)}`,
+        );
       }
 
       // Upload MP4 next to original
       const folder = s3Key.substring(0, s3Key.lastIndexOf('/'));
       const fileName = `${baseTitle.replace(/\s+/g, '_')}_${Date.now()}.mp4`;
-      const uploaded = await this.s3Service.uploadLocalFile(mp4Temp, folder, fileName, 'video/mp4');
+      const uploaded = await this.s3Service.uploadLocalFile(
+        mp4Temp,
+        folder,
+        fileName,
+        'video/mp4',
+      );
 
       // Cleanup temp files
-      try { fs.unlinkSync(filePath); } catch {}
-      try { fs.unlinkSync(mp4Temp); } catch {}
+      try {
+        fs.unlinkSync(filePath);
+      } catch {}
+      try {
+        fs.unlinkSync(mp4Temp);
+      } catch {}
 
       return { url: uploaded.url };
     } catch {
@@ -1705,7 +2078,9 @@ export class TopicsService {
    * Get upload progress for a specific upload (legacy placeholder)
    */
   async getUploadProgress(uploadId: string): Promise<UploadProgressDto> {
-    this.logger.log(colors.cyan(`🔍 Getting upload progress for uploadId: ${uploadId}`));
+    this.logger.log(
+      colors.cyan(`🔍 Getting upload progress for uploadId: ${uploadId}`),
+    );
     const progress = this.uploadProgressService.getCurrentProgress(uploadId);
     return progress as any;
   }
@@ -1717,16 +2092,18 @@ export class TopicsService {
     try {
       this.logger.log(colors.cyan(`🧪 Testing AWS S3 connection...`));
       const isConnected = await this.s3Service.testConnection();
-      
+
       if (isConnected) {
         this.logger.log(colors.green(`✅ AWS S3 connection test successful`));
       } else {
         this.logger.error(colors.red(`❌ AWS S3 connection test failed`));
       }
-      
+
       return isConnected;
     } catch (error) {
-      this.logger.error(colors.red(`❌ AWS S3 connection test error: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ AWS S3 connection test error: ${error.message}`),
+      );
       return false;
     }
   }
@@ -1737,29 +2114,36 @@ export class TopicsService {
   async uploadMaterial(
     uploadDto: any,
     materialFile: Express.Multer.File,
-    user: any
+    user: any,
   ): Promise<any> {
-    this.logger.log(colors.cyan(`📚 Starting material upload: "${uploadDto.title}"`));
+    this.logger.log(
+      colors.cyan(`📚 Starting material upload: "${uploadDto.title}"`),
+    );
     let s3Key: string | undefined;
     let s3UploadSucceeded = false;
-    
+
     try {
       // Validate file
       this.logger.log(colors.blue(`📁 Validating material file...`));
-      const validationResult = FileValidationHelper.validateMaterialFile(materialFile);
-      
+      const validationResult =
+        FileValidationHelper.validateMaterialFile(materialFile);
+
       if (!validationResult.isValid) {
-        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
+        this.logger.error(
+          colors.red(`❌ File validation failed: ${validationResult.error}`),
+        );
         throw new BadRequestException(validationResult.error);
       }
 
-      this.logger.log(colors.green(`✅ File validation passed: ${materialFile.originalname}`));
+      this.logger.log(
+        colors.green(`✅ File validation passed: ${materialFile.originalname}`),
+      );
 
       // Fetch user from database to get school_id
       this.logger.log(colors.blue(`📋 Fetching user details...`));
       const dbUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
 
       if (!dbUser) {
@@ -1769,7 +2153,10 @@ export class TopicsService {
 
       const schoolId = dbUser.school_id;
       // school name
-      const schoolName = await this.prisma.school.findUnique({ where: { id: schoolId }, select: { school_name: true } });
+      const schoolName = await this.prisma.school.findUnique({
+        where: { id: schoolId },
+        select: { school_name: true },
+      });
       if (!schoolName) {
         this.logger.error(colors.red(`❌ School not found: ${schoolId}`));
         throw new NotFoundException('School not found');
@@ -1787,8 +2174,12 @@ export class TopicsService {
       });
 
       if (!subject) {
-        this.logger.error(colors.red(`❌ Subject not found: ${uploadDto.subject_id}`));
-        throw new NotFoundException('Subject not found or does not belong to this school');
+        this.logger.error(
+          colors.red(`❌ Subject not found: ${uploadDto.subject_id}`),
+        );
+        throw new NotFoundException(
+          'Subject not found or does not belong to this school',
+        );
       }
 
       // Validate topic exists and belongs to the subject
@@ -1803,14 +2194,22 @@ export class TopicsService {
       });
 
       if (!topic) {
-        this.logger.error(colors.red(`❌ Topic not found: ${uploadDto.topic_id}`));
-        throw new NotFoundException('Topic not found or does not belong to this subject');
+        this.logger.error(
+          colors.red(`❌ Topic not found: ${uploadDto.topic_id}`),
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to this subject',
+        );
       }
 
-      this.logger.log(colors.blue(`✅ Subject and topic validated successfully`));
+      this.logger.log(
+        colors.blue(`✅ Subject and topic validated successfully`),
+      );
 
       // Get the next order number for materials in this topic
-      this.logger.log(colors.blue(`📊 Getting next order number for materials in topic...`));
+      this.logger.log(
+        colors.blue(`📊 Getting next order number for materials in topic...`),
+      );
       const lastMaterial = await this.prisma.pDFMaterial.findFirst({
         where: {
           topic_id: uploadDto.topic_id,
@@ -1819,7 +2218,7 @@ export class TopicsService {
         orderBy: {
           order: 'desc',
         },
-        select: { order: true }
+        select: { order: true },
       });
 
       const nextOrder = (lastMaterial?.order || 0) + 1;
@@ -1830,7 +2229,7 @@ export class TopicsService {
       const materialUploadResult = await this.s3Service.uploadFile(
         materialFile,
         `materials/schools/${schoolName.school_name}/subjects/${subject.name}/topics/${topic.title}`,
-        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
+        `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`,
       );
 
       // Store S3 key for potential rollback
@@ -1840,7 +2239,9 @@ export class TopicsService {
       this.logger.log(colors.green(`✅ Material uploaded successfully to S3`));
 
       // Calculate material size
-      const materialSize = FileValidationHelper.formatFileSize(materialFile.size);
+      const materialSize = FileValidationHelper.formatFileSize(
+        materialFile.size,
+      );
 
       // Get or create S3 platform Organisation
       this.logger.log(colors.blue(`🏢 Getting or creating S3 platform...`));
@@ -1851,25 +2252,35 @@ export class TopicsService {
           update: {},
           create: {
             name: 'AWS S3',
-            email: 's3@smart-edu.com'
-          }
+            email: 's3@smart-edu.com',
+          },
         });
         this.logger.log(colors.green(`✅ S3 platform ready: ${s3Platform.id}`));
       } catch (platformError) {
-        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
+        this.logger.error(
+          colors.red(`❌ Platform creation failed: ${platformError.message}`),
+        );
         // Rollback: Delete S3 file
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to platform creation failure`));
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted S3 file due to platform creation failure`,
+            ),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`),
+          );
         }
-        throw new BadRequestException(`Failed to get/create S3 platform: ${platformError.message}`);
+        throw new BadRequestException(
+          `Failed to get/create S3 platform: ${platformError.message}`,
+        );
       }
 
       // Create material record in database
       this.logger.log(colors.blue(`💾 Saving material to database...`));
-      
+
       let material;
       try {
         material = await this.prisma.pDFMaterial.create({
@@ -1886,48 +2297,70 @@ export class TopicsService {
             fileType: validationResult.fileType,
             originalName: materialFile.originalname,
             status: 'published',
-            downloads: 0
+            downloads: 0,
           },
-        include: {
-          topic: {
-            select: {
-              id: true,
-              title: true,
-              subject: {
-                select: {
-                  id: true,
-                  name: true
-                }
-              }
-            }
-          }
-        }
-      });
+          include: {
+            topic: {
+              select: {
+                id: true,
+                title: true,
+                subject: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
       } catch (dbError) {
         // Rollback: Delete S3 file if DB save fails
-        this.logger.error(colors.red(`❌ Database save failed, rolling back S3 upload...`));
+        this.logger.error(
+          colors.red(`❌ Database save failed, rolling back S3 upload...`),
+        );
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to database save failure`));
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted S3 file due to database save failure`,
+            ),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`),
+          );
         }
         throw dbError;
       }
 
-      this.logger.log(colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully!`));
+      this.logger.log(
+        colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully!`),
+      );
       try {
-        this.logger.log(colors.blue(`🧠 Starting AI processing for material: ${material.id}`));
+        this.logger.log(
+          colors.blue(`🧠 Starting AI processing for material: ${material.id}`),
+        );
         this.documentProcessingService.processDocument(material.id);
       } catch (e) {
-        this.logger.error(colors.red(`❌ Failed to start AI processing for material ${material.id}: ${e.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Failed to start AI processing for material ${material.id}: ${e.message}`,
+          ),
+        );
       }
       // Kick off background processing for AI chat (chunking + embeddings)
       try {
-        this.logger.log(colors.blue(`🧠 Starting AI processing for material: ${material.id}`));
+        this.logger.log(
+          colors.blue(`🧠 Starting AI processing for material: ${material.id}`),
+        );
         this.documentProcessingService.processDocument(material.id);
       } catch (e) {
-        this.logger.error(colors.red(`❌ Failed to start AI processing for material ${material.id}: ${e.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Failed to start AI processing for material ${material.id}: ${e.message}`,
+          ),
+        );
       }
       this.logger.log(colors.blue(`📊 Material Details:`));
       this.logger.log(colors.blue(`   - Size: ${materialSize}`));
@@ -1951,32 +2384,44 @@ export class TopicsService {
         topic_id: uploadDto.topic_id,
         uploaded_by: userId,
         createdAt: material.createdAt,
-        updatedAt: material.updatedAt
+        updatedAt: material.updatedAt,
       };
 
       return ResponseHelper.created(
         'Material uploaded successfully',
-        materialResponse
+        materialResponse,
       );
-
     } catch (error) {
       // Rollback: Delete S3 file if it was uploaded but operation failed
       if (typeof s3Key !== 'undefined' && s3UploadSucceeded) {
-        this.logger.log(colors.yellow(`🔄 Attempting to rollback S3 upload...`));
+        this.logger.log(
+          colors.yellow(`🔄 Attempting to rollback S3 upload...`),
+        );
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to operation failure`));
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted S3 file due to operation failure`,
+            ),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`),
+          );
         }
       }
-      
-      this.logger.error(colors.red(`❌ Error uploading material: ${error.message}`));
-      
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+
+      this.logger.error(
+        colors.red(`❌ Error uploading material: ${error.message}`),
+      );
+
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      
+
       throw new Error(`Failed to upload material: ${error.message}`);
     }
   }
@@ -1987,26 +2432,42 @@ export class TopicsService {
   async startMaterialUploadSession(
     uploadDto: any,
     materialFile: Express.Multer.File,
-    user: any
+    user: any,
   ) {
     if (!materialFile) {
       throw new BadRequestException('Material file is required');
     }
 
-    const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.school_id, materialFile.size);
+    const sessionId = this.uploadProgressService.createUploadSession(
+      user.sub,
+      user.school_id,
+      materialFile.size,
+    );
 
-    this.uploadMaterialWithProgress(uploadDto, materialFile, user, sessionId)
-      .catch(err => {
-        this.logger.error(colors.red(`❌ Material upload failed in background: ${err.message}`));
-        this.logger.error(colors.red(`❌ Error stack: ${err.stack}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message);
-      });
+    this.uploadMaterialWithProgress(
+      uploadDto,
+      materialFile,
+      user,
+      sessionId,
+    ).catch((err) => {
+      this.logger.error(
+        colors.red(`❌ Material upload failed in background: ${err.message}`),
+      );
+      this.logger.error(colors.red(`❌ Error stack: ${err.stack}`));
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        undefined,
+        undefined,
+        err.message,
+      );
+    });
 
     return {
       success: true,
       message: 'Upload started',
       data: { sessionId },
-      statusCode: 202
+      statusCode: 202,
     };
   }
 
@@ -2017,39 +2478,84 @@ export class TopicsService {
     uploadDto: any,
     materialFile: Express.Multer.File,
     user: any,
-    sessionId: string
+    sessionId: string,
   ) {
-    this.logger.log(colors.cyan(`📚 Starting material upload with progress: "${uploadDto.title}"`));
+    this.logger.log(
+      colors.cyan(
+        `📚 Starting material upload with progress: "${uploadDto.title}"`,
+      ),
+    );
     let smoother: NodeJS.Timeout | null = null;
     let s3Key: string | undefined;
     let s3UploadSucceeded = false;
     try {
       // Validate file type/size using existing helper
-      const validationResult = FileValidationHelper.validateMaterialFile(materialFile);
+      const validationResult =
+        FileValidationHelper.validateMaterialFile(materialFile);
       if (!validationResult.isValid) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, validationResult.error);
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          validationResult.error,
+        );
         throw new BadRequestException(validationResult.error);
       }
 
       // Fetch user
-      const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { id: true, school_id: true } });
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { id: true, school_id: true },
+      });
       if (!dbUser) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'User not found');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'User not found',
+        );
         throw new NotFoundException('User not found');
       }
       const schoolId = dbUser.school_id;
       const userId = dbUser.id;
 
       // Validate subject & topic
-      const subject = await this.prisma.subject.findFirst({ where: { id: uploadDto.subject_id, schoolId } });
+      const subject = await this.prisma.subject.findFirst({
+        where: { id: uploadDto.subject_id, schoolId },
+      });
       if (!subject) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Subject not found');
-        throw new NotFoundException('Subject not found or does not belong to this school');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'Subject not found',
+        );
+        throw new NotFoundException(
+          'Subject not found or does not belong to this school',
+        );
       }
-      const topic = await this.prisma.topic.findFirst({ where: { id: uploadDto.topic_id, subject_id: uploadDto.subject_id, school_id: schoolId, is_active: true } });
+      const topic = await this.prisma.topic.findFirst({
+        where: {
+          id: uploadDto.topic_id,
+          subject_id: uploadDto.subject_id,
+          school_id: schoolId,
+          is_active: true,
+        },
+      });
       if (!topic) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Topic not found');
-        throw new NotFoundException('Topic not found or does not belong to this subject');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'Topic not found',
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to this subject',
+        );
       }
 
       // Smooth progress for single file
@@ -2062,12 +2568,19 @@ export class TopicsService {
       this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
       smoother = setInterval(() => {
         if (emittedLoaded < lastKnownLoaded) {
-          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
+          const delta = Math.max(
+            onePercent,
+            Math.floor((lastKnownLoaded - emittedLoaded) / 3),
+          );
           emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
           const percent = Math.floor((emittedLoaded / totalBytes) * 100);
           if (percent > lastPercent) {
             lastPercent = percent;
-            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
+            this.uploadProgressService.updateProgress(
+              sessionId,
+              'uploading',
+              emittedLoaded,
+            );
           }
         }
       }, tickMs);
@@ -2079,7 +2592,7 @@ export class TopicsService {
         `${uploadDto.title.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`,
         (loaded) => {
           lastKnownLoaded = Math.min(loaded, totalBytes);
-        }
+        },
       );
 
       // Store S3 key for potential rollback
@@ -2087,7 +2600,11 @@ export class TopicsService {
       s3UploadSucceeded = true;
 
       // Processing/saving
-      this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'processing',
+        lastKnownLoaded,
+      );
       this.logger.log(colors.blue(`💾 Starting database save operation...`));
 
       // Get or create S3 platform Organisation
@@ -2099,32 +2616,46 @@ export class TopicsService {
           update: {},
           create: {
             name: 'AWS S3',
-            email: 's3@smart-edu.com'
-          }
+            email: 's3@smart-edu.com',
+          },
         });
         this.logger.log(colors.green(`✅ S3 platform ready: ${s3Platform.id}`));
       } catch (platformError) {
-        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
+        this.logger.error(
+          colors.red(`❌ Platform creation failed: ${platformError.message}`),
+        );
         // Rollback: Delete S3 file
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to platform creation failure`));
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted S3 file due to platform creation failure`,
+            ),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`),
+          );
         }
-        throw new BadRequestException(`Failed to get/create S3 platform: ${platformError.message}`);
+        throw new BadRequestException(
+          `Failed to get/create S3 platform: ${platformError.message}`,
+        );
       }
 
       // Next order
       const lastMaterial = await this.prisma.pDFMaterial.findFirst({
         where: { topic_id: uploadDto.topic_id, schoolId },
         orderBy: { order: 'desc' },
-        select: { order: true }
+        select: { order: true },
       });
       const nextOrder = (lastMaterial?.order || 0) + 1;
       this.logger.log(colors.blue(`📊 Next material order: ${nextOrder}`));
 
-      this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'saving',
+        lastKnownLoaded,
+      );
       this.logger.log(colors.blue(`💾 Saving material to database...`));
 
       let material;
@@ -2143,74 +2674,116 @@ export class TopicsService {
             fileType: validationResult.fileType,
             originalName: materialFile.originalname,
             status: 'published',
-            downloads: 0
+            downloads: 0,
           },
           include: {
-            topic: { select: { id: true, title: true, subject: { select: { id: true, name: true } } } }
-          }
+            topic: {
+              select: {
+                id: true,
+                title: true,
+                subject: { select: { id: true, name: true } },
+              },
+            },
+          },
         });
       } catch (dbError) {
         // Rollback: Delete S3 file if DB save fails
-        this.logger.error(colors.red(`❌ Database save failed, rolling back S3 upload...`));
+        this.logger.error(
+          colors.red(`❌ Database save failed, rolling back S3 upload...`),
+        );
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to database save failure`));
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted S3 file due to database save failure`,
+            ),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`),
+          );
         }
         throw dbError;
       }
 
       if (smoother) clearInterval(smoother);
       // finalize
-      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, material.id);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'completed',
+        totalBytes,
+        undefined,
+        undefined,
+        material.id,
+      );
 
-      this.logger.log(colors.green(`🎉 Material "${uploadDto.title}" uploaded successfully with progress tracking!`));
+      this.logger.log(
+        colors.green(
+          `🎉 Material "${uploadDto.title}" uploaded successfully with progress tracking!`,
+        ),
+      );
       this.logger.log(colors.blue(`📊 Material Details:`));
       this.logger.log(colors.blue(`   - ID: ${material.id}`));
       this.logger.log(colors.blue(`   - Size: ${material.size || '0 Bytes'}`));
-      this.logger.log(colors.blue(`   - Type: ${material.fileType || 'unknown'}`));
+      this.logger.log(
+        colors.blue(`   - Type: ${material.fileType || 'unknown'}`),
+      );
       this.logger.log(colors.blue(`   - URL: ${material.url}`));
       this.logger.log(colors.blue(`   - Session ID: ${sessionId}`));
 
-      return ResponseHelper.created(
-        'Material uploaded successfully',
-        {
-          id: material.id,
-          title: material.title,
-          description: material.description || undefined,
-          url: material.url,
-          thumbnail: undefined,
-          size: material.size || '0 Bytes',
-          fileType: material.fileType || 'unknown',
-          originalName: material.originalName || '',
-          downloads: material.downloads || 0,
-          status: material.status || 'published',
-          order: material.order || 1,
-          subject_id: uploadDto.subject_id,
-          topic_id: uploadDto.topic_id,
-          uploaded_by: userId,
-          createdAt: material.createdAt,
-          updatedAt: material.updatedAt
-        }
-      );
+      return ResponseHelper.created('Material uploaded successfully', {
+        id: material.id,
+        title: material.title,
+        description: material.description || undefined,
+        url: material.url,
+        thumbnail: undefined,
+        size: material.size || '0 Bytes',
+        fileType: material.fileType || 'unknown',
+        originalName: material.originalName || '',
+        downloads: material.downloads || 0,
+        status: material.status || 'published',
+        order: material.order || 1,
+        subject_id: uploadDto.subject_id,
+        topic_id: uploadDto.topic_id,
+        uploaded_by: userId,
+        createdAt: material.createdAt,
+        updatedAt: material.updatedAt,
+      });
     } catch (error) {
       if (smoother) clearInterval(smoother);
-      
+
       // Rollback: Delete S3 file if it was uploaded but operation failed
       if (typeof s3Key !== 'undefined' && s3UploadSucceeded) {
-        this.logger.log(colors.yellow(`🔄 Attempting to rollback S3 upload...`));
+        this.logger.log(
+          colors.yellow(`🔄 Attempting to rollback S3 upload...`),
+        );
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted S3 file due to operation failure`));
+          this.logger.log(
+            colors.yellow(
+              `🗑️ Rolled back: Deleted S3 file due to operation failure`,
+            ),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to rollback S3 file: ${deleteError.message}`),
+          );
         }
       }
-      
-      this.logger.error(colors.red(`❌ Error uploading material with progress: ${error.message}`));
+
+      this.logger.error(
+        colors.red(
+          `❌ Error uploading material with progress: ${error.message}`,
+        ),
+      );
       this.logger.error(colors.red(`❌ Error stack: ${error.stack}`));
-      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        undefined,
+        undefined,
+        error.message,
+      );
       throw error;
     }
   }
@@ -2219,11 +2792,13 @@ export class TopicsService {
    * Process a material for AI chat (chunking + embeddings) if not already processed
    */
   async processMaterialForChat(id: string, user?: any) {
-    this.logger.log(colors.cyan(`🔄 Requested AI processing for material: ${id}`));
+    this.logger.log(
+      colors.cyan(`🔄 Requested AI processing for material: ${id}`),
+    );
     // Validate material exists
     const material = await this.prisma.pDFMaterial.findUnique({
       where: { id: id },
-      select: { id: true }
+      select: { id: true },
     });
     if (!material) {
       this.logger.error(colors.red(`❌ Material not found: ${id}`));
@@ -2239,7 +2814,7 @@ export class TopicsService {
           user_id: userId,
           material_id: id,
         },
-        orderBy: { last_activity: 'desc' }
+        orderBy: { last_activity: 'desc' },
       });
 
       if (conversation) {
@@ -2253,22 +2828,29 @@ export class TopicsService {
           take: 25,
         });
 
-        return ResponseHelper.success('Existing conversation found for this material', {
-          materialId: id,
-          conversationId: conversation.id,
-          title: conversation.title,
-          totalMessages: conversation.total_messages,
-          lastActivity: conversation.last_activity?.toISOString?.() || conversation.last_activity,
-          messages: messages.reverse().map(m => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            createdAt: m.createdAt.toISOString(),
-          })),
-        });
+        return ResponseHelper.success(
+          'Existing conversation found for this material',
+          {
+            materialId: id,
+            conversationId: conversation.id,
+            title: conversation.title,
+            totalMessages: conversation.total_messages,
+            lastActivity:
+              conversation.last_activity?.toISOString?.() ||
+              conversation.last_activity,
+            messages: messages.reverse().map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt.toISOString(),
+            })),
+          },
+        );
       }
     } else {
-      this.logger.error(colors.red(`❌ User not found: ${user?.id || user?.sub}`));
+      this.logger.error(
+        colors.red(`❌ User not found: ${user?.id || user?.sub}`),
+      );
       throw new NotFoundException('User not found');
     }
 
@@ -2280,27 +2862,36 @@ export class TopicsService {
 
     // If already processed, return success
     if (status && (status.total_chunks > 0 || status.status === 'COMPLETED')) {
-      this.logger.log(colors.green(`✅ Document successfully processed for chat: ${id}`));
-      return ResponseHelper.success('Document successfully processed for chat', {
-        materialId: id,
-        status: status.status,
-        totalChunks: status.total_chunks,
-        processedChunks: status.processed_chunks,
-        failedChunks: status.failed_chunks,
-      });
+      this.logger.log(
+        colors.green(`✅ Document successfully processed for chat: ${id}`),
+      );
+      return ResponseHelper.success(
+        'Document successfully processed for chat',
+        {
+          materialId: id,
+          status: status.status,
+          totalChunks: status.total_chunks,
+          processedChunks: status.processed_chunks,
+          failedChunks: status.failed_chunks,
+        },
+      );
     }
 
     // Not yet processed → ensure processing is running, and inform client it's not ready
     if (!status || status.status !== 'PROCESSING') {
-      this.logger.log(colors.blue(`🧠 Starting AI processing for document: ${id}`));
+      this.logger.log(
+        colors.blue(`🧠 Starting AI processing for document: ${id}`),
+      );
       this.documentProcessingService.processDocument(id);
     } else {
-      this.logger.log(colors.yellow(`⏳ Document is currently processing: ${id}`));
+      this.logger.log(
+        colors.yellow(`⏳ Document is currently processing: ${id}`),
+      );
     }
 
     return new ApiResponse(false, 'Document not yet processed for AI chat', {
       materialId: id,
-      status: 'PROCESSING'
+      status: 'PROCESSING',
     });
   }
 }

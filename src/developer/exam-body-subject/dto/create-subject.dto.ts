@@ -20,4 +20,3 @@ export class CreateExamBodySubjectDto {
   @IsOptional()
   order?: number;
 }
-

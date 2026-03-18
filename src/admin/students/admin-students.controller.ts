@@ -1,6 +1,19 @@
-import { Controller, Get, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { JwtGuard } from '../../school/auth/guard';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ApiResponse as StdResponse } from '../../shared/helper-functions/response';
 
 @ApiTags('Admin - Students')
@@ -24,11 +37,13 @@ export class AdminStudentsController {
     }
 
     // TODO: Implement real PDF generation/stream.
-    return new StdResponse(true, 'Endpoint resolved. PDF generation pending implementation', {
-      schoolId,
-      classId,
-    } as any);
+    return new StdResponse(
+      true,
+      'Endpoint resolved. PDF generation pending implementation',
+      {
+        schoolId,
+        classId,
+      } as any,
+    );
   }
 }
-
-

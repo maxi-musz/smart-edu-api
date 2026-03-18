@@ -9,6 +9,6 @@ import { PushNotificationsModule } from 'src/push-notifications/push-notificatio
   imports: [PrismaModule, AcademicSessionModule, PushNotificationsModule],
   controllers: [NotificationsController],
   providers: [NotificationsService],
-  exports: [NotificationsService]
+  exports: [NotificationsService],
 })
 export class NotificationsModule {}

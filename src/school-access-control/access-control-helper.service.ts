@@ -132,7 +132,10 @@ export class AccessControlHelperService {
         grantPath: ['library_granted', 'school_granted'],
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error checking access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error checking access: ${error.message}`),
+        error.stack,
+      );
       return {
         hasAccess: false,
         reason: 'Error checking access',
@@ -173,9 +176,18 @@ export class AccessControlHelperService {
         resourceType === LibraryResourceType.SUBJECT
           ? [LibraryResourceType.ALL, LibraryResourceType.SUBJECT]
           : resourceType === LibraryResourceType.TOPIC
-            ? [LibraryResourceType.ALL, LibraryResourceType.SUBJECT, LibraryResourceType.TOPIC]
+            ? [
+                LibraryResourceType.ALL,
+                LibraryResourceType.SUBJECT,
+                LibraryResourceType.TOPIC,
+              ]
             : resourceType === LibraryResourceType.VIDEO
-              ? [LibraryResourceType.ALL, LibraryResourceType.SUBJECT, LibraryResourceType.TOPIC, LibraryResourceType.VIDEO]
+              ? [
+                  LibraryResourceType.ALL,
+                  LibraryResourceType.SUBJECT,
+                  LibraryResourceType.TOPIC,
+                  LibraryResourceType.VIDEO,
+                ]
               : resourceType
                 ? [LibraryResourceType.ALL, resourceType]
                 : undefined;
@@ -183,10 +195,7 @@ export class AccessControlHelperService {
       const libraryAccessWhere: any = {
         schoolId: user.school_id,
         isActive: true,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       };
 
       if (libraryResourceTypes) {
@@ -218,10 +227,7 @@ export class AccessControlHelperService {
         schoolId: user.school_id,
         libraryResourceAccessId: { in: libraryAccessIds },
         isActive: true,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         AND: [
           {
             OR: [
@@ -304,7 +310,9 @@ export class AccessControlHelperService {
 
       return Array.from(resourceIds);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting accessible resources: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error getting accessible resources: ${error.message}`),
+      );
       return [];
     }
   }
@@ -315,14 +323,20 @@ export class AccessControlHelperService {
    * see the same list. SchoolResourceAccess (per-user/role/class grants) is not used here, to avoid
    * legacy grants restricting teachers to a subset of subjects when the library granted the whole set.
    */
-  private async getSubjectIdsGrantedToSchool(schoolId: string): Promise<string[]> {
+  private async getSubjectIdsGrantedToSchool(
+    schoolId: string,
+  ): Promise<string[]> {
     const libraryAccess = await this.prisma.libraryResourceAccess.findMany({
       where: {
         schoolId,
         isActive: true,
         AND: [
           { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-          { resourceType: { in: [LibraryResourceType.ALL, LibraryResourceType.SUBJECT] } },
+          {
+            resourceType: {
+              in: [LibraryResourceType.ALL, LibraryResourceType.SUBJECT],
+            },
+          },
         ],
       },
       select: { platformId: true, resourceType: true, subjectId: true },
@@ -349,7 +363,9 @@ export class AccessControlHelperService {
    * Teachers and students thus see the same subject list when the library granted multiple subjects to the school.
    */
   async getAccessibleSubjectIds(userId: string): Promise<string[]> {
-    this.logger.log(colors.cyan(`📚 Getting accessible subject IDs for user ${userId}...`));
+    this.logger.log(
+      colors.cyan(`📚 Getting accessible subject IDs for user ${userId}...`),
+    );
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { school_id: true, role: true },
@@ -360,10 +376,12 @@ export class AccessControlHelperService {
     if (user.role === 'school_director' || user.role === 'school_admin') {
       return subjectIds;
     }
-    const schoolExclusions = await this.prisma.schoolResourceExclusion.findMany({
-      where: { schoolId: user.school_id },
-      select: { subjectId: true },
-    });
+    const schoolExclusions = await this.prisma.schoolResourceExclusion.findMany(
+      {
+        where: { schoolId: user.school_id },
+        select: { subjectId: true },
+      },
+    );
     if (schoolExclusions.length === 0) return subjectIds;
     const excludedSet = new Set(schoolExclusions.map((e) => e.subjectId));
     return subjectIds.filter((id) => !excludedSet.has(id));
@@ -400,10 +418,15 @@ export class AccessControlHelperService {
   /**
    * Get all video IDs that teachers have excluded for this user (student or class).
    */
-  private async getTeacherExcludedVideoIdsForUser(userId: string): Promise<string[]> {
+  private async getTeacherExcludedVideoIdsForUser(
+    userId: string,
+  ): Promise<string[]> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { school_id: true, student: { select: { current_class_id: true } } },
+      select: {
+        school_id: true,
+        student: { select: { current_class_id: true } },
+      },
     });
     if (!user) return [];
     const where: any = {
@@ -412,7 +435,10 @@ export class AccessControlHelperService {
       OR: [{ studentId: userId }],
     };
     if (user.student?.current_class_id) {
-      where.OR.push({ classId: user.student.current_class_id, studentId: null });
+      where.OR.push({
+        classId: user.student.current_class_id,
+        studentId: null,
+      });
     }
     const rows = await this.prisma.teacherResourceExclusion.findMany({
       where,
@@ -450,7 +476,11 @@ export class AccessControlHelperService {
     schoolId: string,
     platformId: string,
     subjectId: string,
-    resourceType: LibraryResourceType.TOPIC | LibraryResourceType.VIDEO | LibraryResourceType.MATERIAL | LibraryResourceType.ASSESSMENT,
+    resourceType:
+      | LibraryResourceType.TOPIC
+      | LibraryResourceType.VIDEO
+      | LibraryResourceType.MATERIAL
+      | LibraryResourceType.ASSESSMENT,
   ): Promise<string[]> {
     try {
       if (resourceType === LibraryResourceType.TOPIC) {
@@ -507,7 +537,9 @@ export class AccessControlHelperService {
       }
       return [];
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting excluded resources: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error getting excluded resources: ${error.message}`),
+      );
       return [];
     }
   }
@@ -528,7 +560,11 @@ export class AccessControlHelperService {
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { school_id: true, role: true, student: { select: { current_class_id: true } } },
+      select: {
+        school_id: true,
+        role: true,
+        student: { select: { current_class_id: true } },
+      },
     });
     if (!user) {
       return { topicIds: [], videoIds: [], materialIds: [], assessmentIds: [] };
@@ -540,15 +576,46 @@ export class AccessControlHelperService {
     if (!subject) {
       return { topicIds: [], videoIds: [], materialIds: [], assessmentIds: [] };
     }
-    const [libraryTopicIds, libraryVideoIds, libraryMaterialIds, libraryAssessmentIds] = await Promise.all([
-      this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.TOPIC),
-      this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.VIDEO),
-      this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.MATERIAL),
-      this.getExcludedResourceIdsInSubject(user.school_id, subject.platformId, subjectId, LibraryResourceType.ASSESSMENT),
+    const [
+      libraryTopicIds,
+      libraryVideoIds,
+      libraryMaterialIds,
+      libraryAssessmentIds,
+    ] = await Promise.all([
+      this.getExcludedResourceIdsInSubject(
+        user.school_id,
+        subject.platformId,
+        subjectId,
+        LibraryResourceType.TOPIC,
+      ),
+      this.getExcludedResourceIdsInSubject(
+        user.school_id,
+        subject.platformId,
+        subjectId,
+        LibraryResourceType.VIDEO,
+      ),
+      this.getExcludedResourceIdsInSubject(
+        user.school_id,
+        subject.platformId,
+        subjectId,
+        LibraryResourceType.MATERIAL,
+      ),
+      this.getExcludedResourceIdsInSubject(
+        user.school_id,
+        subject.platformId,
+        subjectId,
+        LibraryResourceType.ASSESSMENT,
+      ),
     ]);
-    const isSchoolOwner = user.role === 'school_director' || user.role === 'school_admin';
+    const isSchoolOwner =
+      user.role === 'school_director' || user.role === 'school_admin';
     const teacherExcluded = isSchoolOwner
-      ? { topicIds: [] as string[], videoIds: [] as string[], materialIds: [] as string[], assessmentIds: [] as string[] }
+      ? {
+          topicIds: [] as string[],
+          videoIds: [] as string[],
+          materialIds: [] as string[],
+          assessmentIds: [] as string[],
+        }
       : await this.getTeacherExcludedIdsForUser(
           userId,
           user.school_id,
@@ -558,8 +625,12 @@ export class AccessControlHelperService {
     return {
       topicIds: [...new Set([...libraryTopicIds, ...teacherExcluded.topicIds])],
       videoIds: [...new Set([...libraryVideoIds, ...teacherExcluded.videoIds])],
-      materialIds: [...new Set([...libraryMaterialIds, ...teacherExcluded.materialIds])],
-      assessmentIds: [...new Set([...libraryAssessmentIds, ...teacherExcluded.assessmentIds])],
+      materialIds: [
+        ...new Set([...libraryMaterialIds, ...teacherExcluded.materialIds]),
+      ],
+      assessmentIds: [
+        ...new Set([...libraryAssessmentIds, ...teacherExcluded.assessmentIds]),
+      ],
     };
   }
 
@@ -572,10 +643,20 @@ export class AccessControlHelperService {
     schoolId: string,
     subjectId: string,
     subjectLibraryClassId?: string,
-  ): Promise<{ topicIds: string[]; videoIds: string[]; materialIds: string[]; assessmentIds: string[] }> {
-    const orConditions: Array<{ studentId: string } | { libraryClassId: string; studentId: null }> = [{ studentId: userId }];
+  ): Promise<{
+    topicIds: string[];
+    videoIds: string[];
+    materialIds: string[];
+    assessmentIds: string[];
+  }> {
+    const orConditions: Array<
+      { studentId: string } | { libraryClassId: string; studentId: null }
+    > = [{ studentId: userId }];
     if (subjectLibraryClassId) {
-      orConditions.push({ libraryClassId: subjectLibraryClassId, studentId: null });
+      orConditions.push({
+        libraryClassId: subjectLibraryClassId,
+        studentId: null,
+      });
     }
     const rows = await this.prisma.teacherResourceExclusion.findMany({
       where: { schoolId, subjectId, OR: orConditions },
@@ -589,7 +670,8 @@ export class AccessControlHelperService {
       if (r.resourceType === 'TOPIC') topicIds.push(r.resourceId);
       else if (r.resourceType === 'VIDEO') videoIds.push(r.resourceId);
       else if (r.resourceType === 'MATERIAL') materialIds.push(r.resourceId);
-      else if (r.resourceType === 'ASSESSMENT') assessmentIds.push(r.resourceId);
+      else if (r.resourceType === 'ASSESSMENT')
+        assessmentIds.push(r.resourceId);
     }
     return { topicIds, videoIds, materialIds, assessmentIds };
   }
@@ -627,14 +709,15 @@ export class AccessControlHelperService {
     schoolId: string,
     resourceType: LibraryResourceType,
     resourceId: string,
-  ): Promise<{ hasAccess: boolean; accessLevel?: string; libraryAccessId?: string }> {
+  ): Promise<{
+    hasAccess: boolean;
+    accessLevel?: string;
+    libraryAccessId?: string;
+  }> {
     const where: any = {
       schoolId,
       isActive: true,
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: new Date() } },
-      ],
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
     };
 
     // Check for exact resource match or parent access
@@ -644,42 +727,70 @@ export class AccessControlHelperService {
       case LibraryResourceType.VIDEO: {
         accessChecks.push(
           { ...where, resourceType: LibraryResourceType.ALL },
-          { ...where, resourceType: LibraryResourceType.VIDEO, videoId: resourceId },
+          {
+            ...where,
+            resourceType: LibraryResourceType.VIDEO,
+            videoId: resourceId,
+          },
         );
         const video = await this.prisma.libraryVideoLesson.findUnique({
           where: { id: resourceId },
           select: { subjectId: true, topicId: true },
         });
         if (video?.subjectId) {
-          accessChecks.push({ ...where, resourceType: LibraryResourceType.SUBJECT, subjectId: video.subjectId });
+          accessChecks.push({
+            ...where,
+            resourceType: LibraryResourceType.SUBJECT,
+            subjectId: video.subjectId,
+          });
         }
         if (video?.topicId) {
-          accessChecks.push({ ...where, resourceType: LibraryResourceType.TOPIC, topicId: video.topicId });
+          accessChecks.push({
+            ...where,
+            resourceType: LibraryResourceType.TOPIC,
+            topicId: video.topicId,
+          });
         }
         break;
       }
       case LibraryResourceType.MATERIAL:
         accessChecks.push(
           { ...where, resourceType: LibraryResourceType.ALL },
-          { ...where, resourceType: LibraryResourceType.MATERIAL, materialId: resourceId },
+          {
+            ...where,
+            resourceType: LibraryResourceType.MATERIAL,
+            materialId: resourceId,
+          },
         );
         break;
       case LibraryResourceType.ASSESSMENT:
         accessChecks.push(
           { ...where, resourceType: LibraryResourceType.ALL },
-          { ...where, resourceType: LibraryResourceType.ASSESSMENT, assessmentId: resourceId },
+          {
+            ...where,
+            resourceType: LibraryResourceType.ASSESSMENT,
+            assessmentId: resourceId,
+          },
         );
         break;
       case LibraryResourceType.TOPIC:
         accessChecks.push(
           { ...where, resourceType: LibraryResourceType.ALL },
-          { ...where, resourceType: LibraryResourceType.TOPIC, topicId: resourceId },
+          {
+            ...where,
+            resourceType: LibraryResourceType.TOPIC,
+            topicId: resourceId,
+          },
         );
         break;
       case LibraryResourceType.SUBJECT:
         accessChecks.push(
           { ...where, resourceType: LibraryResourceType.ALL },
-          { ...where, resourceType: LibraryResourceType.SUBJECT, subjectId: resourceId },
+          {
+            ...where,
+            resourceType: LibraryResourceType.SUBJECT,
+            subjectId: resourceId,
+          },
         );
         break;
       default:
@@ -718,7 +829,11 @@ export class AccessControlHelperService {
     libraryAccessId: string,
     resourceType: LibraryResourceType,
     resourceId: string,
-  ): Promise<{ hasAccess: boolean; accessLevel?: string; schoolAccessId?: string }> {
+  ): Promise<{
+    hasAccess: boolean;
+    accessLevel?: string;
+    schoolAccessId?: string;
+  }> {
     const where: any = {
       schoolId,
       libraryResourceAccessId: libraryAccessId,
@@ -733,10 +848,7 @@ export class AccessControlHelperService {
     // Filter out expired access
     where.AND = [
       {
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
     ];
 
@@ -782,17 +894,18 @@ export class AccessControlHelperService {
     schoolAccessId: string,
     resourceType: LibraryResourceType,
     resourceId: string,
-  ): Promise<{ hasAccess: boolean; hasRestrictions: boolean; accessLevel?: string }> {
+  ): Promise<{
+    hasAccess: boolean;
+    hasRestrictions: boolean;
+    accessLevel?: string;
+  }> {
     // Check if any teacher has set restrictions for this student/class
     const restrictions = await this.prisma.teacherResourceAccess.findMany({
       where: {
         schoolId,
         schoolResourceAccessId: schoolAccessId,
         isActive: true,
-        OR: [
-          { studentId },
-          { classId: classId || undefined },
-        ],
+        OR: [{ studentId }, { classId: classId || undefined }],
       },
     });
 

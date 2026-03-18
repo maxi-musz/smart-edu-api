@@ -18,9 +18,7 @@ export class ExploreAssessmentService {
 
   async getAssessment(user: any, assessmentId: string) {
     this.logger.log(
-      colors.cyan(
-        `[EXPLORER - GET] 🎯 User requesting assessment details`,
-      ),
+      colors.cyan(`[EXPLORER - GET] 🎯 User requesting assessment details`),
     );
 
     try {
@@ -90,7 +88,9 @@ export class ExploreAssessmentService {
 
       if (!assessment) {
         this.logger.error(
-          colors.red(`❌ Assessment not found or not available: ${assessmentId}`),
+          colors.red(
+            `❌ Assessment not found or not available: ${assessmentId}`,
+          ),
         );
         throw new NotFoundException('Assessment not found or not available');
       }
@@ -103,10 +103,13 @@ export class ExploreAssessmentService {
             `⚠️ Assessment hasn't started yet. Start date: ${assessment.startDate.toISOString()}`,
           ),
         );
-        const startDate = new Date(assessment.startDate).toLocaleString('en-US', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        });
+        const startDate = new Date(assessment.startDate).toLocaleString(
+          'en-US',
+          {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          },
+        );
         throw new ForbiddenException(
           `This assessment has not started yet. It will be available on ${startDate}.`,
         );
@@ -333,9 +336,7 @@ export class ExploreAssessmentService {
     submitDto: SubmitAssessmentDto,
   ) {
     this.logger.log(
-      colors.cyan(
-        `📤 User ${user.sub} submitting assessment: ${assessmentId}`,
-      ),
+      colors.cyan(`📤 User ${user.sub} submitting assessment: ${assessmentId}`),
     );
 
     try {
@@ -387,49 +388,77 @@ export class ExploreAssessmentService {
       }
 
       // ============ DETAILED LOGGING FOR DEBUGGING ============
-      this.logger.log(colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+      this.logger.log(
+        colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'),
+      );
       this.logger.log(colors.magenta('📥 SUBMISSION PAYLOAD FROM FRONTEND:'));
       this.logger.log(colors.yellow(JSON.stringify(submitDto, null, 2)));
-      
-      this.logger.log(colors.magenta('\n📚 ASSESSMENT QUESTIONS & CORRECT ANSWERS:'));
+
+      this.logger.log(
+        colors.magenta('\n📚 ASSESSMENT QUESTIONS & CORRECT ANSWERS:'),
+      );
       assessment.questions.forEach((question, index) => {
         this.logger.log(colors.cyan(`\n--- Question ${index + 1} ---`));
         this.logger.log(colors.white(`ID: ${question.id}`));
         this.logger.log(colors.white(`Text: ${question.questionText}`));
         this.logger.log(colors.white(`Type: ${question.questionType}`));
         this.logger.log(colors.white(`Points: ${question.points}`));
-        
+
         if (question.correctAnswers && question.correctAnswers.length > 0) {
           this.logger.log(colors.green('✅ Correct Answers:'));
           question.correctAnswers.forEach((ca, caIndex) => {
-            this.logger.log(colors.green(`  [${caIndex}] answerText: ${ca.answerText}`));
-            this.logger.log(colors.green(`  [${caIndex}] answerNumber: ${ca.answerNumber}`));
-            this.logger.log(colors.green(`  [${caIndex}] answerDate: ${ca.answerDate}`));
-            this.logger.log(colors.green(`  [${caIndex}] optionIds: ${JSON.stringify(ca.optionIds)}`));
+            this.logger.log(
+              colors.green(`  [${caIndex}] answerText: ${ca.answerText}`),
+            );
+            this.logger.log(
+              colors.green(`  [${caIndex}] answerNumber: ${ca.answerNumber}`),
+            );
+            this.logger.log(
+              colors.green(`  [${caIndex}] answerDate: ${ca.answerDate}`),
+            );
+            this.logger.log(
+              colors.green(
+                `  [${caIndex}] optionIds: ${JSON.stringify(ca.optionIds)}`,
+              ),
+            );
           });
         } else {
           this.logger.log(colors.red('❌ NO CORRECT ANSWERS DEFINED!'));
         }
-        
+
         if (question.options && question.options.length > 0) {
           this.logger.log(colors.blue('📋 Options:'));
-          question.options.forEach(opt => {
-            this.logger.log(colors.blue(`  - ${opt.id}: ${opt.optionText} (isCorrect: ${opt.isCorrect})`));
+          question.options.forEach((opt) => {
+            this.logger.log(
+              colors.blue(
+                `  - ${opt.id}: ${opt.optionText} (isCorrect: ${opt.isCorrect})`,
+              ),
+            );
           });
         }
       });
-      
+
       this.logger.log(colors.magenta('\n🔍 USER RESPONSES:'));
       submitDto.responses.forEach((response, index) => {
         this.logger.log(colors.yellow(`\n--- User Response ${index + 1} ---`));
         this.logger.log(colors.yellow(`Question ID: ${response.questionId}`));
         this.logger.log(colors.yellow(`Text Answer: ${response.textAnswer}`));
-        this.logger.log(colors.yellow(`Numeric Answer: ${response.numericAnswer}`));
+        this.logger.log(
+          colors.yellow(`Numeric Answer: ${response.numericAnswer}`),
+        );
         this.logger.log(colors.yellow(`Date Answer: ${response.dateAnswer}`));
-        this.logger.log(colors.yellow(`Selected Options: ${JSON.stringify(response.selectedOptions)}`));
-        this.logger.log(colors.yellow(`File URLs: ${JSON.stringify(response.fileUrls)}`));
+        this.logger.log(
+          colors.yellow(
+            `Selected Options: ${JSON.stringify(response.selectedOptions)}`,
+          ),
+        );
+        this.logger.log(
+          colors.yellow(`File URLs: ${JSON.stringify(response.fileUrls)}`),
+        );
       });
-      this.logger.log(colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
+      this.logger.log(
+        colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'),
+      );
       // ============ END DETAILED LOGGING ============
 
       // Get attempt count (for logging only - explore assessments allow unlimited attempts)
@@ -481,36 +510,54 @@ export class ExploreAssessmentService {
             maxPoints: question.points,
             isCorrect: null,
             pointsEarned: 0,
-            feedback: 'This question requires manual grading or has no correct answer defined.',
+            feedback:
+              'This question requires manual grading or has no correct answer defined.',
             explanation: assessment.showFeedback ? question.explanation : null,
           });
           continue;
         }
 
         const correctAnswer = question.correctAnswers[0];
-        
+
         // LOG GRADING COMPARISON
-        this.logger.log(colors.bgBlue.white(`\n⚖️  GRADING Question: ${question.questionText}`));
+        this.logger.log(
+          colors.bgBlue.white(
+            `\n⚖️  GRADING Question: ${question.questionText}`,
+          ),
+        );
         this.logger.log(colors.cyan(`   Type: ${question.questionType}`));
-        this.logger.log(colors.green(`   Correct Answer: ${JSON.stringify(correctAnswer)}`));
-        this.logger.log(colors.yellow(`   User Response: ${JSON.stringify({
-          textAnswer: response.textAnswer,
-          numericAnswer: response.numericAnswer,
-          dateAnswer: response.dateAnswer,
-          selectedOptions: response.selectedOptions,
-          fileUrls: response.fileUrls
-        })}`));
-        
+        this.logger.log(
+          colors.green(`   Correct Answer: ${JSON.stringify(correctAnswer)}`),
+        );
+        this.logger.log(
+          colors.yellow(
+            `   User Response: ${JSON.stringify({
+              textAnswer: response.textAnswer,
+              numericAnswer: response.numericAnswer,
+              dateAnswer: response.dateAnswer,
+              selectedOptions: response.selectedOptions,
+              fileUrls: response.fileUrls,
+            })}`,
+          ),
+        );
+
         const gradeResult = this.gradeResponse(
           question,
           correctAnswer,
           response,
         );
-        
-        this.logger.log(colors.bold(gradeResult.isCorrect 
-          ? colors.green(`   ✅ CORRECT! Points: ${gradeResult.pointsEarned}/${question.points}`)
-          : colors.red(`   ❌ INCORRECT! Points: ${gradeResult.pointsEarned}/${question.points}`)
-        ));
+
+        this.logger.log(
+          colors.bold(
+            gradeResult.isCorrect
+              ? colors.green(
+                  `   ✅ CORRECT! Points: ${gradeResult.pointsEarned}/${question.points}`,
+                )
+              : colors.red(
+                  `   ❌ INCORRECT! Points: ${gradeResult.pointsEarned}/${question.points}`,
+                ),
+          ),
+        );
 
         gradedResponses.push({
           ...response,
@@ -710,14 +757,18 @@ export class ExploreAssessmentService {
 
     const selectedOption = response.selectedOptions?.[0];
     const correctOptionId = correctAnswer.optionIds[0];
-    
+
     this.logger.log(colors.blue(`      🔹 Grading Multiple Choice (Single)`));
     this.logger.log(colors.blue(`         Selected: ${selectedOption}`));
     this.logger.log(colors.blue(`         Correct:  ${correctOptionId}`));
-    
+
     const isCorrect = selectedOption === correctOptionId;
-    
-    this.logger.log(colors.blue(`         Match: ${isCorrect} (${selectedOption} === ${correctOptionId})`));
+
+    this.logger.log(
+      colors.blue(
+        `         Match: ${isCorrect} (${selectedOption} === ${correctOptionId})`,
+      ),
+    );
 
     return {
       isCorrect,
@@ -744,15 +795,31 @@ export class ExploreAssessmentService {
     const correctOptions = correctAnswer.optionIds;
 
     this.logger.log(colors.blue(`      🔹 Grading Multiple Choice (Multiple)`));
-    this.logger.log(colors.blue(`         Selected: [${selectedOptions.join(', ')}] (count: ${selectedOptions.length})`));
-    this.logger.log(colors.blue(`         Correct:  [${correctOptions.join(', ')}] (count: ${correctOptions.length})`));
+    this.logger.log(
+      colors.blue(
+        `         Selected: [${selectedOptions.join(', ')}] (count: ${selectedOptions.length})`,
+      ),
+    );
+    this.logger.log(
+      colors.blue(
+        `         Correct:  [${correctOptions.join(', ')}] (count: ${correctOptions.length})`,
+      ),
+    );
 
     const isCorrect =
       selectedOptions.length === correctOptions.length &&
       selectedOptions.every((opt: string) => correctOptions.includes(opt));
 
-    this.logger.log(colors.blue(`         Length match: ${selectedOptions.length === correctOptions.length}`));
-    this.logger.log(colors.blue(`         All options match: ${selectedOptions.every((opt: string) => correctOptions.includes(opt))}`));
+    this.logger.log(
+      colors.blue(
+        `         Length match: ${selectedOptions.length === correctOptions.length}`,
+      ),
+    );
+    this.logger.log(
+      colors.blue(
+        `         All options match: ${selectedOptions.every((opt: string) => correctOptions.includes(opt))}`,
+      ),
+    );
     this.logger.log(colors.blue(`         Final result: ${isCorrect}`));
 
     return {
@@ -776,12 +843,16 @@ export class ExploreAssessmentService {
     const correctText = correctAnswer.answerText.trim().toLowerCase();
 
     this.logger.log(colors.blue(`      🔹 Grading Short Answer`));
-    this.logger.log(colors.blue(`         User Answer (normalized):    "${userAnswer}"`));
-    this.logger.log(colors.blue(`         Correct Answer (normalized): "${correctText}"`));
+    this.logger.log(
+      colors.blue(`         User Answer (normalized):    "${userAnswer}"`),
+    );
+    this.logger.log(
+      colors.blue(`         Correct Answer (normalized): "${correctText}"`),
+    );
 
     // Simple exact match (can be enhanced with fuzzy matching)
     const isCorrect = userAnswer === correctText;
-    
+
     this.logger.log(colors.blue(`         Match: ${isCorrect}`));
 
     return {
@@ -793,7 +864,10 @@ export class ExploreAssessmentService {
   }
 
   private gradeNumeric(question: any, correctAnswer: any, response: any) {
-    if (correctAnswer?.answerNumber === undefined || correctAnswer?.answerNumber === null) {
+    if (
+      correctAnswer?.answerNumber === undefined ||
+      correctAnswer?.answerNumber === null
+    ) {
       return {
         isCorrect: null,
         pointsEarned: 0,
@@ -826,7 +900,9 @@ export class ExploreAssessmentService {
     const userDate = response.dateAnswer
       ? new Date(response.dateAnswer).toISOString().split('T')[0]
       : null;
-    const correctDate = new Date(correctAnswer.answerDate).toISOString().split('T')[0];
+    const correctDate = new Date(correctAnswer.answerDate)
+      .toISOString()
+      .split('T')[0];
 
     const isCorrect = userDate === correctDate;
 
@@ -862,7 +938,9 @@ export class ExploreAssessmentService {
       this.logger.error(
         colors.red(`❌ Invalid attemptId provided: ${attemptId}`),
       );
-      throw new BadRequestException('Attempt ID is required and cannot be empty');
+      throw new BadRequestException(
+        'Attempt ID is required and cannot be empty',
+      );
     }
 
     this.logger.log(
@@ -972,9 +1050,7 @@ export class ExploreAssessmentService {
       });
 
       if (!attempt) {
-        this.logger.error(
-          colors.red(`❌ Attempt not found: ${attemptId}`),
-        );
+        this.logger.error(colors.red(`❌ Attempt not found: ${attemptId}`));
         throw new NotFoundException('Attempt not found');
       }
 
@@ -1037,9 +1113,15 @@ export class ExploreAssessmentService {
       });
 
       // Calculate summary statistics
-      const correctCount = attempt.responses.filter((r) => r.isCorrect === true).length;
-      const incorrectCount = attempt.responses.filter((r) => r.isCorrect === false).length;
-      const ungradedCount = attempt.responses.filter((r) => r.isCorrect === null).length;
+      const correctCount = attempt.responses.filter(
+        (r) => r.isCorrect === true,
+      ).length;
+      const incorrectCount = attempt.responses.filter(
+        (r) => r.isCorrect === false,
+      ).length;
+      const ungradedCount = attempt.responses.filter(
+        (r) => r.isCorrect === null,
+      ).length;
 
       const responseData = {
         attempt: {
@@ -1103,10 +1185,7 @@ export class ExploreAssessmentService {
    * Get all attempts for the authenticated user (summary list)
    * Optionally filtered by assessmentId
    */
-  async getUserAttempts(
-    user: any,
-    assessmentId?: string,
-  ) {
+  async getUserAttempts(user: any, assessmentId?: string) {
     this.logger.log(
       colors.cyan(
         `📊 Fetching attempts for user: ${user.sub}${assessmentId ? ` (assessment: ${assessmentId})` : ''}`,
@@ -1170,7 +1249,10 @@ export class ExploreAssessmentService {
         ),
       );
 
-      return ResponseHelper.success('Attempts retrieved successfully', attempts);
+      return ResponseHelper.success(
+        'Attempts retrieved successfully',
+        attempts,
+      );
     } catch (error) {
       this.logger.error(
         colors.red(`❌ Error retrieving attempts: ${error.message}`),
@@ -1179,4 +1261,3 @@ export class ExploreAssessmentService {
     }
   }
 }
-

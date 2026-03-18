@@ -45,4 +45,3 @@ export class QuerySubjectsDto {
   @Max(100)
   limit?: number = 20;
 }
-

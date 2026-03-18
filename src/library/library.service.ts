@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiResponse } from '../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -10,7 +15,11 @@ export class LibraryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getLibraryDashboard(user: any): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY DASHBOARD] Fetching dashboard for library user: ${user.email}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY DASHBOARD] Fetching dashboard for library user: ${user.email}`,
+      ),
+    );
 
     // Get the library user to access platformId
     const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -178,8 +187,12 @@ export class LibraryService {
     };
 
     // Get unique uploaders count
-    const uniqueVideoUploaders = new Set(allVideos.map((v: any) => v.uploadedById)).size;
-    const uniqueMaterialUploaders = new Set(allMaterials.map((m: any) => m.uploadedById)).size;
+    const uniqueVideoUploaders = new Set(
+      allVideos.map((v: any) => v.uploadedById),
+    ).size;
+    const uniqueMaterialUploaders = new Set(
+      allMaterials.map((m: any) => m.uploadedById),
+    ).size;
 
     const dashboardData = {
       library: {
@@ -208,17 +221,19 @@ export class LibraryService {
         materials: allMaterials,
       },
       myActivity: {
-        videosUploaded: (userUploads as any)?.uploadedVideos?.length || 0,
-        materialsUploaded: (userUploads as any)?.uploadedMaterials?.length || 0,
-        recentVideos: (userUploads as any)?.uploadedVideos || [],
-        recentMaterials: (userUploads as any)?.uploadedMaterials || [],
+        videosUploaded: userUploads?.uploadedVideos?.length || 0,
+        materialsUploaded: userUploads?.uploadedMaterials?.length || 0,
+        recentVideos: userUploads?.uploadedVideos || [],
+        recentMaterials: userUploads?.uploadedMaterials || [],
       },
     };
 
     this.logger.log(colors.green('Library dashboard retrieved successfully'));
 
-    return new ApiResponse(true, 'Library dashboard retrieved successfully', dashboardData);
+    return new ApiResponse(
+      true,
+      'Library dashboard retrieved successfully',
+      dashboardData,
+    );
   }
 }
-
-

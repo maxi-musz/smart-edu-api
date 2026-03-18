@@ -11,14 +11,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { 
-  ApiTags, 
-  ApiOperation, 
-  ApiResponse, 
-  ApiBearerAuth, 
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
   ApiParam,
   ApiQuery,
-  ApiBody
+  ApiBody,
 } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { JwtGuard } from '../auth/guard/jwt.guard';
@@ -40,7 +40,10 @@ export class StudentsController {
   @Get('dashboard')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get student dashboard' })
-  @ApiResponse({ status: 200, description: 'Student dashboard retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Student dashboard retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Student not found' })
   getStudentDashboard(@GetUser() user: any) {
@@ -56,13 +59,16 @@ export class StudentsController {
   @ApiOperation({ summary: 'Get student subjects' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiResponse({ status: 200, description: 'Student subjects retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Student subjects retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Student not found' })
   getStudentSubjects(
     @GetUser() user: any,
     @Query('page') page?: number,
-    @Query('limit') limit?: number
+    @Query('limit') limit?: number,
   ) {
     const pageNum = page ? parseInt(page.toString(), 10) : 1;
     const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
@@ -79,18 +85,26 @@ export class StudentsController {
   @ApiParam({ name: 'id', description: 'Subject ID' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiResponse({ status: 200, description: 'Subject details retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subject details retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Subject not found' })
   getStudentSubjectDetails(
     @Param('id') subjectId: string,
     @GetUser() user: any,
     @Query('page') page?: number,
-    @Query('limit') limit?: number
+    @Query('limit') limit?: number,
   ) {
     const pageNum = page ? parseInt(page.toString(), 10) : 1;
     const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
-    return this.studentsService.getStudentSubjectDetails(user, subjectId, pageNum, limitNum);
+    return this.studentsService.getStudentSubjectDetails(
+      user,
+      subjectId,
+      pageNum,
+      limitNum,
+    );
   }
 
   /**
@@ -101,13 +115,13 @@ export class StudentsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get all content for a specific topic' })
   @ApiParam({ name: 'id', description: 'Topic ID' })
-  @ApiResponse({ status: 200, description: 'Topic content retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Topic content retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Topic not found' })
-  getTopicContent(
-    @Param('id') topicId: string,
-    @GetUser() user: any
-  ) {
+  getTopicContent(@Param('id') topicId: string, @GetUser() user: any) {
     return this.studentsService.getTopicContent(user, topicId);
   }
 
@@ -134,9 +148,13 @@ export class StudentsController {
   getAllTopics(
     @GetUser() user: any,
     @Query('subjectId') subjectId?: string,
-    @Query('academicSessionId') academicSessionId?: string
+    @Query('academicSessionId') academicSessionId?: string,
   ) {
-    return this.studentsService.getAllTopics(user, subjectId, academicSessionId);
+    return this.studentsService.getAllTopics(
+      user,
+      subjectId,
+      academicSessionId,
+    );
   }
 
   /**
@@ -162,11 +180,34 @@ export class StudentsController {
   @ApiOperation({ summary: 'Get all assessments for student' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search in assessment title or description' })
-  @ApiQuery({ name: 'assessmentType', required: false, type: String, description: 'Filter by assessment type' })
-  @ApiQuery({ name: 'status', required: false, type: String, description: 'Filter by assessment status' })
-  @ApiQuery({ name: 'subject_id', required: false, type: String, description: 'Filter by subject ID' })
-  @ApiResponse({ status: 200, description: 'Assessments retrieved successfully' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search in assessment title or description',
+  })
+  @ApiQuery({
+    name: 'assessmentType',
+    required: false,
+    type: String,
+    description: 'Filter by assessment type',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    description: 'Filter by assessment status',
+  })
+  @ApiQuery({
+    name: 'subject_id',
+    required: false,
+    type: String,
+    description: 'Filter by subject ID',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessments retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Student not found' })
   getAssessments(
@@ -176,18 +217,18 @@ export class StudentsController {
     @Query('search') search?: string,
     @Query('assessmentType') assessmentType?: string,
     @Query('status') status?: string,
-    @Query('subject_id') subjectId?: string
+    @Query('subject_id') subjectId?: string,
   ) {
     const pageNum = page ? parseInt(page.toString(), 10) : 1;
     const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
     return this.studentsService.fetchAssessmentsForStudent(
-      user, 
-      pageNum, 
-      limitNum, 
-      search, 
-      assessmentType, 
+      user,
+      pageNum,
+      limitNum,
+      search,
+      assessmentType,
       status,
-      subjectId
+      subjectId,
     );
   }
 
@@ -199,13 +240,19 @@ export class StudentsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get assessment questions for student to work on' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment questions retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment questions retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Assessment not found' })
-  @ApiResponse({ status: 403, description: 'Access denied or maximum attempts reached' })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied or maximum attempts reached',
+  })
   getAssessmentQuestions(
     @Param('id') assessmentId: string,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
     return this.studentsService.getAssessmentQuestions(user, assessmentId);
   }
@@ -226,9 +273,13 @@ export class StudentsController {
   submitAssessment(
     @Param('id') assessmentId: string,
     @Body() submissionData: any,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
-    return this.studentsService.submitAssessment(user, assessmentId, submissionData);
+    return this.studentsService.submitAssessment(
+      user,
+      assessmentId,
+      submissionData,
+    );
   }
 
   /**
@@ -239,12 +290,15 @@ export class StudentsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get assessment questions with user answers' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment with answers retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment with answers retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Assessment not found' })
   getAssessmentWithAnswers(
     @Param('id') assessmentId: string,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
     return this.studentsService.getAssessmentWithAnswers(user, assessmentId);
   }
@@ -256,15 +310,31 @@ export class StudentsController {
   @Get('attendance')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get student attendance for a specific month' })
-  @ApiQuery({ name: 'year', required: false, type: Number, description: 'Year (defaults to current year)', example: 2025 })
-  @ApiQuery({ name: 'month', required: false, type: Number, description: 'Month 1-12 (defaults to current month)', example: 9 })
-  @ApiResponse({ status: 200, description: 'Student attendance retrieved successfully', type: StudentAttendanceExtendedResponseDto })
+  @ApiQuery({
+    name: 'year',
+    required: false,
+    type: Number,
+    description: 'Year (defaults to current year)',
+    example: 2025,
+  })
+  @ApiQuery({
+    name: 'month',
+    required: false,
+    type: Number,
+    description: 'Month 1-12 (defaults to current month)',
+    example: 9,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Student attendance retrieved successfully',
+    type: StudentAttendanceExtendedResponseDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Student not found' })
   getStudentAttendance(
     @GetUser() user: any,
     @Query('year') year?: number,
-    @Query('month') month?: number
+    @Query('month') month?: number,
   ) {
     const yearNum = year ? parseInt(year.toString(), 10) : undefined;
     const monthNum = month ? parseInt(month.toString(), 10) : undefined;
@@ -277,16 +347,31 @@ export class StudentsController {
    */
   @Get('results')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get student results for current or specified session/term' })
-  @ApiQuery({ name: 'session_id', required: false, type: String, description: 'Academic session ID (defaults to current session)' })
-  @ApiQuery({ name: 'term_id', required: false, type: String, description: 'Term ID (not used, term is part of session)' })
-  @ApiResponse({ status: 200, description: 'Student results retrieved successfully' })
+  @ApiOperation({
+    summary: 'Get student results for current or specified session/term',
+  })
+  @ApiQuery({
+    name: 'session_id',
+    required: false,
+    type: String,
+    description: 'Academic session ID (defaults to current session)',
+  })
+  @ApiQuery({
+    name: 'term_id',
+    required: false,
+    type: String,
+    description: 'Term ID (not used, term is part of session)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Student results retrieved successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Student not found' })
   getStudentResults(
     @GetUser() user: any,
     @Query('session_id') sessionId?: string,
-    @Query('term_id') termId?: string
+    @Query('term_id') termId?: string,
   ) {
     return this.studentsService.getStudentResults(user, sessionId, termId);
   }

@@ -28,5 +28,3 @@ export class IdentityController {
     return this.identityService.loginDeveloper(dto);
   }
 }
-
-

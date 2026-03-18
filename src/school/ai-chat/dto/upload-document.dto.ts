@@ -3,33 +3,34 @@ import { IsString, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
 
 export class UploadDocumentDto {
   @ApiPropertyOptional({
-    description: 'Document title (optional - will auto-generate from filename if not provided)',
-    example: 'Mathematics Chapter 5 - Algebra'
+    description:
+      'Document title (optional - will auto-generate from filename if not provided)',
+    example: 'Mathematics Chapter 5 - Algebra',
   })
   @IsString()
   @IsOptional()
   title?: string;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Document description',
-    example: 'Comprehensive guide to algebraic expressions and equations'
+    example: 'Comprehensive guide to algebraic expressions and equations',
   })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Subject ID (optional - for organizing materials)',
-    example: 'clx1234567890abcdef'
+    example: 'clx1234567890abcdef',
   })
   @IsString()
   @IsOptional()
   @IsUUID()
   subject_id?: string;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Topic ID (optional - for organizing materials)',
-    example: 'clx1234567890abcdef'
+    example: 'clx1234567890abcdef',
   })
   @IsString()
   @IsOptional()

@@ -49,20 +49,22 @@ export class ChatTTSController {
 
       // Type cast to Node.js Readable stream
       const nodeStream = audioStream as unknown as Readable;
-      
+
       // Track stream completion for logging
       let streamBytes = 0;
       nodeStream.on('data', (chunk: Buffer) => {
         streamBytes += chunk.length;
       });
-      
+
       nodeStream.on('end', () => {
-        console.log(`[TTS Controller] Stream completed: ${streamBytes} bytes sent to client`);
+        console.log(
+          `[TTS Controller] Stream completed: ${streamBytes} bytes sent to client`,
+        );
       });
-      
+
       // Pipe the stream directly to response
       nodeStream.pipe(res);
-      
+
       // Handle stream errors
       nodeStream.on('error', (error: any) => {
         console.error('[TTS Controller] Stream error:', error);
@@ -74,18 +76,24 @@ export class ChatTTSController {
           });
         }
       });
-      
+
       // Handle response finish (all data sent)
       res.on('finish', () => {
-        console.log(`[TTS Controller] Response finished: ${streamBytes} bytes sent`);
+        console.log(
+          `[TTS Controller] Response finished: ${streamBytes} bytes sent`,
+        );
       });
-      
+
       // Handle response close (client disconnects)
       // Note: When response closes, the pipe will automatically clean up the stream
       res.on('close', () => {
         console.log(`[TTS Controller] Response closed by client`);
         // Check if stream has destroy method (Node.js Readable stream)
-        if (nodeStream && typeof nodeStream.destroy === 'function' && !nodeStream.destroyed) {
+        if (
+          nodeStream &&
+          typeof nodeStream.destroy === 'function' &&
+          !nodeStream.destroyed
+        ) {
           nodeStream.destroy();
         }
       });

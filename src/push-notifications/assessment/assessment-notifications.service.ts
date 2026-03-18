@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { PushNotificationsService } from '../push-notifications.service';
-import { sendAssessmentPublishedEmail, sendAssessmentUnpublishedEmail, sendAssessmentResultReleasedEmail } from 'src/common/mailer/send-assessment-notifications';
+import {
+  sendAssessmentPublishedEmail,
+  sendAssessmentUnpublishedEmail,
+  sendAssessmentResultReleasedEmail,
+} from 'src/common/mailer/send-assessment-notifications';
 
 @Injectable()
 export class AssessmentNotificationsService {
@@ -10,7 +14,7 @@ export class AssessmentNotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly pushNotificationsService: PushNotificationsService
+    private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
   /**
@@ -20,12 +24,20 @@ export class AssessmentNotificationsService {
    */
   async sendAssessmentPublishedNotifications(quiz: any, schoolId: string) {
     try {
-      this.logger.log(colors.cyan(`Sending push notifications for published assessment: ${quiz.title}`));
+      this.logger.log(
+        colors.cyan(
+          `Sending push notifications for published assessment: ${quiz.title}`,
+        ),
+      );
 
       // Get the subject ID from the quiz
       const subjectId = quiz.subject_id || quiz.subject?.id;
       if (!subjectId) {
-        this.logger.warn(colors.yellow(`⚠️ Assessment ${quiz.id} has no subject_id, skipping notifications`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Assessment ${quiz.id} has no subject_id, skipping notifications`,
+          ),
+        );
         return;
       }
 
@@ -33,12 +45,16 @@ export class AssessmentNotificationsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: schoolId,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.warn(colors.yellow(`⚠️ No current academic session found for school ${schoolId}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No current academic session found for school ${schoolId}`,
+          ),
+        );
         return;
       }
 
@@ -50,23 +66,29 @@ export class AssessmentNotificationsService {
           subjects: {
             some: {
               id: subjectId,
-              academic_session_id: currentSession.id
-            }
-          }
+              academic_session_id: currentSession.id,
+            },
+          },
         },
         select: {
           id: true,
-          name: true
-        }
+          name: true,
+        },
       });
 
       if (classesWithSubject.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No classes found with subject ${subjectId}`));
+        this.logger.warn(
+          colors.yellow(`⚠️ No classes found with subject ${subjectId}`),
+        );
         return;
       }
 
-      const classIds = classesWithSubject.map(cls => cls.id);
-      this.logger.log(colors.blue(`📚 Found ${classesWithSubject.length} classes with this subject`));
+      const classIds = classesWithSubject.map((cls) => cls.id);
+      this.logger.log(
+        colors.blue(
+          `📚 Found ${classesWithSubject.length} classes with this subject`,
+        ),
+      );
 
       // Find all active students in these classes
       const students = await this.prisma.student.findMany({
@@ -74,7 +96,7 @@ export class AssessmentNotificationsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           current_class_id: { in: classIds },
-          status: 'active'
+          status: 'active',
         },
         select: {
           user_id: true,
@@ -83,47 +105,62 @@ export class AssessmentNotificationsService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (students.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No active students found in classes with subject ${subjectId}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No active students found in classes with subject ${subjectId}`,
+          ),
+        );
         return;
       }
 
-      const studentUserIds = students.map(s => s.user_id);
-      this.logger.log(colors.blue(`👥 Found ${students.length} students to notify`));
+      const studentUserIds = students.map((s) => s.user_id);
+      this.logger.log(
+        colors.blue(`👥 Found ${students.length} students to notify`),
+      );
 
       // Get school name
       const school = await this.prisma.school.findFirst({
         where: { id: schoolId },
-        select: { school_name: true }
+        select: { school_name: true },
       });
 
       // Send push notifications
-      const notificationResult = await this.pushNotificationsService.sendNotificationByType({
-        notificationType: 'custom',
-        recipients: studentUserIds,
-        schoolId: schoolId,
-        title: '📝 New Assessment Published',
-        body: `🎯 A new assessment "${quiz.title}" has been published for ${quiz.subject?.name || 'your subject'}. Check it out now!`,
-        data: {
-          type: 'assessment_published',
-          assessment_id: quiz.id,
-          assessment_title: quiz.title,
-          subject_id: subjectId,
-          subject_name: quiz.subject?.name || '',
-          action: 'view_assessment'
-        }
-      });
+      const notificationResult =
+        await this.pushNotificationsService.sendNotificationByType({
+          notificationType: 'custom',
+          recipients: studentUserIds,
+          schoolId: schoolId,
+          title: '📝 New Assessment Published',
+          body: `🎯 A new assessment "${quiz.title}" has been published for ${quiz.subject?.name || 'your subject'}. Check it out now!`,
+          data: {
+            type: 'assessment_published',
+            assessment_id: quiz.id,
+            assessment_title: quiz.title,
+            subject_id: subjectId,
+            subject_name: quiz.subject?.name || '',
+            action: 'view_assessment',
+          },
+        });
 
       if (notificationResult.success) {
-        this.logger.log(colors.green(`✅ Push notifications sent to ${notificationResult.sent} students`));
+        this.logger.log(
+          colors.green(
+            `✅ Push notifications sent to ${notificationResult.sent} students`,
+          ),
+        );
       } else {
-        this.logger.warn(colors.yellow(`⚠️ Failed to send push notifications: ${notificationResult.message}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Failed to send push notifications: ${notificationResult.message}`,
+          ),
+        );
       }
 
       // Send email notifications
@@ -135,17 +172,29 @@ export class AssessmentNotificationsService {
             assessmentTitle: quiz.title,
             subjectName: quiz.subject?.name || 'Unknown Subject',
             schoolName: school?.school_name || 'Your School',
-            assessmentType: quiz.assessment_type || 'Assessment'
+            assessmentType: quiz.assessment_type || 'Assessment',
           });
         } catch (emailError) {
-          this.logger.error(colors.red(`❌ Failed to send email to ${student.user.email}: ${emailError.message}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to send email to ${student.user.email}: ${emailError.message}`,
+            ),
+          );
         }
       });
 
       await Promise.allSettled(emailPromises);
-      this.logger.log(colors.green(`✅ Email notifications sent to ${students.length} students`));
+      this.logger.log(
+        colors.green(
+          `✅ Email notifications sent to ${students.length} students`,
+        ),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error sending assessment published notifications: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error sending assessment published notifications: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
@@ -157,12 +206,20 @@ export class AssessmentNotificationsService {
    */
   async sendAssessmentUnpublishedNotifications(quiz: any, schoolId: string) {
     try {
-      this.logger.log(colors.cyan(`Sending notifications for unpublished assessment: ${quiz.title}`));
+      this.logger.log(
+        colors.cyan(
+          `Sending notifications for unpublished assessment: ${quiz.title}`,
+        ),
+      );
 
       // Get the subject ID from the quiz
       const subjectId = quiz.subject_id || quiz.subject?.id;
       if (!subjectId) {
-        this.logger.warn(colors.yellow(`⚠️ Assessment ${quiz.id} has no subject_id, skipping notifications`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Assessment ${quiz.id} has no subject_id, skipping notifications`,
+          ),
+        );
         return;
       }
 
@@ -170,12 +227,16 @@ export class AssessmentNotificationsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: schoolId,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.warn(colors.yellow(`⚠️ No current academic session found for school ${schoolId}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No current academic session found for school ${schoolId}`,
+          ),
+        );
         return;
       }
 
@@ -187,23 +248,29 @@ export class AssessmentNotificationsService {
           subjects: {
             some: {
               id: subjectId,
-              academic_session_id: currentSession.id
-            }
-          }
+              academic_session_id: currentSession.id,
+            },
+          },
         },
         select: {
           id: true,
-          name: true
-        }
+          name: true,
+        },
       });
 
       if (classesWithSubject.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No classes found with subject ${subjectId}`));
+        this.logger.warn(
+          colors.yellow(`⚠️ No classes found with subject ${subjectId}`),
+        );
         return;
       }
 
-      const classIds = classesWithSubject.map(cls => cls.id);
-      this.logger.log(colors.blue(`📚 Found ${classesWithSubject.length} classes with this subject`));
+      const classIds = classesWithSubject.map((cls) => cls.id);
+      this.logger.log(
+        colors.blue(
+          `📚 Found ${classesWithSubject.length} classes with this subject`,
+        ),
+      );
 
       // Find all active students in these classes
       const students = await this.prisma.student.findMany({
@@ -211,7 +278,7 @@ export class AssessmentNotificationsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           current_class_id: { in: classIds },
-          status: 'active'
+          status: 'active',
         },
         select: {
           user_id: true,
@@ -220,47 +287,62 @@ export class AssessmentNotificationsService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (students.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No active students found in classes with subject ${subjectId}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No active students found in classes with subject ${subjectId}`,
+          ),
+        );
         return;
       }
 
-      const studentUserIds = students.map(s => s.user_id);
-      this.logger.log(colors.blue(`👥 Found ${students.length} students to notify`));
+      const studentUserIds = students.map((s) => s.user_id);
+      this.logger.log(
+        colors.blue(`👥 Found ${students.length} students to notify`),
+      );
 
       // Get school name
       const school = await this.prisma.school.findFirst({
         where: { id: schoolId },
-        select: { school_name: true }
+        select: { school_name: true },
       });
 
       // Send push notifications
-      const notificationResult = await this.pushNotificationsService.sendNotificationByType({
-        notificationType: 'custom',
-        recipients: studentUserIds,
-        schoolId: schoolId,
-        title: '⚠️ Assessment Unpublished',
-        body: `📚 The assessment "${quiz.title}" for ${quiz.subject?.name || 'your subject'} has been unpublished.`,
-        data: {
-          type: 'assessment_unpublished',
-          assessment_id: quiz.id,
-          assessment_title: quiz.title,
-          subject_id: subjectId,
-          subject_name: quiz.subject?.name || '',
-          action: 'view_assessments'
-        }
-      });
+      const notificationResult =
+        await this.pushNotificationsService.sendNotificationByType({
+          notificationType: 'custom',
+          recipients: studentUserIds,
+          schoolId: schoolId,
+          title: '⚠️ Assessment Unpublished',
+          body: `📚 The assessment "${quiz.title}" for ${quiz.subject?.name || 'your subject'} has been unpublished.`,
+          data: {
+            type: 'assessment_unpublished',
+            assessment_id: quiz.id,
+            assessment_title: quiz.title,
+            subject_id: subjectId,
+            subject_name: quiz.subject?.name || '',
+            action: 'view_assessments',
+          },
+        });
 
       if (notificationResult.success) {
-        this.logger.log(colors.green(`✅ Push notifications sent to ${notificationResult.sent} students`));
+        this.logger.log(
+          colors.green(
+            `✅ Push notifications sent to ${notificationResult.sent} students`,
+          ),
+        );
       } else {
-        this.logger.warn(colors.yellow(`⚠️ Failed to send push notifications: ${notificationResult.message}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Failed to send push notifications: ${notificationResult.message}`,
+          ),
+        );
       }
 
       // Send email notifications
@@ -271,17 +353,29 @@ export class AssessmentNotificationsService {
             studentName: `${student.user.first_name} ${student.user.last_name}`,
             assessmentTitle: quiz.title,
             subjectName: quiz.subject?.name || 'Unknown Subject',
-            schoolName: school?.school_name || 'Your School'
+            schoolName: school?.school_name || 'Your School',
           });
         } catch (emailError) {
-          this.logger.error(colors.red(`❌ Failed to send email to ${student.user.email}: ${emailError.message}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to send email to ${student.user.email}: ${emailError.message}`,
+            ),
+          );
         }
       });
 
       await Promise.allSettled(emailPromises);
-      this.logger.log(colors.green(`✅ Email notifications sent to ${students.length} students`));
+      this.logger.log(
+        colors.green(
+          `✅ Email notifications sent to ${students.length} students`,
+        ),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error sending assessment unpublished notifications: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error sending assessment unpublished notifications: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
@@ -293,12 +387,20 @@ export class AssessmentNotificationsService {
    */
   async sendAssessmentResultReleasedNotifications(quiz: any, schoolId: string) {
     try {
-      this.logger.log(colors.cyan(`Sending notifications for released results: ${quiz.title}`));
+      this.logger.log(
+        colors.cyan(
+          `Sending notifications for released results: ${quiz.title}`,
+        ),
+      );
 
       // Get the subject ID from the quiz
       const subjectId = quiz.subject_id || quiz.subject?.id;
       if (!subjectId) {
-        this.logger.warn(colors.yellow(`⚠️ Assessment ${quiz.id} has no subject_id, skipping notifications`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Assessment ${quiz.id} has no subject_id, skipping notifications`,
+          ),
+        );
         return;
       }
 
@@ -306,12 +408,16 @@ export class AssessmentNotificationsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: schoolId,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.warn(colors.yellow(`⚠️ No current academic session found for school ${schoolId}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No current academic session found for school ${schoolId}`,
+          ),
+        );
         return;
       }
 
@@ -323,23 +429,29 @@ export class AssessmentNotificationsService {
           subjects: {
             some: {
               id: subjectId,
-              academic_session_id: currentSession.id
-            }
-          }
+              academic_session_id: currentSession.id,
+            },
+          },
         },
         select: {
           id: true,
-          name: true
-        }
+          name: true,
+        },
       });
 
       if (classesWithSubject.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No classes found with subject ${subjectId}`));
+        this.logger.warn(
+          colors.yellow(`⚠️ No classes found with subject ${subjectId}`),
+        );
         return;
       }
 
-      const classIds = classesWithSubject.map(cls => cls.id);
-      this.logger.log(colors.blue(`📚 Found ${classesWithSubject.length} classes with this subject`));
+      const classIds = classesWithSubject.map((cls) => cls.id);
+      this.logger.log(
+        colors.blue(
+          `📚 Found ${classesWithSubject.length} classes with this subject`,
+        ),
+      );
 
       // Find all active students in these classes
       const students = await this.prisma.student.findMany({
@@ -347,7 +459,7 @@ export class AssessmentNotificationsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           current_class_id: { in: classIds },
-          status: 'active'
+          status: 'active',
         },
         select: {
           user_id: true,
@@ -356,49 +468,70 @@ export class AssessmentNotificationsService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (students.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No active students found in classes with subject ${subjectId}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No active students found in classes with subject ${subjectId}`,
+          ),
+        );
         return;
       }
 
-      const studentUserIds = students.map(s => s.user_id);
-      this.logger.log(colors.blue(`👥 Found ${students.length} students to notify`));
-      this.logger.log(colors.blue(`   Student User IDs: ${JSON.stringify(studentUserIds)}`));
-      this.logger.log(colors.blue(`   Student emails: ${JSON.stringify(students.map(s => s.user.email))}`));
+      const studentUserIds = students.map((s) => s.user_id);
+      this.logger.log(
+        colors.blue(`👥 Found ${students.length} students to notify`),
+      );
+      this.logger.log(
+        colors.blue(`   Student User IDs: ${JSON.stringify(studentUserIds)}`),
+      );
+      this.logger.log(
+        colors.blue(
+          `   Student emails: ${JSON.stringify(students.map((s) => s.user.email))}`,
+        ),
+      );
 
       // Get school name
       const school = await this.prisma.school.findFirst({
         where: { id: schoolId },
-        select: { school_name: true }
+        select: { school_name: true },
       });
 
       // Send push notifications
-      const notificationResult = await this.pushNotificationsService.sendNotificationByType({
-        notificationType: 'custom',
-        recipients: studentUserIds,
-        schoolId: schoolId,
-        title: '🎉 Assessment Results Released!',
-        body: `📊 Your results for "${quiz.title}" in ${quiz.subject?.name || 'your subject'} are now available! Check them out now! 🎯`,
-        data: {
-          type: 'assessment_result_released',
-          assessment_id: quiz.id,
-          assessment_title: quiz.title,
-          subject_id: subjectId,
-          subject_name: quiz.subject?.name || '',
-          action: 'view_results'
-        }
-      });
+      const notificationResult =
+        await this.pushNotificationsService.sendNotificationByType({
+          notificationType: 'custom',
+          recipients: studentUserIds,
+          schoolId: schoolId,
+          title: '🎉 Assessment Results Released!',
+          body: `📊 Your results for "${quiz.title}" in ${quiz.subject?.name || 'your subject'} are now available! Check them out now! 🎯`,
+          data: {
+            type: 'assessment_result_released',
+            assessment_id: quiz.id,
+            assessment_title: quiz.title,
+            subject_id: subjectId,
+            subject_name: quiz.subject?.name || '',
+            action: 'view_results',
+          },
+        });
 
       if (notificationResult.success) {
-        this.logger.log(colors.green(`✅ Push notifications sent to ${notificationResult.sent} students`));
+        this.logger.log(
+          colors.green(
+            `✅ Push notifications sent to ${notificationResult.sent} students`,
+          ),
+        );
       } else {
-        this.logger.warn(colors.yellow(`⚠️ Failed to send push notifications: ${notificationResult.message}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Failed to send push notifications: ${notificationResult.message}`,
+          ),
+        );
       }
 
       // Send email notifications
@@ -409,19 +542,30 @@ export class AssessmentNotificationsService {
             studentName: `${student.user.first_name} ${student.user.last_name}`,
             assessmentTitle: quiz.title,
             subjectName: quiz.subject?.name || 'Unknown Subject',
-            schoolName: school?.school_name || 'Your School'
+            schoolName: school?.school_name || 'Your School',
           });
         } catch (emailError) {
-          this.logger.error(colors.red(`❌ Failed to send email to ${student.user.email}: ${emailError.message}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to send email to ${student.user.email}: ${emailError.message}`,
+            ),
+          );
         }
       });
 
       await Promise.allSettled(emailPromises);
-      this.logger.log(colors.green(`✅ Email notifications sent to ${students.length} students`));
+      this.logger.log(
+        colors.green(
+          `✅ Email notifications sent to ${students.length} students`,
+        ),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error sending assessment result released notifications: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error sending assessment result released notifications: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
 }
-

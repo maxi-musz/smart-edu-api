@@ -40,9 +40,9 @@ import { AssessmentModule } from './assessment/assessment.module';
     MulterModule.register({
       storage: memoryStorage(),
     }),
-    HelloModule, 
-    AdminModule, 
-    SchoolModule, 
+    HelloModule,
+    AdminModule,
+    SchoolModule,
     AcademicSessionModule,
     PushNotificationsModule,
     SchedulesModule,
@@ -67,8 +67,6 @@ import { AssessmentModule } from './assessment/assessment.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // Apply request logger to all routes
-    consumer
-      .apply(RequestLoggerMiddleware)
-      .forRoutes('*');
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
   }
 }

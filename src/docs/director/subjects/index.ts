@@ -1,2 +1,2 @@
 // Export director subjects documentation
-export * from './subjects.docs'; 
+export * from './subjects.docs';

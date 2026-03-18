@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { LibraryDevClassService } from './librarydev-class.service';
 import { ApiTags, ApiResponse } from '@nestjs/swagger';
 import { CreateLibraryClassDevDto, UpdateLibraryClassDevDto } from './dto';
@@ -13,7 +24,9 @@ import {
 @ApiTags('Developer - Library Class')
 @Controller('developer/librarydev/classes')
 export class LibraryDevClassController {
-  constructor(private readonly libraryDevClassService: LibraryDevClassService) {}
+  constructor(
+    private readonly libraryDevClassService: LibraryDevClassService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -44,7 +57,10 @@ export class LibraryDevClassController {
   @HttpCode(HttpStatus.OK)
   @UpdateLibraryClassDevDocs.operation
   @UpdateLibraryClassDevDocs.response200
-  async updateClass(@Param('id') id: string, @Body() dto: UpdateLibraryClassDevDto) {
+  async updateClass(
+    @Param('id') id: string,
+    @Body() dto: UpdateLibraryClassDevDto,
+  ) {
     return this.libraryDevClassService.updateClass(id, dto);
   }
 
@@ -56,5 +72,3 @@ export class LibraryDevClassController {
     return this.libraryDevClassService.deleteClass(id);
   }
 }
-
-

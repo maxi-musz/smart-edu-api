@@ -1,9 +1,9 @@
 import { sendMail } from './send-mail';
-import { 
-  teacherSubjectRoleTemplate, 
-  teacherClassManagementTemplate, 
+import {
+  teacherSubjectRoleTemplate,
+  teacherClassManagementTemplate,
   teacherRoleUpdateTemplate,
-  timetableScheduleTemplate
+  timetableScheduleTemplate,
 } from '../email-templates/assignment-notifications';
 
 interface TeacherAssignmentData {
@@ -31,26 +31,31 @@ interface AssignmentUpdateData extends TeacherAssignmentData {
 /**
  * Sends teaching role notification email to teacher
  */
-export async function sendSubjectRoleEmail(data: SubjectAssignmentData): Promise<void> {
+export async function sendSubjectRoleEmail(
+  data: SubjectAssignmentData,
+): Promise<void> {
   try {
     const emailHtml = teacherSubjectRoleTemplate({
       ...data,
       roleDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
       to: data.teacherEmail,
       subject: `📚 New Teaching Role - ${data.schoolName}`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ Teaching role email sent to: ${data.teacherEmail}`);
   } catch (error) {
-    console.error(`❌ Failed to send teaching role email to ${data.teacherEmail}:`, error);
+    console.error(
+      `❌ Failed to send teaching role email to ${data.teacherEmail}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -58,26 +63,31 @@ export async function sendSubjectRoleEmail(data: SubjectAssignmentData): Promise
 /**
  * Sends class management notification email to teacher
  */
-export async function sendClassManagementEmail(data: ClassAssignmentData): Promise<void> {
+export async function sendClassManagementEmail(
+  data: ClassAssignmentData,
+): Promise<void> {
   try {
     const emailHtml = teacherClassManagementTemplate({
       ...data,
       roleDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
       to: data.teacherEmail,
       subject: `🏫 New Class Management Role - ${data.schoolName}`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ Class management email sent to: ${data.teacherEmail}`);
   } catch (error) {
-    console.error(`❌ Failed to send class management email to ${data.teacherEmail}:`, error);
+    console.error(
+      `❌ Failed to send class management email to ${data.teacherEmail}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -85,26 +95,31 @@ export async function sendClassManagementEmail(data: ClassAssignmentData): Promi
 /**
  * Sends teaching role update notification email to teacher
  */
-export async function sendRoleUpdateEmail(data: AssignmentUpdateData): Promise<void> {
+export async function sendRoleUpdateEmail(
+  data: AssignmentUpdateData,
+): Promise<void> {
   try {
     const emailHtml = teacherRoleUpdateTemplate({
       ...data,
       updateDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
       to: data.teacherEmail,
       subject: `🔄 Teaching Role Update - ${data.schoolName}`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ Teaching role update email sent to: ${data.teacherEmail}`);
   } catch (error) {
-    console.error(`❌ Failed to send teaching role update email to ${data.teacherEmail}:`, error);
+    console.error(
+      `❌ Failed to send teaching role update email to ${data.teacherEmail}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -121,7 +136,7 @@ export async function sendAssignmentNotifications(
   newSubjects?: string[],
   removedSubjects?: string[],
   newClasses?: string[],
-  removedClasses?: string[]
+  removedClasses?: string[],
 ): Promise<void> {
   try {
     // If this is a new teacher with initial roles
@@ -131,7 +146,7 @@ export async function sendAssignmentNotifications(
         teacherEmail,
         schoolName,
         subjects: newSubjects,
-        assignedBy
+        assignedBy,
       });
     }
 
@@ -141,13 +156,17 @@ export async function sendAssignmentNotifications(
         teacherEmail,
         schoolName,
         classes: newClasses,
-        assignedBy
+        assignedBy,
       });
     }
 
     // If this is an update to existing roles
-    if ((newSubjects && newSubjects.length > 0) || (removedSubjects && removedSubjects.length > 0) ||
-        (newClasses && newClasses.length > 0) || (removedClasses && removedClasses.length > 0)) {
+    if (
+      (newSubjects && newSubjects.length > 0) ||
+      (removedSubjects && removedSubjects.length > 0) ||
+      (newClasses && newClasses.length > 0) ||
+      (removedClasses && removedClasses.length > 0)
+    ) {
       await sendRoleUpdateEmail({
         teacherName,
         teacherEmail,
@@ -156,15 +175,17 @@ export async function sendAssignmentNotifications(
         removedSubjects,
         newClasses,
         removedClasses,
-        assignedBy
+        assignedBy,
       });
     }
-
   } catch (error) {
-    console.error(`❌ Failed to send assignment notifications to ${teacherEmail}:`, error);
+    console.error(
+      `❌ Failed to send assignment notifications to ${teacherEmail}:`,
+      error,
+    );
     // Don't throw error to avoid failing the main operation
   }
-} 
+}
 
 /**
  * Sends timetable schedule notification email to teacher
@@ -188,21 +209,22 @@ export async function sendTimetableScheduleEmail(data: {
       scheduleDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
       to: data.teacherEmail,
       subject: `📅 New Class Schedule - ${data.schoolName}`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ Timetable schedule email sent to: ${data.teacherEmail}`);
   } catch (error) {
-    console.error(`❌ Failed to send timetable schedule email to ${data.teacherEmail}:`, error);
+    console.error(
+      `❌ Failed to send timetable schedule email to ${data.teacherEmail}:`,
+      error,
+    );
     throw error;
   }
-} 
-
- 
+}

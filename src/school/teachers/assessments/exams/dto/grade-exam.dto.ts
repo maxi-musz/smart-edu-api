@@ -1,11 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsNotEmpty, IsOptional, IsString, Min, Max } from 'class-validator';
+import {
+  IsNumber,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class GradeExamDto {
   @ApiProperty({
     description: 'Score achieved by the student',
     example: 85,
-    minimum: 0
+    minimum: 0,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -15,7 +22,7 @@ export class GradeExamDto {
   @ApiProperty({
     description: 'Total possible score for the exam',
     example: 100,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -25,7 +32,7 @@ export class GradeExamDto {
   @ApiProperty({
     description: 'Number of correct answers',
     example: 42,
-    minimum: 0
+    minimum: 0,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -35,7 +42,7 @@ export class GradeExamDto {
   @ApiProperty({
     description: 'Total number of questions',
     example: 50,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -44,7 +51,7 @@ export class GradeExamDto {
 
   @ApiPropertyOptional({
     description: 'Time taken to complete the exam in minutes',
-    example: 95
+    example: 95,
   })
   @IsNumber()
   @IsOptional()
@@ -53,7 +60,8 @@ export class GradeExamDto {
 
   @ApiPropertyOptional({
     description: 'Additional feedback for the student',
-    example: 'Excellent performance! You demonstrated strong understanding of the concepts.'
+    example:
+      'Excellent performance! You demonstrated strong understanding of the concepts.',
   })
   @IsString()
   @IsOptional()
@@ -61,7 +69,7 @@ export class GradeExamDto {
 
   @ApiPropertyOptional({
     description: 'Comments from the examiner',
-    example: 'Student showed good problem-solving skills'
+    example: 'Student showed good problem-solving skills',
   })
   @IsString()
   @IsOptional()
@@ -69,7 +77,7 @@ export class GradeExamDto {
 
   @ApiPropertyOptional({
     description: 'Whether the student passed the exam',
-    example: true
+    example: true,
   })
   @IsOptional()
   passed?: boolean;

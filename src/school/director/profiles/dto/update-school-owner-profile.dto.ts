@@ -75,5 +75,3 @@ export class UpdateSchoolOwnerProfileDto {
   @IsBoolean()
   data_sharing?: boolean;
 }
-
-

@@ -1,18 +1,25 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsUUID, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUUID,
+  IsArray,
+} from 'class-validator';
 
 export class SendMessageDto {
   @ApiProperty({
     description: 'The message content from the user',
-    example: 'What is the main topic of this document?'
+    example: 'What is the main topic of this document?',
   })
   @IsString()
   @IsNotEmpty()
   message: string;
 
   @ApiPropertyOptional({
-    description: 'Material ID to chat with (optional - for document-specific chat)',
-    example: 'cmfh35jfh0002sbix6l9n752e'
+    description:
+      'Material ID to chat with (optional - for document-specific chat)',
+    example: 'cmfh35jfh0002sbix6l9n752e',
   })
   @IsString()
   @IsOptional()
@@ -20,7 +27,7 @@ export class SendMessageDto {
 
   @ApiPropertyOptional({
     description: 'Conversation ID to continue existing chat (optional)',
-    example: 'conv_1234567890abcdef'
+    example: 'conv_1234567890abcdef',
   })
   @IsString()
   @IsOptional()
@@ -70,7 +77,7 @@ export class ChatMessageResponseDto {
 export class CreateConversationDto {
   @ApiPropertyOptional({
     description: 'Conversation title',
-    example: 'Discussion about Mathematics Chapter 5'
+    example: 'Discussion about Mathematics Chapter 5',
   })
   @IsString()
   @IsOptional()
@@ -78,7 +85,7 @@ export class CreateConversationDto {
 
   @ApiPropertyOptional({
     description: 'Material ID to chat with',
-    example: 'cmfh35jfh0002sbix6l9n752e'
+    example: 'cmfh35jfh0002sbix6l9n752e',
   })
   @IsString()
   @IsOptional()
@@ -86,7 +93,8 @@ export class CreateConversationDto {
 
   @ApiPropertyOptional({
     description: 'System prompt for the conversation',
-    example: 'You are a helpful AI assistant that answers questions about educational materials.'
+    example:
+      'You are a helpful AI assistant that answers questions about educational materials.',
   })
   @IsString()
   @IsOptional()
@@ -126,7 +134,7 @@ export class GetChatHistoryDto {
   @ApiPropertyOptional({
     description: 'Number of messages to retrieve',
     example: 50,
-    default: 50
+    default: 50,
   })
   @IsOptional()
   limit?: number = 50;
@@ -134,7 +142,7 @@ export class GetChatHistoryDto {
   @ApiPropertyOptional({
     description: 'Offset for pagination',
     example: 0,
-    default: 0
+    default: 0,
   })
   @IsOptional()
   offset?: number = 0;

@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { WalletTransactionType, WalletTransactionStatus } from '@prisma/client';
 import * as colors from 'colors';
@@ -36,7 +41,7 @@ export interface PaymentValidationResult {
 export class PaymentProcessorService {
   constructor(
     private prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService
+    private readonly academicSessionService: AcademicSessionService,
   ) {}
 
   /**
@@ -44,7 +49,9 @@ export class PaymentProcessorService {
    * @param paymentData - Payment information
    * @returns Payment processing result
    */
-  async processStudentPayment(paymentData: PaymentData): Promise<PaymentResponse> {
+  async processStudentPayment(
+    paymentData: PaymentData,
+  ): Promise<PaymentResponse> {
     console.log(colors.cyan('🔄 Processing student payment...'));
     console.log(colors.gray(`Amount: ₦${paymentData.amount.toLocaleString()}`));
     console.log(colors.gray(`Student: ${paymentData.student_id}`));
@@ -58,168 +65,187 @@ export class PaymentProcessorService {
           success: false,
           message: 'Payment validation failed',
           errors: validation.errors,
-          statusCode: 400
+          statusCode: 400,
         });
       }
 
       // Step 2: Process payment in database transaction
-      const result = await this.prisma.$transaction(async (prisma) => {
-        // Get student and school information
-        const student = await prisma.user.findFirst({
-          where: { id: paymentData.student_id },
-          include: {
-            school: {
-              include: {
-                wallet: true,
-                finance: true
-              }
-            }
+      const result = await this.prisma.$transaction(
+        async (prisma) => {
+          // Get student and school information
+          const student = await prisma.user.findFirst({
+            where: { id: paymentData.student_id },
+            include: {
+              school: {
+                include: {
+                  wallet: true,
+                  finance: true,
+                },
+              },
+            },
+          });
+
+          if (!student) {
+            throw new NotFoundException('Student not found');
           }
-        });
 
-        if (!student) {
-          throw new NotFoundException('Student not found');
-        }
-
-        if (student.role !== 'student') {
-          throw new BadRequestException('User is not a student');
-        }
-
-        const school = student.school;
-        if (!school) {
-          throw new NotFoundException('School not found');
-        }
-
-        // Ensure wallet exists
-        let wallet = school.wallet;
-        if (!wallet) {
-          console.log(colors.yellow('⚠️ Creating wallet for school...'));
-          wallet = await prisma.wallet.create({
-            data: {
-              school_id: school.id,
-              balance: 0,
-              currency: 'NGN',
-              wallet_type: 'SCHOOL_WALLET',
-              is_active: true
-            }
-          });
-        }
-
-        // Ensure finance record exists
-        let finance = school.finance;
-        if (!finance) {
-          console.log(colors.yellow('⚠️ Creating finance record for school...'));
-          finance = await prisma.finance.create({
-            data: {
-              school_id: school.id,
-              total_revenue: 0,
-              outstanding_fee: 0,
-              amount_withdrawn: 0
-            }
-          });
-        }
-
-        // Get current academic session for the school
-        const currentSessionResponse = await this.academicSessionService.getCurrentSession(school.id);
-        if (!currentSessionResponse.success) {
-          throw new BadRequestException({
-            success: false,
-            message: "No current academic session found for the school",
-            error: null,
-            statusCode: 400
-          });
-        }
-
-        // Generate unique reference if not provided
-        const reference = paymentData.reference || this.generatePaymentReference();
-
-        // Step 3: Create payment record
-        console.log(colors.blue('📝 Creating payment record...'));
-        const payment = await prisma.payment.create({
-          data: {
-            finance_id: finance.id,
-            student_id: paymentData.student_id,
-            class_id: paymentData.class_id,
-            payment_for: paymentData.payment_for,
-            amount: paymentData.amount,
-            payment_type: paymentData.payment_type,
-            transaction_type: paymentData.transaction_type,
-            payment_date: new Date(),
-            academic_session_id: currentSessionResponse.data.id
+          if (student.role !== 'student') {
+            throw new BadRequestException('User is not a student');
           }
-        });
 
-        // Step 4: Create wallet transaction
-        console.log(colors.blue('💰 Creating wallet transaction...'));
-        const walletTransaction = await prisma.walletTransaction.create({
-          data: {
-            wallet_id: wallet.id,
-            transaction_type: this.mapPaymentTypeToWalletType(paymentData.transaction_type),
-            amount: paymentData.amount,
-            description: `${paymentData.payment_for} - ${student.first_name} ${student.last_name}`,
-            reference: reference,
-            status: 'COMPLETED',
-            processed_at: new Date(),
-            metadata: {
-              payment_id: payment.id,
+          const school = student.school;
+          if (!school) {
+            throw new NotFoundException('School not found');
+          }
+
+          // Ensure wallet exists
+          let wallet = school.wallet;
+          if (!wallet) {
+            console.log(colors.yellow('⚠️ Creating wallet for school...'));
+            wallet = await prisma.wallet.create({
+              data: {
+                school_id: school.id,
+                balance: 0,
+                currency: 'NGN',
+                wallet_type: 'SCHOOL_WALLET',
+                is_active: true,
+              },
+            });
+          }
+
+          // Ensure finance record exists
+          let finance = school.finance;
+          if (!finance) {
+            console.log(
+              colors.yellow('⚠️ Creating finance record for school...'),
+            );
+            finance = await prisma.finance.create({
+              data: {
+                school_id: school.id,
+                total_revenue: 0,
+                outstanding_fee: 0,
+                amount_withdrawn: 0,
+              },
+            });
+          }
+
+          // Get current academic session for the school
+          const currentSessionResponse =
+            await this.academicSessionService.getCurrentSession(school.id);
+          if (!currentSessionResponse.success) {
+            throw new BadRequestException({
+              success: false,
+              message: 'No current academic session found for the school',
+              error: null,
+              statusCode: 400,
+            });
+          }
+
+          // Generate unique reference if not provided
+          const reference =
+            paymentData.reference || this.generatePaymentReference();
+
+          // Step 3: Create payment record
+          console.log(colors.blue('📝 Creating payment record...'));
+          const payment = await prisma.payment.create({
+            data: {
+              finance_id: finance.id,
               student_id: paymentData.student_id,
               class_id: paymentData.class_id,
+              payment_for: paymentData.payment_for,
+              amount: paymentData.amount,
               payment_type: paymentData.payment_type,
-              original_data: paymentData.metadata || {}
-            }
-          }
-        });
-
-        // Step 5: Update wallet balance
-        console.log(colors.blue('💳 Updating wallet balance...'));
-        const updatedWallet = await prisma.wallet.update({
-          where: { id: wallet.id },
-          data: {
-            balance: {
-              increment: paymentData.transaction_type === 'credit' ? paymentData.amount : -paymentData.amount
+              transaction_type: paymentData.transaction_type,
+              payment_date: new Date(),
+              academic_session_id: currentSessionResponse.data.id,
             },
-            last_updated: new Date()
-          }
-        });
+          });
 
-        // Step 6: Update finance summary
-        console.log(colors.blue('📊 Updating finance summary...'));
-        const updatedFinance = await prisma.finance.update({
-          where: { id: finance.id },
-          data: {
-            total_revenue: {
-              increment: paymentData.transaction_type === 'credit' ? paymentData.amount : 0
+          // Step 4: Create wallet transaction
+          console.log(colors.blue('💰 Creating wallet transaction...'));
+          const walletTransaction = await prisma.walletTransaction.create({
+            data: {
+              wallet_id: wallet.id,
+              transaction_type: this.mapPaymentTypeToWalletType(
+                paymentData.transaction_type,
+              ),
+              amount: paymentData.amount,
+              description: `${paymentData.payment_for} - ${student.first_name} ${student.last_name}`,
+              reference: reference,
+              status: 'COMPLETED',
+              processed_at: new Date(),
+              metadata: {
+                payment_id: payment.id,
+                student_id: paymentData.student_id,
+                class_id: paymentData.class_id,
+                payment_type: paymentData.payment_type,
+                original_data: paymentData.metadata || {},
+              },
             },
-            outstanding_fee: {
-              increment: paymentData.transaction_type === 'debit' ? paymentData.amount : 0
-            }
-          }
-        });
+          });
 
-        console.log(colors.green('✅ Payment processed successfully!'));
+          // Step 5: Update wallet balance
+          console.log(colors.blue('💳 Updating wallet balance...'));
+          const updatedWallet = await prisma.wallet.update({
+            where: { id: wallet.id },
+            data: {
+              balance: {
+                increment:
+                  paymentData.transaction_type === 'credit'
+                    ? paymentData.amount
+                    : -paymentData.amount,
+              },
+              last_updated: new Date(),
+            },
+          });
 
-        return {
-          payment,
-          walletTransaction,
-          walletBalance: updatedWallet.balance,
-          financeSummary: updatedFinance
-        };
+          // Step 6: Update finance summary
+          console.log(colors.blue('📊 Updating finance summary...'));
+          const updatedFinance = await prisma.finance.update({
+            where: { id: finance.id },
+            data: {
+              total_revenue: {
+                increment:
+                  paymentData.transaction_type === 'credit'
+                    ? paymentData.amount
+                    : 0,
+              },
+              outstanding_fee: {
+                increment:
+                  paymentData.transaction_type === 'debit'
+                    ? paymentData.amount
+                    : 0,
+              },
+            },
+          });
 
-      }, {
-        maxWait: 5000,
-        timeout: 15000
-      });
+          console.log(colors.green('✅ Payment processed successfully!'));
+
+          return {
+            payment,
+            walletTransaction,
+            walletBalance: updatedWallet.balance,
+            financeSummary: updatedFinance,
+          };
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
 
       return {
         success: true,
         message: 'Payment processed successfully',
-        data: result
+        data: result,
       };
-
     } catch (error) {
       console.log(colors.red('❌ Payment processing failed:'), error.message);
-      
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
 
@@ -227,7 +253,7 @@ export class PaymentProcessorService {
         success: false,
         message: 'Payment processing failed',
         error: error.message,
-        statusCode: 500
+        statusCode: 500,
       });
     }
   }
@@ -237,7 +263,9 @@ export class PaymentProcessorService {
    * @param paymentData - Payment information to validate
    * @returns Validation result
    */
-  async validatePayment(paymentData: PaymentData): Promise<PaymentValidationResult> {
+  async validatePayment(
+    paymentData: PaymentData,
+  ): Promise<PaymentValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -247,7 +275,8 @@ export class PaymentProcessorService {
     if (!paymentData.amount) errors.push('Amount is required');
     if (!paymentData.payment_for) errors.push('Payment purpose is required');
     if (!paymentData.payment_type) errors.push('Payment type is required');
-    if (!paymentData.transaction_type) errors.push('Transaction type is required');
+    if (!paymentData.transaction_type)
+      errors.push('Transaction type is required');
 
     // Amount validation
     if (paymentData.amount <= 0) {
@@ -261,7 +290,7 @@ export class PaymentProcessorService {
     // Check if student exists
     try {
       const student = await this.prisma.user.findFirst({
-        where: { id: paymentData.student_id }
+        where: { id: paymentData.student_id },
       });
 
       if (!student) {
@@ -276,7 +305,7 @@ export class PaymentProcessorService {
     // Check if class exists
     try {
       const classRecord = await this.prisma.class.findFirst({
-        where: { id: paymentData.class_id }
+        where: { id: paymentData.class_id },
       });
 
       if (!classRecord) {
@@ -289,7 +318,7 @@ export class PaymentProcessorService {
     return {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }
 
@@ -303,7 +332,7 @@ export class PaymentProcessorService {
   async getStudentPaymentHistory(
     studentId: string,
     limit: number = 10,
-    offset: number = 0
+    offset: number = 0,
   ) {
     try {
       const payments = await this.prisma.payment.findMany({
@@ -312,17 +341,17 @@ export class PaymentProcessorService {
           class: true,
           finance: {
             include: {
-              school: true
-            }
-          }
+              school: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         take: limit,
-        skip: offset
+        skip: offset,
       });
 
       const total = await this.prisma.payment.count({
-        where: { student_id: studentId }
+        where: { student_id: studentId },
       });
 
       return {
@@ -333,9 +362,9 @@ export class PaymentProcessorService {
             total,
             limit,
             offset,
-            hasMore: offset + limit < total
-          }
-        }
+            hasMore: offset + limit < total,
+          },
+        },
       };
     } catch (error) {
       throw new InternalServerErrorException('Failed to fetch payment history');
@@ -352,11 +381,11 @@ export class PaymentProcessorService {
   async getSchoolWalletHistory(
     schoolId: string,
     limit: number = 10,
-    offset: number = 0
+    offset: number = 0,
   ) {
     try {
       const wallet = await this.prisma.wallet.findFirst({
-        where: { school_id: schoolId }
+        where: { school_id: schoolId },
       });
 
       if (!wallet) {
@@ -367,11 +396,11 @@ export class PaymentProcessorService {
         where: { wallet_id: wallet.id },
         orderBy: { createdAt: 'desc' },
         take: limit,
-        skip: offset
+        skip: offset,
       });
 
       const total = await this.prisma.walletTransaction.count({
-        where: { wallet_id: wallet.id }
+        where: { wallet_id: wallet.id },
       });
 
       return {
@@ -383,9 +412,9 @@ export class PaymentProcessorService {
             total,
             limit,
             offset,
-            hasMore: offset + limit < total
-          }
-        }
+            hasMore: offset + limit < total,
+          },
+        },
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -404,19 +433,19 @@ export class PaymentProcessorService {
     try {
       const [wallet, finance, recentTransactions] = await Promise.all([
         this.prisma.wallet.findFirst({
-          where: { school_id: schoolId }
+          where: { school_id: schoolId },
         }),
         this.prisma.finance.findFirst({
-          where: { school_id: schoolId }
+          where: { school_id: schoolId },
         }),
         this.prisma.walletTransaction.findMany({
           where: {
             wallet: { school_id: schoolId },
-            status: 'COMPLETED'
+            status: 'COMPLETED',
           },
           orderBy: { createdAt: 'desc' },
-          take: 5
-        })
+          take: 5,
+        }),
       ]);
 
       return {
@@ -429,12 +458,14 @@ export class PaymentProcessorService {
             currentBalance: wallet?.balance || 0,
             totalRevenue: finance?.total_revenue || 0,
             outstandingFees: finance?.outstanding_fee || 0,
-            totalTransactions: recentTransactions.length
-          }
-        }
+            totalTransactions: recentTransactions.length,
+          },
+        },
       };
     } catch (error) {
-      throw new InternalServerErrorException('Failed to fetch financial summary');
+      throw new InternalServerErrorException(
+        'Failed to fetch financial summary',
+      );
     }
   }
 
@@ -443,7 +474,9 @@ export class PaymentProcessorService {
    * @param transactionType - Payment transaction type
    * @returns Wallet transaction type
    */
-  private mapPaymentTypeToWalletType(transactionType: 'credit' | 'debit'): WalletTransactionType {
+  private mapPaymentTypeToWalletType(
+    transactionType: 'credit' | 'debit',
+  ): WalletTransactionType {
     switch (transactionType) {
       case 'credit':
         return 'CREDIT';
@@ -463,4 +496,4 @@ export class PaymentProcessorService {
     const random = Math.floor(Math.random() * 1000);
     return `PAY-${timestamp}-${random}`;
   }
-} 
+}

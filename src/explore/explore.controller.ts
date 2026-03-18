@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ExploreService } from './explore.service';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
@@ -44,4 +51,3 @@ export class ExploreController {
     return this.exploreService.playVideo(req.user, videoId);
   }
 }
-

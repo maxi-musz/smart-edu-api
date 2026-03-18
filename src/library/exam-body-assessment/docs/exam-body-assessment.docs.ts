@@ -1,4 +1,10 @@
-import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+} from '@nestjs/swagger';
 import {
   CreateLibraryExamBodyAssessmentDto,
   CreateLibraryExamBodyQuestionDto,
@@ -124,7 +130,8 @@ export const UpdateLibraryExamBodyAssessmentDocs = {
 export const DeleteLibraryExamBodyAssessmentDocs = {
   operation: ApiOperation({
     summary: 'Delete a library exam body assessment',
-    description: 'Deletes an assessment owned by the authenticated library platform.',
+    description:
+      'Deletes an assessment owned by the authenticated library platform.',
   }),
   response200: ApiResponse({
     status: 200,
@@ -199,7 +206,8 @@ export const UpdateLibraryExamBodyQuestionDocs = {
 export const DeleteLibraryExamBodyQuestionDocs = {
   operation: ApiOperation({
     summary: 'Delete a question for a library exam body assessment',
-    description: 'Deletes a question owned by the authenticated library platform.',
+    description:
+      'Deletes a question owned by the authenticated library platform.',
   }),
   response200: ApiResponse({
     status: 200,
@@ -252,8 +260,18 @@ export const GetLibraryExamBodyAttemptsDocs = {
       'Returns who practiced, how many total attempts, unique users count, and paginated list of attempts for this assessment.',
   }),
   paramAssessmentId: ApiParam({ name: 'id', description: 'Assessment ID' }),
-  queryPage: ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' }),
-  queryLimit: ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' }),
+  queryPage: ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default: 1)',
+  }),
+  queryLimit: ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default: 20)',
+  }),
   response200: ApiResponse({
     status: 200,
     description: 'Attempts and analytics retrieved successfully',
@@ -267,7 +285,8 @@ export const GetLibraryExamBodyAttemptsDocs = {
 export const GetLibraryExamBodyAttemptByIdDocs = {
   operation: ApiOperation({
     summary: 'Get a single attempt with responses (library owners)',
-    description: 'Returns one submission with user info and question responses for viewing.',
+    description:
+      'Returns one submission with user info and question responses for viewing.',
   }),
   paramAssessmentId: ApiParam({ name: 'id', description: 'Assessment ID' }),
   paramAttemptId: ApiParam({ name: 'attemptId', description: 'Attempt ID' }),

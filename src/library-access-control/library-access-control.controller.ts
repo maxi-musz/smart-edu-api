@@ -11,7 +11,13 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+} from '@nestjs/swagger';
 import { LibraryAccessControlService } from './library-access-control.service';
 import {
   GrantAccessDto,
@@ -30,16 +36,23 @@ import { LibraryJwtGuard } from '../library/library-auth/guard/library-jwt.guard
 @UseGuards(LibraryJwtGuard)
 @Controller('library-access-control')
 export class LibraryAccessControlController {
-  constructor(private readonly accessControlService: LibraryAccessControlService) {}
+  constructor(
+    private readonly accessControlService: LibraryAccessControlService,
+  ) {}
 
   @Post('grant')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Grant a school access to library resources',
-    description: 'Library owners can grant schools access to their resources (subjects, topics, videos, materials, assessments)',
+    description:
+      'Library owners can grant schools access to their resources (subjects, topics, videos, materials, assessments)',
   })
   @ApiResponse({ status: 201, description: 'Access granted successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - invalid resource IDs or school already has access' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - invalid resource IDs or school already has access',
+  })
   @ApiResponse({ status: 404, description: 'School or resource not found' })
   async grantAccess(@GetUser() user: any, @Body() dto: GrantAccessDto) {
     return this.accessControlService.grantAccess(user, dto);
@@ -52,7 +65,10 @@ export class LibraryAccessControlController {
     description: 'Bulk grant access to multiple schools at once',
   })
   @ApiResponse({ status: 201, description: 'Bulk access granted' })
-  @ApiResponse({ status: 400, description: 'Bad request - some schools not found or invalid' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - some schools not found or invalid',
+  })
   async grantBulkAccess(@GetUser() user: any, @Body() dto: GrantBulkAccessDto) {
     return this.accessControlService.grantBulkAccess(user, dto);
   }
@@ -60,7 +76,8 @@ export class LibraryAccessControlController {
   @Patch(':id')
   @ApiOperation({
     summary: 'Update an existing access grant',
-    description: 'Update access level, expiration date, or activate/deactivate access',
+    description:
+      'Update access level, expiration date, or activate/deactivate access',
   })
   @ApiParam({ name: 'id', description: 'Access grant ID' })
   @ApiResponse({ status: 200, description: 'Access updated successfully' })
@@ -77,7 +94,7 @@ export class LibraryAccessControlController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Revoke access',
-    description: 'Revoke a school\'s access to a resource (soft delete)',
+    description: "Revoke a school's access to a resource (soft delete)",
   })
   @ApiParam({ name: 'id', description: 'Access grant ID' })
   @ApiResponse({ status: 200, description: 'Access revoked successfully' })
@@ -94,10 +111,14 @@ export class LibraryAccessControlController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Exclude (turn off) a resource under a subject grant',
-    description: 'When library owner grants a subject, all topics/videos/materials/assessments are on by default. Use this to turn off individual items.',
+    description:
+      'When library owner grants a subject, all topics/videos/materials/assessments are on by default. Use this to turn off individual items.',
   })
   @ApiResponse({ status: 201, description: 'Resource excluded successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - missing resource ID' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - missing resource ID',
+  })
   @ApiResponse({ status: 404, description: 'Resource not found' })
   async excludeResource(@GetUser() user: any, @Body() dto: ExcludeResourceDto) {
     return this.accessControlService.excludeResource(user, dto);
@@ -107,7 +128,8 @@ export class LibraryAccessControlController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Include (turn on) a previously excluded resource',
-    description: 'Remove the exclusion so the resource is visible again under the subject grant.',
+    description:
+      'Remove the exclusion so the resource is visible again under the subject grant.',
   })
   @ApiResponse({ status: 200, description: 'Resource included successfully' })
   async includeResource(@GetUser() user: any, @Body() dto: ExcludeResourceDto) {
@@ -117,7 +139,8 @@ export class LibraryAccessControlController {
   @Get('schools')
   @ApiOperation({
     summary: 'Get all schools with access to platform resources',
-    description: 'Retrieve a paginated list of schools that have been granted access',
+    description:
+      'Retrieve a paginated list of schools that have been granted access',
   })
   @ApiResponse({ status: 200, description: 'Schools retrieved successfully' })
   async getSchoolsWithAccess(
@@ -130,16 +153,24 @@ export class LibraryAccessControlController {
   @Get('schools/:schoolId')
   @ApiOperation({
     summary: 'Get detailed access information for a specific school',
-    description: 'View all resources a school has access to with detailed information',
+    description:
+      'View all resources a school has access to with detailed information',
   })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
-  @ApiResponse({ status: 200, description: 'School access details retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'School access details retrieved successfully',
+  })
   @ApiResponse({ status: 404, description: 'School not found' })
   async getSchoolAccessDetails(
     @GetUser() user: any,
     @Param('schoolId') schoolId: string,
     @Query() query: QuerySchoolAccessDetailsDto,
   ) {
-    return this.accessControlService.getSchoolAccessDetails(user, schoolId, query);
+    return this.accessControlService.getSchoolAccessDetails(
+      user,
+      schoolId,
+      query,
+    );
   }
 }

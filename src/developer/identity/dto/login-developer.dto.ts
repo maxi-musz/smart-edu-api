@@ -18,5 +18,3 @@ export class LoginDeveloperDto {
   @IsNotEmpty()
   password: string;
 }
-
-

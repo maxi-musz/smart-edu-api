@@ -1,5 +1,10 @@
 import { applyDecorators } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 
 export class TeachersDocs {
   static get bearerAuth() {
@@ -10,7 +15,8 @@ export class TeachersDocs {
   static get profileOperation() {
     return ApiOperation({
       summary: 'Get teacher profile',
-      description: 'Fetch the profile of the authenticated teacher with their assignments'
+      description:
+        'Fetch the profile of the authenticated teacher with their assignments',
     });
   }
 
@@ -22,7 +28,10 @@ export class TeachersDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Teacher profile fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Teacher profile fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -30,7 +39,13 @@ export class TeachersDocs {
               name: { type: 'string', example: 'John Doe' },
               email: { type: 'string', example: 'john@school.com' },
               phone_number: { type: 'string', example: '+1234567890' },
-              display_picture: { type: 'object', example: { secure_url: 'https://example.com/profile.jpg', public_id: 'profile_id' } },
+              display_picture: {
+                type: 'object',
+                example: {
+                  secure_url: 'https://example.com/profile.jpg',
+                  public_id: 'profile_id',
+                },
+              },
               status: { type: 'string', example: 'active' },
               gender: { type: 'string', example: 'male' },
               assigned_subjects: {
@@ -42,16 +57,19 @@ export class TeachersDocs {
                     name: { type: 'string', example: 'Mathematics' },
                     code: { type: 'string', example: 'MATH101' },
                     color: { type: 'string', example: '#FF5733' },
-                    description: { type: 'string', example: 'Advanced mathematics course' },
+                    description: {
+                      type: 'string',
+                      example: 'Advanced mathematics course',
+                    },
                     assigned_class: {
                       type: 'object',
                       properties: {
                         id: { type: 'string', example: 'class-uuid' },
-                        name: { type: 'string', example: 'Class 10A' }
-                      }
-                    }
-                  }
-                }
+                        name: { type: 'string', example: 'Class 10A' },
+                      },
+                    },
+                  },
+                },
               },
               managed_classes: {
                 type: 'array',
@@ -61,22 +79,22 @@ export class TeachersDocs {
                     id: { type: 'string', example: 'class-uuid' },
                     name: { type: 'string', example: 'Class 10A' },
                     student_count: { type: 'number', example: 25 },
-                    subject_count: { type: 'number', example: 8 }
-                  }
-                }
+                    subject_count: { type: 'number', example: 8 },
+                  },
+                },
               },
               summary: {
                 type: 'object',
                 properties: {
                   total_subjects: { type: 'number', example: 3 },
-                  total_classes: { type: 'number', example: 1 }
-                }
-              }
-            }
+                  total_classes: { type: 'number', example: 1 },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 
@@ -84,7 +102,8 @@ export class TeachersDocs {
   static get dashboardOperation() {
     return ApiOperation({
       summary: 'Get teacher dashboard',
-      description: 'Fetch teacher dashboard with managed class details and schedule information'
+      description:
+        'Fetch teacher dashboard with managed class details and schedule information',
     });
   }
 
@@ -96,7 +115,10 @@ export class TeachersDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Teacher dashboard fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Teacher dashboard fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -104,10 +126,24 @@ export class TeachersDocs {
                 type: 'object',
                 properties: {
                   year: { type: 'number', example: 2024 },
-                  term: { type: 'string', example: 'first', enum: ['first', 'second', 'third'] },
-                  term_start_date: { type: 'string', format: 'date-time', example: '2024-09-01T00:00:00.000Z', nullable: true },
-                  term_end_date: { type: 'string', format: 'date-time', example: '2024-12-20T00:00:00.000Z', nullable: true }
-                }
+                  term: {
+                    type: 'string',
+                    example: 'first',
+                    enum: ['first', 'second', 'third'],
+                  },
+                  term_start_date: {
+                    type: 'string',
+                    format: 'date-time',
+                    example: '2024-09-01T00:00:00.000Z',
+                    nullable: true,
+                  },
+                  term_end_date: {
+                    type: 'string',
+                    format: 'date-time',
+                    example: '2024-12-20T00:00:00.000Z',
+                    nullable: true,
+                  },
+                },
               },
               managed_class: {
                 type: 'object',
@@ -119,10 +155,10 @@ export class TeachersDocs {
                     properties: {
                       total: { type: 'number', example: 25 },
                       males: { type: 'number', example: 12 },
-                      females: { type: 'number', example: 13 }
-                    }
-                  }
-                }
+                      females: { type: 'number', example: 13 },
+                    },
+                  },
+                },
               },
               subjects_teaching: {
                 type: 'array',
@@ -133,9 +169,12 @@ export class TeachersDocs {
                     name: { type: 'string', example: 'Mathematics' },
                     code: { type: 'string', example: 'MATH101' },
                     color: { type: 'string', example: '#3B82F6' },
-                    description: { type: 'string', example: 'Advanced mathematics course' }
-                  }
-                }
+                    description: {
+                      type: 'string',
+                      example: 'Advanced mathematics course',
+                    },
+                  },
+                },
               },
               recent_notifications: {
                 type: 'array',
@@ -144,12 +183,34 @@ export class TeachersDocs {
                   properties: {
                     id: { type: 'string', example: 'notification-uuid' },
                     title: { type: 'string', example: 'Staff Meeting' },
-                    description: { type: 'string', example: 'Monthly staff meeting scheduled' },
-                    type: { type: 'string', example: 'all', enum: ['all', 'teachers', 'students', 'school_director', 'admin'] },
-                    comingUpOn: { type: 'string', format: 'date-time', example: '2024-08-28T10:00:00.000Z', nullable: true },
-                    createdAt: { type: 'string', format: 'date-time', example: '2024-08-27T14:30:00.000Z' }
-                  }
-                }
+                    description: {
+                      type: 'string',
+                      example: 'Monthly staff meeting scheduled',
+                    },
+                    type: {
+                      type: 'string',
+                      example: 'all',
+                      enum: [
+                        'all',
+                        'teachers',
+                        'students',
+                        'school_director',
+                        'admin',
+                      ],
+                    },
+                    comingUpOn: {
+                      type: 'string',
+                      format: 'date-time',
+                      example: '2024-08-28T10:00:00.000Z',
+                      nullable: true,
+                    },
+                    createdAt: {
+                      type: 'string',
+                      format: 'date-time',
+                      example: '2024-08-27T14:30:00.000Z',
+                    },
+                  },
+                },
               },
               class_schedules: {
                 type: 'object',
@@ -167,31 +228,37 @@ export class TeachersDocs {
                               type: 'object',
                               properties: {
                                 id: { type: 'string', example: 'subject-uuid' },
-                                name: { type: 'string', example: 'Mathematics' },
+                                name: {
+                                  type: 'string',
+                                  example: 'Mathematics',
+                                },
                                 code: { type: 'string', example: 'MATH101' },
-                                color: { type: 'string', example: '#FF5733' }
-                              }
+                                color: { type: 'string', example: '#FF5733' },
+                              },
                             },
                             class: {
                               type: 'object',
                               properties: {
                                 id: { type: 'string', example: 'class-uuid' },
-                                name: { type: 'string', example: 'Class 10A' }
-                              }
+                                name: { type: 'string', example: 'Class 10A' },
+                              },
                             },
                             time: {
                               type: 'object',
                               properties: {
                                 from: { type: 'string', example: '08:00' },
                                 to: { type: 'string', example: '09:00' },
-                                label: { type: 'string', example: 'First Period' }
-                              }
+                                label: {
+                                  type: 'string',
+                                  example: 'First Period',
+                                },
+                              },
                             },
-                            room: { type: 'string', example: 'Room 101' }
-                          }
-                        }
-                      }
-                    }
+                            room: { type: 'string', example: 'Room 101' },
+                          },
+                        },
+                      },
+                    },
                   },
                   tomorrow: {
                     type: 'object',
@@ -208,29 +275,32 @@ export class TeachersDocs {
                                 id: { type: 'string', example: 'subject-uuid' },
                                 name: { type: 'string', example: 'Physics' },
                                 code: { type: 'string', example: 'PHY101' },
-                                color: { type: 'string', example: '#3B82F6' }
-                              }
+                                color: { type: 'string', example: '#3B82F6' },
+                              },
                             },
                             class: {
                               type: 'object',
                               properties: {
                                 id: { type: 'string', example: 'class-uuid' },
-                                name: { type: 'string', example: 'Class 10A' }
-                              }
+                                name: { type: 'string', example: 'Class 10A' },
+                              },
                             },
                             time: {
                               type: 'object',
                               properties: {
                                 from: { type: 'string', example: '10:30' },
                                 to: { type: 'string', example: '12:30' },
-                                label: { type: 'string', example: 'Second Period' }
-                              }
+                                label: {
+                                  type: 'string',
+                                  example: 'Second Period',
+                                },
+                              },
                             },
-                            room: { type: 'string', example: 'Room 102' }
-                          }
-                        }
-                      }
-                    }
+                            room: { type: 'string', example: 'Room 102' },
+                          },
+                        },
+                      },
+                    },
                   },
                   day_after_tomorrow: {
                     type: 'object',
@@ -247,37 +317,40 @@ export class TeachersDocs {
                                 id: { type: 'string', example: 'subject-uuid' },
                                 name: { type: 'string', example: 'Chemistry' },
                                 code: { type: 'string', example: 'CHEM101' },
-                                color: { type: 'string', example: '#10B981' }
-                              }
+                                color: { type: 'string', example: '#10B981' },
+                              },
                             },
                             class: {
                               type: 'object',
                               properties: {
                                 id: { type: 'string', example: 'class-uuid' },
-                                name: { type: 'string', example: 'Class 10A' }
-                              }
+                                name: { type: 'string', example: 'Class 10A' },
+                              },
                             },
                             time: {
                               type: 'object',
                               properties: {
                                 from: { type: 'string', example: '14:30' },
                                 to: { type: 'string', example: '16:30' },
-                                label: { type: 'string', example: 'Fourth Period' }
-                              }
+                                label: {
+                                  type: 'string',
+                                  example: 'Fourth Period',
+                                },
+                              },
                             },
-                            room: { type: 'string', example: 'Room 103' }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+                            room: { type: 'string', example: 'Room 103' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 
@@ -285,18 +358,55 @@ export class TeachersDocs {
   static get studentTabOperation() {
     return ApiOperation({
       summary: 'Get teacher student tab',
-      description: 'Fetch paginated list of students managed by the teacher, along with their classes and subjects'
+      description:
+        'Fetch paginated list of students managed by the teacher, along with their classes and subjects',
     });
   }
 
   static get studentTabQueries() {
     return applyDecorators(
-      ApiQuery({ name: 'page', required: false, type: 'string', description: 'Page number (default: 1)', example: '1' }),
-      ApiQuery({ name: 'limit', required: false, type: 'string', description: 'Number of items per page (default: 10)', example: '10' }),
-      ApiQuery({ name: 'search', required: false, type: 'string', description: 'Search term for student name or email', example: 'john' }),
-      ApiQuery({ name: 'class_id', required: false, type: 'string', description: 'Filter by specific class ID', example: 'class-uuid' }),
-      ApiQuery({ name: 'sort_by', required: false, type: 'string', description: 'Sort field (default: createdAt)', example: 'name' }),
-      ApiQuery({ name: 'sort_order', required: false, type: 'string', description: 'Sort order: asc or desc (default: desc)', example: 'desc' })
+      ApiQuery({
+        name: 'page',
+        required: false,
+        type: 'string',
+        description: 'Page number (default: 1)',
+        example: '1',
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        type: 'string',
+        description: 'Number of items per page (default: 10)',
+        example: '10',
+      }),
+      ApiQuery({
+        name: 'search',
+        required: false,
+        type: 'string',
+        description: 'Search term for student name or email',
+        example: 'john',
+      }),
+      ApiQuery({
+        name: 'class_id',
+        required: false,
+        type: 'string',
+        description: 'Filter by specific class ID',
+        example: 'class-uuid',
+      }),
+      ApiQuery({
+        name: 'sort_by',
+        required: false,
+        type: 'string',
+        description: 'Sort field (default: createdAt)',
+        example: 'name',
+      }),
+      ApiQuery({
+        name: 'sort_order',
+        required: false,
+        type: 'string',
+        description: 'Sort order: asc or desc (default: desc)',
+        example: 'desc',
+      }),
     );
   }
 
@@ -308,7 +418,10 @@ export class TeachersDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Student tab fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Student tab fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -324,19 +437,25 @@ export class TeachersDocs {
                         student_id: { type: 'string', example: 'STD/2024/001' },
                         name: { type: 'string', example: 'John Doe' },
                         email: { type: 'string', example: 'john@school.com' },
-                        display_picture: { type: 'object', example: { secure_url: 'https://example.com/image.jpg', public_id: 'image_id' } },
+                        display_picture: {
+                          type: 'object',
+                          example: {
+                            secure_url: 'https://example.com/image.jpg',
+                            public_id: 'image_id',
+                          },
+                        },
                         status: { type: 'string', example: 'active' },
                         gender: { type: 'string', example: 'male' },
                         class: {
                           type: 'object',
                           properties: {
                             id: { type: 'string', example: 'class-uuid' },
-                            name: { type: 'string', example: 'Class 10A' }
-                          }
+                            name: { type: 'string', example: 'Class 10A' },
+                          },
                         },
-                        user_id: { type: 'string', example: 'user-uuid' }
-                      }
-                    }
+                        user_id: { type: 'string', example: 'user-uuid' },
+                      },
+                    },
                   },
                   pagination: {
                     type: 'object',
@@ -346,10 +465,10 @@ export class TeachersDocs {
                       total_pages: { type: 'number', example: 3 },
                       has_next: { type: 'boolean', example: true },
                       has_previous: { type: 'boolean', example: false },
-                      results_per_page: { type: 'number', example: 10 }
-                    }
-                  }
-                }
+                      results_per_page: { type: 'number', example: 10 },
+                    },
+                  },
+                },
               },
               classes: {
                 type: 'array',
@@ -359,9 +478,9 @@ export class TeachersDocs {
                     id: { type: 'string', example: 'class-uuid' },
                     name: { type: 'string', example: 'Class 10A' },
                     student_count: { type: 'number', example: 25 },
-                    subject_count: { type: 'number', example: 8 }
-                  }
-                }
+                    subject_count: { type: 'number', example: 8 },
+                  },
+                },
               },
               subjects: {
                 type: 'array',
@@ -372,30 +491,33 @@ export class TeachersDocs {
                     name: { type: 'string', example: 'Mathematics' },
                     code: { type: 'string', example: 'MATH101' },
                     color: { type: 'string', example: '#FF5733' },
-                    description: { type: 'string', example: 'Advanced mathematics course' },
+                    description: {
+                      type: 'string',
+                      example: 'Advanced mathematics course',
+                    },
                     assigned_class: {
                       type: 'object',
                       properties: {
                         id: { type: 'string', example: 'class-uuid' },
-                        name: { type: 'string', example: 'Class 10A' }
-                      }
-                    }
-                  }
-                }
+                        name: { type: 'string', example: 'Class 10A' },
+                      },
+                    },
+                  },
+                },
               },
               summary: {
                 type: 'object',
                 properties: {
                   total_students: { type: 'number', example: 25 },
                   total_classes: { type: 'number', example: 1 },
-                  total_subjects: { type: 'number', example: 3 }
-                }
-              }
-            }
+                  total_subjects: { type: 'number', example: 3 },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 
@@ -403,7 +525,8 @@ export class TeachersDocs {
   static get schedulesTabOperation() {
     return ApiOperation({
       summary: 'Get teacher schedules tab',
-      description: 'Fetch teacher schedules with subjects, classes, and timetable data'
+      description:
+        'Fetch teacher schedules with subjects, classes, and timetable data',
     });
   }
 
@@ -415,7 +538,10 @@ export class TeachersDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Schedules tab fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Schedules tab fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -427,9 +553,9 @@ export class TeachersDocs {
                     id: { type: 'string', example: 'subject-uuid' },
                     name: { type: 'string', example: 'Mathematics' },
                     code: { type: 'string', example: 'MATH101' },
-                    color: { type: 'string', example: '#FF5733' }
-                  }
-                }
+                    color: { type: 'string', example: '#FF5733' },
+                  },
+                },
               },
               classes: {
                 type: 'array',
@@ -437,9 +563,9 @@ export class TeachersDocs {
                   type: 'object',
                   properties: {
                     id: { type: 'string', example: 'class-uuid' },
-                    name: { type: 'string', example: 'Class 10A' }
-                  }
-                }
+                    name: { type: 'string', example: 'Class 10A' },
+                  },
+                },
               },
               timetable_data: {
                 type: 'object',
@@ -453,9 +579,9 @@ export class TeachersDocs {
                         startTime: { type: 'string', example: '08:30' },
                         endTime: { type: 'string', example: '10:30' },
                         order: { type: 'number', example: 1 },
-                        label: { type: 'string', example: 'First Period' }
-                      }
-                    }
+                        label: { type: 'string', example: 'First Period' },
+                      },
+                    },
                   },
                   schedule: {
                     type: 'object',
@@ -465,7 +591,10 @@ export class TeachersDocs {
                         items: {
                           type: 'object',
                           properties: {
-                            timeSlotId: { type: 'string', example: 'timeslot-uuid' },
+                            timeSlotId: {
+                              type: 'string',
+                              example: 'timeslot-uuid',
+                            },
                             startTime: { type: 'string', example: '08:30' },
                             endTime: { type: 'string', example: '10:30' },
                             label: { type: 'string', example: 'First Period' },
@@ -474,47 +603,53 @@ export class TeachersDocs {
                               nullable: true,
                               properties: {
                                 id: { type: 'string', example: 'subject-uuid' },
-                                name: { type: 'string', example: 'Mathematics' },
+                                name: {
+                                  type: 'string',
+                                  example: 'Mathematics',
+                                },
                                 code: { type: 'string', example: 'MATH101' },
-                                color: { type: 'string', example: '#FF5733' }
-                              }
+                                color: { type: 'string', example: '#FF5733' },
+                              },
                             },
                             teacher: {
                               type: 'object',
                               nullable: true,
                               properties: {
                                 id: { type: 'string', example: 'teacher-uuid' },
-                                name: { type: 'string', example: 'John Doe' }
-                              }
+                                name: { type: 'string', example: 'John Doe' },
+                              },
                             },
-                            room: { type: 'string', example: 'Room 101' }
-                          }
-                        }
+                            room: { type: 'string', example: 'Room 101' },
+                          },
+                        },
                       },
                       TUESDAY: {
                         type: 'array',
                         items: {
                           type: 'object',
                           properties: {
-                            timeSlotId: { type: 'string', example: 'timeslot-uuid' },
+                            timeSlotId: {
+                              type: 'string',
+                              example: 'timeslot-uuid',
+                            },
                             startTime: { type: 'string', example: '08:30' },
                             endTime: { type: 'string', example: '10:30' },
                             label: { type: 'string', example: 'First Period' },
                             subject: { type: 'object', nullable: true },
                             teacher: { type: 'object', nullable: true },
-                            room: { type: 'string', nullable: true }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+                            room: { type: 'string', nullable: true },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 
@@ -522,19 +657,55 @@ export class TeachersDocs {
   static get subjectsTabOperation() {
     return ApiOperation({
       summary: 'Get teacher subjects dashboard tab',
-      description: 'Fetch teacher subjects dashboard with stats, academic session, and subjects details with pagination, search, and filtering'
+      description:
+        'Fetch teacher subjects dashboard with stats, academic session, and subjects details with pagination, search, and filtering',
     });
   }
 
   static get subjectsTabQueries() {
     return applyDecorators(
-      ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)', example: 1 }),
-      ApiQuery({ name: 'limit', required: false, description: 'Number of subjects per page (default: 5, max: 10)', example: 5 }),
-      ApiQuery({ name: 'search', required: false, description: 'Search by subject name or code', example: 'math' }),
-      ApiQuery({ name: 'academic_session_id', required: false, description: 'Filter by academic session ID', example: 'session-uuid' }),
-      ApiQuery({ name: 'class_id', required: false, description: 'Filter by class ID', example: 'class-uuid' }),
-      ApiQuery({ name: 'sort_by', required: false, description: 'Sort by field (name, code, createdAt)', example: 'name' }),
-      ApiQuery({ name: 'sort_order', required: false, description: 'Sort order (asc, desc)', example: 'asc' })
+      ApiQuery({
+        name: 'page',
+        required: false,
+        description: 'Page number (default: 1)',
+        example: 1,
+      }),
+      ApiQuery({
+        name: 'limit',
+        required: false,
+        description: 'Number of subjects per page (default: 5, max: 10)',
+        example: 5,
+      }),
+      ApiQuery({
+        name: 'search',
+        required: false,
+        description: 'Search by subject name or code',
+        example: 'math',
+      }),
+      ApiQuery({
+        name: 'academic_session_id',
+        required: false,
+        description: 'Filter by academic session ID',
+        example: 'session-uuid',
+      }),
+      ApiQuery({
+        name: 'class_id',
+        required: false,
+        description: 'Filter by class ID',
+        example: 'class-uuid',
+      }),
+      ApiQuery({
+        name: 'sort_by',
+        required: false,
+        description: 'Sort by field (name, code, createdAt)',
+        example: 'name',
+      }),
+      ApiQuery({
+        name: 'sort_order',
+        required: false,
+        description: 'Sort order (asc, desc)',
+        example: 'asc',
+      }),
     );
   }
 
@@ -546,7 +717,10 @@ export class TeachersDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Subjects dashboard tab fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Subjects dashboard tab fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -556,16 +730,16 @@ export class TeachersDocs {
                   totalSubjects: { type: 'number', example: 3 },
                   totalVideos: { type: 'number', example: 5 },
                   totalMaterials: { type: 'number', example: 2 },
-                  totalClasses: { type: 'number', example: 1 }
-                }
+                  totalClasses: { type: 'number', example: 1 },
+                },
               },
               academicSession: {
                 type: 'object',
                 properties: {
                   id: { type: 'string', example: 'session-uuid' },
                   academic_year: { type: 'string', example: '2024/2025' },
-                  term: { type: 'string', example: 'first' }
-                }
+                  term: { type: 'string', example: 'first' },
+                },
               },
               subjects: {
                 type: 'array',
@@ -576,11 +750,17 @@ export class TeachersDocs {
                     name: { type: 'string', example: 'Mathematics' },
                     code: { type: 'string', example: 'MATH101' },
                     color: { type: 'string', example: '#FF5733' },
-                    description: { type: 'string', example: 'Advanced mathematics course' },
-                    thumbnail: { 
-                      type: 'object', 
+                    description: {
+                      type: 'string',
+                      example: 'Advanced mathematics course',
+                    },
+                    thumbnail: {
+                      type: 'object',
                       nullable: true,
-                      example: { secure_url: 'https://example.com/thumbnail.jpg', public_id: 'thumbnail_id' } 
+                      example: {
+                        secure_url: 'https://example.com/thumbnail.jpg',
+                        public_id: 'thumbnail_id',
+                      },
                     },
                     timetableEntries: {
                       type: 'array',
@@ -596,11 +776,11 @@ export class TeachersDocs {
                             type: 'object',
                             properties: {
                               id: { type: 'string', example: 'class-uuid' },
-                              name: { type: 'string', example: 'Class 10A' }
-                            }
-                          }
-                        }
-                      }
+                              name: { type: 'string', example: 'Class 10A' },
+                            },
+                          },
+                        },
+                      },
                     },
                     classesTakingSubject: {
                       type: 'array',
@@ -608,22 +788,28 @@ export class TeachersDocs {
                         type: 'object',
                         properties: {
                           id: { type: 'string', example: 'class-uuid' },
-                          name: { type: 'string', example: 'Class 10A' }
-                        }
-                      }
+                          name: { type: 'string', example: 'Class 10A' },
+                        },
+                      },
                     },
                     contentCounts: {
                       type: 'object',
                       properties: {
                         totalVideos: { type: 'number', example: 3 },
                         totalMaterials: { type: 'number', example: 2 },
-                        totalAssignments: { type: 'number', example: 1 }
-                      }
+                        totalAssignments: { type: 'number', example: 1 },
+                      },
                     },
-                    createdAt: { type: 'string', example: 'Aug 28, 2025, 4:00 PM' },
-                    updatedAt: { type: 'string', example: 'Aug 28, 2025, 4:00 PM' }
-                  }
-                }
+                    createdAt: {
+                      type: 'string',
+                      example: 'Aug 28, 2025, 4:00 PM',
+                    },
+                    updatedAt: {
+                      type: 'string',
+                      example: 'Aug 28, 2025, 4:00 PM',
+                    },
+                  },
+                },
               },
               pagination: {
                 type: 'object',
@@ -633,8 +819,8 @@ export class TeachersDocs {
                   total: { type: 'number', example: 12 },
                   totalPages: { type: 'number', example: 3 },
                   hasNext: { type: 'boolean', example: true },
-                  hasPrev: { type: 'boolean', example: false }
-                }
+                  hasPrev: { type: 'boolean', example: false },
+                },
               },
               managedClasses: {
                 type: 'array',
@@ -643,9 +829,9 @@ export class TeachersDocs {
                   properties: {
                     id: { type: 'string', example: 'class-uuid' },
                     name: { type: 'string', example: 'Class 10A' },
-                    classId: { type: 'number', example: 1 }
-                  }
-                }
+                    classId: { type: 'number', example: 1 },
+                  },
+                },
               },
               teachingSubjects: {
                 type: 'array',
@@ -656,20 +842,26 @@ export class TeachersDocs {
                     name: { type: 'string', example: 'Mathematics' },
                     code: { type: 'string', example: 'MATH101' },
                     color: { type: 'string', example: '#FF5733' },
-                    description: { type: 'string', example: 'Advanced mathematics course' },
-                    thumbnail: { 
-                      type: 'object', 
+                    description: {
+                      type: 'string',
+                      example: 'Advanced mathematics course',
+                    },
+                    thumbnail: {
+                      type: 'object',
                       nullable: true,
-                      example: { secure_url: 'https://example.com/thumbnail.jpg', public_id: 'thumbnail_id' } 
-                    }
-                  }
-                }
-              }
-            }
+                      example: {
+                        secure_url: 'https://example.com/thumbnail.jpg',
+                        public_id: 'thumbnail_id',
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 
@@ -677,21 +869,21 @@ export class TeachersDocs {
   static get response401() {
     return ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
+      description: 'Unauthorized - Invalid or missing JWT token',
     });
   }
 
   static get response404() {
     return ApiResponse({
       status: 404,
-      description: 'Resource not found'
+      description: 'Resource not found',
     });
   }
 
   static get response500() {
     return ApiResponse({
       status: 500,
-      description: 'Internal server error'
+      description: 'Internal server error',
     });
   }
 }

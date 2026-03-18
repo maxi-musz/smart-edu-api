@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsBoolean, Min, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  IsBoolean,
+  Min,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTopicDto {
@@ -22,7 +30,8 @@ export class CreateTopicDto {
 
   @ApiPropertyOptional({
     description: 'Description of the topic',
-    example: 'Learn about variables, their types, and how to use them in algebraic expressions',
+    example:
+      'Learn about variables, their types, and how to use them in algebraic expressions',
   })
   @IsString()
   @IsOptional()
@@ -63,7 +72,8 @@ export class UpdateTopicDto {
 
   @ApiPropertyOptional({
     description: 'Description of the topic',
-    example: 'Learn about variables, their types, and how to use them in algebraic expressions',
+    example:
+      'Learn about variables, their types, and how to use them in algebraic expressions',
   })
   @IsString()
   @IsOptional()

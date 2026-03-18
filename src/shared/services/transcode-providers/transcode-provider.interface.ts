@@ -16,7 +16,7 @@ export interface TranscodeOutput {
 }
 
 export interface VideoResolution {
-  name: string;      // e.g. '480p', '720p', '1080p'
+  name: string; // e.g. '480p', '720p', '1080p'
   width: number;
   height: number;
   videoBitrate: string;
@@ -24,9 +24,27 @@ export interface VideoResolution {
 }
 
 export const DEFAULT_RESOLUTIONS: VideoResolution[] = [
-  { name: '480p', width: 854, height: 480, videoBitrate: '1400k', audioBitrate: '128k' },
-  { name: '720p', width: 1280, height: 720, videoBitrate: '2800k', audioBitrate: '128k' },
-  { name: '1080p', width: 1920, height: 1080, videoBitrate: '5000k', audioBitrate: '192k' },
+  {
+    name: '480p',
+    width: 854,
+    height: 480,
+    videoBitrate: '1400k',
+    audioBitrate: '128k',
+  },
+  {
+    name: '720p',
+    width: 1280,
+    height: 720,
+    videoBitrate: '2800k',
+    audioBitrate: '128k',
+  },
+  {
+    name: '1080p',
+    width: 1920,
+    height: 1080,
+    videoBitrate: '5000k',
+    audioBitrate: '192k',
+  },
 ];
 
 export interface TranscodeProvider {

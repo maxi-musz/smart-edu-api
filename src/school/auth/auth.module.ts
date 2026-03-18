@@ -26,7 +26,7 @@ import { AuditModule } from 'src/audit/audit.module';
       useFactory: async (config: ConfigService) => {
         const secret = config.get('JWT_SECRET');
         const expiresIn = config.get('JWT_EXPIRES_IN') || '7d';
-        
+
         return {
           secret,
           signOptions: {
@@ -34,11 +34,16 @@ import { AuditModule } from 'src/audit/audit.module';
           },
         };
       },
-      inject: [ConfigService]
-    })
+      inject: [ConfigService],
+    }),
   ],
   controllers: [AuthController, TemEndpointController],
-  providers: [AuthService, JwtStrategy, ExcelProcessorService, TemEndpointService],
-  exports: [AuthService]
+  providers: [
+    AuthService,
+    JwtStrategy,
+    ExcelProcessorService,
+    TemEndpointService,
+  ],
+  exports: [AuthService],
 })
 export class AuthModule {}

@@ -9,6 +9,6 @@ import { StorageModule } from 'src/shared/services/providers/storage.module';
   imports: [PrismaModule, AcademicSessionModule, StorageModule],
   controllers: [ProfilesController],
   providers: [ProfilesService],
-  exports: [ProfilesService]
+  exports: [ProfilesService],
 })
 export class ProfilesModule {}

@@ -1,5 +1,17 @@
-import { Controller, Get, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { ProfileService } from './profile.service';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { GetLibraryUserProfileDocs } from './docs/profile.docs';
@@ -21,4 +33,3 @@ export class ProfileController {
     return this.profileService.getUserProfile(req.user);
   }
 }
-

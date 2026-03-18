@@ -11,7 +11,10 @@ import * as path from 'path';
 import * as ffmpeg from 'fluent-ffmpeg';
 import { S3Service } from '../shared/services/s3.service';
 import { UploadProgressService } from '../school/ai-chat/upload-progress.service';
-import type { IVideoUploadHandler, VideoUploadPersistParams } from './interfaces/video-upload-handler.interface';
+import type {
+  IVideoUploadHandler,
+  VideoUploadPersistParams,
+} from './interfaces/video-upload-handler.interface';
 
 const DEFAULT_MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500MB
 
@@ -50,7 +53,9 @@ export class VideoUploadService {
    * Start a video upload session. Returns immediately with sessionId (202-style).
    * Upload runs in background; progress is reported via UploadProgressService.
    */
-  startVideoUploadSession(options: StartVideoUploadOptions): StartVideoUploadResult {
+  startVideoUploadSession(
+    options: StartVideoUploadOptions,
+  ): StartVideoUploadResult {
     const {
       videoFile,
       thumbnailFile,
@@ -104,7 +109,10 @@ export class VideoUploadService {
   /**
    * Subscribe to progress updates (for SSE). Use this so clients get the same instance that created the session.
    */
-  subscribeToProgress(sessionId: string, callback: (progress: any) => void): () => void {
+  subscribeToProgress(
+    sessionId: string,
+    callback: (progress: any) => void,
+  ): () => void {
     return this.uploadProgressService.subscribeToProgress(sessionId, callback);
   }
 
@@ -184,10 +192,7 @@ export class VideoUploadService {
           '',
           thumbKey,
           (loaded) => {
-            lastKnownLoaded = Math.min(
-              videoFile.size + loaded,
-              totalBytes,
-            );
+            lastKnownLoaded = Math.min(videoFile.size + loaded, totalBytes);
           },
         );
         thumbnailUrl = thumbResult.url;
@@ -204,7 +209,11 @@ export class VideoUploadService {
 
       const durationSeconds = await this.extractVideoDuration(videoFile);
 
-      this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'saving',
+        lastKnownLoaded,
+      );
 
       const persistParams: VideoUploadPersistParams = {
         videoUrl: videoUploadResult.url,
@@ -229,7 +238,9 @@ export class VideoUploadService {
         persisted.id,
       );
 
-      this.logger.log(colors.green(`✅ Video uploaded successfully: ${persisted.id}`));
+      this.logger.log(
+        colors.green(`✅ Video uploaded successfully: ${persisted.id}`),
+      );
 
       let localPathForTranscode: string | undefined;
       const transcodeTempDir = path.join(os.tmpdir(), 'hls-transcode');
@@ -265,7 +276,9 @@ export class VideoUploadService {
         )
         .catch((err) =>
           this.logger.error(
-            colors.red(`❌ HLS transcode failed for ${persisted.id}: ${err?.message ?? String(err)}`),
+            colors.red(
+              `❌ HLS transcode failed for ${persisted.id}: ${err?.message ?? String(err)}`,
+            ),
           ),
         );
     } catch (error) {
@@ -281,20 +294,28 @@ export class VideoUploadService {
       if (s3UploadSucceeded && s3Key) {
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted video from storage`));
+          this.logger.log(
+            colors.yellow(`🗑️ Rolled back: Deleted video from storage`),
+          );
         } catch (deleteError) {
           this.logger.error(
-            colors.red(`❌ Failed to rollback video file: ${deleteError.message}`),
+            colors.red(
+              `❌ Failed to rollback video file: ${deleteError.message}`,
+            ),
           );
         }
       }
       if (thumbnailUploadSucceeded && thumbnailS3Key) {
         try {
           await this.s3Service.deleteFile(thumbnailS3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted thumbnail from storage`));
+          this.logger.log(
+            colors.yellow(`🗑️ Rolled back: Deleted thumbnail from storage`),
+          );
         } catch (deleteError) {
           this.logger.error(
-            colors.red(`❌ Failed to rollback thumbnail: ${deleteError.message}`),
+            colors.red(
+              `❌ Failed to rollback thumbnail: ${deleteError.message}`,
+            ),
           );
         }
       }
@@ -322,7 +343,9 @@ export class VideoUploadService {
         );
         const buffer = videoFile.buffer ?? (videoFile as any).buffer;
         if (!buffer) {
-          this.logger.warn(colors.yellow(`⚠️ No buffer available for duration extraction`));
+          this.logger.warn(
+            colors.yellow(`⚠️ No buffer available for duration extraction`),
+          );
           return resolve(null);
         }
         fs.writeFileSync(tempFilePath, buffer);
@@ -331,12 +354,16 @@ export class VideoUploadService {
             if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
           } catch (cleanupErr) {
             this.logger.warn(
-              colors.yellow(`⚠️ Failed to clean up temp file: ${cleanupErr.message}`),
+              colors.yellow(
+                `⚠️ Failed to clean up temp file: ${cleanupErr.message}`,
+              ),
             );
           }
           if (err) {
             this.logger.warn(
-              colors.yellow(`⚠️ Could not extract video duration: ${err.message}`),
+              colors.yellow(
+                `⚠️ Could not extract video duration: ${err.message}`,
+              ),
             );
             return resolve(null);
           }
@@ -351,7 +378,9 @@ export class VideoUploadService {
         });
       } catch (error) {
         this.logger.warn(
-          colors.yellow(`⚠️ Error extracting video duration: ${(error as Error).message}`),
+          colors.yellow(
+            `⚠️ Error extracting video duration: ${(error as Error).message}`,
+          ),
         );
         return resolve(null);
       }

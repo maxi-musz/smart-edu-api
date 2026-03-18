@@ -1,2 +1,2 @@
 // Export director finance documentation
-export * from './finance.docs'; 
+export * from './finance.docs';

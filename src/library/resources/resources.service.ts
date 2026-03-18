@@ -1,4 +1,9 @@
-import { Injectable, Logger, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -10,7 +15,11 @@ export class ResourcesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getResourcesDashboard(user: any): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY RESOURCES] Fetching resources dashboard for library user: ${user.email}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY RESOURCES] Fetching resources dashboard for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get the library user to access platformId
@@ -59,156 +68,174 @@ export class ResourcesService {
       });
 
       // Fetch videos and materials for this user's platform only
-      const [allVideos, allMaterials, allSubjects, allTopics] = await Promise.all([
-        this.prisma.libraryVideoLesson.findMany({
-          where: {
-            platformId: libraryUser.platformId,
-          },
-          include: {
-            platform: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
+      const [allVideos, allMaterials, allSubjects, allTopics] =
+        await Promise.all([
+          this.prisma.libraryVideoLesson.findMany({
+            where: {
+              platformId: libraryUser.platformId,
+            },
+            include: {
+              platform: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  classId: true,
+                },
+              },
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+              uploadedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
               },
             },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                classId: true,
+            orderBy: {
+              createdAt: 'desc',
+            },
+          }) as any,
+          this.prisma.libraryMaterial.findMany({
+            where: {
+              platformId: libraryUser.platformId,
+            },
+            include: {
+              platform: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  classId: true,
+                },
+              },
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+              uploadedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
               },
             },
-            topic: {
-              select: {
-                id: true,
-                title: true,
-              },
+            orderBy: {
+              createdAt: 'desc',
             },
-            uploadedBy: {
-              select: {
-                id: true,
-                email: true,
-                first_name: true,
-                last_name: true,
-              },
+          }) as any,
+          this.prisma.librarySubject.findMany({
+            where: {
+              platformId: libraryUser.platformId,
             },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        }) as any,
-        this.prisma.libraryMaterial.findMany({
-          where: {
-            platformId: libraryUser.platformId,
-          },
-          include: {
-            platform: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-              },
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              color: true,
+              platformId: true,
+              classId: true,
+              createdAt: true,
             },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                classId: true,
-              },
+            orderBy: {
+              name: 'asc',
             },
-            topic: {
-              select: {
-                id: true,
-                title: true,
-              },
+          }),
+          this.prisma.libraryTopic.findMany({
+            where: {
+              platformId: libraryUser.platformId,
             },
-            uploadedBy: {
-              select: {
-                id: true,
-                email: true,
-                first_name: true,
-                last_name: true,
-              },
+            select: {
+              id: true,
+              title: true,
+              platformId: true,
+              subjectId: true,
+              order: true,
+              is_active: true,
+              createdAt: true,
             },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        }) as any,
-        this.prisma.librarySubject.findMany({
-          where: {
-            platformId: libraryUser.platformId,
-          },
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            color: true,
-            platformId: true,
-            classId: true,
-            createdAt: true,
-          },
-          orderBy: {
-            name: 'asc',
-          },
-        }),
-        this.prisma.libraryTopic.findMany({
-          where: {
-            platformId: libraryUser.platformId,
-          },
-          select: {
-            id: true,
-            title: true,
-            platformId: true,
-            subjectId: true,
-            order: true,
-            is_active: true,
-            createdAt: true,
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        }),
-      ]);
+            orderBy: {
+              createdAt: 'desc',
+            },
+          }),
+        ]);
 
       // Calculate statistics
       const videoStats = {
         total: allVideos.length,
-        published: allVideos.filter((v: any) => v.status === 'published').length,
+        published: allVideos.filter((v: any) => v.status === 'published')
+          .length,
         draft: allVideos.filter((v: any) => v.status === 'draft').length,
         archived: allVideos.filter((v: any) => v.status === 'archived').length,
       };
 
       const materialStats = {
         total: allMaterials.length,
-        published: allMaterials.filter((m: any) => m.status === 'published').length,
+        published: allMaterials.filter((m: any) => m.status === 'published')
+          .length,
         draft: allMaterials.filter((m: any) => m.status === 'draft').length,
-        archived: allMaterials.filter((m: any) => m.status === 'archived').length,
+        archived: allMaterials.filter((m: any) => m.status === 'archived')
+          .length,
         byType: {
           PDF: allMaterials.filter((m: any) => m.materialType === 'PDF').length,
           DOC: allMaterials.filter((m: any) => m.materialType === 'DOC').length,
           PPT: allMaterials.filter((m: any) => m.materialType === 'PPT').length,
-          VIDEO: allMaterials.filter((m: any) => m.materialType === 'VIDEO').length,
-          NOTE: allMaterials.filter((m: any) => m.materialType === 'NOTE').length,
-          LINK: allMaterials.filter((m: any) => m.materialType === 'LINK').length,
-          OTHER: allMaterials.filter((m: any) => m.materialType === 'OTHER').length,
+          VIDEO: allMaterials.filter((m: any) => m.materialType === 'VIDEO')
+            .length,
+          NOTE: allMaterials.filter((m: any) => m.materialType === 'NOTE')
+            .length,
+          LINK: allMaterials.filter((m: any) => m.materialType === 'LINK')
+            .length,
+          OTHER: allMaterials.filter((m: any) => m.materialType === 'OTHER')
+            .length,
         },
       };
 
       // Get unique uploaders
-      const uniqueVideoUploaders = new Set(allVideos.map((v: any) => v.uploadedById)).size;
-      const uniqueMaterialUploaders = new Set(allMaterials.map((m: any) => m.uploadedById)).size;
+      const uniqueVideoUploaders = new Set(
+        allVideos.map((v: any) => v.uploadedById),
+      ).size;
+      const uniqueMaterialUploaders = new Set(
+        allMaterials.map((m: any) => m.uploadedById),
+      ).size;
 
       // Group resources by library class
       const resourcesByClass = libraryClasses.map((libClass) => {
-        const classSubjects = allSubjects.filter((s) => s.classId === libClass.id);
+        const classSubjects = allSubjects.filter(
+          (s) => s.classId === libClass.id,
+        );
         const classSubjectIds = classSubjects.map((s) => s.id);
 
-        const classVideos = allVideos.filter((v: any) => classSubjectIds.includes(v.subjectId));
-        const classMaterials = allMaterials.filter((m: any) => classSubjectIds.includes(m.subjectId));
+        const classVideos = allVideos.filter((v: any) =>
+          classSubjectIds.includes(v.subjectId),
+        );
+        const classMaterials = allMaterials.filter((m: any) =>
+          classSubjectIds.includes(m.subjectId),
+        );
 
         return {
           ...libClass,
@@ -217,8 +244,12 @@ export class ResourcesService {
           materialsCount: classMaterials.length,
           subjects: classSubjects.map((subject) => ({
             ...subject,
-            videosCount: allVideos.filter((v: any) => v.subjectId === subject.id).length,
-            materialsCount: allMaterials.filter((m: any) => m.subjectId === subject.id).length,
+            videosCount: allVideos.filter(
+              (v: any) => v.subjectId === subject.id,
+            ).length,
+            materialsCount: allMaterials.filter(
+              (m: any) => m.subjectId === subject.id,
+            ).length,
           })),
         };
       });
@@ -259,17 +290,36 @@ export class ResourcesService {
         topics: allTopics,
       };
 
-      this.logger.log(colors.green(`Successfully retrieved resources dashboard data for platform: ${platform.name}`));
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved resources dashboard data for platform: ${platform.name}`,
+        ),
+      );
 
-      return new ApiResponse(true, 'Resources dashboard retrieved successfully', responseData);
+      return new ApiResponse(
+        true,
+        'Resources dashboard retrieved successfully',
+        responseData,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching resources dashboard: ${error.message}`));
-      throw new InternalServerErrorException('Failed to retrieve resources dashboard data');
+      this.logger.error(
+        colors.red(`Error fetching resources dashboard: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve resources dashboard data',
+      );
     }
   }
 
-  async getResourcesByClass(user: any, classId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY RESOURCES] Fetching resources for class: ${classId} for user: ${user.email}`));
+  async getResourcesByClass(
+    user: any,
+    classId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY RESOURCES] Fetching resources for class: ${classId} for user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get the library user to access platformId
@@ -422,8 +472,14 @@ export class ResourcesService {
           );
 
           // Calculate totals for the subject
-          const totalMaterials = topicsWithResources.reduce((sum, topic) => sum + topic.materialsCount, 0);
-          const totalVideos = topicsWithResources.reduce((sum, topic) => sum + topic.videosCount, 0);
+          const totalMaterials = topicsWithResources.reduce(
+            (sum, topic) => sum + topic.materialsCount,
+            0,
+          );
+          const totalVideos = topicsWithResources.reduce(
+            (sum, topic) => sum + topic.videosCount,
+            0,
+          );
 
           return {
             ...subject,
@@ -447,23 +503,43 @@ export class ResourcesService {
         subjects: subjectsWithResources,
         statistics: {
           totalSubjects: subjectsWithResources.length,
-          totalTopics: subjectsWithResources.reduce((sum, subject) => sum + subject.topicsCount, 0),
-          totalMaterials: subjectsWithResources.reduce((sum, subject) => sum + subject.totalMaterials, 0),
-          totalVideos: subjectsWithResources.reduce((sum, subject) => sum + subject.totalVideos, 0),
+          totalTopics: subjectsWithResources.reduce(
+            (sum, subject) => sum + subject.topicsCount,
+            0,
+          ),
+          totalMaterials: subjectsWithResources.reduce(
+            (sum, subject) => sum + subject.totalMaterials,
+            0,
+          ),
+          totalVideos: subjectsWithResources.reduce(
+            (sum, subject) => sum + subject.totalVideos,
+            0,
+          ),
         },
       };
 
-      this.logger.log(colors.green(`Successfully retrieved resources for class: ${libraryClass.name}`));
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved resources for class: ${libraryClass.name}`,
+        ),
+      );
 
-      return new ApiResponse(true, 'Class resources retrieved successfully', responseData);
+      return new ApiResponse(
+        true,
+        'Class resources retrieved successfully',
+        responseData,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error fetching class resources: ${error.message}`));
-      throw new InternalServerErrorException('Failed to retrieve class resources');
+      this.logger.error(
+        colors.red(`Error fetching class resources: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve class resources',
+      );
     }
   }
 }
-

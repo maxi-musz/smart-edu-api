@@ -14,7 +14,8 @@ export class UpdatePermissionDto {
   action: (typeof PERMISSION_ACTIONS)[number];
 
   @ApiProperty({
-    description: 'Permission code from the available-permissions catalog (e.g. manage_library_users, view_analytics)',
+    description:
+      'Permission code from the available-permissions catalog (e.g. manage_library_users, view_analytics)',
     example: 'view_analytics',
   })
   @IsString()

@@ -80,11 +80,15 @@ export const studentOnboardEmailTemplate = (payload: {
             <p style="margin: 10px 0 0 0; font-size: 14px; color: #6b7280;">Please change your Password after your first Login for Security.</p>
           </div>
           
-          ${payload.className ? `
+          ${
+            payload.className
+              ? `
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <p style="margin: 0; color: #92400e;"><strong>📚 Class Assignment:</strong> You have been assigned to <strong>${payload.className}</strong></p>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
           <h3 style="color: #1f2937;">🎯 What You Can Do:</h3>
           <ul style="color: #4b5563;">
@@ -162,4 +166,4 @@ export const directorOnboardEmailTemplate = (payload: {
       </div>
     </div>
   `;
-}; 
+};

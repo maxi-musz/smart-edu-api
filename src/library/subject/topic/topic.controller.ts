@@ -1,8 +1,28 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, Patch, Param, Get, Delete, Query, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Param,
+  Get,
+  Delete,
+  Query,
+  BadRequestException,
+} from '@nestjs/common';
 import { TopicService } from './topic.service';
 import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
 import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
-import { CreateTopicDocs, UpdateTopicDocs, GetTopicMaterialsDocs, GetTopicsBySubjectDocs, DeleteTopicDocs } from './docs/topic.docs';
+import {
+  CreateTopicDocs,
+  UpdateTopicDocs,
+  GetTopicMaterialsDocs,
+  GetTopicsBySubjectDocs,
+  DeleteTopicDocs,
+} from './docs/topic.docs';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('Library Topic')
@@ -21,10 +41,7 @@ export class TopicController {
   @CreateTopicDocs.response401
   @CreateTopicDocs.response404
   @CreateTopicDocs.response500
-  async createTopic(
-    @Request() req: any,
-    @Body() payload: CreateTopicDto,
-  ) {
+  async createTopic(@Request() req: any, @Body() payload: CreateTopicDto) {
     return await this.topicService.createTopic(req.user, payload);
   }
 
@@ -94,10 +111,7 @@ export class TopicController {
   @DeleteTopicDocs.response401
   @DeleteTopicDocs.response404
   @DeleteTopicDocs.response500
-  async deleteTopic(
-    @Request() req: any,
-    @Param('topicId') topicId: string,
-  ) {
+  async deleteTopic(@Request() req: any, @Param('topicId') topicId: string) {
     return await this.topicService.deleteTopic(req.user, topicId);
   }
 }

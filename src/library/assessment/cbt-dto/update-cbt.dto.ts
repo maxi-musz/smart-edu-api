@@ -11,10 +11,9 @@ export class UpdateLibraryCBTDto extends PartialType(CreateLibraryCBTDto) {
   @ApiPropertyOptional({
     description: 'Status of the CBT Assessment',
     enum: QuizStatus,
-    example: QuizStatus.PUBLISHED
+    example: QuizStatus.PUBLISHED,
   })
   @IsEnum(QuizStatus)
   @IsOptional()
   status?: QuizStatus;
 }
-

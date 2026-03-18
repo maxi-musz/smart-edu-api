@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -10,8 +15,12 @@ export class LibraryDevClassService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async createClass(payload: CreateLibraryClassDevDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Creating library class: ${payload.name}`));
+  async createClass(
+    payload: CreateLibraryClassDevDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`[DEV] Creating library class: ${payload.name}`),
+    );
 
     const existing = await this.prisma.libraryClass.findFirst({
       where: {
@@ -44,7 +53,9 @@ export class LibraryDevClassService {
   }
 
   async listClasses(platformId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Listing library classes for platform: ${platformId}`));
+    this.logger.log(
+      colors.cyan(`[DEV] Listing library classes for platform: ${platformId}`),
+    );
 
     // if (!platformId) {
     //   throw new BadRequestException('platformId is required');
@@ -54,7 +65,11 @@ export class LibraryDevClassService {
       orderBy: { order: 'asc' },
     });
 
-    return new ApiResponse(true, 'Library classes retrieved successfully', classes);
+    return new ApiResponse(
+      true,
+      'Library classes retrieved successfully',
+      classes,
+    );
   }
 
   async getClass(id: string): Promise<ApiResponse<any>> {
@@ -71,10 +86,17 @@ export class LibraryDevClassService {
       throw new NotFoundException('Library class not found');
     }
 
-    return new ApiResponse(true, 'Library class retrieved successfully', libraryClass);
+    return new ApiResponse(
+      true,
+      'Library class retrieved successfully',
+      libraryClass,
+    );
   }
 
-  async updateClass(id: string, payload: { name?: string; order?: number }): Promise<ApiResponse<any>> {
+  async updateClass(
+    id: string,
+    payload: { name?: string; order?: number },
+  ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[DEV] Updating library class: ${id}`));
 
     const existing = await this.prisma.libraryClass.findUnique({
@@ -114,5 +136,3 @@ export class LibraryDevClassService {
     return new ApiResponse(true, 'Library class deleted successfully', null);
   }
 }
-
-

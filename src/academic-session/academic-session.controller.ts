@@ -8,7 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
-  HttpStatus
+  HttpStatus,
 } from '@nestjs/common';
 import { AcademicSessionService } from './academic-session.service';
 import { CreateAcademicSessionDto } from './dto/create-academic-session.dto';
@@ -21,7 +21,9 @@ import { ApiTags } from '@nestjs/swagger';
 @Controller('academic-sessions')
 @UseGuards(JwtGuard)
 export class AcademicSessionController {
-  constructor(private readonly academicSessionService: AcademicSessionService) {}
+  constructor(
+    private readonly academicSessionService: AcademicSessionService,
+  ) {}
 
   @Post()
   @AcademicSessionDocs.bearerAuth
@@ -51,13 +53,18 @@ export class AcademicSessionController {
     @Query('status') status?: string,
     @Query('is_current') is_current?: string,
     @Query('sort_by') sort_by?: string,
-    @Query('sort_order') sort_order?: 'asc' | 'desc'
+    @Query('sort_order') sort_order?: 'asc' | 'desc',
   ) {
     const filters = {
       school_id,
       term: term as any,
       status: status as any,
-      is_current: is_current === 'true' ? true : is_current === 'false' ? false : undefined
+      is_current:
+        is_current === 'true'
+          ? true
+          : is_current === 'false'
+            ? false
+            : undefined,
     };
 
     const options = {
@@ -65,7 +72,7 @@ export class AcademicSessionController {
       limit: limit ? parseInt(limit) : 10,
       search,
       sort_by: sort_by || 'createdAt',
-      sort_order: sort_order || 'desc'
+      sort_order: sort_order || 'desc',
     };
 
     return await this.academicSessionService.findAll(filters, options);
@@ -87,12 +94,12 @@ export class AcademicSessionController {
   async getSessionsByYearRange(
     @Query('school_id') school_id: string,
     @Query('start_year') start_year: string,
-    @Query('end_year') end_year: string
+    @Query('end_year') end_year: string,
   ) {
     return await this.academicSessionService.getSessionsByYearRange(
       school_id,
       parseInt(start_year),
-      parseInt(end_year)
+      parseInt(end_year),
     );
   }
 
@@ -118,7 +125,7 @@ export class AcademicSessionController {
   @AcademicSessionDocs.response500
   async update(
     @Param('id') id: string,
-    @Body() updateDto: UpdateAcademicSessionDto
+    @Body() updateDto: UpdateAcademicSessionDto,
   ) {
     return await this.academicSessionService.update(id, updateDto);
   }
@@ -138,18 +145,19 @@ export class AcademicSessionController {
   @AcademicSessionDocs.bearerAuth
   async transitionToNewAcademicYear(
     @Query('school_id') school_id: string,
-    @Body() newSessionData: {
+    @Body()
+    newSessionData: {
       academic_year: string;
       start_year: number;
       end_year: number;
       term: 'first' | 'second' | 'third';
       start_date: string;
       end_date: string;
-    }
+    },
   ) {
     return await this.academicSessionService.transitionToNewAcademicYear(
       school_id,
-      newSessionData
+      newSessionData,
     );
   }
 }

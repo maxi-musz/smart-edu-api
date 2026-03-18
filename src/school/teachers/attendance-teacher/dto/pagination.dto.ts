@@ -3,11 +3,11 @@ import { IsOptional, IsNumber, Min, Max } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
 export class PaginationQueryDto {
-  @ApiProperty({ 
-    example: 1, 
+  @ApiProperty({
+    example: 1,
     description: 'Page number (1-based)',
     required: false,
-    minimum: 1
+    minimum: 1,
   })
   @IsOptional()
   @Type(() => Number)
@@ -20,12 +20,12 @@ export class PaginationQueryDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiProperty({ 
-    example: 10, 
+  @ApiProperty({
+    example: 10,
     description: 'Number of items per page',
     required: false,
     minimum: 1,
-    maximum: 100
+    maximum: 100,
   })
   @IsOptional()
   @Type(() => Number)
@@ -56,6 +56,9 @@ export class PaginationMetaDto {
   @ApiProperty({ example: true, description: 'Whether there is a next page' })
   has_next: boolean;
 
-  @ApiProperty({ example: false, description: 'Whether there is a previous page' })
+  @ApiProperty({
+    example: false,
+    description: 'Whether there is a previous page',
+  })
   has_previous: boolean;
 }

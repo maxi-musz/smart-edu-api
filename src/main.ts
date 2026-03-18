@@ -39,15 +39,19 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1', {
     exclude: ['health', ''],
   });
-  
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-  }));
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+    }),
+  );
 
   // Swagger Documentation Setup
   const config = new DocumentBuilder()
     .setTitle('Smart Edu Hub API')
-    .setDescription('A comprehensive API for managing school operations, authentication, and educational resources')
+    .setDescription(
+      'A comprehensive API for managing school operations, authentication, and educational resources',
+    )
     .setVersion('1.0')
     .addBearerAuth(
       {
@@ -62,7 +66,10 @@ async function bootstrap() {
     )
     .addTag('Authentication', 'School and user authentication endpoints')
     .addTag('Admin', 'Administrative operations and management')
-    .addTag('School Management', 'School-related operations and data management')
+    .addTag(
+      'School Management',
+      'School-related operations and data management',
+    )
     .addTag('Students', 'Student management and operations')
     .addTag('Teachers', 'Teacher management and operations')
     .addTag('Classes', 'Class management and operations')
@@ -88,7 +95,11 @@ async function bootstrap() {
     const prisma = app.get(PrismaService);
     await prisma.$queryRaw`SELECT 1`;
   } catch (err) {
-    console.error(colors.red('❌ Failed to connect to the database on startup. Server will not start.'));
+    console.error(
+      colors.red(
+        '❌ Failed to connect to the database on startup. Server will not start.',
+      ),
+    );
     console.error(err);
     process.exit(1);
   }
@@ -96,10 +107,22 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 3000);
 
   console.log(colors.green('🚀 Server successfully started!'));
-  console.log(colors.cyan(`📍 Server running on: http://localhost:${process.env.PORT ?? 3000}`));
-  console.log(colors.yellow(`📝 API Documentation: http://localhost:${process.env.PORT ?? 3000}/api/docs`));
+  console.log(
+    colors.cyan(
+      `📍 Server running on: http://localhost:${process.env.PORT ?? 3000}`,
+    ),
+  );
+  console.log(
+    colors.yellow(
+      `📝 API Documentation: http://localhost:${process.env.PORT ?? 3000}/api/docs`,
+    ),
+  );
   console.log(colors.blue(`💾 Database: ${process.env.DATABASE_URL}`));
-  console.log(colors.magenta(`🔗 API Base URL: http://localhost:${process.env.PORT ?? 3000}/api/v1`));
+  console.log(
+    colors.magenta(
+      `🔗 API Base URL: http://localhost:${process.env.PORT ?? 3000}/api/v1`,
+    ),
+  );
 
   // Log AWS services status at the end of startup (grouped together)
   console.log(colors.gray('────────────────────────────────────────'));

@@ -5,7 +5,7 @@ import { Type } from 'class-transformer';
 export class BulkOnboardRowDto {
   @ApiProperty({
     description: 'First name of the user',
-    example: 'John'
+    example: 'John',
   })
   @IsString()
   @IsNotEmpty()
@@ -13,7 +13,7 @@ export class BulkOnboardRowDto {
 
   @ApiProperty({
     description: 'Last name of the user',
-    example: 'Doe'
+    example: 'Doe',
   })
   @IsString()
   @IsNotEmpty()
@@ -21,7 +21,7 @@ export class BulkOnboardRowDto {
 
   @ApiProperty({
     description: 'Email address of the user',
-    example: 'john.doe@school.com'
+    example: 'john.doe@school.com',
   })
   @IsString()
   @IsNotEmpty()
@@ -29,7 +29,7 @@ export class BulkOnboardRowDto {
 
   @ApiProperty({
     description: 'Phone number of the user',
-    example: '08012345678'
+    example: '08012345678',
   })
   @IsString()
   @IsNotEmpty()
@@ -38,7 +38,24 @@ export class BulkOnboardRowDto {
   @ApiProperty({
     description: 'Class assignment (only for students)',
     example: 'pry-1',
-    enum: ['pry-1', 'pry-2', 'pry-3', 'pry-4', 'pry-5', 'pry-6', 'kg-1', 'kg-2', 'nur-1', 'nur-2', 'jss1', 'jss2', 'jss3', 'ss1', 'ss2', 'ss3']
+    enum: [
+      'pry-1',
+      'pry-2',
+      'pry-3',
+      'pry-4',
+      'pry-5',
+      'pry-6',
+      'kg-1',
+      'kg-2',
+      'nur-1',
+      'nur-2',
+      'jss1',
+      'jss2',
+      'jss3',
+      'ss1',
+      'ss2',
+      'ss3',
+    ],
   })
   @IsString()
   @IsNotEmpty()
@@ -47,7 +64,7 @@ export class BulkOnboardRowDto {
   @ApiProperty({
     description: 'Role of the user',
     example: 'student',
-    enum: ['student', 'teacher', 'school_director']
+    enum: ['student', 'teacher', 'school_director'],
   })
   @IsString()
   @IsNotEmpty()
@@ -57,7 +74,7 @@ export class BulkOnboardRowDto {
 export class BulkOnboardDto {
   @ApiProperty({
     description: 'Array of user data from Excel sheet',
-    type: [BulkOnboardRowDto]
+    type: [BulkOnboardRowDto],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -68,13 +85,13 @@ export class BulkOnboardDto {
 export class BulkOnboardResponseDto {
   @ApiProperty({
     description: 'Success status',
-    example: true
+    example: true,
   })
   success: boolean;
 
   @ApiProperty({
     description: 'Response message',
-    example: 'Bulk onboarding completed successfully'
+    example: 'Bulk onboarding completed successfully',
   })
   message: string;
 
@@ -88,10 +105,10 @@ export class BulkOnboardResponseDto {
         {
           row: 3,
           email: 'invalid@email.com',
-          error: 'Invalid email format'
-        }
-      ]
-    }
+          error: 'Invalid email format',
+        },
+      ],
+    },
   })
   data: {
     total: number;
@@ -108,4 +125,4 @@ export class BulkOnboardResponseDto {
       directors: any[];
     };
   };
-} 
+}

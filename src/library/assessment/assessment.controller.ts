@@ -60,7 +60,10 @@ export class AssessmentController {
     @Body() createAssessmentDto: CreateLibraryAssessmentDto,
     @Request() req: any,
   ) {
-    return await this.assessmentService.createAssessment(createAssessmentDto, req.user);
+    return await this.assessmentService.createAssessment(
+      createAssessmentDto,
+      req.user,
+    );
   }
 
   @Get('topic/:topicId')
@@ -75,7 +78,10 @@ export class AssessmentController {
     @Request() req: any,
     @Param('topicId') topicId: string,
   ) {
-    return await this.assessmentService.getAssessmentsByTopic(req.user, topicId);
+    return await this.assessmentService.getAssessmentsByTopic(
+      req.user,
+      topicId,
+    );
   }
 
   @Get(':id')
@@ -88,7 +94,10 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.getAssessmentById(assessmentId, req.user.sub);
+    return await this.assessmentService.getAssessmentById(
+      assessmentId,
+      req.user.sub,
+    );
   }
 
   @Get(':id/questions')
@@ -101,7 +110,10 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.getAssessmentQuestions(assessmentId, req.user.sub);
+    return await this.assessmentService.getAssessmentQuestions(
+      assessmentId,
+      req.user.sub,
+    );
   }
 
   @Post(':id/questions/upload-image')
@@ -119,7 +131,11 @@ export class AssessmentController {
     @UploadedFile() imageFile: Express.Multer.File,
     @Request() req: any,
   ) {
-    return await this.assessmentService.uploadQuestionImage(assessmentId, imageFile, req.user.sub);
+    return await this.assessmentService.uploadQuestionImage(
+      assessmentId,
+      imageFile,
+      req.user.sub,
+    );
   }
 
   @Post(':id/questions')
@@ -135,7 +151,11 @@ export class AssessmentController {
     @Body() createQuestionDto: CreateLibraryAssessmentQuestionDto,
     @Request() req: any,
   ) {
-    return await this.assessmentService.createQuestion(assessmentId, createQuestionDto, req.user.sub);
+    return await this.assessmentService.createQuestion(
+      assessmentId,
+      createQuestionDto,
+      req.user.sub,
+    );
   }
 
   @Patch(':assessmentId/questions/:questionId')
@@ -156,7 +176,13 @@ export class AssessmentController {
     @UploadedFile() imageFile: Express.Multer.File,
     @Request() req: any,
   ) {
-    return await this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, req.user.sub, imageFile);
+    return await this.assessmentService.updateQuestion(
+      assessmentId,
+      questionId,
+      updateQuestionDto,
+      req.user.sub,
+      imageFile,
+    );
   }
 
   @Delete(':assessmentId/questions/:questionId/image')
@@ -172,7 +198,11 @@ export class AssessmentController {
     @Param('questionId') questionId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.deleteQuestionImage(assessmentId, questionId, req.user.sub);
+    return await this.assessmentService.deleteQuestionImage(
+      assessmentId,
+      questionId,
+      req.user.sub,
+    );
   }
 
   @Delete(':assessmentId/questions/:questionId')
@@ -188,7 +218,11 @@ export class AssessmentController {
     @Param('questionId') questionId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.deleteQuestion(assessmentId, questionId, req.user.sub);
+    return await this.assessmentService.deleteQuestion(
+      assessmentId,
+      questionId,
+      req.user.sub,
+    );
   }
 
   @Patch(':id')
@@ -204,7 +238,11 @@ export class AssessmentController {
     @Body() updateAssessmentDto: UpdateLibraryAssessmentDto,
     @Request() req: any,
   ) {
-    return await this.assessmentService.updateAssessment(assessmentId, updateAssessmentDto, req.user.sub);
+    return await this.assessmentService.updateAssessment(
+      assessmentId,
+      updateAssessmentDto,
+      req.user.sub,
+    );
   }
 
   @Delete(':id')
@@ -218,7 +256,10 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.deleteAssessment(assessmentId, req.user.sub);
+    return await this.assessmentService.deleteAssessment(
+      assessmentId,
+      req.user.sub,
+    );
   }
 
   @Post(':id/publish')
@@ -232,7 +273,10 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.publishAssessment(assessmentId, req.user.sub);
+    return await this.assessmentService.publishAssessment(
+      assessmentId,
+      req.user.sub,
+    );
   }
 
   @Post(':id/unpublish')
@@ -245,7 +289,10 @@ export class AssessmentController {
     @Param('id') assessmentId: string,
     @Request() req: any,
   ) {
-    return await this.assessmentService.unpublishAssessment(assessmentId, req.user.sub);
+    return await this.assessmentService.unpublishAssessment(
+      assessmentId,
+      req.user.sub,
+    );
   }
 
   @Post(':id/release-results')
@@ -254,11 +301,11 @@ export class AssessmentController {
   @ReleaseResultsDocs.param
   @ReleaseResultsDocs.response200
   @ReleaseResultsDocs.response404
-  async releaseResults(
-    @Param('id') assessmentId: string,
-    @Request() req: any,
-  ) {
-    return await this.assessmentService.releaseResults(assessmentId, req.user.sub);
+  async releaseResults(@Param('id') assessmentId: string, @Request() req: any) {
+    return await this.assessmentService.releaseResults(
+      assessmentId,
+      req.user.sub,
+    );
   }
 
   @Get('analytics/:assessmentId')
@@ -271,7 +318,10 @@ export class AssessmentController {
     @Request() req: any,
     @Param('assessmentId') assessmentId: string,
   ) {
-    return await this.assessmentService.getAssessmentAnalytics(req.user, assessmentId);
+    return await this.assessmentService.getAssessmentAnalytics(
+      req.user,
+      assessmentId,
+    );
   }
 
   @Get('user-history/:userId')
@@ -280,10 +330,7 @@ export class AssessmentController {
   @GetUserAssessmentHistoryDocs.param
   @GetUserAssessmentHistoryDocs.response200
   @GetUserAssessmentHistoryDocs.response404
-  async getUserAssessmentHistory(
-    @Param('userId') userId: string,
-  ) {
+  async getUserAssessmentHistory(@Param('userId') userId: string) {
     return await this.assessmentService.getUserAssessmentHistory(userId);
   }
 }
-

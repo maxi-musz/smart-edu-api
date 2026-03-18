@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudFrontService } from '../shared/services/cloudfront.service';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
@@ -18,9 +23,17 @@ export class VideoService {
    * Supports both LibraryVideoLesson and VideoContent models
    * Tracks views, watch history, and provides playback URL
    */
-  async playVideo(user: any, videoId: string, videoType?: 'library' | 'school') {
+  async playVideo(
+    user: any,
+    videoId: string,
+    videoType?: 'library' | 'school',
+  ) {
     const userId = user.sub || user.id;
-    this.logger.log(colors.cyan(`🎥 Universal video playback requested: ${videoId} by user ${userId}`));
+    this.logger.log(
+      colors.cyan(
+        `🎥 Universal video playback requested: ${videoId} by user ${userId}`,
+      ),
+    );
 
     try {
       // Try to determine video type if not provided
@@ -34,7 +47,9 @@ export class VideoService {
         return await this.playSchoolVideo(user, videoId);
       }
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error in universal video playback: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error in universal video playback: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -42,10 +57,18 @@ export class VideoService {
   /**
    * Detect video type by checking which table contains the video
    */
-  private async detectVideoType(videoId: string): Promise<'library' | 'school'> {
+  private async detectVideoType(
+    videoId: string,
+  ): Promise<'library' | 'school'> {
     const [libraryVideo, schoolVideo] = await Promise.all([
-      this.prisma.libraryVideoLesson.findUnique({ where: { id: videoId }, select: { id: true } }),
-      this.prisma.videoContent.findUnique({ where: { id: videoId }, select: { id: true } }),
+      this.prisma.libraryVideoLesson.findUnique({
+        where: { id: videoId },
+        select: { id: true },
+      }),
+      this.prisma.videoContent.findUnique({
+        where: { id: videoId },
+        select: { id: true },
+      }),
     ]);
 
     if (libraryVideo) return 'library';
@@ -59,7 +82,7 @@ export class VideoService {
    */
   private async playLibraryVideo(user: any, videoId: string) {
     const userId = user.sub || user.id;
-    
+
     // Detect user type: library users have platform_id, school users have school_id
     const isLibraryUser = !!user.platform_id;
     const isSchoolUser = !!user.school_id;
@@ -192,9 +215,10 @@ export class VideoService {
 
     // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
     const isHlsReady = video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
-    const playbackUrl = isHlsReady && video.hlsPlaybackUrl
-      ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
-      : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+    const playbackUrl =
+      isHlsReady && video.hlsPlaybackUrl
+        ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
+        : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
 
     // Remove internal fields from response
     const { hlsStatus, hlsPlaybackUrl, videoS3Key, ...videoData } = video;
@@ -295,9 +319,17 @@ export class VideoService {
       ]);
 
       updatedViews = video.views + 1;
-      this.logger.log(colors.green(`✅ New unique view: "${video.title}" by user ${userId} (Total: ${updatedViews})`));
+      this.logger.log(
+        colors.green(
+          `✅ New unique view: "${video.title}" by user ${userId} (Total: ${updatedViews})`,
+        ),
+      );
     } else {
-      this.logger.log(colors.yellow(`⚠️ Repeat view (not counted): "${video.title}" by user ${userId}`));
+      this.logger.log(
+        colors.yellow(
+          `⚠️ Repeat view (not counted): "${video.title}" by user ${userId}`,
+        ),
+      );
     }
 
     // Get last watch position for resume functionality
@@ -316,13 +348,16 @@ export class VideoService {
     });
 
     // Parse duration to seconds for consistency
-    const durationSeconds = this.parseDurationToSeconds(video.duration || '00:00:00');
+    const durationSeconds = this.parseDurationToSeconds(
+      video.duration || '00:00:00',
+    );
 
     // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
     const isHlsReady = video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
-    const playbackUrl = isHlsReady && video.hlsPlaybackUrl
-      ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
-      : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.url);
+    const playbackUrl =
+      isHlsReady && video.hlsPlaybackUrl
+        ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
+        : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.url);
 
     return ResponseHelper.success('Video retrieved for playback', {
       id: video.id,
@@ -330,7 +365,9 @@ export class VideoService {
       description: video.description,
       videoUrl: playbackUrl, // Use HLS or CloudFront URL when available
       streamingType: isHlsReady ? 'hls' : 'mp4', // Inform client of stream type
-      thumbnailUrl: video.thumbnail ? (video.thumbnail as any).secure_url || null : null,
+      thumbnailUrl: video.thumbnail
+        ? (video.thumbnail as any).secure_url || null
+        : null,
       durationSeconds: durationSeconds,
       size: video.size,
       views: updatedViews,
@@ -371,13 +408,29 @@ export class VideoService {
     videoType?: 'library' | 'school',
   ) {
     const userId = user.sub || user.id;
-    this.logger.log(colors.cyan(`📺 Watch progress update received: ${videoId} by user ${userId}`));
+    this.logger.log(
+      colors.cyan(
+        `📺 Watch progress update received: ${videoId} by user ${userId}`,
+      ),
+    );
     this.logger.log(colors.blue(`   📊 Progress Data:`));
-    this.logger.log(colors.blue(`      - Position: ${watchData.lastWatchPosition || 0}s`));
-    this.logger.log(colors.blue(`      - Watch Duration: ${watchData.watchDurationSeconds || 0}s`));
-    this.logger.log(colors.blue(`      - Device: ${watchData.deviceType || 'unknown'}`));
-    this.logger.log(colors.blue(`      - Platform: ${watchData.platform || 'unknown'}`));
-    this.logger.log(colors.blue(`      - Session: ${watchData.sessionId || 'none'}`));
+    this.logger.log(
+      colors.blue(`      - Position: ${watchData.lastWatchPosition || 0}s`),
+    );
+    this.logger.log(
+      colors.blue(
+        `      - Watch Duration: ${watchData.watchDurationSeconds || 0}s`,
+      ),
+    );
+    this.logger.log(
+      colors.blue(`      - Device: ${watchData.deviceType || 'unknown'}`),
+    );
+    this.logger.log(
+      colors.blue(`      - Platform: ${watchData.platform || 'unknown'}`),
+    );
+    this.logger.log(
+      colors.blue(`      - Session: ${watchData.sessionId || 'none'}`),
+    );
 
     try {
       // Detect video type if not provided
@@ -391,7 +444,9 @@ export class VideoService {
         return await this.trackSchoolWatch(user, videoId, watchData);
       }
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error tracking watch progress: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error tracking watch progress: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -417,7 +472,7 @@ export class VideoService {
     },
   ) {
     const userId = user.sub || user.id;
-    
+
     // Detect user type: library users have platform_id, school users have school_id
     const isLibraryUser = !!user.platform_id;
     const isSchoolUser = !!user.school_id;
@@ -576,7 +631,9 @@ export class VideoService {
     });
 
     // Parse duration to seconds
-    const videoDurationSeconds = this.parseDurationToSeconds(video.duration || '00:00:00');
+    const videoDurationSeconds = this.parseDurationToSeconds(
+      video.duration || '00:00:00',
+    );
 
     // Calculate completion percentage
     const completionPercentage =
@@ -595,7 +652,8 @@ export class VideoService {
         classId: regularUser?.student?.current_class_id || null,
         userRole: regularUser?.role || null,
         watchDurationSeconds: watchData.watchDurationSeconds,
-        videoDurationSeconds: videoDurationSeconds > 0 ? videoDurationSeconds : null,
+        videoDurationSeconds:
+          videoDurationSeconds > 0 ? videoDurationSeconds : null,
         completionPercentage: Math.round(completionPercentage * 10) / 10,
         isCompleted,
         lastWatchPosition: watchData.lastWatchPosition || 0,
@@ -638,4 +696,3 @@ export class VideoService {
     return 0;
   }
 }
-

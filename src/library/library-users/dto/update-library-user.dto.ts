@@ -1,14 +1,34 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsInt, IsOptional, IsString, IsArray, Min, Max, MinLength } from 'class-validator';
-import { LIBRARY_USER_ROLES, LIBRARY_USER_TYPES } from './create-library-user.dto';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsArray,
+  Min,
+  Max,
+  MinLength,
+} from 'class-validator';
+import {
+  LIBRARY_USER_ROLES,
+  LIBRARY_USER_TYPES,
+} from './create-library-user.dto';
 
 export class UpdateLibraryUserDto {
-  @ApiPropertyOptional({ description: 'Email (unique across platform)', example: 'creator@library.com' })
+  @ApiPropertyOptional({
+    description: 'Email (unique across platform)',
+    example: 'creator@library.com',
+  })
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({ description: 'Password (omit to keep current)', example: 'SecurePass123!', minLength: 8 })
+  @ApiPropertyOptional({
+    description: 'Password (omit to keep current)',
+    example: 'SecurePass123!',
+    minLength: 8,
+  })
   @IsOptional()
   @IsString()
   @MinLength(8)
@@ -24,12 +44,18 @@ export class UpdateLibraryUserDto {
   @IsString()
   last_name?: string;
 
-  @ApiPropertyOptional({ description: 'Phone number', example: '+2348012345678' })
+  @ApiPropertyOptional({
+    description: 'Phone number',
+    example: '+2348012345678',
+  })
   @IsOptional()
   @IsString()
   phone_number?: string;
 
-  @ApiPropertyOptional({ description: 'Role in the library', enum: LIBRARY_USER_ROLES })
+  @ApiPropertyOptional({
+    description: 'Role in the library',
+    enum: LIBRARY_USER_ROLES,
+  })
   @IsOptional()
   @IsEnum(LIBRARY_USER_ROLES)
   role?: (typeof LIBRARY_USER_ROLES)[number];

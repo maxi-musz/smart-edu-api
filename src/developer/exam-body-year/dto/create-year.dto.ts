@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  Min,
+  IsDateString,
+} from 'class-validator';
 
 export class CreateExamBodyYearDto {
   @ApiProperty({ example: '2024/2025' })
@@ -28,4 +35,3 @@ export class CreateExamBodyYearDto {
   @IsOptional()
   order?: number;
 }
-

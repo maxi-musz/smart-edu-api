@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, IsBoolean, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class TrackWatchProgressDto {
   @ApiPropertyOptional({
@@ -93,4 +100,3 @@ export class TrackWatchProgressDto {
   @IsString()
   userAgent?: string;
 }
-

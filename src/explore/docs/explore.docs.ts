@@ -211,7 +211,8 @@ export class ExploreDocs {
   static getTopicsBySubject() {
     return applyDecorators(
       ApiOperation({
-        summary: 'Get complete subject resources (chapters → topics → videos/materials/assessments)',
+        summary:
+          'Get complete subject resources (chapters → topics → videos/materials/assessments)',
         description:
           'Returns comprehensive resources for a subject: all chapters, topics under each chapter, and complete materials (videos, PDFs/DOCs, published assessments) for each topic. Includes detailed statistics at all levels.',
       }),
@@ -242,16 +243,53 @@ export class ExploreDocs {
                     {
                       id: 'topic_123',
                       title: 'Algebraic Expressions',
-                      videos: [{ id: 'video_123', title: '...', videoUrl: '...', views: 150 }],
-                      materials: [{ id: 'material_123', title: '...', url: '...', materialType: 'PDF' }],
-                      assessments: [{ id: 'assessment_123', title: '...', questionsCount: 10, status: 'PUBLISHED' }],
-                      statistics: { videosCount: 3, materialsCount: 5, assessmentsCount: 2, totalViews: 450 },
+                      videos: [
+                        {
+                          id: 'video_123',
+                          title: '...',
+                          videoUrl: '...',
+                          views: 150,
+                        },
+                      ],
+                      materials: [
+                        {
+                          id: 'material_123',
+                          title: '...',
+                          url: '...',
+                          materialType: 'PDF',
+                        },
+                      ],
+                      assessments: [
+                        {
+                          id: 'assessment_123',
+                          title: '...',
+                          questionsCount: 10,
+                          status: 'PUBLISHED',
+                        },
+                      ],
+                      statistics: {
+                        videosCount: 3,
+                        materialsCount: 5,
+                        assessmentsCount: 2,
+                        totalViews: 450,
+                      },
                     },
                   ],
-                  statistics: { topicsCount: 4, videosCount: 12, materialsCount: 15, assessmentsCount: 5 },
+                  statistics: {
+                    topicsCount: 4,
+                    videosCount: 12,
+                    materialsCount: 15,
+                    assessmentsCount: 5,
+                  },
                 },
               ],
-              statistics: { chaptersCount: 5, topicsCount: 20, videosCount: 45, materialsCount: 60, assessmentsCount: 15 },
+              statistics: {
+                chaptersCount: 5,
+                topicsCount: 20,
+                videosCount: 45,
+                materialsCount: 60,
+                assessmentsCount: 15,
+              },
             },
           },
         },
@@ -338,4 +376,3 @@ export class ExploreDocs {
     );
   }
 }
-

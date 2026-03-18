@@ -3,13 +3,13 @@ import { IsString, IsNotEmpty, IsEnum } from 'class-validator';
 
 export enum DeviceType {
   IOS = 'ios',
-  ANDROID = 'android'
+  ANDROID = 'android',
 }
 
 export class RegisterDeviceDto {
   @ApiProperty({
     description: 'Expo push token',
-    example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]'
+    example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]',
   })
   @IsString()
   @IsNotEmpty()
@@ -18,7 +18,7 @@ export class RegisterDeviceDto {
   @ApiProperty({
     description: 'Device type',
     enum: DeviceType,
-    example: 'ios'
+    example: 'ios',
   })
   @IsEnum(DeviceType)
   deviceType: DeviceType;

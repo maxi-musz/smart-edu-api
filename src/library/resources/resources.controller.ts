@@ -1,7 +1,18 @@
-import { Controller, Get, HttpCode, HttpStatus, UseGuards, Request, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  Request,
+  Param,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ResourcesService } from './resources.service';
-import { GetResourcesDashboardDocs, GetResourcesByClassDocs } from './docs/resources.docs';
+import {
+  GetResourcesDashboardDocs,
+  GetResourcesByClassDocs,
+} from './docs/resources.docs';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 
 @ApiTags('Library Resources')
@@ -31,8 +42,10 @@ export class ResourcesController {
   @GetResourcesByClassDocs.response401
   @GetResourcesByClassDocs.response404
   @GetResourcesByClassDocs.response500
-  async getResourcesByClass(@Request() req: any, @Param('classId') classId: string) {
+  async getResourcesByClass(
+    @Request() req: any,
+    @Param('classId') classId: string,
+  ) {
     return this.resourcesService.getResourcesByClass(req.user, classId);
   }
 }
-

@@ -7,7 +7,6 @@ import { DirectorAssessmentsService } from './assessments.service';
   imports: [PrismaModule],
   controllers: [DirectorAssessmentsController],
   providers: [DirectorAssessmentsService],
-  exports: [DirectorAssessmentsService]
+  exports: [DirectorAssessmentsService],
 })
 export class AssessmentsModule {}
-

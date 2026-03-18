@@ -9,6 +9,6 @@ import { AssessmentNotificationsService } from './assessment/assessment-notifica
   imports: [PrismaModule, AcademicSessionModule],
   controllers: [PushNotificationsController],
   providers: [PushNotificationsService, AssessmentNotificationsService],
-  exports: [PushNotificationsService, AssessmentNotificationsService]
+  exports: [PushNotificationsService, AssessmentNotificationsService],
 })
 export class PushNotificationsModule {}

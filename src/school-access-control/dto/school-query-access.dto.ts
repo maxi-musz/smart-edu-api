@@ -1,7 +1,18 @@
-import { IsOptional, IsString, IsEnum, IsBoolean, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsBoolean,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { LibraryResourceType, AccessLevel } from '../../library-access-control/dto';
+import {
+  LibraryResourceType,
+  AccessLevel,
+} from '../../library-access-control/dto';
 
 /**
  * DTO for querying available library resources for school

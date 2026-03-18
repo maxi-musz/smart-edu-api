@@ -28,7 +28,7 @@ export class TextToSpeechService {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
-    
+
     // Clean up expired cache entries every hour
     setInterval(() => this.cleanupCache(), 60 * 60 * 1000);
   }
@@ -47,26 +47,27 @@ export class TextToSpeechService {
   private cleanupCache(): void {
     const now = Date.now();
     let cleaned = 0;
-    
+
     for (const [key, value] of this.audioCache.entries()) {
       if (now - value.timestamp > this.CACHE_TTL) {
         this.audioCache.delete(key);
         cleaned++;
       }
     }
-    
+
     // If cache is still too large, remove oldest entries
     if (this.audioCache.size > this.MAX_CACHE_SIZE) {
-      const entries = Array.from(this.audioCache.entries())
-        .sort((a, b) => a[1].timestamp - b[1].timestamp);
-      
+      const entries = Array.from(this.audioCache.entries()).sort(
+        (a, b) => a[1].timestamp - b[1].timestamp,
+      );
+
       const toRemove = this.audioCache.size - this.MAX_CACHE_SIZE;
       for (let i = 0; i < toRemove; i++) {
         this.audioCache.delete(entries[i][0]);
         cleaned++;
       }
     }
-    
+
     if (cleaned > 0) {
       this.logger.log(colors.yellow(`🧹 Cleaned up ${cleaned} cache entries`));
     }
@@ -83,7 +84,7 @@ export class TextToSpeechService {
     const chunks: string[] = [];
     // Split by sentences first (periods, exclamation, question marks)
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-    
+
     let currentChunk = '';
     for (const sentence of sentences) {
       if (currentChunk.length + sentence.length <= this.CHUNK_SIZE) {
@@ -110,12 +111,12 @@ export class TextToSpeechService {
         }
       }
     }
-    
+
     if (currentChunk) {
       chunks.push(currentChunk.trim());
     }
-    
-    return chunks.filter(chunk => chunk.length > 0);
+
+    return chunks.filter((chunk) => chunk.length > 0);
   }
 
   /**
@@ -124,22 +125,17 @@ export class TextToSpeechService {
    * @param options - TTS options (voice, speed, language)
    * @returns Audio buffer (MP3 format)
    */
-  async textToSpeech(
-    text: string,
-    options: TTSOptions = {}
-  ): Promise<Buffer> {
+  async textToSpeech(text: string, options: TTSOptions = {}): Promise<Buffer> {
     try {
-      const {
-        voice = 'alloy',
-        speed = 1.0,
-        language = 'en',
-      } = options;
+      const { voice = 'alloy', speed = 1.0, language = 'en' } = options;
 
       // Check cache first
       const cacheKey = this.getCacheKey(text, options);
       const cached = this.audioCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-        this.logger.log(colors.green(`✅ Cache hit for TTS (${text.length} chars)`));
+        this.logger.log(
+          colors.green(`✅ Cache hit for TTS (${text.length} chars)`),
+        );
         return cached.buffer;
       }
 
@@ -149,8 +145,8 @@ export class TextToSpeechService {
       if (text.length > maxLength) {
         this.logger.warn(
           colors.yellow(
-            `⚠️ Text length (${text.length}) exceeds limit (${maxLength}). Truncating...`
-          )
+            `⚠️ Text length (${text.length}) exceeds limit (${maxLength}). Truncating...`,
+          ),
         );
         text = text.substring(0, maxLength);
       }
@@ -160,8 +156,8 @@ export class TextToSpeechService {
 
       this.logger.log(
         colors.cyan(
-          `🔊 Converting text to speech (${text.length} chars, voice: ${voice}, speed: ${validSpeed})...`
-        )
+          `🔊 Converting text to speech (${text.length} chars, voice: ${voice}, speed: ${validSpeed})...`,
+        ),
       );
 
       const startTime = Date.now();
@@ -169,33 +165,37 @@ export class TextToSpeechService {
       // For long texts, chunk and process in parallel
       if (text.length > this.CHUNK_SIZE) {
         const chunks = this.chunkText(text);
-        this.logger.log(colors.blue(`📦 Splitting into ${chunks.length} chunks for faster processing...`));
-        
+        this.logger.log(
+          colors.blue(
+            `📦 Splitting into ${chunks.length} chunks for faster processing...`,
+          ),
+        );
+
         // Process chunks in parallel
-        const chunkPromises = chunks.map(chunk =>
+        const chunkPromises = chunks.map((chunk) =>
           this.openai.audio.speech.create({
             model: 'tts-1',
             voice: voice as any,
             input: chunk,
             speed: validSpeed,
-          })
+          }),
         );
 
         const responses = await Promise.all(chunkPromises);
-        
+
         // Convert all chunks to buffers and concatenate
         const buffers = await Promise.all(
-          responses.map(response => response.arrayBuffer())
+          responses.map((response) => response.arrayBuffer()),
         );
-        
-        const audioBuffers = buffers.map(buf => Buffer.from(buf));
+
+        const audioBuffers = buffers.map((buf) => Buffer.from(buf));
         const combinedBuffer = Buffer.concat(audioBuffers);
 
         const processingTime = Date.now() - startTime;
         this.logger.log(
           colors.green(
-            `✅ Text-to-speech conversion completed (${combinedBuffer.length} bytes, ${processingTime}ms, ${chunks.length} chunks)`
-          )
+            `✅ Text-to-speech conversion completed (${combinedBuffer.length} bytes, ${processingTime}ms, ${chunks.length} chunks)`,
+          ),
         );
 
         // Cache the result
@@ -219,8 +219,8 @@ export class TextToSpeechService {
         const processingTime = Date.now() - startTime;
         this.logger.log(
           colors.green(
-            `✅ Text-to-speech conversion completed (${buffer.length} bytes, ${processingTime}ms)`
-          )
+            `✅ Text-to-speech conversion completed (${buffer.length} bytes, ${processingTime}ms)`,
+          ),
         );
 
         // Cache the result
@@ -233,7 +233,7 @@ export class TextToSpeechService {
       }
     } catch (error: any) {
       this.logger.error(
-        colors.red(`❌ Error converting text to speech: ${error.message}`)
+        colors.red(`❌ Error converting text to speech: ${error.message}`),
       );
       throw new Error(`Failed to convert text to speech: ${error.message}`);
     }
@@ -247,21 +247,18 @@ export class TextToSpeechService {
    */
   async textToSpeechStream(
     text: string,
-    options: TTSOptions = {}
+    options: TTSOptions = {},
   ): Promise<NodeJS.ReadableStream> {
     try {
-      const {
-        voice = 'alloy',
-        speed = 1.0,
-      } = options;
+      const { voice = 'alloy', speed = 1.0 } = options;
 
       // Validate text length
       const maxLength = 4096;
       if (text.length > maxLength) {
         this.logger.warn(
           colors.yellow(
-            `⚠️ Text length (${text.length}) exceeds limit (${maxLength}). Truncating...`
-          )
+            `⚠️ Text length (${text.length}) exceeds limit (${maxLength}). Truncating...`,
+          ),
         );
         text = text.substring(0, maxLength);
       }
@@ -271,8 +268,8 @@ export class TextToSpeechService {
 
       this.logger.log(
         colors.cyan(
-          `🔊 Streaming text to speech (${text.length} chars, voice: ${voice}, speed: ${validSpeed})...`
-        )
+          `🔊 Streaming text to speech (${text.length} chars, voice: ${voice}, speed: ${validSpeed})...`,
+        ),
       );
 
       // Use OpenAI's native streaming - starts sending audio immediately
@@ -286,19 +283,23 @@ export class TextToSpeechService {
       // Convert Web ReadableStream to Node.js ReadableStream
       // OpenAI returns a Web API ReadableStream, we need to convert it for Express
       const webStream = response.body as any;
-      
+
       // Verify webStream is actually a ReadableStream
       if (!webStream || typeof webStream.getReader !== 'function') {
-        this.logger.error(colors.red(`❌ Invalid Web stream: ${typeof webStream}`));
+        this.logger.error(
+          colors.red(`❌ Invalid Web stream: ${typeof webStream}`),
+        );
         throw new Error('Invalid response stream from OpenAI');
       }
-      
+
       // Try using Readable.fromWeb (Node.js 18+) - most reliable method
       if (Readable.fromWeb && typeof Readable.fromWeb === 'function') {
         try {
-          this.logger.log(colors.blue(`📡 Using Readable.fromWeb for stream conversion...`));
+          this.logger.log(
+            colors.blue(`📡 Using Readable.fromWeb for stream conversion...`),
+          );
           const nodeStream = Readable.fromWeb(webStream);
-          
+
           // Add logging to track stream progress
           let chunkCount = 0;
           let totalBytes = 0;
@@ -309,33 +310,37 @@ export class TextToSpeechService {
             if (chunkCount <= 3 || chunkCount % 100 === 0) {
               this.logger.log(
                 colors.blue(
-                  `📦 Chunk ${chunkCount}: ${chunk.length} bytes (total: ${totalBytes} bytes)`
-                )
+                  `📦 Chunk ${chunkCount}: ${chunk.length} bytes (total: ${totalBytes} bytes)`,
+                ),
               );
             }
           });
-          
+
           nodeStream.on('end', () => {
             this.logger.log(
               colors.green(
-                `✅ Stream ended: ${chunkCount} chunks, ${totalBytes} bytes total`
-              )
+                `✅ Stream ended: ${chunkCount} chunks, ${totalBytes} bytes total`,
+              ),
             );
           });
-          
+
           nodeStream.on('error', (error: any) => {
             this.logger.error(colors.red(`❌ Stream error: ${error.message}`));
           });
-          
+
           return nodeStream;
         } catch (fromWebError: any) {
-          this.logger.warn(colors.yellow(`⚠️ Readable.fromWeb failed: ${fromWebError.message}, falling back to manual conversion`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Readable.fromWeb failed: ${fromWebError.message}, falling back to manual conversion`,
+            ),
+          );
         }
       }
-      
+
       // Fallback: Manual conversion (for older Node versions or if fromWeb fails)
       this.logger.log(colors.blue(`📡 Using manual stream conversion...`));
-      
+
       // Create a proper Node.js Readable stream
       const nodeStream = new Readable({
         objectMode: false,
@@ -350,22 +355,24 @@ export class TextToSpeechService {
       let chunkCount = 0;
       let totalBytes = 0;
       let streamError: Error | null = null;
-      
+
       (async () => {
         const reader = webStream.getReader();
-        
+
         try {
-          this.logger.log(colors.blue(`📡 Starting to read from Web stream...`));
-          
+          this.logger.log(
+            colors.blue(`📡 Starting to read from Web stream...`),
+          );
+
           while (true) {
             const { done, value } = await reader.read();
-            
+
             if (done) {
               // End of stream - push null to signal end
               this.logger.log(
                 colors.green(
-                  `✅ Stream completed: ${chunkCount} chunks, ${totalBytes} bytes total`
-                )
+                  `✅ Stream completed: ${chunkCount} chunks, ${totalBytes} bytes total`,
+                ),
               );
               nodeStream.push(null);
               break;
@@ -378,32 +385,38 @@ export class TextToSpeechService {
             if (chunkCount <= 3) {
               this.logger.log(
                 colors.blue(
-                  `📦 Chunk ${chunkCount}: ${value.length} bytes (total: ${totalBytes} bytes)`
-                )
+                  `📦 Chunk ${chunkCount}: ${value.length} bytes (total: ${totalBytes} bytes)`,
+                ),
               );
             }
 
             // Check if stream is destroyed before pushing
             if (nodeStream.destroyed) {
-              this.logger.warn(colors.yellow(`⚠️ Stream was destroyed, stopping read loop`));
+              this.logger.warn(
+                colors.yellow(`⚠️ Stream was destroyed, stopping read loop`),
+              );
               break;
             }
-            
+
             // Push chunk to Node stream
             // If the stream is full, this will wait until there's space
             const canContinue = nodeStream.push(Buffer.from(value));
-            
+
             if (!canContinue) {
               // Stream is full, wait for drain event before pushing more
-              this.logger.log(colors.yellow(`⏸️ Stream buffer full, waiting for drain...`));
-              await new Promise(resolve => {
+              this.logger.log(
+                colors.yellow(`⏸️ Stream buffer full, waiting for drain...`),
+              );
+              await new Promise((resolve) => {
                 // Check if stream is destroyed while waiting
                 if (nodeStream.destroyed) {
                   resolve(undefined);
                   return;
                 }
                 nodeStream.once('drain', () => {
-                  this.logger.log(colors.blue(`▶️ Stream drained, continuing...`));
+                  this.logger.log(
+                    colors.blue(`▶️ Stream drained, continuing...`),
+                  );
                   resolve(undefined);
                 });
                 // Also listen for close/destroy events
@@ -416,10 +429,14 @@ export class TextToSpeechService {
           // Error reading from stream
           streamError = error;
           this.logger.error(
-            colors.red(`❌ Stream error after ${chunkCount} chunks: ${error.message}`)
+            colors.red(
+              `❌ Stream error after ${chunkCount} chunks: ${error.message}`,
+            ),
           );
-          this.logger.error(colors.red(`❌ Stream error stack: ${error.stack}`));
-          
+          this.logger.error(
+            colors.red(`❌ Stream error stack: ${error.stack}`),
+          );
+
           // Destroy the stream with error
           if (!nodeStream.destroyed) {
             nodeStream.destroy(error);
@@ -429,26 +446,30 @@ export class TextToSpeechService {
           try {
             reader.releaseLock();
           } catch (releaseError: any) {
-            this.logger.warn(colors.yellow(`⚠️ Error releasing reader: ${releaseError.message}`));
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ Error releasing reader: ${releaseError.message}`,
+              ),
+            );
           }
         }
       })();
-      
+
       // Handle stream errors
       nodeStream.on('error', (error) => {
         this.logger.error(colors.red(`❌ Node stream error: ${error.message}`));
       });
-      
+
       nodeStream.on('end', () => {
         if (!streamError) {
           this.logger.log(colors.green(`✅ Node stream ended successfully`));
         }
       });
-      
+
       return nodeStream;
     } catch (error: any) {
       this.logger.error(
-        colors.red(`❌ Error streaming text to speech: ${error.message}`)
+        colors.red(`❌ Error streaming text to speech: ${error.message}`),
       );
       throw new Error(`Failed to stream text to speech: ${error.message}`);
     }

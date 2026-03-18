@@ -5,8 +5,8 @@ const DEFAULT_RANDOM_PASSWORD_LENGTH = 20;
 
 /** Character sets for random password (at least one of each for strength). */
 const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // exclude I, O for clarity
-const LOWER = 'abcdefghjkmnpqrstuvwxyz';   // exclude i, l, o
-const DIGITS = '23456789';                 // exclude 0, 1
+const LOWER = 'abcdefghjkmnpqrstuvwxyz'; // exclude i, l, o
+const DIGITS = '23456789'; // exclude 0, 1
 const SYMBOLS = '!@#$%&*_+-=';
 const ALL = UPPER + LOWER + DIGITS + SYMBOLS;
 
@@ -14,7 +14,9 @@ const ALL = UPPER + LOWER + DIGITS + SYMBOLS;
  * Generates a cryptographically strong random password (no user info).
  * Ensures at least one upper, one lower, one digit, one symbol; length >= 16.
  */
-export function generateRandomStrongPassword(length: number = DEFAULT_RANDOM_PASSWORD_LENGTH): string {
+export function generateRandomStrongPassword(
+  length: number = DEFAULT_RANDOM_PASSWORD_LENGTH,
+): string {
   const len = Math.max(16, length);
   const pick = (chars: string) => chars[crypto.randomInt(0, chars.length)];
   const mandatory = [pick(UPPER), pick(LOWER), pick(DIGITS), pick(SYMBOLS)];
@@ -39,34 +41,35 @@ export function generateStrongPassword(
   firstName: string,
   lastName: string,
   email: string,
-  phone: string
+  phone: string,
 ): string {
   // Extract parts from user information
   const firstInitial = firstName.charAt(0).toLowerCase();
   const lastInitial = lastName.charAt(0).toLowerCase();
   const lastFourDigits = phone.slice(-4);
   const emailDomain = email.split('@')[1]?.split('.')[0] || 'edu';
-  
+
   // Create a base password with user info
   let password = `${firstInitial}${lastInitial}${lastFourDigits}${emailDomain}`;
-  
+
   // Add special characters and numbers for strength
   const specialChars = ['@', '#', '$', '%', '&', '*', '!'];
   const randomSpecial = specialChars[crypto.randomInt(0, specialChars.length)];
   const randomNumber = crypto.randomInt(0, 10);
-  
+
   // Insert random elements at different positions
   const insertPos = crypto.randomInt(2, password.length - 1);
-  password = password.slice(0, insertPos) + randomSpecial + password.slice(insertPos);
-  
+  password =
+    password.slice(0, insertPos) + randomSpecial + password.slice(insertPos);
+
   // Add a random number at the end
   password += randomNumber;
-  
+
   // Ensure it's at least 8 characters
   if (password.length < 8) {
     password += crypto.randomInt(10, 99);
   }
-  
+
   return password;
 }
 
@@ -80,12 +83,12 @@ export function generateStrongPassword(
 export function generateSimplePassword(
   firstName: string,
   lastName: string,
-  phone: string
+  phone: string,
 ): string {
   const firstInitial = firstName.charAt(0).toLowerCase();
   const lastInitial = lastName.charAt(0).toLowerCase();
   const lastFourDigits = phone.slice(-4);
-  
+
   return `${firstInitial}${lastInitial}${lastFourDigits}@2024`;
 }
 
@@ -100,6 +103,8 @@ export function validatePasswordStrength(password: string): boolean {
   const hasNumbers = /\d/.test(password);
   const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
   const isLongEnough = password.length >= 8;
-  
-  return hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar && isLongEnough;
-} 
+
+  return (
+    hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar && isLongEnough
+  );
+}

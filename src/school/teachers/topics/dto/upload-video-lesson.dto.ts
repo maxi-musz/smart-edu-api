@@ -4,7 +4,7 @@ import { IsString, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
 export class UploadVideoLessonDto {
   @ApiProperty({
     description: 'Title of the video lesson',
-    example: 'Introduction to Algebra Basics'
+    example: 'Introduction to Algebra Basics',
   })
   @IsString()
   @IsNotEmpty()
@@ -12,7 +12,8 @@ export class UploadVideoLessonDto {
 
   @ApiPropertyOptional({
     description: 'Description of the video lesson',
-    example: 'Learn the fundamental concepts of algebra including variables and equations'
+    example:
+      'Learn the fundamental concepts of algebra including variables and equations',
   })
   @IsString()
   @IsOptional()
@@ -20,7 +21,7 @@ export class UploadVideoLessonDto {
 
   @ApiProperty({
     description: 'Subject ID where the video lesson belongs',
-    example: 'cmevi6gbj000xvlhl2dxmixr0'
+    example: 'cmevi6gbj000xvlhl2dxmixr0',
   })
   @IsString()
   @IsNotEmpty()
@@ -28,7 +29,7 @@ export class UploadVideoLessonDto {
 
   @ApiProperty({
     description: 'Topic ID where the video lesson belongs',
-    example: 'topic123'
+    example: 'topic123',
   })
   @IsString()
   @IsNotEmpty()

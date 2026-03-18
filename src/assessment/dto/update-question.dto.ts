@@ -20,7 +20,8 @@ import { Type } from 'class-transformer';
  */
 export class UpdateQuestionOptionDto {
   @ApiPropertyOptional({
-    description: 'Option ID for updating existing options. If provided, updates that option. If omitted, creates a new option.',
+    description:
+      'Option ID for updating existing options. If provided, updates that option. If omitted, creates a new option.',
     example: 'clx123abc...',
   })
   @IsOptional()
@@ -121,9 +122,9 @@ export class UpdateCorrectAnswerDto {
 
 /**
  * DTO for updating a question in an assessment
- * 
+ *
  * Supports partial updates - only include fields you want to modify.
- * 
+ *
  * **Important Notes:**
  * 1. Cannot update questions in PUBLISHED or ACTIVE assessments
  * 2. Changing question_type may require re-specifying options or correct_answers
@@ -293,7 +294,8 @@ export class UpdateQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Explanation shown after answering',
-    example: 'Paris is the capital of France, known for its landmarks like the Eiffel Tower.',
+    example:
+      'Paris is the capital of France, known for its landmarks like the Eiffel Tower.',
   })
   @IsOptional()
   @IsString()
@@ -310,7 +312,8 @@ export class UpdateQuestionDto {
   difficulty_level?: string;
 
   @ApiPropertyOptional({
-    description: 'Updated options for MCQ/TRUE_FALSE questions. Provide full list to replace all options.',
+    description:
+      'Updated options for MCQ/TRUE_FALSE questions. Provide full list to replace all options.',
     type: [UpdateQuestionOptionDto],
   })
   @IsOptional()
@@ -320,7 +323,8 @@ export class UpdateQuestionDto {
   options?: UpdateQuestionOptionDto[];
 
   @ApiPropertyOptional({
-    description: 'Updated correct answers for non-MCQ question types. For MCQ, correct_answers are auto-generated from is_correct flags.',
+    description:
+      'Updated correct answers for non-MCQ question types. For MCQ, correct_answers are auto-generated from is_correct flags.',
     type: [UpdateCorrectAnswerDto],
   })
   @IsOptional()

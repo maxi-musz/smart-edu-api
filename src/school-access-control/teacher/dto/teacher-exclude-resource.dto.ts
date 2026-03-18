@@ -2,8 +2,14 @@ import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /** Resource types that teachers can exclude (not SUBJECT or ALL). */
-export const TEACHER_EXCLUDE_RESOURCE_TYPES = ['TOPIC', 'VIDEO', 'MATERIAL', 'ASSESSMENT'] as const;
-export type TeacherExcludeResourceType = (typeof TEACHER_EXCLUDE_RESOURCE_TYPES)[number];
+export const TEACHER_EXCLUDE_RESOURCE_TYPES = [
+  'TOPIC',
+  'VIDEO',
+  'MATERIAL',
+  'ASSESSMENT',
+] as const;
+export type TeacherExcludeResourceType =
+  (typeof TEACHER_EXCLUDE_RESOURCE_TYPES)[number];
 
 /**
  * DTO for teacher to exclude (turn off) a topic/video/material/assessment for students or a class.
@@ -58,7 +64,8 @@ export class TeacherExcludeResourceDto {
   assessmentId?: string;
 
   @ApiPropertyOptional({
-    description: 'Library class ID – exclude for library class (e.g. JSS-1, Primary-1 from Explore). Use for library materials.',
+    description:
+      'Library class ID – exclude for library class (e.g. JSS-1, Primary-1 from Explore). Use for library materials.',
     example: 'clxxx123456',
   })
   @IsOptional()
@@ -66,7 +73,8 @@ export class TeacherExcludeResourceDto {
   classId?: string;
 
   @ApiPropertyOptional({
-    description: 'Library class ID (same as classId). Exclusions affect only this school.',
+    description:
+      'Library class ID (same as classId). Exclusions affect only this school.',
     example: 'clxxx123456',
   })
   @IsOptional()
@@ -74,7 +82,8 @@ export class TeacherExcludeResourceDto {
   libraryClassId?: string;
 
   @ApiPropertyOptional({
-    description: 'Student user ID – exclude for this student only. Omit to exclude for class only.',
+    description:
+      'Student user ID – exclude for this student only. Omit to exclude for class only.',
     example: 'clxxx123456',
   })
   @IsOptional()

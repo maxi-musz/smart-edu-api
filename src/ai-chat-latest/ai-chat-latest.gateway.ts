@@ -130,7 +130,7 @@ export class AiChatLatestGateway
       // User is now authenticated
       const user = client.data.user;
       const userId = client.data.userId;
-      
+
       // Handle school_id - fetch from DB or use default for library users
       let schoolId = client.data.schoolId;
       if (!schoolId) {
@@ -153,9 +153,17 @@ export class AiChatLatestGateway
             });
             schoolId = librarySchool.id;
             client.data.schoolId = schoolId;
-            this.logger.log(colors.cyan(`   Library user - using default Library Chat school: ${schoolId}`));
+            this.logger.log(
+              colors.cyan(
+                `   Library user - using default Library Chat school: ${schoolId}`,
+              ),
+            );
           } catch (error) {
-            this.logger.error(colors.red(`   Failed to get/create library school: ${error.message}`));
+            this.logger.error(
+              colors.red(
+                `   Failed to get/create library school: ${error.message}`,
+              ),
+            );
             throw new Error('Failed to initialize library chat school');
           }
         } else {
@@ -168,21 +176,32 @@ export class AiChatLatestGateway
             schoolId = userRecord?.school_id || null;
             if (schoolId) {
               client.data.schoolId = schoolId;
-              this.logger.log(colors.cyan(`   Fetched school_id from database: ${schoolId}`));
+              this.logger.log(
+                colors.cyan(`   Fetched school_id from database: ${schoolId}`),
+              );
             } else {
-              this.logger.warn(colors.yellow(`   User has no school_id in database`));
+              this.logger.warn(
+                colors.yellow(`   User has no school_id in database`),
+              );
             }
           } catch (error) {
-            this.logger.warn(colors.yellow(`   Could not fetch school_id from database: ${error.message}`));
+            this.logger.warn(
+              colors.yellow(
+                `   Could not fetch school_id from database: ${error.message}`,
+              ),
+            );
           }
         }
       }
-      
+
       const userRole = user?.role || 'unknown';
       const userEmail = user?.email || 'unknown';
-      const clientIp = client.handshake.address || client.request?.socket?.remoteAddress || 'unknown';
+      const clientIp =
+        client.handshake.address ||
+        client.request?.socket?.remoteAddress ||
+        'unknown';
       const userAgent = client.handshake.headers['user-agent'] || 'unknown';
-      
+
       // Safely get total clients count (for this namespace)
       // Note: current socket might not be in collection yet, so we add 1
       let totalClients = 0;
@@ -195,7 +214,9 @@ export class AiChatLatestGateway
 
       // Enhanced connection logging
       this.logger.log(
-        colors.green('═══════════════════════════════════════════════════════════'),
+        colors.green(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
       this.logger.log(colors.green('🔌 NEW CLIENT CONNECTED'));
       // this.logger.log(colors.cyan(`   Socket ID: ${client.id}`));
@@ -231,9 +252,11 @@ export class AiChatLatestGateway
         try {
           // Attach schoolId to user payload before converting
           const userWithSchoolId = { ...user, school_id: schoolId };
-          const userObj = this.aiChatSocketService.convertPayloadToUser(userWithSchoolId);
-          const conversations = await this.aiChatSocketService.getUserConversations(userObj);
-          
+          const userObj =
+            this.aiChatSocketService.convertPayloadToUser(userWithSchoolId);
+          const conversations =
+            await this.aiChatSocketService.getUserConversations(userObj);
+
           client.emit('conversations:list', {
             success: true,
             message: 'Your conversations',
@@ -242,7 +265,11 @@ export class AiChatLatestGateway
           } as SocketSuccessResponseDto);
         } catch (error) {
           // If getting conversations fails (e.g., library user not in User table), just send empty list
-          this.logger.warn(colors.yellow(`   Could not fetch conversations: ${error.message}, sending empty list`));
+          this.logger.warn(
+            colors.yellow(
+              `   Could not fetch conversations: ${error.message}, sending empty list`,
+            ),
+          );
           client.emit('conversations:list', {
             success: true,
             message: 'Your conversations',
@@ -260,25 +287,40 @@ export class AiChatLatestGateway
         } as SocketSuccessResponseDto);
       }
     } catch (error) {
-      const clientIp = client.handshake.address || client.request?.socket?.remoteAddress || 'unknown';
+      const clientIp =
+        client.handshake.address ||
+        client.request?.socket?.remoteAddress ||
+        'unknown';
       const userAgent = client.handshake.headers['user-agent'] || 'unknown';
-      
+
       this.logger.log(
-        colors.red('═══════════════════════════════════════════════════════════'),
+        colors.red(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
       this.logger.error(colors.red('❌ CONNECTION FAILED'));
       this.logger.error(colors.red(`   Socket ID: ${client.id}`));
       this.logger.error(colors.red(`   IP Address: ${clientIp}`));
-      this.logger.error(colors.red(`   User Agent: ${userAgent.substring(0, 80)}${userAgent.length > 80 ? '...' : ''}`));
+      this.logger.error(
+        colors.red(
+          `   User Agent: ${userAgent.substring(0, 80)}${userAgent.length > 80 ? '...' : ''}`,
+        ),
+      );
       this.logger.error(colors.red(`   Error: ${error.message}`));
-      this.logger.error(colors.red(`   Failed At: ${new Date().toISOString()}`));
+      this.logger.error(
+        colors.red(`   Failed At: ${new Date().toISOString()}`),
+      );
       if (error.stack) {
-        this.logger.error(colors.red(`   Stack: ${error.stack.substring(0, 200)}...`));
+        this.logger.error(
+          colors.red(`   Stack: ${error.stack.substring(0, 200)}...`),
+        );
       }
       this.logger.log(
-        colors.red('═══════════════════════════════════════════════════════════'),
+        colors.red(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
-      
+
       client.emit('connection:error', {
         success: false,
         message: 'Connection failed',
@@ -293,7 +335,7 @@ export class AiChatLatestGateway
     try {
       const userId = client.data.userId || 'unknown';
       const userEmail = client.data.user?.email || 'unknown';
-      
+
       // Safely get total clients count - server.sockets might be undefined if disconnect happens during failed connection
       let totalClients = 0;
       try {
@@ -304,7 +346,9 @@ export class AiChatLatestGateway
       }
 
       this.logger.log(
-        colors.yellow('═══════════════════════════════════════════════════════════'),
+        colors.yellow(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
       this.logger.log(colors.yellow('🔌 CLIENT DISCONNECTED'));
       // this.logger.log(colors.yellow(`   Socket ID: ${client.id}`));
@@ -317,7 +361,9 @@ export class AiChatLatestGateway
       // );
     } catch (error) {
       // Log disconnect error but don't throw - disconnect is already happening
-      this.logger.error(colors.red(`❌ Error logging disconnect: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error logging disconnect: ${error.message}`),
+      );
     }
   }
 
@@ -341,13 +387,15 @@ export class AiChatLatestGateway
     @ConnectedSocket() client: Socket,
   ) {
     const startTime = Date.now();
-    
+
     try {
       const user = client.data.user;
-      let userObj = this.getUserWithSchoolId(client);
+      const userObj = this.getUserWithSchoolId(client);
 
       this.logger.log(
-        colors.blue(`💬 Message received from ${user.email}: ${data.message.substring(0, 50)}...`),
+        colors.blue(
+          `💬 Message received from ${user.email}: ${data.message.substring(0, 50)}...`,
+        ),
       );
 
       // Emit typing indicator
@@ -363,48 +411,67 @@ export class AiChatLatestGateway
       const schoolId = userObj.school_id || (userObj as any).school_id;
 
       if (!userId) {
-        this.logger.error(colors.red(`❌ User ID not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ User ID not found for user: ${user.email}`),
+        );
         throw new Error('User ID not found');
       }
 
       // Check if user is a library platform owner (has platform_id instead of school_id)
-      let finalSchoolId = schoolId;
-     
+      const finalSchoolId = schoolId;
+
       const frontendMaterialId = data.materialId;
 
       if (!frontendMaterialId) {
-        this.logger.error(colors.red(`❌ Material ID is required but not provided`));
+        this.logger.error(
+          colors.red(`❌ Material ID is required but not provided`),
+        );
         throw new Error('Material ID is required');
       }
 
-      this.logger.log(colors.cyan(`✅ Frontend Material ID: ${frontendMaterialId}`));
+      this.logger.log(
+        colors.cyan(`✅ Frontend Material ID: ${frontendMaterialId}`),
+      );
 
       // Check if this is a LibraryGeneralMaterialChapterFile or PDFMaterial
       // frontendMaterialId is a chapter ID, so we find chapter files belonging to that chapter
-      const existingMaterial = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
-        where: { chapterId: frontendMaterialId },
-        select: { 
-          id: true, 
-          platformId: true,
-        },
-      });
+      const existingMaterial =
+        await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+          where: { chapterId: frontendMaterialId },
+          select: {
+            id: true,
+            platformId: true,
+          },
+        });
 
       let materialIdForPineconeSearch: string | null = null;
 
       if (existingMaterial) {
-        this.logger.log(colors.cyan(`📚 Detected LibraryGeneralMaterialChapterFile for chapter: ${frontendMaterialId}`));
+        this.logger.log(
+          colors.cyan(
+            `📚 Detected LibraryGeneralMaterialChapterFile for chapter: ${frontendMaterialId}`,
+          ),
+        );
         // Chunks are now stored in Pinecone with material_id = PDFMaterial.id (like ai-chat pattern)
         // Find the PDFMaterial that corresponds to this chapter file
         const pdfMaterial = await this.prisma.pDFMaterial.findFirst({
           where: { materialId: existingMaterial.id },
           select: { id: true },
         });
-        
+
         if (pdfMaterial) {
           materialIdForPineconeSearch = pdfMaterial.id;
-          this.logger.log(colors.cyan(`📚 Using PDFMaterial ID for Pinecone search: ${materialIdForPineconeSearch}`));
+          this.logger.log(
+            colors.cyan(
+              `📚 Using PDFMaterial ID for Pinecone search: ${materialIdForPineconeSearch}`,
+            ),
+          );
         } else {
-          this.logger.warn(colors.yellow(`⚠️ PDFMaterial not found for chapter file: ${existingMaterial.id}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ PDFMaterial not found for chapter file: ${existingMaterial.id}`,
+            ),
+          );
           materialIdForPineconeSearch = null;
         }
       } else {
@@ -413,12 +480,18 @@ export class AiChatLatestGateway
           where: { id: frontendMaterialId },
           select: { id: true },
         });
-        
+
         if (pdfMaterial) {
-          this.logger.log(colors.cyan(`📄 Detected PDFMaterial: ${frontendMaterialId}`));
+          this.logger.log(
+            colors.cyan(`📄 Detected PDFMaterial: ${frontendMaterialId}`),
+          );
           materialIdForPineconeSearch = frontendMaterialId;
         } else {
-          this.logger.warn(colors.yellow(`⚠️ Material ID ${frontendMaterialId} not found in LibraryGeneralMaterialChapterFile or PDFMaterial tables`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Material ID ${frontendMaterialId} not found in LibraryGeneralMaterialChapterFile or PDFMaterial tables`,
+            ),
+          );
           throw new Error(`Material with ID ${frontendMaterialId} not found`);
         }
       }
@@ -429,13 +502,13 @@ export class AiChatLatestGateway
         conversation = await this.getOrCreateConversation(
           userObj,
           data.conversationId,
-          frontendMaterialId
+          frontendMaterialId,
         );
       } else {
         conversation = await this.getOrCreateConversation(
           userObj,
           data.conversationId,
-          frontendMaterialId
+          frontendMaterialId,
         );
       }
 
@@ -443,9 +516,9 @@ export class AiChatLatestGateway
       // Use conversation.material_id which is the validated PDFMaterial.id
       // (conversation.material_id is null if no material or if material validation failed)
       const validatedMaterialId = conversation.material_id;
-      
+
       let userMessage: any;
-      this.logger.log("Saving user message to database");
+      this.logger.log('Saving user message to database');
       try {
         userMessage = await this.prisma.chatMessage.create({
           data: {
@@ -458,9 +531,15 @@ export class AiChatLatestGateway
             message_type: 'TEXT',
           },
         });
-        this.logger.log(colors.green(`✅ User message saved: ${userMessage.id}`));
+        this.logger.log(
+          colors.green(`✅ User message saved: ${userMessage.id}`),
+        );
       } catch (error) {
-        this.logger.error(colors.red(`❌ Failed to save user message to database: ${error.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Failed to save user message to database: ${error.message}`,
+          ),
+        );
         throw new Error(`Failed to save message: ${error.message}`);
       }
 
@@ -469,50 +548,73 @@ export class AiChatLatestGateway
       // For chapter files: find the corresponding PDFMaterial and use its ID
       // For PDFMaterials: use the PDFMaterial.id directly
       let contextChunks: any[] = [];
-      
+
       if (materialIdForPineconeSearch) {
         try {
-          contextChunks = await this.documentProcessingService.searchRelevantChunks(
-            materialIdForPineconeSearch,
-            data.message,
-            5
-          );
-          
+          contextChunks =
+            await this.documentProcessingService.searchRelevantChunks(
+              materialIdForPineconeSearch,
+              data.message,
+              5,
+            );
+
           if (contextChunks.length > 0) {
-            this.logger.log(colors.green(`✅ Found ${contextChunks.length} relevant chunks from material`));
+            this.logger.log(
+              colors.green(
+                `✅ Found ${contextChunks.length} relevant chunks from material`,
+              ),
+            );
           } else {
-            this.logger.log(colors.yellow(`⚠️ No chunks found for material: ${materialIdForPineconeSearch}`));
+            this.logger.log(
+              colors.yellow(
+                `⚠️ No chunks found for material: ${materialIdForPineconeSearch}`,
+              ),
+            );
           }
         } catch (error) {
-          this.logger.warn(colors.yellow(`⚠️ Could not search chunks: ${error.message}`));
+          this.logger.warn(
+            colors.yellow(`⚠️ Could not search chunks: ${error.message}`),
+          );
           contextChunks = [];
         }
       }
 
       // Generate AI response
-      const systemPrompt = (conversation as any).material_id ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT;
+      const systemPrompt = conversation.material_id
+        ? this.MATERIAL_SYSTEM_PROMPT
+        : this.GENERAL_SYSTEM_PROMPT;
       const aiResponse = await this.generateAIResponse(
         data.message,
         contextChunks,
         systemPrompt,
-        (conversation as any).material_id ? await this.getConversationHistory((conversation as any).material_id, userId) : [],
-        Boolean((conversation as any).material_id)
+        conversation.material_id
+          ? await this.getConversationHistory(conversation.material_id, userId)
+          : [],
+        Boolean(conversation.material_id),
       );
 
       // Generate chat title for new conversations (first message)
       let chatTitle: string | null = null;
-      const isNewConversation = ((conversation as any).total_messages === 0 || (conversation as any).total_messages === undefined) && 
-                                (!conversation.title || conversation.title === 'New Conversation' || conversation.title === 'General Chat');
-      
+      const isNewConversation =
+        (conversation.total_messages === 0 ||
+          conversation.total_messages === undefined) &&
+        (!conversation.title ||
+          conversation.title === 'New Conversation' ||
+          conversation.title === 'General Chat');
+
       if (isNewConversation) {
-        this.logger.log(colors.cyan(`📝 Generating chat title for first message`));
+        this.logger.log(
+          colors.cyan(`📝 Generating chat title for first message`),
+        );
         chatTitle = await this.generateChatTitle(data.message);
-        
+
         await this.prisma.chatConversation.update({
           where: { id: conversation.id },
-          data: { title: chatTitle }
+          data: { title: chatTitle },
         });
-        this.logger.log(colors.green(`✅ Updated conversation title to: "${chatTitle}"`));
+        this.logger.log(
+          colors.green(`✅ Updated conversation title to: "${chatTitle}"`),
+        );
       }
 
       // Save AI message with error handling
@@ -532,14 +634,20 @@ export class AiChatLatestGateway
             model_used: 'gpt-4o-mini',
             tokens_used: aiResponse.tokensUsed,
             response_time_ms: Date.now() - startTime,
-            context_chunks: contextChunks.map(chunk => chunk.id),
-            context_summary: contextChunks.length > 0 ? 
-              `Found ${contextChunks.length} relevant chunks from the document` : null,
+            context_chunks: contextChunks.map((chunk) => chunk.id),
+            context_summary:
+              contextChunks.length > 0
+                ? `Found ${contextChunks.length} relevant chunks from the document`
+                : null,
           },
         });
         this.logger.log(colors.green(`✅ AI message saved: ${aiMessage.id}`));
       } catch (error) {
-        this.logger.error(colors.red(`❌ Failed to save AI message to database: ${error.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Failed to save AI message to database: ${error.message}`,
+          ),
+        );
         throw new Error(`Failed to save AI response: ${error.message}`);
       }
 
@@ -548,13 +656,15 @@ export class AiChatLatestGateway
         await this.prisma.chatConversation.update({
           where: { id: conversation.id },
           data: {
-            total_messages: ((conversation as any).total_messages || 0) + 2,
+            total_messages: (conversation.total_messages || 0) + 2,
             last_activity: new Date(),
           },
         });
         this.logger.log(colors.green(`✅ Conversation updated`));
       } catch (error) {
-        this.logger.error(colors.red(`❌ Failed to update conversation: ${error.message}`));
+        this.logger.error(
+          colors.red(`❌ Failed to update conversation: ${error.message}`),
+        );
         // Don't throw - conversation update failure shouldn't block response
       }
 
@@ -562,16 +672,27 @@ export class AiChatLatestGateway
       try {
         await this.updateUserTokenUsage(userId, aiResponse.tokensUsed);
       } catch (error) {
-        this.logger.error(colors.red(`❌ Failed to update token usage: ${error.message}`));
+        this.logger.error(
+          colors.red(`❌ Failed to update token usage: ${error.message}`),
+        );
         // Don't throw - token update failure shouldn't block response
       }
 
       // Save context relationships with error handling
       if (contextChunks.length > 0) {
         try {
-          await this.saveContextRelationships(aiMessage.id, contextChunks, conversation.id, finalSchoolId);
+          await this.saveContextRelationships(
+            aiMessage.id,
+            contextChunks,
+            conversation.id,
+            finalSchoolId,
+          );
         } catch (error) {
-          this.logger.error(colors.red(`❌ Failed to save context relationships: ${error.message}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to save context relationships: ${error.message}`,
+            ),
+          );
           // Don't throw - context save failure shouldn't block response
         }
       }
@@ -579,14 +700,20 @@ export class AiChatLatestGateway
       // Get usage limits
       const userData = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { role: true }
+        select: { role: true },
       });
 
-      const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
-        where: { school_id: finalSchoolId }
-      });
+      const subscriptionPlan =
+        await this.prisma.platformSubscriptionPlan.findUnique({
+          where: { school_id: finalSchoolId },
+        });
 
-      const usageLimits = await this.getUserUsageLimits(userId, finalSchoolId, userData?.role || 'student', subscriptionPlan);
+      const usageLimits = await this.getUserUsageLimits(
+        userId,
+        finalSchoolId,
+        userData?.role || 'student',
+        subscriptionPlan,
+      );
 
       const response: SocketMessageResponseDto = {
         id: aiMessage.id,
@@ -652,10 +779,13 @@ export class AiChatLatestGateway
       }
 
       const responseTime = Date.now() - startTime;
-      this.logger.log(colors.green(`✅ Message processed in ${responseTime}ms`));
-
+      this.logger.log(
+        colors.green(`✅ Message processed in ${responseTime}ms`),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error handling message: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error handling message: ${error.message}`),
+      );
       client.emit('message:error', {
         success: false,
         message: 'Failed to process message',
@@ -678,9 +808,14 @@ export class AiChatLatestGateway
       const user = client.data.user;
       const userObj = this.getUserWithSchoolId(client);
 
-      this.logger.log(colors.blue(`💬 Creating conversation for ${user.email}`));
+      this.logger.log(
+        colors.blue(`💬 Creating conversation for ${user.email}`),
+      );
 
-      const conversation = await this.aiChatSocketService.createConversation(userObj, data);
+      const conversation = await this.aiChatSocketService.createConversation(
+        userObj,
+        data,
+      );
 
       client.emit('conversation:created', {
         success: true,
@@ -689,7 +824,9 @@ export class AiChatLatestGateway
         event: 'conversation:created',
       } as SocketSuccessResponseDto);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error creating conversation: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error creating conversation: ${error.message}`),
+      );
       client.emit('conversation:error', {
         success: false,
         message: 'Failed to create conversation',
@@ -705,7 +842,8 @@ export class AiChatLatestGateway
    */
   @SubscribeMessage('conversation:history')
   async handleGetChatHistory(
-    @MessageBody() data: { materialId: string; limit?: number; offset?: number },
+    @MessageBody()
+    data: { materialId: string; limit?: number; offset?: number },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -713,13 +851,17 @@ export class AiChatLatestGateway
       const userObj = await this.getUserWithSchoolId(client);
 
       this.logger.log(
-        colors.blue(`📖 Loading chat history via socket - Material: ${data.materialId}, User: ${user?.email || 'unknown'}`)
+        colors.blue(
+          `📖 Loading chat history via socket - Material: ${data.materialId}, User: ${user?.email || 'unknown'}`,
+        ),
       );
 
       const userId = userObj.id || (userObj as any).sub;
 
       if (!userId) {
-        this.logger.error(colors.red(`❌ User ID not found for user: ${user?.email}`));
+        this.logger.error(
+          colors.red(`❌ User ID not found for user: ${user?.email}`),
+        );
         throw new Error('User ID not found');
       }
 
@@ -734,18 +876,19 @@ export class AiChatLatestGateway
       let materialTitle: string = 'Unknown Material';
 
       // Check if it's a chapter file (library material)
-      const chapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
-        where: { chapterId: data.materialId },
-        select: { 
-          id: true,
-          chapter: {
-            select: {
-              id: true,
-              title: true,
-            }
-          }
-        },
-      });
+      const chapterFile =
+        await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+          where: { chapterId: data.materialId },
+          select: {
+            id: true,
+            chapter: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        });
 
       if (chapterFile) {
         // Find the PDFMaterial that corresponds to this chapter file
@@ -753,13 +896,21 @@ export class AiChatLatestGateway
           where: { materialId: chapterFile.id },
           select: { id: true, title: true, status: true },
         });
-        
+
         if (pdfMaterial) {
           materialIdForHistory = pdfMaterial.id;
           materialTitle = pdfMaterial.title || chapterFile.chapter.title;
-          this.logger.log(colors.cyan(`📚 Found PDFMaterial for chapter file: ${pdfMaterial.id}`));
+          this.logger.log(
+            colors.cyan(
+              `📚 Found PDFMaterial for chapter file: ${pdfMaterial.id}`,
+            ),
+          );
         } else {
-          this.logger.warn(colors.yellow(`⚠️ PDFMaterial not found for chapter file: ${chapterFile.id}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ PDFMaterial not found for chapter file: ${chapterFile.id}`,
+            ),
+          );
         }
       } else {
         // Check if it's a PDFMaterial directly
@@ -767,26 +918,38 @@ export class AiChatLatestGateway
           where: { id: data.materialId },
           select: { id: true, title: true, status: true },
         });
-        
+
         if (pdfMaterial) {
           materialIdForHistory = pdfMaterial.id;
           materialTitle = pdfMaterial.title;
-          this.logger.log(colors.cyan(`📄 Found PDFMaterial: ${pdfMaterial.id}`));
+          this.logger.log(
+            colors.cyan(`📄 Found PDFMaterial: ${pdfMaterial.id}`),
+          );
         } else {
-          this.logger.error(colors.red(`❌ Material not found: ${data.materialId}`));
+          this.logger.error(
+            colors.red(`❌ Material not found: ${data.materialId}`),
+          );
           throw new Error(`Material with ID ${data.materialId} not found`);
         }
       }
 
       if (!materialIdForHistory) {
-        this.logger.error(colors.red(`❌ Could not resolve material ID for chat history: ${data.materialId}`));
+        this.logger.error(
+          colors.red(
+            `❌ Could not resolve material ID for chat history: ${data.materialId}`,
+          ),
+        );
         throw new Error(`Could not resolve material ID for chat history`);
       }
 
       const parsedLimit = parseInt((data.limit || 50).toString());
       const parsedOffset = parseInt((data.offset || 0).toString());
 
-      this.logger.log(colors.cyan(`📖 Loading chat history by material - Material: ${materialIdForHistory} (${materialTitle}), User: ${userId}, Limit: ${parsedLimit}, Offset: ${parsedOffset}`));
+      this.logger.log(
+        colors.cyan(
+          `📖 Loading chat history by material - Material: ${materialIdForHistory} (${materialTitle}), User: ${userId}, Limit: ${parsedLimit}, Offset: ${parsedOffset}`,
+        ),
+      );
 
       // Get chat history by material_id (PDFMaterial.id) and user_id
       const messages = await this.prisma.chatMessage.findMany({
@@ -800,10 +963,12 @@ export class AiChatLatestGateway
       });
 
       this.logger.log(
-        colors.green(`✅ Chat history loaded: ${messages.length} messages found for material ${data.materialId}`)
+        colors.green(
+          `✅ Chat history loaded: ${messages.length} messages found for material ${data.materialId}`,
+        ),
       );
 
-      const conversationHistory = messages.map(message => ({
+      const conversationHistory = messages.map((message) => ({
         id: message.id,
         content: message.content,
         role: message.role,
@@ -814,14 +979,15 @@ export class AiChatLatestGateway
         createdAt: message.createdAt.toISOString(),
       }));
 
-     
       const history = {
         conversationHistory,
         // usageLimits,
       };
 
       this.logger.log(
-        colors.green(`✅ Chat history sent via socket - ${history.conversationHistory.length} messages loaded`)
+        colors.green(
+          `✅ Chat history sent via socket - ${history.conversationHistory.length} messages loaded`,
+        ),
       );
 
       client.emit('conversation:history', {
@@ -831,7 +997,9 @@ export class AiChatLatestGateway
         event: 'conversation:history',
       } as SocketSuccessResponseDto);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting chat history: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error getting chat history: ${error.message}`),
+      );
       client.emit('conversation:error', {
         success: false,
         message: 'Failed to get chat history',
@@ -850,7 +1018,8 @@ export class AiChatLatestGateway
     try {
       const userObj = await this.getUserWithSchoolId(client);
 
-      const conversations = await this.aiChatSocketService.getUserConversations(userObj);
+      const conversations =
+        await this.aiChatSocketService.getUserConversations(userObj);
 
       client.emit('conversations:list', {
         success: true,
@@ -859,7 +1028,9 @@ export class AiChatLatestGateway
         event: 'conversations:list',
       } as SocketSuccessResponseDto);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting conversations: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error getting conversations: ${error.message}`),
+      );
       client.emit('conversations:error', {
         success: false,
         message: 'Failed to get conversations',
@@ -875,7 +1046,7 @@ export class AiChatLatestGateway
   private async getOrCreateConversation(
     user: User,
     conversationId?: string,
-    materialId?: string
+    materialId?: string,
   ) {
     const userId = user.id || (user as any).sub;
     const schoolId = user.school_id || (user as any).school_id;
@@ -883,7 +1054,7 @@ export class AiChatLatestGateway
     if (!userId || !schoolId) {
       throw new Error('User ID or School ID not found');
     }
-    
+
     if (conversationId) {
       const conversation = await this.prisma.chatConversation.findFirst({
         where: {
@@ -893,14 +1064,16 @@ export class AiChatLatestGateway
       });
 
       if (conversation) {
-        this.logger.log(colors.green(`✅ Conversation found: ${conversation.id}`));
+        this.logger.log(
+          colors.green(`✅ Conversation found: ${conversation.id}`),
+        );
         return conversation;
       }
     }
 
     // Validate material_id if provided
     let validatedMaterialId: string | null = null;
-    
+
     if (materialId) {
       try {
         // First, check if materialId is a PDFMaterial
@@ -908,65 +1081,97 @@ export class AiChatLatestGateway
           where: { id: materialId },
           select: { id: true, schoolId: true },
         });
-        
+
         if (pdfMaterial) {
           // If it's a school-specific PDFMaterial, verify it belongs to the user's school
           if (pdfMaterial.schoolId && pdfMaterial.schoolId !== schoolId) {
-            this.logger.warn(colors.yellow(`⚠️ PDF Material ${materialId} does not belong to school ${schoolId}`));
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ PDF Material ${materialId} does not belong to school ${schoolId}`,
+              ),
+            );
             validatedMaterialId = null;
           } else {
             validatedMaterialId = pdfMaterial.id;
-            this.logger.log(colors.green(`✅ PDF Material validated: ${validatedMaterialId}`));
+            this.logger.log(
+              colors.green(`✅ PDF Material validated: ${validatedMaterialId}`),
+            );
           }
         } else {
           // Check if it's a LibraryGeneralMaterialChapterFile
           // When a chapter file is created, a PDFMaterial is created with materialId = chapterFile.id
           // So we need to find the PDFMaterial that references this chapter file
-          const pdfMaterialForChapterFile = await this.prisma.pDFMaterial.findFirst({
-            where: { materialId: materialId },
-            select: { id: true },
-          });
-          
+          const pdfMaterialForChapterFile =
+            await this.prisma.pDFMaterial.findFirst({
+              where: { materialId: materialId },
+              select: { id: true },
+            });
+
           if (pdfMaterialForChapterFile) {
             validatedMaterialId = pdfMaterialForChapterFile.id;
-            this.logger.log(colors.green(`✅ PDF Material found for chapter file ${materialId}: ${validatedMaterialId}`));
+            this.logger.log(
+              colors.green(
+                `✅ PDF Material found for chapter file ${materialId}: ${validatedMaterialId}`,
+              ),
+            );
           } else {
             // Verify it's actually a chapter file
-            const libraryMaterialChapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findUnique({
-              where: { id: materialId },
-              select: { id: true, title: true },
-            });
-            
+            const libraryMaterialChapterFile =
+              await this.prisma.libraryGeneralMaterialChapterFile.findUnique({
+                where: { id: materialId },
+                select: { id: true, title: true },
+              });
+
             if (libraryMaterialChapterFile) {
-              this.logger.warn(colors.yellow(`⚠️ Chapter file ${materialId} found but no corresponding PDFMaterial exists`));
+              this.logger.warn(
+                colors.yellow(
+                  `⚠️ Chapter file ${materialId} found but no corresponding PDFMaterial exists`,
+                ),
+              );
               validatedMaterialId = null;
             } else {
-              this.logger.warn(colors.yellow(`⚠️ Material ${materialId} not found in PDFMaterial or LibraryGeneralMaterialChapterFile`));
+              this.logger.warn(
+                colors.yellow(
+                  `⚠️ Material ${materialId} not found in PDFMaterial or LibraryGeneralMaterialChapterFile`,
+                ),
+              );
               validatedMaterialId = null;
             }
           }
         }
       } catch (error) {
-        this.logger.warn(colors.yellow(`⚠️ Error validating material: ${error.message}, using general chat`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Error validating material: ${error.message}, using general chat`,
+          ),
+        );
         validatedMaterialId = null;
       }
     }
 
     // Create new conversation
-    this.logger.log(colors.green(`✅ Creating new conversation for material: ${validatedMaterialId || 'general chat'}`));
+    this.logger.log(
+      colors.green(
+        `✅ Creating new conversation for material: ${validatedMaterialId || 'general chat'}`,
+      ),
+    );
     const conversation = await this.prisma.chatConversation.create({
       data: {
         user_id: userId,
         school_id: schoolId,
         material_id: validatedMaterialId,
         title: validatedMaterialId ? 'Document Chat' : 'General Chat',
-        system_prompt: validatedMaterialId ? this.MATERIAL_SYSTEM_PROMPT : this.GENERAL_SYSTEM_PROMPT,
+        system_prompt: validatedMaterialId
+          ? this.MATERIAL_SYSTEM_PROMPT
+          : this.GENERAL_SYSTEM_PROMPT,
         status: 'ACTIVE',
         total_messages: 0,
       },
     });
 
-    this.logger.log(colors.green(`✅ Conversation created: ${conversation.id}`));
+    this.logger.log(
+      colors.green(`✅ Conversation created: ${conversation.id}`),
+    );
 
     return conversation;
   }
@@ -981,12 +1186,13 @@ export class AiChatLatestGateway
         messages: [
           {
             role: 'system',
-            content: 'Generate a short, descriptive title (max 5 words) for this conversation based on the user\'s first message. Return only the title, nothing else.'
+            content:
+              "Generate a short, descriptive title (max 5 words) for this conversation based on the user's first message. Return only the title, nothing else.",
           },
           {
             role: 'user',
-            content: firstMessage
-          }
+            content: firstMessage,
+          },
         ],
         max_tokens: 20,
         temperature: 0.3,
@@ -995,9 +1201,10 @@ export class AiChatLatestGateway
       const title = response.choices[0].message.content?.trim() || 'New Chat';
       this.logger.log(colors.cyan(`📝 Generated chat title: "${title}"`));
       return title;
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error generating chat title: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error generating chat title: ${error.message}`),
+      );
       return 'New Chat';
     }
   }
@@ -1010,24 +1217,27 @@ export class AiChatLatestGateway
     contextChunks: any[],
     systemPrompt: string,
     conversationHistory: any[],
-    isMaterialChat: boolean
+    isMaterialChat: boolean,
   ): Promise<{ content: string; tokensUsed: number }> {
     try {
       // Build context from chunks
-      const context = contextChunks.length > 0 
-        ? `\n\nRelevant document context:\n${contextChunks.map(chunk => 
-            `- ${chunk.content.substring(0, 500)}...`
-          ).join('\n')}`
-        : '';
+      const context =
+        contextChunks.length > 0
+          ? `\n\nRelevant document context:\n${contextChunks
+              .map((chunk) => `- ${chunk.content.substring(0, 500)}...`)
+              .join('\n')}`
+          : '';
 
       // Build conversation history
-      const history = conversationHistory.map(msg => 
-        `${msg.role}: ${msg.content}`
-      ).join('\n');
+      const history = conversationHistory
+        .map((msg) => `${msg.role}: ${msg.content}`)
+        .join('\n');
 
       const messages = [
         { role: 'system', content: systemPrompt + context },
-        ...(history ? [{ role: 'user', content: `Previous conversation:\n${history}` }] : []),
+        ...(history
+          ? [{ role: 'user', content: `Previous conversation:\n${history}` }]
+          : []),
         { role: 'user', content: userMessage },
       ];
 
@@ -1039,12 +1249,15 @@ export class AiChatLatestGateway
       });
 
       return {
-        content: response.choices[0].message.content || 'I apologize, but I could not generate a response.',
+        content:
+          response.choices[0].message.content ||
+          'I apologize, but I could not generate a response.',
         tokensUsed: response.usage?.total_tokens || 0,
       };
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error generating AI response: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error generating AI response: ${error.message}`),
+      );
       throw new Error(`Failed to generate AI response: ${error.message}`);
     }
   }
@@ -1052,11 +1265,15 @@ export class AiChatLatestGateway
   /**
    * Get conversation history for context
    */
-  private async getConversationHistory(conversationId: string, limit: number, userId?: string) {
+  private async getConversationHistory(
+    conversationId: string,
+    limit: number,
+    userId?: string,
+  ) {
     const messages = await this.prisma.chatMessage.findMany({
-      where: { 
+      where: {
         conversation_id: conversationId,
-        ...(userId && { user_id: userId })
+        ...(userId && { user_id: userId }),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -1075,10 +1292,18 @@ export class AiChatLatestGateway
    */
   private async updateUserTokenUsage(userId: string, tokensUsed: number) {
     try {
-      this.logger.log(colors.blue(`📊 Updating token usage for user: ${userId}, tokens: ${tokensUsed}`));
+      this.logger.log(
+        colors.blue(
+          `📊 Updating token usage for user: ${userId}, tokens: ${tokensUsed}`,
+        ),
+      );
 
       const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const startOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      );
       const startOfWeek = new Date(today);
       startOfWeek.setDate(today.getDate() - today.getDay());
 
@@ -1089,19 +1314,25 @@ export class AiChatLatestGateway
           tokensUsedThisWeek: true,
           tokensUsedAllTime: true,
           lastTokenResetDateAllTime: true,
-        }
+        },
       });
 
       if (!user) {
-        this.logger.error(colors.red(`❌ User not found for token update: ${userId}`));
+        this.logger.error(
+          colors.red(`❌ User not found for token update: ${userId}`),
+        );
         return;
       }
 
       const shouldResetDaily = user.lastTokenResetDateAllTime < startOfDay;
       const shouldResetWeekly = user.lastTokenResetDateAllTime < startOfWeek;
 
-      const newDailyTokens = shouldResetDaily ? tokensUsed : (user.tokensUsedThisDay || 0) + tokensUsed;
-      const newWeeklyTokens = shouldResetWeekly ? tokensUsed : (user.tokensUsedThisWeek || 0) + tokensUsed;
+      const newDailyTokens = shouldResetDaily
+        ? tokensUsed
+        : (user.tokensUsedThisDay || 0) + tokensUsed;
+      const newWeeklyTokens = shouldResetWeekly
+        ? tokensUsed
+        : (user.tokensUsedThisWeek || 0) + tokensUsed;
       const newAllTimeTokens = (user.tokensUsedAllTime || 0) + tokensUsed;
 
       await this.prisma.user.update({
@@ -1111,13 +1342,18 @@ export class AiChatLatestGateway
           tokensUsedThisWeek: newWeeklyTokens,
           tokensUsedAllTime: newAllTimeTokens,
           lastTokenResetDateAllTime: today,
-        }
+        },
       });
 
-      this.logger.log(colors.green(`✅ Updated token usage - Daily: ${newDailyTokens}, Weekly: ${newWeeklyTokens}, All-time: ${newAllTimeTokens}`));
-
+      this.logger.log(
+        colors.green(
+          `✅ Updated token usage - Daily: ${newDailyTokens}, Weekly: ${newWeeklyTokens}, All-time: ${newAllTimeTokens}`,
+        ),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error updating token usage: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error updating token usage: ${error.message}`),
+      );
     }
   }
 
@@ -1143,19 +1379,34 @@ export class AiChatLatestGateway
       /\bcould be\s+/gi,
       /\bmight be\s+/gi,
     ];
-    
+
     for (const h of hedges) {
       refined = refined.replace(h, '');
     }
 
-    refined = refined.replace(/^\s*(it looks like|it seems like|it appears that|it seems that)\s+/i, '');
-    refined = refined.replace(/^\s*the (document|workbook|chapter|material) you provided\s+(is|appears to be|seems to be)\s*/iu, 'This material ');
-    refined = refined.replace(/^\s*the (document|workbook|chapter|material)\s+(appears|seems)\s+to\s+be\s*/iu, 'This material is ');
-    refined = refined.replace(/\b(you're referring to|you are referring to)\s+a\s+/gi, 'This ');
-    refined = refined.replace(/\bbased on the context provided\s*[,:]\s*/gi, '');
+    refined = refined.replace(
+      /^\s*(it looks like|it seems like|it appears that|it seems that)\s+/i,
+      '',
+    );
+    refined = refined.replace(
+      /^\s*the (document|workbook|chapter|material) you provided\s+(is|appears to be|seems to be)\s*/iu,
+      'This material ',
+    );
+    refined = refined.replace(
+      /^\s*the (document|workbook|chapter|material)\s+(appears|seems)\s+to\s+be\s*/iu,
+      'This material is ',
+    );
+    refined = refined.replace(
+      /\b(you're referring to|you are referring to)\s+a\s+/gi,
+      'This ',
+    );
+    refined = refined.replace(
+      /\bbased on the context provided\s*[,:]\s*/gi,
+      '',
+    );
     refined = refined.replace(/^\.\s*/, '');
     refined = refined.replace(/^\s*,\s*/, '');
-    
+
     if (refined.length > 0 && refined[0] === refined[0].toLowerCase()) {
       refined = refined.charAt(0).toUpperCase() + refined.slice(1);
     }
@@ -1170,32 +1421,44 @@ export class AiChatLatestGateway
     messageId: string,
     contextChunks: any[],
     conversationId: string,
-    schoolId: string
+    schoolId: string,
   ) {
     try {
       // Verify chunks exist in DocumentChunk table before saving relationships
       // This prevents foreign key constraint violations for library material chunks
       const validChunks: any[] = [];
-      
+
       for (const chunk of contextChunks) {
         try {
           const dbChunk = await this.prisma.documentChunk.findUnique({
             where: { id: chunk.id },
             select: { id: true },
           });
-          
+
           if (dbChunk) {
             validChunks.push(chunk);
           } else {
-            this.logger.warn(colors.yellow(`⚠️ Chunk ${chunk.id} not found in DocumentChunk table, skipping context relationship`));
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ Chunk ${chunk.id} not found in DocumentChunk table, skipping context relationship`,
+              ),
+            );
           }
         } catch (error) {
-          this.logger.warn(colors.yellow(`⚠️ Error checking chunk ${chunk.id}: ${error.message}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Error checking chunk ${chunk.id}: ${error.message}`,
+            ),
+          );
         }
       }
 
       if (validChunks.length === 0) {
-        this.logger.warn(colors.yellow(`⚠️ No valid chunks found to save context relationships`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No valid chunks found to save context relationships`,
+          ),
+        );
         return;
       }
 
@@ -1213,10 +1476,13 @@ export class AiChatLatestGateway
         await this.prisma.chatContext.create({ data: context });
       }
 
-      this.logger.log(colors.green(`✅ Saved ${validChunks.length} context relationships`));
-
+      this.logger.log(
+        colors.green(`✅ Saved ${validChunks.length} context relationships`),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error saving context relationships: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error saving context relationships: ${error.message}`),
+      );
     }
   }
 
@@ -1227,7 +1493,7 @@ export class AiChatLatestGateway
     userId: string,
     schoolId: string,
     userRole: string,
-    subscriptionPlan: any
+    subscriptionPlan: any,
   ): Promise<any> {
     try {
       const user = await this.prisma.user.findUnique({
@@ -1246,7 +1512,7 @@ export class AiChatLatestGateway
           maxTokensPerDay: true,
           lastFileResetDate: true,
           lastTokenResetDateAllTime: true,
-        }
+        },
       });
 
       if (!user) {
@@ -1256,11 +1522,14 @@ export class AiChatLatestGateway
       let maxDocumentUploadsPerDay: number;
       if (subscriptionPlan) {
         if (userRole === 'student') {
-          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_student_per_day || 3;
+          maxDocumentUploadsPerDay =
+            subscriptionPlan.max_document_uploads_per_student_per_day || 3;
         } else if (userRole === 'teacher') {
-          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+          maxDocumentUploadsPerDay =
+            subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
         } else {
-          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+          maxDocumentUploadsPerDay =
+            subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
         }
       } else {
         maxDocumentUploadsPerDay = userRole === 'student' ? 3 : 10;
@@ -1270,25 +1539,31 @@ export class AiChatLatestGateway
         filesUploadedThisMonth: user.filesUploadedThisMonth,
         totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
         totalStorageUsedMB: user.totalStorageUsedMB,
-        maxFilesPerMonth: subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
+        maxFilesPerMonth:
+          subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
         maxFileSizeMB: subscriptionPlan?.max_file_size_mb ?? user.maxFileSizeMB,
         maxStorageMB: subscriptionPlan?.max_storage_mb ?? user.maxStorageMB,
         tokensUsedThisWeek: user.tokensUsedThisWeek,
         tokensUsedThisDay: user.tokensUsedThisDay,
         tokensUsedAllTime: user.tokensUsedAllTime,
-        maxTokensPerWeek: subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
-        maxTokensPerDay: subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
+        maxTokensPerWeek:
+          subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
+        maxTokensPerDay:
+          subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
         maxDocumentUploadsPerDay: maxDocumentUploadsPerDay,
-        lastFileResetDate: user.lastFileResetDate?.toISOString() || new Date().toISOString(),
-        lastTokenResetDate: user.lastTokenResetDateAllTime?.toISOString() || new Date().toISOString(),
+        lastFileResetDate:
+          user.lastFileResetDate?.toISOString() || new Date().toISOString(),
+        lastTokenResetDate:
+          user.lastTokenResetDateAllTime?.toISOString() ||
+          new Date().toISOString(),
       };
 
       return usageLimits;
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching usage limits: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching usage limits: ${error.message}`),
+      );
       throw new Error(`Failed to fetch usage limits: ${error.message}`);
     }
   }
 }
-

@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import * as colors from 'colors';
 
@@ -26,13 +32,19 @@ export class LibraryOwnerGuard implements CanActivate {
     });
 
     if (!libraryUser || libraryUser.status !== 'active') {
-      console.log(colors.red('Library Owner Guard - Library user not found or inactive'));
+      console.log(
+        colors.red('Library Owner Guard - Library user not found or inactive'),
+      );
       throw new UnauthorizedException('Library user not found or inactive');
     }
 
     const allowedRoles = ['admin', 'manager'];
     if (!allowedRoles.includes(libraryUser.role)) {
-      console.log(colors.red(`Library Owner Guard - Access denied for role: ${libraryUser.role}`));
+      console.log(
+        colors.red(
+          `Library Owner Guard - Access denied for role: ${libraryUser.role}`,
+        ),
+      );
       throw new ForbiddenException('Insufficient permissions');
     }
 

@@ -1,12 +1,25 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../shared/services/s3.service';
 import { FileValidationHelper } from '../../shared/helper-functions/file-validation.helper';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { User } from '@prisma/client';
 import * as colors from 'colors';
-import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto } from './dto';
-import { InitiateAiChatDto, TeacherMaterialDto, SupportedDocumentTypeDto } from './dto/initiate-ai-chat.dto';
+import {
+  UploadDocumentDto,
+  DocumentUploadResponseDto,
+  UploadSessionDto,
+} from './dto';
+import {
+  InitiateAiChatDto,
+  TeacherMaterialDto,
+  SupportedDocumentTypeDto,
+} from './dto/initiate-ai-chat.dto';
 import { UploadProgressService } from './upload-progress.service';
 import { DocumentProcessingService } from './services';
 import { PineconeService } from '../../explore/chat/services/pinecone.service';
@@ -24,45 +37,56 @@ export class AiChatService {
   ) {}
 
   ////////////////////////////////////////////////////////////////////////// HELPER METHODS
-  
+
   /**
    * Process document directly from uploaded file (more efficient than S3 download)
    */
   private async processDocumentFromFile(
-    materialId: string, 
-    documentFile: Express.Multer.File, 
-    fileType: string
+    materialId: string,
+    documentFile: Express.Multer.File,
+    fileType: string,
   ): Promise<void> {
     try {
-      this.logger.log(colors.cyan(`🔄 Processing document directly from uploaded file: ${documentFile.originalname}`));
-      
-      // Process the file buffer directly instead of downloading from S3
-      const result = await this.documentProcessingService.processDocumentFromBuffer(
-        materialId,
-        documentFile.buffer,
-        fileType
+      this.logger.log(
+        colors.cyan(
+          `🔄 Processing document directly from uploaded file: ${documentFile.originalname}`,
+        ),
       );
-      
+
+      // Process the file buffer directly instead of downloading from S3
+      const result =
+        await this.documentProcessingService.processDocumentFromBuffer(
+          materialId,
+          documentFile.buffer,
+          fileType,
+        );
+
       if (result.success) {
-        this.logger.log(colors.green(`✅ Document processed successfully: ${materialId}`));
+        this.logger.log(
+          colors.green(`✅ Document processed successfully: ${materialId}`),
+        );
       } else {
-        this.logger.error(colors.red(`❌ Document processing failed: ${result.error}`));
+        this.logger.error(
+          colors.red(`❌ Document processing failed: ${result.error}`),
+        );
       }
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error processing document from file: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error processing document from file: ${error.message}`),
+      );
     }
   }
 
   private generateTitleFromFilename(filename: string): string {
     // Remove file extension
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
-    
+
     // Replace underscores and hyphens with spaces
     const cleanName = nameWithoutExt.replace(/[_-]/g, ' ');
-    
+
     // Capitalize first letter of each word
-    const title = cleanName.replace(/\b\w/g, l => l.toUpperCase());
-    
+    const title = cleanName.replace(/\b\w/g, (l) => l.toUpperCase());
+
     return title || 'Untitled Document';
   }
 
@@ -71,27 +95,39 @@ export class AiChatService {
   async startUpload(
     uploadDto: UploadDocumentDto,
     documentFile: Express.Multer.File,
-    user: User
+    user: User,
   ): Promise<ApiResponse<UploadSessionDto>> {
     // Auto-generate title from filename if not provided
-    const documentTitle = uploadDto.title || this.generateTitleFromFilename(documentFile.originalname);
-    
-    this.logger.log(colors.cyan(`🚀 Starting upload with progress tracking: ${documentTitle}`));
+    const documentTitle =
+      uploadDto.title ||
+      this.generateTitleFromFilename(documentFile.originalname);
+
+    this.logger.log(
+      colors.cyan(
+        `🚀 Starting upload with progress tracking: ${documentTitle}`,
+      ),
+    );
 
     try {
       // Create upload session
       const sessionId = this.uploadProgressService.createUploadSession(
         user.id,
         user.school_id,
-        documentFile.size
+        documentFile.size,
       );
 
       // Start upload process in background
-      this.processUploadInBackground(uploadDto, documentFile, user, sessionId, documentTitle);
+      this.processUploadInBackground(
+        uploadDto,
+        documentFile,
+        user,
+        sessionId,
+        documentTitle,
+      );
 
       const responseData: UploadSessionDto = {
         sessionId,
-        progressEndpoint: `/api/v1/ai-chat/upload-progress/${sessionId}`
+        progressEndpoint: `/api/v1/ai-chat/upload-progress/${sessionId}`,
       };
 
       this.logger.log(colors.green(`✅ Upload session created: ${sessionId}`));
@@ -99,11 +135,12 @@ export class AiChatService {
       return new ApiResponse(
         true,
         'Upload started successfully. Use the progress endpoint to track progress.',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error starting upload: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error starting upload: ${error.message}`),
+      );
       throw new Error(`Failed to start upload: ${error.message}`);
     }
   }
@@ -114,44 +151,86 @@ export class AiChatService {
     documentFile: Express.Multer.File,
     user: User,
     sessionId: string,
-    documentTitle: string
+    documentTitle: string,
   ): Promise<void> {
     try {
-      this.logger.log(colors.cyan(`🔄 Background upload process started for: ${documentTitle}`));
-      
+      this.logger.log(
+        colors.cyan(
+          `🔄 Background upload process started for: ${documentTitle}`,
+        ),
+      );
+
       // Stage 1: Validation (0-10%)
-      this.uploadProgressService.updateProgress(sessionId, 'validating', 0, 'Validating file...');
-      
-      const validationResult = FileValidationHelper.validateMaterialFile(documentFile);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'validating',
+        0,
+        'Validating file...',
+      );
+
+      const validationResult =
+        FileValidationHelper.validateMaterialFile(documentFile);
       if (!validationResult.isValid) {
-        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', 0, 'File validation failed', validationResult.error);
+        this.logger.error(
+          colors.red(`❌ File validation failed: ${validationResult.error}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          0,
+          'File validation failed',
+          validationResult.error,
+        );
         return;
       }
 
       this.logger.log(colors.green(`✅ File validation passed`));
-      this.uploadProgressService.updateProgress(sessionId, 'validating', documentFile.size * 0.1, 'File validation passed');
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'validating',
+        documentFile.size * 0.1,
+        'File validation passed',
+      );
 
       // Stage 2: Upload to S3 (10-80%)
-      this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.1, 'Uploading to cloud storage...');
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'uploading',
+        documentFile.size * 0.1,
+        'Uploading to cloud storage...',
+      );
 
       // Get user's school ID and ID
       const existingUser = await this.prisma.user.findUnique({
         where: { id: (user as any).sub },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
       if (!existingUser) {
-        this.logger.error(colors.red(`❌ User not found: ${(user as any).sub}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'User not found');
+        this.logger.error(
+          colors.red(`❌ User not found: ${(user as any).sub}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          documentFile.size * 0.8,
+          'User not found',
+        );
         return;
       }
       const schoolId = existingUser.school_id;
       const userId = existingUser.id;
-      this.logger.log(colors.green(`✅ User found: ${userId}, School: ${schoolId}`));
-      
+      this.logger.log(
+        colors.green(`✅ User found: ${userId}, School: ${schoolId}`),
+      );
+
       if (!schoolId) {
         this.logger.error(colors.red(`❌ User not associated with school`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'User must be associated with a school');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          documentFile.size * 0.8,
+          'User must be associated with a school',
+        );
         return;
       }
 
@@ -163,25 +242,43 @@ export class AiChatService {
         s3Path += `/topics/${uploadDto.topic_id}`;
       }
       s3Path += '/materials';
-      
+
       let documentUploadResult;
       try {
         documentUploadResult = await this.s3Service.uploadFile(
           documentFile,
           s3Path,
-          `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
+          `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`,
         );
 
         this.logger.log(colors.green(`✅ S3 upload completed`));
-        this.uploadProgressService.updateProgress(sessionId, 'uploading', documentFile.size * 0.8, 'Upload completed');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'uploading',
+          documentFile.size * 0.8,
+          'Upload completed',
+        );
       } catch (s3Error) {
-        this.logger.error(colors.red(`❌ S3 upload failed: ${s3Error.message}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'S3 upload failed', s3Error.message);
+        this.logger.error(
+          colors.red(`❌ S3 upload failed: ${s3Error.message}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          documentFile.size * 0.8,
+          'S3 upload failed',
+          s3Error.message,
+        );
         return;
       }
 
       // Stage 3: Processing (80-90%)
-      this.uploadProgressService.updateProgress(sessionId, 'processing', documentFile.size * 0.8, 'Processing document for AI chat...');
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'processing',
+        documentFile.size * 0.8,
+        'Processing document for AI chat...',
+      );
 
       // Validate subject and topic if provided
       let subject: any = null;
@@ -192,7 +289,12 @@ export class AiChatService {
           where: { id: uploadDto.subject_id, schoolId: schoolId },
         });
         if (!subject) {
-          this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'Subject not found');
+          this.uploadProgressService.updateProgress(
+            sessionId,
+            'error',
+            documentFile.size * 0.8,
+            'Subject not found',
+          );
           return;
         }
       }
@@ -207,17 +309,34 @@ export class AiChatService {
           },
         });
         if (!topic) {
-          this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.8, 'Topic not found');
+          this.uploadProgressService.updateProgress(
+            sessionId,
+            'error',
+            documentFile.size * 0.8,
+            'Topic not found',
+          );
           return;
         }
       }
 
-      this.uploadProgressService.updateProgress(sessionId, 'processing', documentFile.size * 0.9, 'Validation completed');
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'processing',
+        documentFile.size * 0.9,
+        'Validation completed',
+      );
 
       // Stage 4: Saving to database (90-100%)
-      this.uploadProgressService.updateProgress(sessionId, 'saving', documentFile.size * 0.9, 'Saving to database...');
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'saving',
+        documentFile.size * 0.9,
+        'Saving to database...',
+      );
 
-      const documentSize = FileValidationHelper.formatFileSize(documentFile.size);
+      const documentSize = FileValidationHelper.formatFileSize(
+        documentFile.size,
+      );
 
       // Get or create default AI Chat platform
       let aiChatPlatform;
@@ -227,13 +346,21 @@ export class AiChatService {
           update: {},
           create: {
             name: 'AI Chat Platform',
-            email: 'ai-chat@platform.com'
-          }
+            email: 'ai-chat@platform.com',
+          },
         });
         this.logger.log(colors.green(`✅ AI Chat platform ready`));
       } catch (platformError) {
-        this.logger.error(colors.red(`❌ Platform creation failed: ${platformError.message}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Platform creation failed', platformError.message);
+        this.logger.error(
+          colors.red(`❌ Platform creation failed: ${platformError.message}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          documentFile.size * 0.9,
+          'Platform creation failed',
+          platformError.message,
+        );
         return;
       }
 
@@ -257,8 +384,16 @@ export class AiChatService {
         });
         this.logger.log(colors.green(`✅ Material record created`));
       } catch (materialError) {
-        this.logger.error(colors.red(`❌ Material creation failed: ${materialError.message}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Material creation failed', materialError.message);
+        this.logger.error(
+          colors.red(`❌ Material creation failed: ${materialError.message}`),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          documentFile.size * 0.9,
+          'Material creation failed',
+          materialError.message,
+        );
         return;
       }
 
@@ -277,32 +412,59 @@ export class AiChatService {
         });
         this.logger.log(colors.green(`✅ Material processing record created`));
       } catch (processingError) {
-        this.logger.error(colors.red(`❌ Material processing creation failed: ${processingError.message}`));
-        this.uploadProgressService.updateProgress(sessionId, 'error', documentFile.size * 0.9, 'Material processing creation failed', processingError.message);
+        this.logger.error(
+          colors.red(
+            `❌ Material processing creation failed: ${processingError.message}`,
+          ),
+        );
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          documentFile.size * 0.9,
+          'Material processing creation failed',
+          processingError.message,
+        );
         return;
       }
 
       // Process document directly from uploaded file (more efficient)
-      this.logger.log(colors.blue(`🔄 Starting document processing directly from uploaded file...`));
-      this.processDocumentFromFile(material.id, documentFile, validationResult.fileType || 'pdf');
+      this.logger.log(
+        colors.blue(
+          `🔄 Starting document processing directly from uploaded file...`,
+        ),
+      );
+      this.processDocumentFromFile(
+        material.id,
+        documentFile,
+        validationResult.fileType || 'pdf',
+      );
       this.logger.log(colors.green(`✅ Document processing started`));
 
       // Stage 5: Completed
       this.uploadProgressService.updateProgress(
-        sessionId, 
-        'completed', 
-        documentFile.size, 
-        'Upload completed successfully!', 
-        undefined, 
-        material.id
+        sessionId,
+        'completed',
+        documentFile.size,
+        'Upload completed successfully!',
+        undefined,
+        material.id,
       );
 
-      this.logger.log(colors.green(`🎉 Upload completed successfully: ${material.title}`));
-
+      this.logger.log(
+        colors.green(`🎉 Upload completed successfully: ${material.title}`),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error in background upload: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error in background upload: ${error.message}`),
+      );
       this.logger.error(colors.red(`❌ Error stack: ${error.stack}`));
-      this.uploadProgressService.updateProgress(sessionId, 'error', 0, 'Upload failed', error.message);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        0,
+        'Upload failed',
+        error.message,
+      );
     }
   }
 
@@ -311,9 +473,13 @@ export class AiChatService {
   async uploadDocument(
     uploadDto: UploadDocumentDto,
     files: { document?: Express.Multer.File[] },
-    user: User
+    user: User,
   ): Promise<ApiResponse<DocumentUploadResponseDto>> {
-    this.logger.log(colors.cyan(`📄 Starting document upload for AI chat without progress tracking`));
+    this.logger.log(
+      colors.cyan(
+        `📄 Starting document upload for AI chat without progress tracking`,
+      ),
+    );
 
     const documentFile = files.document?.[0];
 
@@ -321,27 +487,33 @@ export class AiChatService {
       this.logger.error(colors.red(`❌ Document file is required`));
       throw new BadRequestException('Document file is required');
     }
-    
+
     // Auto-generate title from filename if not provided
-    const documentTitle = uploadDto.title || this.generateTitleFromFilename(documentFile.originalname);
-    
+    const documentTitle =
+      uploadDto.title ||
+      this.generateTitleFromFilename(documentFile.originalname);
 
     try {
       // Validate file
       this.logger.log(colors.blue(`🔍 Validating uploaded file...`));
-      const validationResult = FileValidationHelper.validateMaterialFile(documentFile);
+      const validationResult =
+        FileValidationHelper.validateMaterialFile(documentFile);
 
       if (!validationResult.isValid) {
-        this.logger.error(colors.red(`❌ File validation failed: ${validationResult.error}`));
+        this.logger.error(
+          colors.red(`❌ File validation failed: ${validationResult.error}`),
+        );
         throw new BadRequestException(validationResult.error);
       }
 
-      this.logger.log(colors.green(`✅ File validation passed: ${documentFile.originalname}`));
+      this.logger.log(
+        colors.green(`✅ File validation passed: ${documentFile.originalname}`),
+      );
 
       // Get user's school ID and ID
       const existingUser = await this.prisma.user.findUnique({
         where: { email: user.email },
-        select: { id: true, school_id: true }
+        select: { id: true, school_id: true },
       });
       if (!existingUser) {
         this.logger.error(colors.red(`❌ User not found`));
@@ -368,8 +540,12 @@ export class AiChatService {
         });
 
         if (!subject) {
-          this.logger.error(colors.red(`❌ Subject not found: ${uploadDto.subject_id}`));
-          throw new NotFoundException('Subject not found or does not belong to this school');
+          this.logger.error(
+            colors.red(`❌ Subject not found: ${uploadDto.subject_id}`),
+          );
+          throw new NotFoundException(
+            'Subject not found or does not belong to this school',
+          );
         }
         this.logger.log(colors.green(`✅ Subject validated: ${subject.name}`));
       }
@@ -386,21 +562,31 @@ export class AiChatService {
         });
 
         if (!topic) {
-          this.logger.error(colors.red(`❌ Topic not found: ${uploadDto.topic_id}`));
-          throw new NotFoundException('Topic not found or does not belong to this subject');
+          this.logger.error(
+            colors.red(`❌ Topic not found: ${uploadDto.topic_id}`),
+          );
+          throw new NotFoundException(
+            'Topic not found or does not belong to this subject',
+          );
         }
         this.logger.log(colors.green(`✅ Topic validated: ${topic.title}`));
       }
 
-      this.logger.log(colors.green(`✅ Validation completed - Subject: ${subject?.name || 'None'}, Topic: ${topic?.title || 'None'}`));
+      this.logger.log(
+        colors.green(
+          `✅ Validation completed - Subject: ${subject?.name || 'None'}, Topic: ${topic?.title || 'None'}`,
+        ),
+      );
 
       // For AI chat materials, we don't need ordering - they're temporary/standalone
       // Users upload, chat, and may never return - ordering is irrelevant
-      this.logger.log(colors.blue(`📄 AI chat material - standalone/temporary use`));
+      this.logger.log(
+        colors.blue(`📄 AI chat material - standalone/temporary use`),
+      );
 
       // Upload document to S3 with flexible path structure
       this.logger.log(colors.blue(`🚀 Starting S3 document upload...`));
-      
+
       // Create S3 path based on available data
       let s3Path = `ai-chat/pubic/${schoolId}`;
       if (uploadDto.subject_id) {
@@ -414,29 +600,35 @@ export class AiChatService {
       const documentUploadResult = await this.s3Service.uploadFile(
         documentFile,
         s3Path,
-        `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`
+        `${documentTitle.replace(/\s+/g, '_')}_${Date.now()}.${validationResult.fileType}`,
       );
 
       this.logger.log(colors.green(`✅ Document uploaded successfully to S3`));
 
       // Calculate document size
-      const documentSize = FileValidationHelper.formatFileSize(documentFile.size);
+      const documentSize = FileValidationHelper.formatFileSize(
+        documentFile.size,
+      );
 
       // Get or create default AI Chat platform
-      this.logger.log(colors.blue(`🏢 Getting or creating AI Chat platform...`));
+      this.logger.log(
+        colors.blue(`🏢 Getting or creating AI Chat platform...`),
+      );
       const aiChatPlatform = await this.prisma.organisation.upsert({
         where: { name: 'AI Chat Platform' },
         update: {},
         create: {
           name: 'AI Chat Platform',
-          email: 'ai-chat@platform.com'
-        }
+          email: 'ai-chat@platform.com',
+        },
       });
-      this.logger.log(colors.green(`✅ AI Chat platform ready: ${aiChatPlatform.id}`));
+      this.logger.log(
+        colors.green(`✅ AI Chat platform ready: ${aiChatPlatform.id}`),
+      );
 
       // Create material record in database
       this.logger.log(colors.blue(`💾 Saving document to database...`));
-      
+
       const material = await this.prisma.pDFMaterial.create({
         data: {
           title: documentTitle, // Use auto-generated title
@@ -454,11 +646,13 @@ export class AiChatService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Document saved to database with ID: ${material.id}`));
+      this.logger.log(
+        colors.green(`✅ Document saved to database with ID: ${material.id}`),
+      );
 
       // Create material processing record
       this.logger.log(colors.blue(`⚙️ Creating material processing record...`));
-      
+
       const materialProcessing = await this.prisma.materialProcessing.create({
         data: {
           material_id: material.id,
@@ -472,11 +666,17 @@ export class AiChatService {
       });
 
       // Auto-start processing in background
-      this.logger.log(colors.blue(`🔄 Starting document processing in background...`));
+      this.logger.log(
+        colors.blue(`🔄 Starting document processing in background...`),
+      );
       this.documentProcessingService.processDocument(material.id);
       this.logger.log(colors.green(`✅ Document processing started`));
 
-      this.logger.log(colors.green(`✅ Material processing record created with ID: ${materialProcessing.id}`));
+      this.logger.log(
+        colors.green(
+          `✅ Material processing record created with ID: ${materialProcessing.id}`,
+        ),
+      );
 
       // Format response
       const responseData: DocumentUploadResponseDto = {
@@ -494,21 +694,29 @@ export class AiChatService {
         updatedAt: material.updatedAt.toISOString(),
       };
 
-      this.logger.log(colors.green(`🎉 Document upload completed successfully: ${material.title}`));
+      this.logger.log(
+        colors.green(
+          `🎉 Document upload completed successfully: ${material.title}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Document uploaded successfully and ready for AI chat processing',
-        responseData
+        responseData,
+      );
+    } catch (error) {
+      this.logger.error(
+        colors.red(`❌ Error uploading document: ${error.message}`),
       );
 
-    } catch (error) {
-      this.logger.error(colors.red(`❌ Error uploading document: ${error.message}`));
-      
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      
+
       throw new Error(`Failed to upload document: ${error.message}`);
     }
   }
@@ -518,7 +726,7 @@ export class AiChatService {
    */
   async initiateAiChat(
     user: User,
-    initiateDto: InitiateAiChatDto
+    initiateDto: InitiateAiChatDto,
   ): Promise<{
     userRole: string;
     documentCount: number;
@@ -528,7 +736,11 @@ export class AiChatService {
     usageLimits: any;
   }> {
     try {
-      this.logger.log(colors.cyan(`🤖 Initiating AI chat for user role: ${initiateDto.userRole}`));
+      this.logger.log(
+        colors.cyan(
+          `🤖 Initiating AI chat for user role: ${initiateDto.userRole}`,
+        ),
+      );
 
       // Extract user data from JWT payload (now includes school_id)
       const userId = user.id || (user as any).sub;
@@ -540,29 +752,42 @@ export class AiChatService {
       }
 
       if (!schoolId) {
-        this.logger.error(colors.red(`❌ User school_id is missing from token`));
+        this.logger.error(
+          colors.red(`❌ User school_id is missing from token`),
+        );
         throw new Error('User school_id is missing from token');
       }
 
       // Get school's subscription plan
-      const subscriptionPlan = await this.prisma.platformSubscriptionPlan.findUnique({
-        where: {
-          school_id: schoolId
-        }
-      });
+      const subscriptionPlan =
+        await this.prisma.platformSubscriptionPlan.findUnique({
+          where: {
+            school_id: schoolId,
+          },
+        });
 
       if (!subscriptionPlan) {
-        this.logger.warn(colors.yellow(`⚠️ No subscription plan found for school: ${schoolId}, using defaults`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ No subscription plan found for school: ${schoolId}, using defaults`,
+          ),
+        );
       }
 
       // Get supported document types based on plan
-      const supportedDocumentTypes = this.getSupportedDocumentTypes(subscriptionPlan); 
+      const supportedDocumentTypes =
+        this.getSupportedDocumentTypes(subscriptionPlan);
 
       // Get user's conversations
       const conversations = await this.getUserConversations(userId);
 
       // Get user's usage limits (merged with plan limits)
-      const usageLimits = await this.getUserUsageLimits(userId, schoolId, user.role, subscriptionPlan);
+      const usageLimits = await this.getUserUsageLimits(
+        userId,
+        schoolId,
+        user.role,
+        subscriptionPlan,
+      );
 
       // Handle different user roles
       switch (initiateDto.userRole) {
@@ -576,7 +801,7 @@ export class AiChatService {
             uploadedDocuments: teacherData.uploadedDocuments,
             conversations,
           };
-        
+
         case 'student':
           // For now, return empty for students
           return {
@@ -587,7 +812,7 @@ export class AiChatService {
             uploadedDocuments: [],
             conversations,
           };
-        
+
         case 'school_director':
         case 'school_admin':
           // For now, return empty for admins
@@ -599,14 +824,17 @@ export class AiChatService {
             uploadedDocuments: [],
             conversations,
           };
-        
+
         default:
-          this.logger.error(colors.red(`❌ Unsupported user role: ${initiateDto.userRole}`));
+          this.logger.error(
+            colors.red(`❌ Unsupported user role: ${initiateDto.userRole}`),
+          );
           throw new Error(`Unsupported user role: ${initiateDto.userRole}`);
       }
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error initiating AI chat: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error initiating AI chat: ${error.message}`),
+      );
       throw new Error(`Failed to initiate AI chat: ${error.message}`);
     }
   }
@@ -618,10 +846,12 @@ export class AiChatService {
     userId: string,
     schoolId: string,
     userRole: string,
-    subscriptionPlan: any
+    subscriptionPlan: any,
   ): Promise<any> {
     try {
-      this.logger.log(colors.blue(`📊 Fetching usage limits for user: ${userId}`));
+      this.logger.log(
+        colors.blue(`📊 Fetching usage limits for user: ${userId}`),
+      );
 
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
@@ -639,7 +869,7 @@ export class AiChatService {
           maxTokensPerDay: true,
           lastFileResetDate: true,
           lastTokenResetDateAllTime: true,
-        }
+        },
       });
 
       if (!user) {
@@ -651,11 +881,14 @@ export class AiChatService {
       let maxDocumentUploadsPerDay: number;
       if (subscriptionPlan) {
         if (userRole === 'student') {
-          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_student_per_day || 3;
+          maxDocumentUploadsPerDay =
+            subscriptionPlan.max_document_uploads_per_student_per_day || 3;
         } else if (userRole === 'teacher') {
-          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+          maxDocumentUploadsPerDay =
+            subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
         } else {
-          maxDocumentUploadsPerDay = subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
+          maxDocumentUploadsPerDay =
+            subscriptionPlan.max_document_uploads_per_teacher_per_day || 10;
         }
       } else {
         // Defaults if no plan
@@ -667,24 +900,32 @@ export class AiChatService {
         filesUploadedThisMonth: user.filesUploadedThisMonth,
         totalFilesUploadedAllTime: user.totalFilesUploadedAllTime,
         totalStorageUsedMB: user.totalStorageUsedMB,
-        maxFilesPerMonth: subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
+        maxFilesPerMonth:
+          subscriptionPlan?.max_files_per_month ?? user.maxFilesPerMonth,
         maxFileSizeMB: subscriptionPlan?.max_file_size_mb ?? user.maxFileSizeMB,
         maxStorageMB: subscriptionPlan?.max_storage_mb ?? user.maxStorageMB,
         tokensUsedThisWeek: user.tokensUsedThisWeek,
         tokensUsedThisDay: user.tokensUsedThisDay,
         tokensUsedAllTime: user.tokensUsedAllTime,
-        maxTokensPerWeek: subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
-        maxTokensPerDay: subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
+        maxTokensPerWeek:
+          subscriptionPlan?.max_weekly_tokens_per_user ?? user.maxTokensPerWeek,
+        maxTokensPerDay:
+          subscriptionPlan?.max_daily_tokens_per_user ?? user.maxTokensPerDay,
         maxDocumentUploadsPerDay: maxDocumentUploadsPerDay,
         lastFileResetDate: user.lastFileResetDate.toISOString(),
         lastTokenResetDate: user.lastTokenResetDateAllTime.toISOString(),
       };
 
-      this.logger.log(colors.green(`✅ Retrieved usage limits for user (plan: ${subscriptionPlan?.plan_type || 'none'})`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved usage limits for user (plan: ${subscriptionPlan?.plan_type || 'none'})`,
+        ),
+      );
       return usageLimits;
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching usage limits: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching usage limits: ${error.message}`),
+      );
       throw new Error(`Failed to fetch usage limits: ${error.message}`);
     }
   }
@@ -694,20 +935,22 @@ export class AiChatService {
    */
   private async getTeacherMaterials(
     userId: string,
-    schoolId: string
+    schoolId: string,
   ): Promise<{
     documentCount: number;
     uploadedDocuments: TeacherMaterialDto[];
   }> {
     try {
-      this.logger.log(colors.blue(`📚 Fetching materials for teacher: ${userId}`));
+      this.logger.log(
+        colors.blue(`📚 Fetching materials for teacher: ${userId}`),
+      );
 
       // Get teacher's uploaded materials
       const materials = await this.prisma.pDFMaterial.findMany({
         where: {
           uploadedById: userId,
           schoolId: schoolId,
-          status: 'published'
+          status: 'published',
         },
         select: {
           id: true,
@@ -720,37 +963,42 @@ export class AiChatService {
           createdAt: true,
           materialProcessings: {
             select: {
-              status: true
-            }
-          }
+              status: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
+          createdAt: 'desc',
+        },
       });
 
       // Transform materials to DTO format
-      const uploadedDocuments: TeacherMaterialDto[] = materials.map(material => ({
-        id: material.id,
-        title: material.title,
-        description: material.description,
-        fileType: material.fileType,
-        originalName: material.originalName,
-        size: material.size,
-        status: material.status,
-        createdAt: material.createdAt.toISOString(),
-        isProcessed: material.materialProcessings?.status === 'COMPLETED'
-      }));
+      const uploadedDocuments: TeacherMaterialDto[] = materials.map(
+        (material) => ({
+          id: material.id,
+          title: material.title,
+          description: material.description,
+          fileType: material.fileType,
+          originalName: material.originalName,
+          size: material.size,
+          status: material.status,
+          createdAt: material.createdAt.toISOString(),
+          isProcessed: material.materialProcessings?.status === 'COMPLETED',
+        }),
+      );
 
-      this.logger.log(colors.green(`✅ Found ${materials.length} materials for teacher`));
+      this.logger.log(
+        colors.green(`✅ Found ${materials.length} materials for teacher`),
+      );
 
       return {
         documentCount: materials.length,
-        uploadedDocuments
+        uploadedDocuments,
       };
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching teacher materials: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching teacher materials: ${error.message}`),
+      );
       throw new Error(`Failed to fetch teacher materials: ${error.message}`);
     }
   }
@@ -760,7 +1008,9 @@ export class AiChatService {
    */
   private async getUserConversations(userId: string): Promise<any[]> {
     try {
-      this.logger.log(colors.blue(`💬 Fetching conversations for user: ${userId}`));
+      this.logger.log(
+        colors.blue(`💬 Fetching conversations for user: ${userId}`),
+      );
 
       const conversations = await this.prisma.chatConversation.findMany({
         where: {
@@ -780,13 +1030,13 @@ export class AiChatService {
           material: {
             select: {
               title: true,
-              originalName: true
-            }
-          }
-        }
+              originalName: true,
+            },
+          },
+        },
       });
 
-      const formattedConversations = conversations.map(conversation => ({
+      const formattedConversations = conversations.map((conversation) => ({
         id: conversation.id,
         title: conversation.material?.title || conversation.title,
         documentTitle: conversation.material?.title || null,
@@ -799,12 +1049,15 @@ export class AiChatService {
         updatedAt: conversation.updatedAt.toISOString(),
       }));
 
-      this.logger.log(colors.green(`✅ Found ${conversations.length} conversations for user`));
+      this.logger.log(
+        colors.green(`✅ Found ${conversations.length} conversations for user`),
+      );
 
       return formattedConversations;
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching user conversations: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching user conversations: ${error.message}`),
+      );
       return [];
     }
   }
@@ -812,7 +1065,9 @@ export class AiChatService {
   /**
    * Get supported document types for upload based on subscription plan
    */
-  private getSupportedDocumentTypes(subscriptionPlan: any): SupportedDocumentTypeDto[] {
+  private getSupportedDocumentTypes(
+    subscriptionPlan: any,
+  ): SupportedDocumentTypeDto[] {
     // Define all possible document types with their metadata
     const allDocumentTypes: Record<string, SupportedDocumentTypeDto> = {
       pdf: {
@@ -820,50 +1075,53 @@ export class AiChatService {
         extension: '.pdf',
         mimeType: 'application/pdf',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Portable Document Format files'
+        description: 'Portable Document Format files',
       },
       docx: {
         type: 'Word Document',
         extension: '.docx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Microsoft Word documents'
+        description: 'Microsoft Word documents',
       },
       doc: {
         type: 'Word Document (Legacy)',
         extension: '.doc',
         mimeType: 'application/msword',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Legacy Microsoft Word documents'
+        description: 'Legacy Microsoft Word documents',
       },
       pptx: {
         type: 'PowerPoint',
         extension: '.pptx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Microsoft PowerPoint presentations'
+        description: 'Microsoft PowerPoint presentations',
       },
       xlsx: {
         type: 'Excel',
         extension: '.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Microsoft Excel spreadsheets'
+        description: 'Microsoft Excel spreadsheets',
       },
       txt: {
         type: 'Text Document',
         extension: '.txt',
         mimeType: 'text/plain',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Plain text documents'
+        description: 'Plain text documents',
       },
       rtf: {
         type: 'Rich Text Format',
         extension: '.rtf',
         mimeType: 'application/rtf',
         maxSize: `${subscriptionPlan?.max_file_size_mb || 10}MB`,
-        description: 'Rich Text Format documents'
-      }
+        description: 'Rich Text Format documents',
+      },
     };
 
     // Get allowed document types from plan (default to ['pdf'] if no plan)
@@ -871,7 +1129,7 @@ export class AiChatService {
 
     // Filter and return only allowed document types
     const supportedTypes: SupportedDocumentTypeDto[] = [];
-    
+
     for (const type of allowedTypes) {
       const normalizedType = type.toLowerCase().replace('.', '');
       if (allDocumentTypes[normalizedType]) {
@@ -884,8 +1142,12 @@ export class AiChatService {
       supportedTypes.push(allDocumentTypes.pdf);
     }
 
-    this.logger.log(colors.cyan(`   - Supported document types: ${supportedTypes.map(t => t.type).join(', ')}`));
-    
+    this.logger.log(
+      colors.cyan(
+        `   - Supported document types: ${supportedTypes.map((t) => t.type).join(', ')}`,
+      ),
+    );
+
     return supportedTypes;
   }
 }
@@ -904,7 +1166,11 @@ export class AiChatDeletionService {
 
   async deleteConversation(
     user: any,
-    params: { conversationId: string; materialId?: string; alsoDeleteDocument?: boolean }
+    params: {
+      conversationId: string;
+      materialId?: string;
+      alsoDeleteDocument?: boolean;
+    },
   ): Promise<ApiResponse<null>> {
     const { conversationId, materialId, alsoDeleteDocument } = params;
 
@@ -914,13 +1180,19 @@ export class AiChatDeletionService {
         where: { conversation_id: conversationId, user_id: user.id },
         select: { id: true },
       });
-      const messageIds = messages.map(m => m.id);
+      const messageIds = messages.map((m) => m.id);
 
       if (messageIds.length > 0) {
-        await tx.chatContext.deleteMany({ where: { message_id: { in: messageIds } } });
+        await tx.chatContext.deleteMany({
+          where: { message_id: { in: messageIds } },
+        });
       }
-      await tx.chatMessage.deleteMany({ where: { conversation_id: conversationId, user_id: user.id } });
-      await tx.chatConversation.deleteMany({ where: { id: conversationId, user_id: user.id } });
+      await tx.chatMessage.deleteMany({
+        where: { conversation_id: conversationId, user_id: user.id },
+      });
+      await tx.chatConversation.deleteMany({
+        where: { id: conversationId, user_id: user.id },
+      });
     });
 
     // 2) Optionally delete the document and its vectors
@@ -930,8 +1202,14 @@ export class AiChatDeletionService {
         select: { id: true, url: true, uploadedById: true, schoolId: true },
       });
 
-      if (!material || material.uploadedById !== user.id || material.schoolId !== user.school_id) {
-        throw new BadRequestException('Material not found or not owned by user');
+      if (
+        !material ||
+        material.uploadedById !== user.id ||
+        material.schoolId !== user.school_id
+      ) {
+        throw new BadRequestException(
+          'Material not found or not owned by user',
+        );
       }
 
       // a) Delete Pinecone vectors
@@ -939,8 +1217,12 @@ export class AiChatDeletionService {
 
       // b) Delete DB chunks and processing rows
       await this.prisma.$transaction(async (tx) => {
-        await tx.documentChunk.deleteMany({ where: { material_id: materialId } });
-        await tx.materialProcessing.deleteMany({ where: { material_id: materialId } });
+        await tx.documentChunk.deleteMany({
+          where: { material_id: materialId },
+        });
+        await tx.materialProcessing.deleteMany({
+          where: { material_id: materialId },
+        });
       });
 
       // c) Delete S3 object

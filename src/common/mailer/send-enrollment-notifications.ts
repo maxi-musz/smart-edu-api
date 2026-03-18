@@ -1,8 +1,8 @@
 import { sendMail } from './send-mail';
-import { 
-  newStudentEnrollmentTemplate, 
+import {
+  newStudentEnrollmentTemplate,
   studentWelcomeTemplate,
-  classTeacherNotificationTemplate
+  classTeacherNotificationTemplate,
 } from '../email-templates/enrollment-notifications';
 
 /**
@@ -29,19 +29,22 @@ export async function sendNewStudentEnrollmentNotification(data: {
       enrollmentDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
-      to: process.env.BTECH_ADMIN_EMAIL || "besttechnologies25@gmail.com",
+      to: process.env.BTECH_ADMIN_EMAIL || 'besttechnologies25@gmail.com',
       subject: `🎓 New Student Enrollment - ${data.schoolName}`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ New student enrollment notification sent to admin`);
   } catch (error) {
-    console.error(`❌ Failed to send new student enrollment notification:`, error);
+    console.error(
+      `❌ Failed to send new student enrollment notification:`,
+      error,
+    );
     throw error;
   }
 }
@@ -71,19 +74,22 @@ export async function sendClassTeacherNotification(data: {
       enrollmentDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
       to: data.teacherEmail,
       subject: `👨‍🏫 New Student in ${data.className} - ${data.schoolName}`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ Class teacher notification sent to: ${data.teacherEmail}`);
   } catch (error) {
-    console.error(`❌ Failed to send class teacher notification to ${data.teacherEmail}:`, error);
+    console.error(
+      `❌ Failed to send class teacher notification to ${data.teacherEmail}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -109,19 +115,22 @@ export async function sendStudentWelcomeEmail(data: {
       enrollmentDate: new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
-        day: 'numeric'
-      })
+        day: 'numeric',
+      }),
     });
 
     await sendMail({
       to: data.studentEmail,
       subject: `🎓 Welcome to ${data.schoolName} - Smart Edu Hub`,
-      html: emailHtml
+      html: emailHtml,
     });
 
     console.log(`✅ Welcome email sent to student: ${data.studentEmail}`);
   } catch (error) {
-    console.error(`❌ Failed to send welcome email to student ${data.studentEmail}:`, error);
+    console.error(
+      `❌ Failed to send welcome email to student ${data.studentEmail}:`,
+      error,
+    );
     throw error;
   }
 }

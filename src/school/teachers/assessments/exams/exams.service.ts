@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../../shared/helper-functions/response.helpers';
 import { Logger } from '@nestjs/common';
@@ -8,14 +12,12 @@ import * as colors from 'colors';
 export class ExamsService {
   private readonly logger = new Logger(ExamsService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ========================================
   // EXAM MANAGEMENT METHODS
   // ========================================
-  
+
   // TODO: Implement exam methods:
   // - createExam()
   // - getTopicExams()

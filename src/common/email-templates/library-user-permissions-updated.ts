@@ -26,17 +26,21 @@ export const libraryUserPermissionsUpdatedTemplate = (payload: {
 }): string => {
   const hasAdded = payload.addedPermissions.length > 0;
   const hasRemoved = payload.removedPermissions.length > 0;
-  const addedList =
-    hasAdded
-      ? payload.addedPermissions.map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`).join('')
-      : '';
-  const removedList =
-    hasRemoved
-      ? payload.removedPermissions.map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`).join('')
-      : '';
+  const addedList = hasAdded
+    ? payload.addedPermissions
+        .map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`)
+        .join('')
+    : '';
+  const removedList = hasRemoved
+    ? payload.removedPermissions
+        .map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`)
+        .join('')
+    : '';
   const currentList =
     payload.currentPermissions.length > 0
-      ? payload.currentPermissions.map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`).join('')
+      ? payload.currentPermissions
+          .map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`)
+          .join('')
       : '<li style="margin: 4px 0; color: #64748b;">No permissions assigned.</li>';
 
   return `
@@ -51,18 +55,26 @@ export const libraryUserPermissionsUpdatedTemplate = (payload: {
           <p style="margin: 0 0 20px 0; line-height: 1.6; color: ${theme.body};">
             Your permissions on the library platform <strong>${payload.libraryName}</strong> have been updated. See the details below.
           </p>
-          ${hasAdded ? `
+          ${
+            hasAdded
+              ? `
           <div style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 16px; margin: 20px 0; border-radius: 4px;">
             <h2 style="margin: 0 0 10px 0; font-family: Georgia, serif; font-size: 1rem; color: #065f46;">Added</h2>
             <ul style="margin: 0; padding-left: 20px;">${addedList}</ul>
           </div>
-          ` : ''}
-          ${hasRemoved ? `
+          `
+              : ''
+          }
+          ${
+            hasRemoved
+              ? `
           <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; margin: 20px 0; border-radius: 4px;">
             <h2 style="margin: 0 0 10px 0; font-family: Georgia, serif; font-size: 1rem; color: #991b1b;">Removed</h2>
             <ul style="margin: 0; padding-left: 20px;">${removedList}</ul>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           <div style="background-color: #f8fafc; border: 1px solid ${theme.border}; padding: 16px; margin: 20px 0; border-radius: 4px;">
             <h2 style="margin: 0 0 10px 0; font-family: Georgia, serif; font-size: 1rem; color: ${theme.heading};">Your current permissions on this platform</h2>
             <ul style="margin: 0; padding-left: 20px;">${currentList}</ul>

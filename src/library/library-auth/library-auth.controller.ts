@@ -17,4 +17,3 @@ export class LibraryAuthController {
     return this.libraryAuthService.signIn(dto);
   }
 }
-

@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubmitExamAssessmentDto } from './dto';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
@@ -29,11 +34,20 @@ export class ExamPracticeService {
       orderBy: { name: 'asc' },
     });
 
-    return ResponseHelper.success('Exam bodies retrieved successfully', examBodies);
+    return ResponseHelper.success(
+      'Exam bodies retrieved successfully',
+      examBodies,
+    );
   }
 
-  async getAssessmentsByFilters(examBodyId: string, subjectId?: string, yearId?: string) {
-    this.logger.log(colors.cyan(`📚 Fetching assessments for exam body: ${examBodyId}`));
+  async getAssessmentsByFilters(
+    examBodyId: string,
+    subjectId?: string,
+    yearId?: string,
+  ) {
+    this.logger.log(
+      colors.cyan(`📚 Fetching assessments for exam body: ${examBodyId}`),
+    );
 
     const assessments = await this.prisma.examBodyAssessment.findMany({
       where: {
@@ -52,11 +66,18 @@ export class ExamPracticeService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return ResponseHelper.success('Assessments retrieved successfully', assessments);
+    return ResponseHelper.success(
+      'Assessments retrieved successfully',
+      assessments,
+    );
   }
 
   async getAssessmentDetails(userId: string, assessmentId: string) {
-    this.logger.log(colors.cyan(`🔍 Getting assessment details: ${assessmentId} for user: ${userId}`));
+    this.logger.log(
+      colors.cyan(
+        `🔍 Getting assessment details: ${assessmentId} for user: ${userId}`,
+      ),
+    );
 
     const assessment = await this.prisma.examBodyAssessment.findUnique({
       where: { id: assessmentId, isPublished: true, status: 'active' },
@@ -76,39 +97,44 @@ export class ExamPracticeService {
       where: { assessmentId, userId },
     });
 
-    const previousAttempts = await this.prisma.examBodyAssessmentAttempt.findMany({
-      where: { assessmentId, userId },
-      select: {
-        id: true,
-        attemptNumber: true,
-        status: true,
-        totalScore: true,
-        maxScore: true,
-        percentage: true,
-        passed: true,
-        submittedAt: true,
-        isGraded: true,
-      },
-      orderBy: { attemptNumber: 'desc' },
-    });
+    const previousAttempts =
+      await this.prisma.examBodyAssessmentAttempt.findMany({
+        where: { assessmentId, userId },
+        select: {
+          id: true,
+          attemptNumber: true,
+          status: true,
+          totalScore: true,
+          maxScore: true,
+          percentage: true,
+          passed: true,
+          submittedAt: true,
+          isGraded: true,
+        },
+        orderBy: { attemptNumber: 'desc' },
+      });
 
-    const canAttempt = assessment.maxAttempts === null
-      ? true
-      : attemptCount < assessment.maxAttempts;
+    const canAttempt =
+      assessment.maxAttempts === null
+        ? true
+        : attemptCount < assessment.maxAttempts;
 
     return ResponseHelper.success('Assessment details retrieved successfully', {
       ...assessment,
       attemptsTaken: attemptCount,
-      attemptsRemaining: assessment.maxAttempts === null
-        ? null
-        : Math.max(assessment.maxAttempts - attemptCount, 0),
+      attemptsRemaining:
+        assessment.maxAttempts === null
+          ? null
+          : Math.max(assessment.maxAttempts - attemptCount, 0),
       previousAttempts,
       canAttempt,
     });
   }
 
   async getAssessmentQuestions(userId: string, assessmentId: string) {
-    this.logger.log(colors.cyan(`📝 Getting questions for assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(`📝 Getting questions for assessment: ${assessmentId}`),
+    );
 
     const assessment = await this.prisma.examBodyAssessment.findUnique({
       where: { id: assessmentId, isPublished: true, status: 'active' },
@@ -122,15 +148,26 @@ export class ExamPracticeService {
       where: { assessmentId, userId },
     });
 
-    if (assessment.maxAttempts !== null && attemptCount >= assessment.maxAttempts) {
-      throw new BadRequestException('No attempts remaining for this assessment');
+    if (
+      assessment.maxAttempts !== null &&
+      attemptCount >= assessment.maxAttempts
+    ) {
+      throw new BadRequestException(
+        'No attempts remaining for this assessment',
+      );
     }
 
     let questions = await this.prisma.examBodyAssessmentQuestion.findMany({
       where: { assessmentId },
       include: {
         options: {
-          select: { id: true, optionText: true, order: true, imageUrl: true, audioUrl: true },
+          select: {
+            id: true,
+            optionText: true,
+            order: true,
+            imageUrl: true,
+            audioUrl: true,
+          },
           orderBy: { order: 'asc' },
         },
       },
@@ -142,7 +179,7 @@ export class ExamPracticeService {
     }
 
     if (assessment.shuffleOptions) {
-      questions = questions.map(q => ({
+      questions = questions.map((q) => ({
         ...q,
         options: this.shuffleArray(q.options),
       }));
@@ -152,14 +189,23 @@ export class ExamPracticeService {
       assessmentId: assessment.id,
       title: assessment.title,
       questions,
-      attemptsRemaining: assessment.maxAttempts === null
-        ? null
-        : Math.max(assessment.maxAttempts - attemptCount, 0),
+      attemptsRemaining:
+        assessment.maxAttempts === null
+          ? null
+          : Math.max(assessment.maxAttempts - attemptCount, 0),
     });
   }
 
-  async submitAssessment(user: any, assessmentId: string, submitDto: SubmitExamAssessmentDto) {
-    this.logger.log(colors.cyan(`📤 User ${user.sub} submitting exam assessment: ${assessmentId}`));
+  async submitAssessment(
+    user: any,
+    assessmentId: string,
+    submitDto: SubmitExamAssessmentDto,
+  ) {
+    this.logger.log(
+      colors.cyan(
+        `📤 User ${user.sub} submitting exam assessment: ${assessmentId}`,
+      ),
+    );
 
     const assessment = await this.prisma.examBodyAssessment.findUnique({
       where: { id: assessmentId, isPublished: true, status: 'active' },
@@ -181,13 +227,20 @@ export class ExamPracticeService {
       where: { assessmentId, userId: user.sub },
     });
 
-    if (assessment.maxAttempts !== null && attemptCount >= assessment.maxAttempts) {
+    if (
+      assessment.maxAttempts !== null &&
+      attemptCount >= assessment.maxAttempts
+    ) {
       throw new BadRequestException('No attempts remaining');
     }
 
     const attemptNumber = attemptCount + 1;
 
-    this.logger.log(colors.yellow(`📝 Processing attempt ${attemptNumber}/${assessment.maxAttempts}`));
+    this.logger.log(
+      colors.yellow(
+        `📝 Processing attempt ${attemptNumber}/${assessment.maxAttempts}`,
+      ),
+    );
 
     const gradedResponses: any[] = [];
     let totalScore = 0;
@@ -195,8 +248,15 @@ export class ExamPracticeService {
     let incorrectCount = 0;
 
     for (const response of submitDto.responses) {
-      const question = assessment.questions.find(q => q.id === response.questionId);
-      if (!question || !question.correctAnswers || question.correctAnswers.length === 0) continue;
+      const question = assessment.questions.find(
+        (q) => q.id === response.questionId,
+      );
+      if (
+        !question ||
+        !question.correctAnswers ||
+        question.correctAnswers.length === 0
+      )
+        continue;
 
       const correctAnswer = question.correctAnswers[0];
       const gradeResult = this.gradeResponse(question, correctAnswer, response);
@@ -228,7 +288,11 @@ export class ExamPracticeService {
     const percentage = (totalScore / assessment.totalPoints) * 100;
     const passed = percentage >= assessment.passingScore;
 
-    this.logger.log(colors.cyan(`📊 Score: ${totalScore}/${assessment.totalPoints} (${percentage.toFixed(2)}%) - ${passed ? 'PASSED ✅' : 'FAILED ❌'}`));
+    this.logger.log(
+      colors.cyan(
+        `📊 Score: ${totalScore}/${assessment.totalPoints} (${percentage.toFixed(2)}%) - ${passed ? 'PASSED ✅' : 'FAILED ❌'}`,
+      ),
+    );
 
     const attempt = await this.prisma.$transaction(async (tx) => {
       const newAttempt = await tx.examBodyAssessmentAttempt.create({
@@ -250,7 +314,7 @@ export class ExamPracticeService {
       });
 
       await tx.examBodyAssessmentResponse.createMany({
-        data: gradedResponses.map(gr => ({
+        data: gradedResponses.map((gr) => ({
           attemptId: newAttempt.id,
           questionId: gr.questionId,
           userId: user.sub,
@@ -269,11 +333,16 @@ export class ExamPracticeService {
       return newAttempt;
     });
 
-    const attemptsRemaining = assessment.maxAttempts === null
-      ? null
-      : Math.max(assessment.maxAttempts - attempt.attemptNumber, 0);
+    const attemptsRemaining =
+      assessment.maxAttempts === null
+        ? null
+        : Math.max(assessment.maxAttempts - attempt.attemptNumber, 0);
 
-    this.logger.log(colors.green(`✅ Assessment submitted. Score: ${totalScore}/${assessment.totalPoints}`));
+    this.logger.log(
+      colors.green(
+        `✅ Assessment submitted. Score: ${totalScore}/${assessment.totalPoints}`,
+      ),
+    );
 
     return ResponseHelper.success('Assessment submitted successfully', {
       attempt: {
@@ -290,12 +359,14 @@ export class ExamPracticeService {
         incorrectAnswers: incorrectCount,
         passed,
       },
-      responses: assessment.showCorrectAnswers ? gradedResponses : gradedResponses.map(r => ({
-        questionId: r.questionId,
-        questionText: r.questionText,
-        isCorrect: r.isCorrect,
-        pointsEarned: r.pointsEarned,
-      })),
+      responses: assessment.showCorrectAnswers
+        ? gradedResponses
+        : gradedResponses.map((r) => ({
+            questionId: r.questionId,
+            questionText: r.questionText,
+            isCorrect: r.isCorrect,
+            pointsEarned: r.pointsEarned,
+          })),
       feedback: {
         attemptsRemaining,
       },
@@ -319,7 +390,8 @@ export class ExamPracticeService {
       case QuestionType.MULTIPLE_CHOICE_MULTIPLE:
         const selectedOptions = userResponse.selectedOptions || [];
         const correctOptions = correctAnswer.optionIds || [];
-        const isMultipleCorrect = selectedOptions.length === correctOptions.length &&
+        const isMultipleCorrect =
+          selectedOptions.length === correctOptions.length &&
           selectedOptions.every((opt: string) => correctOptions.includes(opt));
         return {
           isCorrect: isMultipleCorrect,
@@ -330,7 +402,8 @@ export class ExamPracticeService {
 
       case QuestionType.SHORT_ANSWER:
         const userAnswer = userResponse.textAnswer?.trim().toLowerCase() || '';
-        const correctText = correctAnswer.answerText?.trim().toLowerCase() || '';
+        const correctText =
+          correctAnswer.answerText?.trim().toLowerCase() || '';
         const isTextCorrect = userAnswer === correctText;
         return {
           isCorrect: isTextCorrect,
@@ -358,4 +431,3 @@ export class ExamPracticeService {
     return shuffled;
   }
 }
-

@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsString, IsNumber, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsString,
+  IsNumber,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class TopicOrderDto {

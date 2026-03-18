@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsHexColor, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsHexColor,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateSubjectDto {
   @ApiProperty({
@@ -47,7 +53,8 @@ export class CreateSubjectDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Thumbnail image for the subject (JPEG, PNG, GIF, WEBP - max 5MB)',
+    description:
+      'Thumbnail image for the subject (JPEG, PNG, GIF, WEBP - max 5MB)',
     type: 'string',
     format: 'binary',
   })
@@ -91,4 +98,3 @@ export class UpdateSubjectDto {
   @MaxLength(1000)
   description?: string;
 }
-

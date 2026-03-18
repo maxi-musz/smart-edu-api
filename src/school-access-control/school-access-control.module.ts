@@ -7,19 +7,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../school/auth/auth.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    AuthModule,
-    TeacherAccessControlModule,
-  ],
+  imports: [PrismaModule, AuthModule, TeacherAccessControlModule],
   controllers: [SchoolAccessControlController],
-  providers: [
-    SchoolAccessControlService,
-    AccessControlHelperService,
-  ],
-  exports: [
-    SchoolAccessControlService,
-    AccessControlHelperService,
-  ],
+  providers: [SchoolAccessControlService, AccessControlHelperService],
+  exports: [SchoolAccessControlService, AccessControlHelperService],
 })
 export class SchoolAccessControlModule {}

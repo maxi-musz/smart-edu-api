@@ -48,9 +48,14 @@ export const sendLibraryUserOnboardToNewUser = async (
       subject: `Welcome to the library platform – Your login details`,
       html,
     });
-    console.log(colors.green(`Library user onboarding email sent to ${payload.to}`));
+    console.log(
+      colors.green(`Library user onboarding email sent to ${payload.to}`),
+    );
   } catch (error) {
-    console.error(colors.red('Error sending library user onboarding email to new user:'), error);
+    console.error(
+      colors.red('Error sending library user onboarding email to new user:'),
+      error,
+    );
     throw error;
   }
 };
@@ -75,9 +80,16 @@ export const sendLibraryUserOnboardToCreator = async (
       subject: `New library user created – ${payload.newUserFirstName} ${payload.newUserLastName}`,
       html,
     });
-    console.log(colors.green(`Library user creation notification sent to ${payload.to}`));
+    console.log(
+      colors.green(`Library user creation notification sent to ${payload.to}`),
+    );
   } catch (error) {
-    console.error(colors.red('Error sending library user creation notification to creator:'), error);
+    console.error(
+      colors.red(
+        'Error sending library user creation notification to creator:',
+      ),
+      error,
+    );
     throw error;
   }
 };
@@ -110,9 +122,16 @@ export const sendLibraryUserPermissionsUpdated = async (
       subject: `Your permissions have been updated – ${payload.libraryName}`,
       html,
     });
-    console.log(colors.green(`Library user permissions-updated email sent to ${payload.to}`));
+    console.log(
+      colors.green(
+        `Library user permissions-updated email sent to ${payload.to}`,
+      ),
+    );
   } catch (error) {
-    console.error(colors.red('Error sending library user permissions-updated email:'), error);
+    console.error(
+      colors.red('Error sending library user permissions-updated email:'),
+      error,
+    );
     throw error;
   }
 };

@@ -10,7 +10,7 @@ export const emailVerificationOTPTemplate = ({
   otp,
 }: EmailVerificationOTPParams) => {
   const currentYear = new Date().getFullYear();
-  
+
   return `
     <!DOCTYPE html>
     <html lang="en">

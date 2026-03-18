@@ -1,7 +1,16 @@
-import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../shared/services/providers/storage.service';
-import { CreateLibraryExamBodySubjectDto, UpdateLibraryExamBodySubjectDto } from './dto';
+import {
+  CreateLibraryExamBodySubjectDto,
+  UpdateLibraryExamBodySubjectDto,
+} from './dto';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
 
@@ -14,10 +23,18 @@ export class LibraryExamBodySubjectService {
     private readonly storageService: StorageService,
   ) {}
 
-  async create(examBodyId: string, createDto: CreateLibraryExamBodySubjectDto, iconFile?: Express.Multer.File) {
-    this.logger.log(colors.cyan(`[LIBRARY EXAM BODY] Creating subject: ${createDto.name}`));
+  async create(
+    examBodyId: string,
+    createDto: CreateLibraryExamBodySubjectDto,
+    iconFile?: Express.Multer.File,
+  ) {
+    this.logger.log(
+      colors.cyan(`[LIBRARY EXAM BODY] Creating subject: ${createDto.name}`),
+    );
 
-    const examBody = await this.prisma.examBody.findUnique({ where: { id: examBodyId } });
+    const examBody = await this.prisma.examBody.findUnique({
+      where: { id: examBodyId },
+    });
     if (!examBody) {
       throw new NotFoundException('Exam body not found');
     }
@@ -28,16 +45,15 @@ export class LibraryExamBodySubjectService {
     const existing = await this.prisma.examBodySubject.findFirst({
       where: {
         examBodyId,
-        OR: [
-          { name: createDto.name },
-          { code },
-        ],
+        OR: [{ name: createDto.name }, { code }],
       },
     });
 
     if (existing) {
       const field = existing.name === createDto.name ? 'name' : 'code';
-      throw new ConflictException(`Subject with ${field} "${field === 'name' ? createDto.name : code}" already exists for this exam body`);
+      throw new ConflictException(
+        `Subject with ${field} "${field === 'name' ? createDto.name : code}" already exists for this exam body`,
+      );
     }
 
     // Auto-calculate order if not provided
@@ -54,7 +70,14 @@ export class LibraryExamBodySubjectService {
     let uploadResult: { url: string; key: string } | undefined;
 
     if (iconFile) {
-      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+      ];
       if (!allowedMimeTypes.includes(iconFile.mimetype)) {
         throw new BadRequestException('Invalid icon file type');
       }
@@ -67,11 +90,19 @@ export class LibraryExamBodySubjectService {
       try {
         const folder = `exam-bodies/subjects/icons`;
         const fileName = `${examBody.code}_${code}_${Date.now()}_${iconFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        uploadResult = await this.storageService.uploadFile(iconFile, folder, fileName);
+        uploadResult = await this.storageService.uploadFile(
+          iconFile,
+          folder,
+          fileName,
+        );
         iconUrl = uploadResult.url;
       } catch (uploadError: any) {
-        this.logger.error(colors.red(`❌ Failed to upload icon: ${uploadError.message}`));
-        throw new BadRequestException(`Failed to upload icon: ${uploadError.message}`);
+        this.logger.error(
+          colors.red(`❌ Failed to upload icon: ${uploadError.message}`),
+        );
+        throw new BadRequestException(
+          `Failed to upload icon: ${uploadError.message}`,
+        );
       }
     }
 
@@ -92,7 +123,9 @@ export class LibraryExamBodySubjectService {
         try {
           await this.storageService.deleteFile(uploadResult.key);
         } catch (deleteError: any) {
-          this.logger.error(colors.red(`❌ Failed to delete icon: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to delete icon: ${deleteError.message}`),
+          );
         }
       }
       throw dbError;
@@ -130,8 +163,14 @@ export class LibraryExamBodySubjectService {
     return new ApiResponse(true, 'Subject retrieved successfully', subject);
   }
 
-  async update(id: string, updateDto: UpdateLibraryExamBodySubjectDto, iconFile?: Express.Multer.File) {
-    const existing = await this.prisma.examBodySubject.findUnique({ where: { id } });
+  async update(
+    id: string,
+    updateDto: UpdateLibraryExamBodySubjectDto,
+    iconFile?: Express.Multer.File,
+  ) {
+    const existing = await this.prisma.examBodySubject.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Subject not found');
     }
@@ -145,15 +184,14 @@ export class LibraryExamBodySubjectService {
         where: {
           examBodyId: existing.examBodyId,
           id: { not: id },
-          OR: [
-            { name: updateDto.name },
-            { code: code },
-          ],
+          OR: [{ name: updateDto.name }, { code: code }],
         },
       });
       if (conflict) {
         const field = conflict.name === updateDto.name ? 'name' : 'code';
-        throw new ConflictException(`Subject with ${field} "${field === 'name' ? updateDto.name : code}" already exists`);
+        throw new ConflictException(
+          `Subject with ${field} "${field === 'name' ? updateDto.name : code}" already exists`,
+        );
       }
     }
 
@@ -161,7 +199,14 @@ export class LibraryExamBodySubjectService {
     let newUploadResult: { url: string; key: string } | undefined;
 
     if (iconFile) {
-      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+      ];
       if (!allowedMimeTypes.includes(iconFile.mimetype)) {
         throw new BadRequestException('Invalid icon file type');
       }
@@ -174,10 +219,16 @@ export class LibraryExamBodySubjectService {
       try {
         const folder = `exam-bodies/subjects/icons`;
         const fileName = `${existing.code}_${Date.now()}_${iconFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        newUploadResult = await this.storageService.uploadFile(iconFile, folder, fileName);
+        newUploadResult = await this.storageService.uploadFile(
+          iconFile,
+          folder,
+          fileName,
+        );
         newIconUrl = newUploadResult.url;
       } catch (uploadError: any) {
-        throw new BadRequestException(`Failed to upload icon: ${uploadError.message}`);
+        throw new BadRequestException(
+          `Failed to upload icon: ${uploadError.message}`,
+        );
       }
     }
 
@@ -197,7 +248,9 @@ export class LibraryExamBodySubjectService {
         try {
           await this.storageService.deleteFile(newUploadResult.key);
         } catch (deleteError: any) {
-          this.logger.error(colors.red(`❌ Failed to delete icon: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(`❌ Failed to delete icon: ${deleteError.message}`),
+          );
         }
       }
       throw dbError;
@@ -207,7 +260,9 @@ export class LibraryExamBodySubjectService {
   }
 
   async remove(id: string) {
-    const subject = await this.prisma.examBodySubject.findUnique({ where: { id } });
+    const subject = await this.prisma.examBodySubject.findUnique({
+      where: { id },
+    });
     if (!subject) {
       throw new NotFoundException('Subject not found');
     }

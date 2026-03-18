@@ -40,5 +40,3 @@ import { LibraryUsersModule } from './library-users/library-users.module';
   exports: [LibraryService],
 })
 export class LibraryModule {}
-
-

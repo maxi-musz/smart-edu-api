@@ -20,7 +20,7 @@ export interface IRegisterDevice {
 
 export interface IPushMessage {
   to: string;
-  sound: 'default' | 'default' | null;
+  sound: 'default' | null;
   title: string;
   body: string;
   data?: Record<string, any>;

@@ -6,19 +6,22 @@ import * as crypto from 'crypto';
  */
 export function generateOTP(): string {
   const numbers = '0123456789';
-  
+
   let otp = '';
-  
+
   // Ensure at least one number and one letter
   otp += numbers[crypto.randomInt(0, numbers.length)];
-  
+
   // Fill the remaining 4 characters with random alphanumeric
   for (let i = 2; i < 7; i++) {
     otp += numbers[crypto.randomInt(0, numbers.length)];
   }
-  
+
   // Shuffle the OTP to randomize the position of number and letter
-  return otp.split('').sort(() => Math.random() - 0.5).join('');
+  return otp
+    .split('')
+    .sort(() => Math.random() - 0.5)
+    .join('');
 }
 
 /**
@@ -27,7 +30,9 @@ export function generateOTP(): string {
  * @returns {string} A numeric OTP
  */
 export function generateNumericOTP(length: number = 4): string {
-  return crypto.randomInt(Math.pow(10, length - 1), Math.pow(10, length)).toString();
+  return crypto
+    .randomInt(Math.pow(10, length - 1), Math.pow(10, length))
+    .toString();
 }
 
 /**
@@ -49,4 +54,4 @@ export function testOTPGeneration(): void {
     const isValid = validateOTP(otp);
     console.log(`OTP ${i + 1}: ${otp} (Valid: ${isValid})`);
   }
-} 
+}

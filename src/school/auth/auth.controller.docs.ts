@@ -1,16 +1,16 @@
-import { 
-  OnboardSchoolDocs, 
-  DirectorLoginOtpDocs, 
-  VerifyLoginOtpDocs, 
-  SignInDocs, 
-  RequestPasswordResetDocs, 
-  VerifyPasswordResetDocs, 
+import {
+  OnboardSchoolDocs,
+  DirectorLoginOtpDocs,
+  VerifyLoginOtpDocs,
+  SignInDocs,
+  RequestPasswordResetDocs,
+  VerifyPasswordResetDocs,
   ResetPasswordDocs,
   OnboardClassesDocs,
   OnboardTeachersDocs,
   OnboardStudentsDocs,
   OnboardDirectorsDocs,
-  OnboardDataDocs
+  OnboardDataDocs,
 } from 'src/docs/auth';
 import { BulkOnboardDocs, DownloadTemplateDocs } from 'src/docs/bulk-onboard';
 
@@ -22,19 +22,19 @@ export const AuthControllerDocs = {
     consumes: OnboardSchoolDocs.consumes,
     body: OnboardSchoolDocs.body,
     response201: OnboardSchoolDocs.response201,
-    response400: OnboardSchoolDocs.response400
+    response400: OnboardSchoolDocs.response400,
   },
 
   // Director Login OTP
   directorLoginOtp: {
     operation: DirectorLoginOtpDocs.operation,
-    response200: DirectorLoginOtpDocs.response200
+    response200: DirectorLoginOtpDocs.response200,
   },
 
   // Verify Login OTP
   verifyLoginOtp: {
     operation: VerifyLoginOtpDocs.operation,
-    response200: VerifyLoginOtpDocs.response200
+    response200: VerifyLoginOtpDocs.response200,
   },
 
   // Sign In
@@ -42,60 +42,60 @@ export const AuthControllerDocs = {
     operation: SignInDocs.operation,
     response200: SignInDocs.response200,
     response200OtpRequired: SignInDocs.response200OtpRequired,
-    response200EmailNotVerified: SignInDocs.response200EmailNotVerified
+    response200EmailNotVerified: SignInDocs.response200EmailNotVerified,
   },
 
   // Request Password Reset OTP
   requestPasswordResetOtp: {
     operation: RequestPasswordResetDocs.operation,
-    response200: RequestPasswordResetDocs.response200
+    response200: RequestPasswordResetDocs.response200,
   },
 
   // Verify Password Reset OTP
   verifyPasswordResetOtp: {
     operation: VerifyPasswordResetDocs.operation,
-    response200: VerifyPasswordResetDocs.response200
+    response200: VerifyPasswordResetDocs.response200,
   },
 
   // Reset Password
   resetPassword: {
     operation: ResetPasswordDocs.operation,
-    response200: ResetPasswordDocs.response200
+    response200: ResetPasswordDocs.response200,
   },
 
   // Onboard Classes
   onboardClasses: {
     bearerAuth: OnboardClassesDocs.bearerAuth,
     operation: OnboardClassesDocs.operation,
-    response201: OnboardClassesDocs.response201
+    response201: OnboardClassesDocs.response201,
   },
 
   // Onboard Teachers
   onboardTeachers: {
     bearerAuth: OnboardTeachersDocs.bearerAuth,
     operation: OnboardTeachersDocs.operation,
-    response201: OnboardTeachersDocs.response201
+    response201: OnboardTeachersDocs.response201,
   },
 
   // Onboard Students
   onboardStudents: {
     bearerAuth: OnboardStudentsDocs.bearerAuth,
     operation: OnboardStudentsDocs.operation,
-    response201: OnboardStudentsDocs.response201
+    response201: OnboardStudentsDocs.response201,
   },
 
   // Onboard Directors
   onboardDirectors: {
     bearerAuth: OnboardDirectorsDocs.bearerAuth,
     operation: OnboardDirectorsDocs.operation,
-    response201: OnboardDirectorsDocs.response201
+    response201: OnboardDirectorsDocs.response201,
   },
 
   // Onboard Data
   onboardData: {
     bearerAuth: OnboardDataDocs.bearerAuth,
     operation: OnboardDataDocs.operation,
-    response201: OnboardDataDocs.response201
+    response201: OnboardDataDocs.response201,
   },
 
   // Bulk Onboard from Excel
@@ -107,7 +107,7 @@ export const AuthControllerDocs = {
     response201: BulkOnboardDocs.response201,
     response400: BulkOnboardDocs.response400,
     response401: BulkOnboardDocs.response401,
-    response500: BulkOnboardDocs.response500
+    response500: BulkOnboardDocs.response500,
   },
 
   // Download Excel Template
@@ -115,6 +115,6 @@ export const AuthControllerDocs = {
     operation: DownloadTemplateDocs.operation,
     bearerAuth: DownloadTemplateDocs.bearerAuth,
     response200: DownloadTemplateDocs.response200,
-    response401: DownloadTemplateDocs.response401
-  }
-}; 
+    response401: DownloadTemplateDocs.response401,
+  },
+};

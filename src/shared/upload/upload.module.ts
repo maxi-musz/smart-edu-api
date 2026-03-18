@@ -3,7 +3,7 @@ import { UploadProgressService } from '../../school/ai-chat/upload-progress.serv
 
 /**
  * Shared Upload Module
- * 
+ *
  * Provides reusable upload progress tracking functionality.
  * Can be imported by any module that needs upload progress tracking.
  */
@@ -12,4 +12,3 @@ import { UploadProgressService } from '../../school/ai-chat/upload-progress.serv
   exports: [UploadProgressService],
 })
 export class UploadModule {}
-

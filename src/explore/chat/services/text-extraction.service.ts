@@ -47,7 +47,9 @@ export class TextExtractionService {
         extractionTime,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error extracting PDF text: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error extracting PDF text: ${error.message}`),
+      );
       throw new Error(`Failed to extract text from PDF: ${error.message}`);
     }
   }
@@ -55,9 +57,14 @@ export class TextExtractionService {
   /**
    * Extract text from DOC/DOCX file
    */
-  async extractFromDOC(buffer: Buffer, fileType: 'doc' | 'docx'): Promise<ExtractedText> {
+  async extractFromDOC(
+    buffer: Buffer,
+    fileType: 'doc' | 'docx',
+  ): Promise<ExtractedText> {
     const startTime = Date.now();
-    this.logger.log(colors.blue(`📄 Extracting text from ${fileType.toUpperCase()}...`));
+    this.logger.log(
+      colors.blue(`📄 Extracting text from ${fileType.toUpperCase()}...`),
+    );
 
     try {
       let result: any;
@@ -67,7 +74,9 @@ export class TextExtractionService {
       } else {
         // For .doc files, we need a different approach
         // For now, we'll throw an error and suggest conversion
-        throw new Error('DOC files are not supported. Please convert to DOCX format.');
+        throw new Error(
+          'DOC files are not supported. Please convert to DOCX format.',
+        );
       }
 
       const text = result.value;
@@ -75,7 +84,11 @@ export class TextExtractionService {
       const wordCount = this.countWords(text);
       const charCount = text.length;
 
-      this.logger.log(colors.green(`✅ ${fileType.toUpperCase()} text extracted successfully`));
+      this.logger.log(
+        colors.green(
+          `✅ ${fileType.toUpperCase()} text extracted successfully`,
+        ),
+      );
       this.logger.log(colors.blue(`   - Words: ${wordCount}`));
       this.logger.log(colors.blue(`   - Characters: ${charCount}`));
       this.logger.log(colors.blue(`   - Extraction time: ${extractionTime}ms`));
@@ -87,17 +100,28 @@ export class TextExtractionService {
         extractionTime,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error extracting ${fileType.toUpperCase()} text: ${error.message}`));
-      throw new Error(`Failed to extract text from ${fileType.toUpperCase()}: ${error.message}`);
+      this.logger.error(
+        colors.red(
+          `❌ Error extracting ${fileType.toUpperCase()} text: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to extract text from ${fileType.toUpperCase()}: ${error.message}`,
+      );
     }
   }
 
   /**
    * Extract text from PPT/PPTX file
    */
-  async extractFromPPT(buffer: Buffer, fileType: 'ppt' | 'pptx'): Promise<ExtractedText> {
+  async extractFromPPT(
+    buffer: Buffer,
+    fileType: 'ppt' | 'pptx',
+  ): Promise<ExtractedText> {
     const startTime = Date.now();
-    this.logger.log(colors.blue(`📄 Extracting text from ${fileType.toUpperCase()}...`));
+    this.logger.log(
+      colors.blue(`📄 Extracting text from ${fileType.toUpperCase()}...`),
+    );
 
     try {
       // For PowerPoint files, we'll use mammoth as a fallback
@@ -108,7 +132,11 @@ export class TextExtractionService {
       const wordCount = this.countWords(text);
       const charCount = text.length;
 
-      this.logger.log(colors.yellow(`⚠️ ${fileType.toUpperCase()} text extraction limited (raw text only)`));
+      this.logger.log(
+        colors.yellow(
+          `⚠️ ${fileType.toUpperCase()} text extraction limited (raw text only)`,
+        ),
+      );
       this.logger.log(colors.blue(`   - Words: ${wordCount}`));
       this.logger.log(colors.blue(`   - Characters: ${charCount}`));
       this.logger.log(colors.blue(`   - Extraction time: ${extractionTime}ms`));
@@ -120,8 +148,14 @@ export class TextExtractionService {
         extractionTime,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error extracting ${fileType.toUpperCase()} text: ${error.message}`));
-      throw new Error(`Failed to extract text from ${fileType.toUpperCase()}: ${error.message}`);
+      this.logger.error(
+        colors.red(
+          `❌ Error extracting ${fileType.toUpperCase()} text: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to extract text from ${fileType.toUpperCase()}: ${error.message}`,
+      );
     }
   }
 
@@ -129,26 +163,30 @@ export class TextExtractionService {
    * Extract text from any supported file type
    */
   async extractText(buffer: Buffer, fileType: string): Promise<ExtractedText> {
-    this.logger.log(colors.cyan(`🔍 Starting text extraction for file type: ${fileType}`));
+    this.logger.log(
+      colors.cyan(`🔍 Starting text extraction for file type: ${fileType}`),
+    );
 
     switch (fileType.toLowerCase()) {
       case 'pdf':
         return this.extractFromPDF(buffer);
-      
+
       case 'docx':
         return this.extractFromDOC(buffer, 'docx');
-      
+
       case 'doc':
         return this.extractFromDOC(buffer, 'doc');
-      
+
       case 'pptx':
         return this.extractFromPPT(buffer, 'pptx');
-      
+
       case 'ppt':
         return this.extractFromPPT(buffer, 'ppt');
-      
+
       default:
-        throw new Error(`Unsupported file type for text extraction: ${fileType}`);
+        throw new Error(
+          `Unsupported file type for text extraction: ${fileType}`,
+        );
     }
   }
 
@@ -157,9 +195,12 @@ export class TextExtractionService {
    */
   private countWords(text: string): number {
     if (!text || text.trim().length === 0) return 0;
-    
+
     // Remove extra whitespace and split by spaces
-    const words = text.trim().split(/\s+/).filter(word => word.length > 0);
+    const words = text
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0);
     return words.length;
   }
 
@@ -177,7 +218,10 @@ export class TextExtractionService {
   /**
    * Validate extracted text quality
    */
-  validateExtraction(extractedText: ExtractedText): { isValid: boolean; issues: string[] } {
+  validateExtraction(extractedText: ExtractedText): {
+    isValid: boolean;
+    issues: string[];
+  } {
     const issues: string[] = [];
 
     if (extractedText.text.length === 0) {
@@ -185,11 +229,15 @@ export class TextExtractionService {
     }
 
     if (extractedText.wordCount < 5) {
-      issues.push('Very few words extracted - document might be image-based or corrupted');
+      issues.push(
+        'Very few words extracted - document might be image-based or corrupted',
+      );
     }
 
     if (extractedText.charCount < 20) {
-      issues.push('Very few characters extracted - document might be empty or corrupted');
+      issues.push(
+        'Very few characters extracted - document might be empty or corrupted',
+      );
     }
 
     // Note: Encoding issues (, ???) are common in real-world documents and don't prevent AI interaction
@@ -199,7 +247,9 @@ export class TextExtractionService {
 
     if (!isValid) {
       this.logger.warn(colors.yellow(`⚠️ Text extraction validation issues:`));
-      issues.forEach(issue => this.logger.warn(colors.yellow(`   - ${issue}`)));
+      issues.forEach((issue) =>
+        this.logger.warn(colors.yellow(`   - ${issue}`)),
+      );
     }
 
     return { isValid, issues };

@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsUrl, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUrl,
+  IsEnum,
+} from 'class-validator';
 import { ExamBodyStatus } from './exam-body-status.enum';
 
 export class CreateExamBodyDto {
@@ -23,7 +29,8 @@ export class CreateExamBodyDto {
 
   @ApiPropertyOptional({
     description: 'Description of the examination body',
-    example: 'The West African Examinations Council conducts standardized examinations...',
+    example:
+      'The West African Examinations Council conducts standardized examinations...',
   })
   @IsString()
   @IsOptional()
@@ -50,4 +57,3 @@ export class CreateExamBodyDto {
   @IsOptional()
   status?: ExamBodyStatus;
 }
-

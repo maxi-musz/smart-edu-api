@@ -9,7 +9,13 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { ExamsService } from './exams.service';
 import { JwtGuard } from '../../../auth/guard/jwt.guard';
 import { GetUser } from '../../../auth/decorator/get-user-decorator';
@@ -24,7 +30,7 @@ export class ExamsController {
   // ========================================
   // EXAM CRUD ENDPOINTS
   // ========================================
-  
+
   // TODO: Implement exam endpoints:
   // - POST / - Create exam
   // - GET /topic/:topicId - Get topic exams

@@ -1,8 +1,26 @@
-import { Controller, Post, Body, Patch, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Body,
+  Patch,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { SessionAndTermService } from './session-and-term.service';
 import { CreateAcademicSessionDto } from './dto/create-academic-session.dto';
-import { UpdateAcademicSessionDto, UpdateTermDto } from './dto/update-academic-session.dto';
+import {
+  UpdateAcademicSessionDto,
+  UpdateTermDto,
+} from './dto/update-academic-session.dto';
 import { SessionAndTermDocs } from './api-docs/session-and-term.docs';
 import { JwtGuard } from '../../school/auth/guard/jwt.guard';
 
@@ -36,7 +54,10 @@ export class SessionAndTermController {
   @HttpCode(HttpStatus.OK)
   @SessionAndTermDocs.bearerAuth
   @SessionAndTermDocs.updateSessionOperation
-  @ApiParam({ name: 'sessionId', description: 'Academic session ID (any term ID from the session)' })
+  @ApiParam({
+    name: 'sessionId',
+    description: 'Academic session ID (any term ID from the session)',
+  })
   @SessionAndTermDocs.updateSessionResponse200
   @SessionAndTermDocs.updateSessionResponse400
   @SessionAndTermDocs.updateSessionResponse404
@@ -44,9 +65,12 @@ export class SessionAndTermController {
   @SessionAndTermDocs.updateSessionResponse500
   async updateAcademicSession(
     @Param('sessionId') sessionId: string,
-    @Body() updateDto: UpdateAcademicSessionDto
+    @Body() updateDto: UpdateAcademicSessionDto,
   ) {
-    return this.sessionAndTermService.updateAcademicSession(sessionId, updateDto);
+    return this.sessionAndTermService.updateAcademicSession(
+      sessionId,
+      updateDto,
+    );
   }
 
   /**
@@ -65,9 +89,8 @@ export class SessionAndTermController {
   @SessionAndTermDocs.updateTermResponse500
   async updateTerm(
     @Param('termId') termId: string,
-    @Body() updateDto: UpdateTermDto
+    @Body() updateDto: UpdateTermDto,
   ) {
     return this.sessionAndTermService.updateTerm(termId, updateDto);
   }
 }
-

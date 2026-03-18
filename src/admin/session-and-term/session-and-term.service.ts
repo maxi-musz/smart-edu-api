@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAcademicSessionDto } from './dto/create-academic-session.dto';
-import { UpdateAcademicSessionDto, UpdateTermDto } from './dto/update-academic-session.dto';
+import {
+  UpdateAcademicSessionDto,
+  UpdateTermDto,
+} from './dto/update-academic-session.dto';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { AcademicTerm } from '@prisma/client';
 import * as colors from 'colors';
@@ -16,18 +19,26 @@ export class SessionAndTermService {
    * Create a new academic session for a school
    * Automatically creates the specified number of terms (defaults to 3)
    */
-  async createAcademicSession(createDto: CreateAcademicSessionDto): Promise<ApiResponse<any>> {
+  async createAcademicSession(
+    createDto: CreateAcademicSessionDto,
+  ): Promise<ApiResponse<any>> {
     const numberOfTerms = createDto.number_of_terms || 3;
-    this.logger.log(colors.cyan(`Creating academic session for school: ${createDto.school_id} with ${numberOfTerms} term(s)`));
+    this.logger.log(
+      colors.cyan(
+        `Creating academic session for school: ${createDto.school_id} with ${numberOfTerms} term(s)`,
+      ),
+    );
 
     try {
       // Validate that school exists
       const school = await this.prisma.school.findUnique({
-        where: { id: createDto.school_id }
+        where: { id: createDto.school_id },
       });
 
       if (!school) {
-        this.logger.error(colors.red(`❌ School not found: ${createDto.school_id}`));
+        this.logger.error(
+          colors.red(`❌ School not found: ${createDto.school_id}`),
+        );
         return new ApiResponse(false, 'School not found', null);
       }
 
@@ -35,32 +46,51 @@ export class SessionAndTermService {
       const existingSessions = await this.prisma.academicSession.findMany({
         where: {
           school_id: createDto.school_id,
-          academic_year: createDto.academic_year
-        }
+          academic_year: createDto.academic_year,
+        },
       });
 
       if (existingSessions.length > 0) {
-        this.logger.warn(colors.yellow(`⚠️ Academic session already exists: ${createDto.academic_year}`));
-        return new ApiResponse(false, 'Academic session with this year already exists. Please delete existing sessions first.', null);
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Academic session already exists: ${createDto.academic_year}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Academic session with this year already exists. Please delete existing sessions first.',
+          null,
+        );
       }
 
       // Calculate dates for the academic year
       // Default start_date: September 1st of start_year
-      const sessionStart = createDto.start_date 
+      const sessionStart = createDto.start_date
         ? new Date(createDto.start_date)
         : new Date(createDto.start_year, 8, 1); // Month 8 = September (0-indexed)
-      
+
       // Default end_date: August 31st of end_year
-      const sessionEnd = createDto.end_date 
-        ? new Date(createDto.end_date) 
+      const sessionEnd = createDto.end_date
+        ? new Date(createDto.end_date)
         : new Date(createDto.end_year, 7, 31); // Month 7 = August (0-indexed), day 31
 
       // Validate minimum 30 days between start and end dates if both are provided
       if (createDto.start_date && createDto.end_date) {
-        const daysDifference = Math.ceil((sessionEnd.getTime() - sessionStart.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDifference = Math.ceil(
+          (sessionEnd.getTime() - sessionStart.getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
         if (daysDifference < 30) {
-          this.logger.error(colors.red(`❌ Date validation failed: Minimum 30 days required between start and end dates`));
-          return new ApiResponse(false, 'Start date and end date must have at least 30 days between them', null);
+          this.logger.error(
+            colors.red(
+              `❌ Date validation failed: Minimum 30 days required between start and end dates`,
+            ),
+          );
+          return new ApiResponse(
+            false,
+            'Start date and end date must have at least 30 days between them',
+            null,
+          );
         }
       }
 
@@ -73,13 +103,15 @@ export class SessionAndTermService {
         await this.prisma.academicSession.updateMany({
           where: {
             school_id: createDto.school_id,
-            is_current: true
+            is_current: true,
           },
           data: {
-            is_current: false
-          }
+            is_current: false,
+          },
         });
-        this.logger.log(colors.cyan(`   - Deactivated other current sessions for school`));
+        this.logger.log(
+          colors.cyan(`   - Deactivated other current sessions for school`),
+        );
       }
 
       // Define available terms
@@ -89,12 +121,13 @@ export class SessionAndTermService {
       // Create terms based on number_of_terms
       for (let i = 0; i < numberOfTerms; i++) {
         const term = availableTerms[i];
-        
+
         // Calculate start and end dates for this term
-        const termStart = new Date(sessionStart.getTime() + (termDuration * i));
-        const termEnd = i === numberOfTerms - 1 
-          ? sessionEnd // Last term ends at session end
-          : new Date(sessionStart.getTime() + (termDuration * (i + 1)) - 1); // Other terms end 1ms before next term starts
+        const termStart = new Date(sessionStart.getTime() + termDuration * i);
+        const termEnd =
+          i === numberOfTerms - 1
+            ? sessionEnd // Last term ends at session end
+            : new Date(sessionStart.getTime() + termDuration * (i + 1) - 1); // Other terms end 1ms before next term starts
 
         // Adjust termEnd to be at end of day
         if (i < numberOfTerms - 1) {
@@ -111,8 +144,8 @@ export class SessionAndTermService {
             start_date: termStart,
             end_date: termEnd,
             status: createDto.status || 'active',
-            is_current: createDto.is_current && term === 'first' // Only first term can be current initially
-          }
+            is_current: createDto.is_current && term === 'first', // Only first term can be current initially
+          },
         });
 
         createdSessions.push({
@@ -127,13 +160,21 @@ export class SessionAndTermService {
           status: academicSession.status,
           is_current: academicSession.is_current,
           createdAt: academicSession.createdAt,
-          updatedAt: academicSession.updatedAt
+          updatedAt: academicSession.updatedAt,
         });
 
-        this.logger.log(colors.green(`✅ Created ${term} term: ${academicSession.academic_year} - ${term}`));
+        this.logger.log(
+          colors.green(
+            `✅ Created ${term} term: ${academicSession.academic_year} - ${term}`,
+          ),
+        );
       }
 
-      this.logger.log(colors.green(`✅ All ${numberOfTerms} term(s) created successfully for academic year: ${createDto.academic_year}`));
+      this.logger.log(
+        colors.green(
+          `✅ All ${numberOfTerms} term(s) created successfully for academic year: ${createDto.academic_year}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
@@ -141,13 +182,18 @@ export class SessionAndTermService {
         {
           academic_year: createDto.academic_year,
           number_of_terms: numberOfTerms,
-          terms: createdSessions
-        }
+          terms: createdSessions,
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error creating academic session: ${error.message}`));
-      return new ApiResponse(false, `Failed to create academic session: ${error.message}`, null);
+      this.logger.error(
+        colors.red(`❌ Error creating academic session: ${error.message}`),
+      );
+      return new ApiResponse(
+        false,
+        `Failed to create academic session: ${error.message}`,
+        null,
+      );
     }
   }
 
@@ -156,18 +202,20 @@ export class SessionAndTermService {
    */
   async updateAcademicSession(
     sessionId: string,
-    updateDto: UpdateAcademicSessionDto
+    updateDto: UpdateAcademicSessionDto,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`Updating academic session: ${sessionId}`));
 
     try {
       // Get the session to find school_id and academic_year
       const session = await this.prisma.academicSession.findUnique({
-        where: { id: sessionId }
+        where: { id: sessionId },
       });
 
       if (!session) {
-        this.logger.error(colors.red(`❌ Academic session not found: ${sessionId}`));
+        this.logger.error(
+          colors.red(`❌ Academic session not found: ${sessionId}`),
+        );
         return new ApiResponse(false, 'Academic session not found', null);
       }
 
@@ -175,11 +223,21 @@ export class SessionAndTermService {
       if (updateDto.start_date && updateDto.end_date) {
         const startDate = new Date(updateDto.start_date);
         const endDate = new Date(updateDto.end_date);
-        const daysDifference = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        
+        const daysDifference = Math.ceil(
+          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
         if (daysDifference < 30) {
-          this.logger.error(colors.red(`❌ Date validation failed: Minimum 30 days required between start and end dates`));
-          return new ApiResponse(false, 'Start date and end date must have at least 30 days between them', null);
+          this.logger.error(
+            colors.red(
+              `❌ Date validation failed: Minimum 30 days required between start and end dates`,
+            ),
+          );
+          return new ApiResponse(
+            false,
+            'Start date and end date must have at least 30 days between them',
+            null,
+          );
         }
       }
 
@@ -190,22 +248,22 @@ export class SessionAndTermService {
           where: {
             school_id: session.school_id,
             is_current: true,
-            id: { not: sessionId }
+            id: { not: sessionId },
           },
           data: {
-            is_current: false
-          }
+            is_current: false,
+          },
         });
 
         // Get all terms for this academic session
         const allTerms = await this.prisma.academicSession.findMany({
           where: {
             school_id: session.school_id,
-            academic_year: session.academic_year
+            academic_year: session.academic_year,
           },
           orderBy: {
-            term: 'asc'
-          }
+            term: 'asc',
+          },
         });
 
         // Set first term as current and deactivate other terms in this session
@@ -214,42 +272,52 @@ export class SessionAndTermService {
             where: { id: term.id },
             data: {
               is_current: term.term === 'first',
-              ...(updateDto.start_date && term.term === 'first' ? { start_date: new Date(updateDto.start_date) } : {}),
-              ...(updateDto.end_date && term.term === allTerms[allTerms.length - 1].term 
-                ? { end_date: new Date(updateDto.end_date) } 
-                : {})
-            }
+              ...(updateDto.start_date && term.term === 'first'
+                ? { start_date: new Date(updateDto.start_date) }
+                : {}),
+              ...(updateDto.end_date &&
+              term.term === allTerms[allTerms.length - 1].term
+                ? { end_date: new Date(updateDto.end_date) }
+                : {}),
+            },
           });
         }
 
-        this.logger.log(colors.green(`✅ Academic session activated and first term set as current`));
+        this.logger.log(
+          colors.green(
+            `✅ Academic session activated and first term set as current`,
+          ),
+        );
       } else {
         // Update all terms in the session with provided dates
         const allTerms = await this.prisma.academicSession.findMany({
           where: {
             school_id: session.school_id,
-            academic_year: session.academic_year
+            academic_year: session.academic_year,
           },
           orderBy: {
-            term: 'asc'
-          }
+            term: 'asc',
+          },
         });
 
         for (const term of allTerms) {
           const updateData: any = {};
-          
+
           if (updateDto.start_date && term.term === 'first') {
             updateData.start_date = new Date(updateDto.start_date);
           }
-          
-          if (updateDto.end_date && term.term === allTerms[allTerms.length - 1].term) {
+
+          if (
+            updateDto.end_date &&
+            term.term === allTerms[allTerms.length - 1].term
+          ) {
             updateData.end_date = new Date(updateDto.end_date);
           }
 
           if (Object.keys(updateData).length > 0) {
             await this.prisma.academicSession.update({
               where: { id: term.id },
-              data: updateData
+              data: updateData,
             });
           }
         }
@@ -259,40 +327,41 @@ export class SessionAndTermService {
       const updatedSessions = await this.prisma.academicSession.findMany({
         where: {
           school_id: session.school_id,
-          academic_year: session.academic_year
+          academic_year: session.academic_year,
         },
         orderBy: {
-          term: 'asc'
-        }
+          term: 'asc',
+        },
       });
 
       this.logger.log(colors.green(`✅ Academic session updated successfully`));
 
-      return new ApiResponse(
-        true,
-        'Academic session updated successfully',
-        {
-          academic_year: session.academic_year,
-          terms: updatedSessions.map(s => ({
-            id: s.id,
-            school_id: s.school_id,
-            academic_year: s.academic_year,
-            start_year: s.start_year,
-            end_year: s.end_year,
-            term: s.term,
-            start_date: s.start_date,
-            end_date: s.end_date,
-            status: s.status,
-            is_current: s.is_current,
-            createdAt: s.createdAt,
-            updatedAt: s.updatedAt
-          }))
-        }
-      );
-
+      return new ApiResponse(true, 'Academic session updated successfully', {
+        academic_year: session.academic_year,
+        terms: updatedSessions.map((s) => ({
+          id: s.id,
+          school_id: s.school_id,
+          academic_year: s.academic_year,
+          start_year: s.start_year,
+          end_year: s.end_year,
+          term: s.term,
+          start_date: s.start_date,
+          end_date: s.end_date,
+          status: s.status,
+          is_current: s.is_current,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        })),
+      });
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error updating academic session: ${error.message}`));
-      return new ApiResponse(false, `Failed to update academic session: ${error.message}`, null);
+      this.logger.error(
+        colors.red(`❌ Error updating academic session: ${error.message}`),
+      );
+      return new ApiResponse(
+        false,
+        `Failed to update academic session: ${error.message}`,
+        null,
+      );
     }
   }
 
@@ -301,14 +370,14 @@ export class SessionAndTermService {
    */
   async updateTerm(
     termId: string,
-    updateDto: UpdateTermDto
+    updateDto: UpdateTermDto,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`Updating term: ${termId}`));
 
     try {
       // Get the term
       const term = await this.prisma.academicSession.findUnique({
-        where: { id: termId }
+        where: { id: termId },
       });
 
       if (!term) {
@@ -317,15 +386,29 @@ export class SessionAndTermService {
       }
 
       // Validate date range if both dates are provided
-      const startDate = updateDto.start_date ? new Date(updateDto.start_date) : term.start_date;
-      const endDate = updateDto.end_date ? new Date(updateDto.end_date) : term.end_date;
-      
+      const startDate = updateDto.start_date
+        ? new Date(updateDto.start_date)
+        : term.start_date;
+      const endDate = updateDto.end_date
+        ? new Date(updateDto.end_date)
+        : term.end_date;
+
       if (updateDto.start_date || updateDto.end_date) {
-        const daysDifference = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        
+        const daysDifference = Math.ceil(
+          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
         if (daysDifference < 30) {
-          this.logger.error(colors.red(`❌ Date validation failed: Minimum 30 days required between start and end dates`));
-          return new ApiResponse(false, 'Start date and end date must have at least 30 days between them', null);
+          this.logger.error(
+            colors.red(
+              `❌ Date validation failed: Minimum 30 days required between start and end dates`,
+            ),
+          );
+          return new ApiResponse(
+            false,
+            'Start date and end date must have at least 30 days between them',
+            null,
+          );
         }
       }
 
@@ -337,52 +420,55 @@ export class SessionAndTermService {
             school_id: term.school_id,
             academic_year: term.academic_year,
             is_current: true,
-            id: { not: termId }
+            id: { not: termId },
           },
           data: {
-            is_current: false
-          }
+            is_current: false,
+          },
         });
       }
 
       // Update the term
       const updateData: any = {};
-      if (updateDto.start_date) updateData.start_date = new Date(updateDto.start_date);
-      if (updateDto.end_date) updateData.end_date = new Date(updateDto.end_date);
-      if (updateDto.is_current !== undefined) updateData.is_current = updateDto.is_current;
+      if (updateDto.start_date)
+        updateData.start_date = new Date(updateDto.start_date);
+      if (updateDto.end_date)
+        updateData.end_date = new Date(updateDto.end_date);
+      if (updateDto.is_current !== undefined)
+        updateData.is_current = updateDto.is_current;
 
       const updatedTerm = await this.prisma.academicSession.update({
         where: { id: termId },
-        data: updateData
+        data: updateData,
       });
 
-      this.logger.log(colors.green(`✅ Term updated successfully: ${updatedTerm.academic_year} - ${updatedTerm.term}`));
-
-      return new ApiResponse(
-        true,
-        'Term updated successfully',
-        {
-          id: updatedTerm.id,
-          school_id: updatedTerm.school_id,
-          academic_year: updatedTerm.academic_year,
-          start_year: updatedTerm.start_year,
-          end_year: updatedTerm.end_year,
-          term: updatedTerm.term,
-          start_date: updatedTerm.start_date,
-          end_date: updatedTerm.end_date,
-          status: updatedTerm.status,
-          is_current: updatedTerm.is_current,
-          createdAt: updatedTerm.createdAt,
-          updatedAt: updatedTerm.updatedAt
-        }
+      this.logger.log(
+        colors.green(
+          `✅ Term updated successfully: ${updatedTerm.academic_year} - ${updatedTerm.term}`,
+        ),
       );
 
+      return new ApiResponse(true, 'Term updated successfully', {
+        id: updatedTerm.id,
+        school_id: updatedTerm.school_id,
+        academic_year: updatedTerm.academic_year,
+        start_year: updatedTerm.start_year,
+        end_year: updatedTerm.end_year,
+        term: updatedTerm.term,
+        start_date: updatedTerm.start_date,
+        end_date: updatedTerm.end_date,
+        status: updatedTerm.status,
+        is_current: updatedTerm.is_current,
+        createdAt: updatedTerm.createdAt,
+        updatedAt: updatedTerm.updatedAt,
+      });
     } catch (error) {
       this.logger.error(colors.red(`❌ Error updating term: ${error.message}`));
-      return new ApiResponse(false, `Failed to update term: ${error.message}`, null);
+      return new ApiResponse(
+        false,
+        `Failed to update term: ${error.message}`,
+        null,
+      );
     }
   }
-
-  
 }
-

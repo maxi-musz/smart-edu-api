@@ -15,7 +15,12 @@ export interface LibraryAssessmentContext {
  * Result type for user context detection
  */
 export interface UserContext {
-  type: 'library_owner' | 'school_director' | 'school_admin' | 'teacher' | 'student';
+  type:
+    | 'library_owner'
+    | 'school_director'
+    | 'school_admin'
+    | 'teacher'
+    | 'student';
   userId: string;
   platformId?: string; // For library owners
   schoolId?: string; // For school users

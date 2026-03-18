@@ -11,19 +11,19 @@ import { GetFinanceDashboardDocs } from 'src/docs/director/finance';
 @Controller('director/finance')
 @UseGuards(JwtGuard)
 export class FinanceController {
-    constructor(private readonly financeService: FinanceService) {}
+  constructor(private readonly financeService: FinanceService) {}
 
-    @Get('dashboard')
-    @GetFinanceDashboardDocs.bearerAuth
-    @GetFinanceDashboardDocs.operation
-    @GetFinanceDashboardDocs.query1
-    @GetFinanceDashboardDocs.query2
-    @GetFinanceDashboardDocs.response200
-    @GetFinanceDashboardDocs.response401
-    fetchFinanceDashboard(
-        @GetUser() user: User,
-        @Query() dto: FetchFinanceDashboardDto
-    ) {
-        return this.financeService.fetchFinanceDashboard(user.school_id, dto);
-    }
-} 
+  @Get('dashboard')
+  @GetFinanceDashboardDocs.bearerAuth
+  @GetFinanceDashboardDocs.operation
+  @GetFinanceDashboardDocs.query1
+  @GetFinanceDashboardDocs.query2
+  @GetFinanceDashboardDocs.response200
+  @GetFinanceDashboardDocs.response401
+  fetchFinanceDashboard(
+    @GetUser() user: User,
+    @Query() dto: FetchFinanceDashboardDto,
+  ) {
+    return this.financeService.fetchFinanceDashboard(user.school_id, dto);
+  }
+}

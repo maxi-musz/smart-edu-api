@@ -18,4 +18,3 @@ export interface SendEmailOptions {
 export interface IEmailProvider {
   sendEmail(options: SendEmailOptions): Promise<void>;
 }
-

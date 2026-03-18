@@ -1,4 +1,10 @@
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 
 export const OnboardSchoolDocs = {
   bearerAuth: ApiBearerAuth('library-jwt'),
@@ -10,7 +16,8 @@ export const OnboardSchoolDocs = {
   }),
   consumes: ApiConsumes('multipart/form-data'),
   body: ApiBody({
-    description: 'School registration data with required documents (same as auth onboard-school)',
+    description:
+      'School registration data with required documents (same as auth onboard-school)',
     schema: {
       type: 'object',
       required: [
@@ -27,18 +34,57 @@ export const OnboardSchoolDocs = {
       properties: {
         school_name: { type: 'string', example: "St. Mary's Secondary School" },
         school_email: { type: 'string', example: 'info@stmarys.edu.ng' },
-        school_address: { type: 'string', example: '123 Education Street, Lagos, Nigeria' },
+        school_address: {
+          type: 'string',
+          example: '123 Education Street, Lagos, Nigeria',
+        },
         school_phone: { type: 'string', example: '+2348012345678' },
-        school_type: { type: 'string', enum: ['primary', 'secondary', 'primary_and_secondary', 'other'], example: 'secondary' },
-        school_ownership: { type: 'string', enum: ['government', 'private', 'other'], example: 'private' },
+        school_type: {
+          type: 'string',
+          enum: ['primary', 'secondary', 'primary_and_secondary', 'other'],
+          example: 'secondary',
+        },
+        school_ownership: {
+          type: 'string',
+          enum: ['government', 'private', 'other'],
+          example: 'private',
+        },
         academic_year: { type: 'string', example: '2024/2025' },
-        current_term: { type: 'string', enum: ['first', 'second', 'third'], example: 'first' },
-        term_start_date: { type: 'string', format: 'date', example: '2024-09-01' },
-        term_end_date: { type: 'string', format: 'date', example: '2024-12-20' },
-        cac_or_approval_letter: { type: 'string', format: 'binary', description: 'CAC or approval letter' },
-        utility_bill: { type: 'string', format: 'binary', description: 'Utility bill' },
-        tax_cert: { type: 'string', format: 'binary', description: 'Tax clearance certificate' },
-        school_icon: { type: 'string', format: 'binary', description: 'School logo/icon (optional)' },
+        current_term: {
+          type: 'string',
+          enum: ['first', 'second', 'third'],
+          example: 'first',
+        },
+        term_start_date: {
+          type: 'string',
+          format: 'date',
+          example: '2024-09-01',
+        },
+        term_end_date: {
+          type: 'string',
+          format: 'date',
+          example: '2024-12-20',
+        },
+        cac_or_approval_letter: {
+          type: 'string',
+          format: 'binary',
+          description: 'CAC or approval letter',
+        },
+        utility_bill: {
+          type: 'string',
+          format: 'binary',
+          description: 'Utility bill',
+        },
+        tax_cert: {
+          type: 'string',
+          format: 'binary',
+          description: 'Tax clearance certificate',
+        },
+        school_icon: {
+          type: 'string',
+          format: 'binary',
+          description: 'School logo/icon (optional)',
+        },
       },
     },
   }),
@@ -48,7 +94,8 @@ export const OnboardSchoolDocs = {
   }),
   response400: ApiResponse({
     status: 400,
-    description: 'Bad request - e.g. school already exists or validation failed',
+    description:
+      'Bad request - e.g. school already exists or validation failed',
   }),
   response401: ApiResponse({
     status: 401,
@@ -62,10 +109,22 @@ export const OnboardSchoolDocs = {
 
 const libraryOnboardResponseDocs = {
   bearerAuth: ApiBearerAuth('library-jwt'),
-  response201: ApiResponse({ status: 201, description: 'Created successfully' }),
-  response400: ApiResponse({ status: 400, description: 'Bad request - validation or business rule failed' }),
-  response401: ApiResponse({ status: 401, description: 'Unauthorized - library JWT required' }),
-  response403: ApiResponse({ status: 403, description: 'Forbidden - library owner/admin role required' }),
+  response201: ApiResponse({
+    status: 201,
+    description: 'Created successfully',
+  }),
+  response400: ApiResponse({
+    status: 400,
+    description: 'Bad request - validation or business rule failed',
+  }),
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - library JWT required',
+  }),
+  response403: ApiResponse({
+    status: 403,
+    description: 'Forbidden - library owner/admin role required',
+  }),
   response404: ApiResponse({ status: 404, description: 'School not found' }),
 };
 
@@ -73,27 +132,39 @@ export const OnboardClassesDocs = {
   ...libraryOnboardResponseDocs,
   operation: ApiOperation({
     summary: 'Onboard classes for a school (library owner)',
-    description: 'Add classes to a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
+    description:
+      'Add classes to a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
   }),
-  response201: ApiResponse({ status: 201, description: 'Classes created successfully' }),
+  response201: ApiResponse({
+    status: 201,
+    description: 'Classes created successfully',
+  }),
 };
 
 export const OnboardTeachersDocs = {
   ...libraryOnboardResponseDocs,
   operation: ApiOperation({
     summary: 'Onboard teachers for a school (library owner)',
-    description: 'Add teachers to a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
+    description:
+      'Add teachers to a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
   }),
-  response201: ApiResponse({ status: 201, description: 'Teachers onboarded successfully' }),
+  response201: ApiResponse({
+    status: 201,
+    description: 'Teachers onboarded successfully',
+  }),
 };
 
 export const OnboardStudentsDocs = {
   ...libraryOnboardResponseDocs,
   operation: ApiOperation({
     summary: 'Onboard students for a school (library owner)',
-    description: 'Add students to a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
+    description:
+      'Add students to a school on behalf of the school. Requires library owner/admin. School is identified by path param. Action is audited.',
   }),
-  response201: ApiResponse({ status: 201, description: 'Students onboarded successfully' }),
+  response201: ApiResponse({
+    status: 201,
+    description: 'Students onboarded successfully',
+  }),
 };
 
 export const CreateSubjectDocs = {
@@ -102,9 +173,12 @@ export const CreateSubjectDocs = {
     summary: 'Create a subject for a school (library owner)',
     description:
       'Create a subject in a school on behalf of the school. Requires library owner/admin. ' +
-      'class_taking_it (school Class id) is required — use the school\'s Class id, not a library class. Action is audited.',
+      "class_taking_it (school Class id) is required — use the school's Class id, not a library class. Action is audited.",
   }),
-  response201: ApiResponse({ status: 201, description: 'Subject created successfully' }),
+  response201: ApiResponse({
+    status: 201,
+    description: 'Subject created successfully',
+  }),
 };
 
 export const EditSubjectDocs = {
@@ -114,7 +188,10 @@ export const EditSubjectDocs = {
     description:
       'Update a subject that belongs to a school. Requires library owner/admin. School and subject are identified by path params. Action is audited.',
   }),
-  response200: ApiResponse({ status: 200, description: 'Subject updated successfully' }),
+  response200: ApiResponse({
+    status: 200,
+    description: 'Subject updated successfully',
+  }),
 };
 
 export const GetAllSchoolsDocs = {
@@ -134,7 +211,8 @@ export const GetAllSchoolsDocs = {
   }),
   response500: ApiResponse({
     status: 500,
-    description: 'Internal server error - Failed to retrieve schools dashboard data',
+    description:
+      'Internal server error - Failed to retrieve schools dashboard data',
   }),
 };
 
@@ -177,7 +255,8 @@ export const ApproveSchoolDocs = {
   }),
   response400: ApiResponse({
     status: 400,
-    description: 'Bad request - School already approved or cannot be approved from current status',
+    description:
+      'Bad request - School already approved or cannot be approved from current status',
   }),
   response404: ApiResponse({
     status: 404,
@@ -188,4 +267,3 @@ export const ApproveSchoolDocs = {
     description: 'Internal server error',
   }),
 };
-

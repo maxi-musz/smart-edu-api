@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsInt, Min, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  MaxLength,
+  IsInt,
+  Min,
+  IsEnum,
+} from 'class-validator';
 import { LibraryMaterialType } from '@prisma/client';
 
 export class CreateChapterWithFileDto {
@@ -23,7 +31,8 @@ export class CreateChapterWithFileDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Starting page number of this chapter in the full material (optional)',
+    description:
+      'Starting page number of this chapter in the full material (optional)',
     example: 1,
   })
   @IsInt()
@@ -32,7 +41,8 @@ export class CreateChapterWithFileDto {
   pageStart?: number;
 
   @ApiPropertyOptional({
-    description: 'Ending page number of this chapter in the full material (optional)',
+    description:
+      'Ending page number of this chapter in the full material (optional)',
     example: 20,
   })
   @IsInt()
@@ -42,7 +52,8 @@ export class CreateChapterWithFileDto {
 
   // File fields
   @ApiPropertyOptional({
-    description: 'Title/name for the file (optional, defaults to original filename)',
+    description:
+      'Title/name for the file (optional, defaults to original filename)',
     example: 'Chapter 1 - Introduction PDF',
     maxLength: 200,
   })
@@ -71,7 +82,8 @@ export class CreateChapterWithFileDto {
   fileType?: LibraryMaterialType;
 
   @ApiPropertyOptional({
-    description: 'Order/sequence number for the file within the chapter (default: 1)',
+    description:
+      'Order/sequence number for the file within the chapter (default: 1)',
     example: 1,
     minimum: 1,
   })

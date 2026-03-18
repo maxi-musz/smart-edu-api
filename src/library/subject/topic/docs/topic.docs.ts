@@ -5,8 +5,8 @@ export const CreateTopicDocs = {
   operation: ApiOperation({
     summary: 'Create a new topic',
     description:
-      'Create a new topic under a specific library subject for the authenticated library user\'s platform. ' +
-      'The topic will be associated with the user\'s platform and the specified subject. ' +
+      "Create a new topic under a specific library subject for the authenticated library user's platform. " +
+      "The topic will be associated with the user's platform and the specified subject. " +
       'Topics are the organizational unit that can contain video lessons and materials. ' +
       'Requires a valid JWT token in the Authorization header. ' +
       'Response is wrapped in { success, message, data } where data contains the created topic with subject information.',
@@ -34,7 +34,8 @@ export const CreateTopicDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - library user not found, or subject not found/does not belong to user\'s platform',
+    description:
+      "Not found - library user not found, or subject not found/does not belong to user's platform",
   }),
 
   response500: ApiResponse({
@@ -47,7 +48,7 @@ export const UpdateTopicDocs = {
   operation: ApiOperation({
     summary: 'Update a topic',
     description:
-      'Update topic details (title, description, order, is_active) for the authenticated library user\'s platform. ' +
+      "Update topic details (title, description, order, is_active) for the authenticated library user's platform. " +
       'Only provided fields will be updated. ' +
       'Requires a valid JWT token in the Authorization header. ' +
       'Response is wrapped in { success, message, data } where data contains the updated topic with subject information.',
@@ -75,7 +76,8 @@ export const UpdateTopicDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - library user not found or topic not found/does not belong to user\'s platform',
+    description:
+      "Not found - library user not found or topic not found/does not belong to user's platform",
   }),
 
   response500: ApiResponse({
@@ -111,7 +113,8 @@ export const GetTopicMaterialsDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - library user not found or topic not found/does not belong to user\'s platform',
+    description:
+      "Not found - library user not found or topic not found/does not belong to user's platform",
   }),
 
   response500: ApiResponse({
@@ -147,7 +150,8 @@ export const GetTopicsBySubjectDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - library user not found or subject not found/does not belong to user\'s platform',
+    description:
+      "Not found - library user not found or subject not found/does not belong to user's platform",
   }),
 
   response500: ApiResponse({
@@ -160,7 +164,7 @@ export const DeleteTopicDocs = {
   operation: ApiOperation({
     summary: 'Delete a topic',
     description:
-      'Delete a topic from the authenticated library user\'s platform. ' +
+      "Delete a topic from the authenticated library user's platform. " +
       'The topic and all its associated resources (videos, materials, links, assignments) will be deleted. ' +
       'This action cannot be undone. ' +
       'Requires a valid JWT token in the Authorization header. ' +
@@ -184,7 +188,8 @@ export const DeleteTopicDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - library user not found or topic not found/does not belong to user\'s platform',
+    description:
+      "Not found - library user not found or topic not found/does not belong to user's platform",
   }),
 
   response500: ApiResponse({

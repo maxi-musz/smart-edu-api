@@ -20,7 +20,7 @@ export class LibraryAuthService {
   async signToken(
     userId: string,
     email: string,
-    platformId: string
+    platformId: string,
   ): Promise<{ access_token: string; refresh_token: string }> {
     const payload = {
       sub: userId,
@@ -30,7 +30,8 @@ export class LibraryAuthService {
 
     const secret = this.config.get('JWT_SECRET');
     const accessTokenExpiresIn = this.config.get('JWT_EXPIRES_IN') || '15m';
-    const refreshTokenExpiresIn = this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d';
+    const refreshTokenExpiresIn =
+      this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d';
 
     try {
       const accessToken = await this.jwt.signAsync(payload, {
@@ -54,7 +55,11 @@ export class LibraryAuthService {
   }
 
   async signIn(payload: LibrarySignInDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY AUTH] Signing in library user with email: ${payload.email}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY AUTH] Signing in library user with email: ${payload.email}`,
+      ),
+    );
 
     const emailLower = payload.email.toLowerCase();
 
@@ -92,5 +97,3 @@ export class LibraryAuthService {
     });
   }
 }
-
-

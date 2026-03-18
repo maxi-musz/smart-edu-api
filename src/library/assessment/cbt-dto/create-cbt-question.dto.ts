@@ -1,15 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { 
-  IsString, 
-  IsNotEmpty, 
-  IsOptional, 
-  IsNumber, 
-  IsBoolean, 
-  IsArray, 
-  IsEnum, 
-  Min, 
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsArray,
+  IsEnum,
+  Min,
   ValidateNested,
-  IsObject
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -25,14 +25,14 @@ export enum QuestionType {
   FILE_UPLOAD = 'FILE_UPLOAD',
   NUMERIC = 'NUMERIC',
   DATE = 'DATE',
-  RATING_SCALE = 'RATING_SCALE'
+  RATING_SCALE = 'RATING_SCALE',
 }
 
 export enum DifficultyLevel {
   EASY = 'EASY',
   MEDIUM = 'MEDIUM',
   HARD = 'HARD',
-  EXPERT = 'EXPERT'
+  EXPERT = 'EXPERT',
 }
 
 /**
@@ -41,7 +41,7 @@ export enum DifficultyLevel {
 export class CreateLibraryCBTOptionDto {
   @ApiProperty({
     description: 'Option text',
-    example: 'Paris'
+    example: 'Paris',
   })
   @IsString()
   @IsNotEmpty()
@@ -50,7 +50,7 @@ export class CreateLibraryCBTOptionDto {
   @ApiProperty({
     description: 'Order/position of the option',
     example: 1,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @Min(1)
@@ -58,14 +58,14 @@ export class CreateLibraryCBTOptionDto {
 
   @ApiProperty({
     description: 'Whether this option is correct',
-    example: true
+    example: true,
   })
   @IsBoolean()
   isCorrect: boolean;
 
   @ApiPropertyOptional({
     description: 'Image URL for the option',
-    example: 'https://s3.amazonaws.com/bucket/option-image.jpg'
+    example: 'https://s3.amazonaws.com/bucket/option-image.jpg',
   })
   @IsString()
   @IsOptional()
@@ -73,7 +73,7 @@ export class CreateLibraryCBTOptionDto {
 
   @ApiPropertyOptional({
     description: 'Audio URL for the option',
-    example: 'https://s3.amazonaws.com/bucket/option-audio.mp3'
+    example: 'https://s3.amazonaws.com/bucket/option-audio.mp3',
   })
   @IsString()
   @IsOptional()
@@ -86,7 +86,8 @@ export class CreateLibraryCBTOptionDto {
 export class CreateLibraryCBTCorrectAnswerDto {
   @ApiPropertyOptional({
     description: 'Correct text answer (for text-based questions)',
-    example: 'Photosynthesis is the process by which plants convert sunlight into energy.'
+    example:
+      'Photosynthesis is the process by which plants convert sunlight into energy.',
   })
   @IsString()
   @IsOptional()
@@ -94,7 +95,7 @@ export class CreateLibraryCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct numeric answer (for numeric questions)',
-    example: 42.5
+    example: 42.5,
   })
   @IsNumber()
   @IsOptional()
@@ -102,7 +103,7 @@ export class CreateLibraryCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct date answer (for date questions)',
-    example: '1945-05-08T00:00:00Z'
+    example: '1945-05-08T00:00:00Z',
   })
   @IsString()
   @IsOptional()
@@ -111,7 +112,7 @@ export class CreateLibraryCBTCorrectAnswerDto {
   @ApiPropertyOptional({
     description: 'Array of correct option IDs (for multiple choice questions)',
     example: ['option_1', 'option_3'],
-    type: [String]
+    type: [String],
   })
   @IsArray()
   @IsString({ each: true })
@@ -119,8 +120,14 @@ export class CreateLibraryCBTCorrectAnswerDto {
   optionIds?: string[];
 
   @ApiPropertyOptional({
-    description: 'Complex answer data in JSON format (for matching, ordering, etc.)',
-    example: { pairs: [['A', '1'], ['B', '2']] }
+    description:
+      'Complex answer data in JSON format (for matching, ordering, etc.)',
+    example: {
+      pairs: [
+        ['A', '1'],
+        ['B', '2'],
+      ],
+    },
   })
   @IsObject()
   @IsOptional()
@@ -133,7 +140,7 @@ export class CreateLibraryCBTCorrectAnswerDto {
 export class CreateLibraryCBTQuestionDto {
   @ApiProperty({
     description: 'Question text/prompt',
-    example: 'What is the capital of France?'
+    example: 'What is the capital of France?',
   })
   @IsString()
   @IsNotEmpty()
@@ -142,15 +149,16 @@ export class CreateLibraryCBTQuestionDto {
   @ApiProperty({
     description: 'Type of question',
     enum: QuestionType,
-    example: QuestionType.MULTIPLE_CHOICE_SINGLE
+    example: QuestionType.MULTIPLE_CHOICE_SINGLE,
   })
   @IsEnum(QuestionType)
   questionType: QuestionType;
 
   @ApiPropertyOptional({
-    description: 'Order/position of the question in the CBT (auto-assigned if not provided)',
+    description:
+      'Order/position of the question in the CBT (auto-assigned if not provided)',
     example: 1,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -161,7 +169,7 @@ export class CreateLibraryCBTQuestionDto {
     description: 'Points awarded for correct answer',
     example: 2.0,
     minimum: 0.1,
-    default: 1.0
+    default: 1.0,
   })
   @IsNumber()
   @IsOptional()
@@ -171,7 +179,7 @@ export class CreateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Whether this question is required (must be answered)',
     example: true,
-    default: true
+    default: true,
   })
   @IsBoolean()
   @IsOptional()
@@ -180,7 +188,7 @@ export class CreateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Time limit for this specific question in seconds',
     example: 60,
-    minimum: 10
+    minimum: 10,
   })
   @IsNumber()
   @IsOptional()
@@ -188,16 +196,19 @@ export class CreateLibraryCBTQuestionDto {
   timeLimit?: number;
 
   @ApiPropertyOptional({
-    description: 'Image URL for the question (upload image first using upload-image endpoint)',
-    example: 'https://s3.amazonaws.com/bucket/question-image.jpg'
+    description:
+      'Image URL for the question (upload image first using upload-image endpoint)',
+    example: 'https://s3.amazonaws.com/bucket/question-image.jpg',
   })
   @IsString()
   @IsOptional()
   imageUrl?: string;
 
   @ApiPropertyOptional({
-    description: 'S3 key for the question image (returned from upload-image endpoint)',
-    example: 'library-assessment-images/platforms/123/assessments/456/question_1234567890_image.jpg'
+    description:
+      'S3 key for the question image (returned from upload-image endpoint)',
+    example:
+      'library-assessment-images/platforms/123/assessments/456/question_1234567890_image.jpg',
   })
   @IsString()
   @IsOptional()
@@ -205,7 +216,7 @@ export class CreateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Audio URL for the question',
-    example: 'https://s3.amazonaws.com/bucket/question-audio.mp3'
+    example: 'https://s3.amazonaws.com/bucket/question-audio.mp3',
   })
   @IsString()
   @IsOptional()
@@ -213,7 +224,7 @@ export class CreateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Video URL for the question',
-    example: 'https://s3.amazonaws.com/bucket/question-video.mp4'
+    example: 'https://s3.amazonaws.com/bucket/question-video.mp4',
   })
   @IsString()
   @IsOptional()
@@ -222,7 +233,7 @@ export class CreateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Whether to allow multiple attempts for this question',
     example: false,
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -231,7 +242,7 @@ export class CreateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Whether to show hint for this question',
     example: true,
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -239,7 +250,7 @@ export class CreateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Hint text to help users answer the question',
-    example: 'Think about European capitals'
+    example: 'Think about European capitals',
   })
   @IsString()
   @IsOptional()
@@ -248,7 +259,7 @@ export class CreateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Minimum length for text answers (in characters)',
     example: 10,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -258,7 +269,7 @@ export class CreateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Maximum length for text answers (in characters)',
     example: 500,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -267,7 +278,7 @@ export class CreateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Minimum value for numeric answers',
-    example: 0
+    example: 0,
   })
   @IsNumber()
   @IsOptional()
@@ -275,15 +286,17 @@ export class CreateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Maximum value for numeric answers',
-    example: 100
+    example: 100,
   })
   @IsNumber()
   @IsOptional()
   maxValue?: number;
 
   @ApiPropertyOptional({
-    description: 'Explanation for the correct answer (shown after submission if enabled)',
-    example: 'Paris is the capital and largest city of France, located on the Seine River.'
+    description:
+      'Explanation for the correct answer (shown after submission if enabled)',
+    example:
+      'Paris is the capital and largest city of France, located on the Seine River.',
   })
   @IsString()
   @IsOptional()
@@ -293,21 +306,22 @@ export class CreateLibraryCBTQuestionDto {
     description: 'Difficulty level of the question',
     enum: DifficultyLevel,
     example: DifficultyLevel.MEDIUM,
-    default: DifficultyLevel.MEDIUM
+    default: DifficultyLevel.MEDIUM,
   })
   @IsEnum(DifficultyLevel)
   @IsOptional()
   difficultyLevel?: DifficultyLevel;
 
   @ApiPropertyOptional({
-    description: 'Options for multiple choice questions (required for MULTIPLE_CHOICE_* and TRUE_FALSE)',
+    description:
+      'Options for multiple choice questions (required for MULTIPLE_CHOICE_* and TRUE_FALSE)',
     type: [CreateLibraryCBTOptionDto],
     example: [
       { optionText: 'Paris', order: 1, isCorrect: true },
       { optionText: 'London', order: 2, isCorrect: false },
       { optionText: 'Berlin', order: 3, isCorrect: false },
-      { optionText: 'Madrid', order: 4, isCorrect: false }
-    ]
+      { optionText: 'Madrid', order: 4, isCorrect: false },
+    ],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -316,8 +330,9 @@ export class CreateLibraryCBTQuestionDto {
   options?: CreateLibraryCBTOptionDto[];
 
   @ApiPropertyOptional({
-    description: 'Correct answers for the question (alternative to marking options as isCorrect)',
-    type: [CreateLibraryCBTCorrectAnswerDto]
+    description:
+      'Correct answers for the question (alternative to marking options as isCorrect)',
+    type: [CreateLibraryCBTCorrectAnswerDto],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -325,4 +340,3 @@ export class CreateLibraryCBTQuestionDto {
   @IsOptional()
   correctAnswers?: CreateLibraryCBTCorrectAnswerDto[];
 }
-

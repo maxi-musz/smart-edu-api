@@ -1,2 +1,2 @@
 // Export director schedules documentation
-export * from './schedules.docs'; 
+export * from './schedules.docs';

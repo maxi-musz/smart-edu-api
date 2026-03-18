@@ -9,219 +9,252 @@ import { AcademicSessionService } from '../../../academic-session/academic-sessi
 
 @Injectable()
 export class DashboardService {
-    private readonly logger = new Logger(DashboardService.name);
+  private readonly logger = new Logger(DashboardService.name);
 
-    constructor(
-        private readonly prisma: PrismaService,
-        private readonly teachersService: TeachersService,
-        private readonly academicSessionService: AcademicSessionService
-    ) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly teachersService: TeachersService,
+    private readonly academicSessionService: AcademicSessionService,
+  ) {}
 
-    // Helper to get current DayOfWeek enum string
-    private getCurrentDayOfWeek(): DayOfWeek {
-      const dayIndex = new Date().getDay();
-      const days: DayOfWeek[] = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY];
-      return days[dayIndex];
-    }
+  // Helper to get current DayOfWeek enum string
+  private getCurrentDayOfWeek(): DayOfWeek {
+    const dayIndex = new Date().getDay();
+    const days: DayOfWeek[] = [
+      DayOfWeek.SUNDAY,
+      DayOfWeek.MONDAY,
+      DayOfWeek.TUESDAY,
+      DayOfWeek.WEDNESDAY,
+      DayOfWeek.THURSDAY,
+      DayOfWeek.FRIDAY,
+      DayOfWeek.SATURDAY,
+    ];
+    return days[dayIndex];
+  }
 
-    // Helper to get current time in HH:MM format
-    private getCurrentTimeHHMM(): string {
-      const now = new Date();
-      const hours = now.getHours().toString().padStart(2, '0');
-      const minutes = now.getMinutes().toString().padStart(2, '0');
-      return `${hours}:${minutes}`;
-    }
+  // Helper to get current time in HH:MM format
+  private getCurrentTimeHHMM(): string {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
 
-    // get director dashboard
-    async getDirectorDashboard(user: User) {
-        console.log(colors.blue("Fetching director dashboard data..."));
-      
-        try {
-          const director = await this.prisma.user.findUnique({
-            where: {
-              email: user.email
-            },
-            select: { school_id: true, email: true },
-          });
-      
-          if (!director) {
-            console.log(colors.red("User not found..."));
-            throw new NotFoundException("Director not found");
-          }
+  // get director dashboard
+  async getDirectorDashboard(user: User) {
+    console.log(colors.blue('Fetching director dashboard data...'));
 
-          // Get current academic session for the school
-          const currentSessionResponse = await this.academicSessionService.getCurrentSession(director.school_id);
-          if (!currentSessionResponse.success) {
-            throw new NotFoundException("No current academic session found for the school");
-          }
-          const currentSessionId = currentSessionResponse.data.id;
+    try {
+      const director = await this.prisma.user.findUnique({
+        where: {
+          email: user.email,
+        },
+        select: { school_id: true, email: true },
+      });
 
-          // Debug: Check all students in the school
-          const allStudents = await this.prisma.student.findMany({
-            where: { school_id: director.school_id },
-            select: { id: true, academic_session_id: true, user: { select: { email: true } } }
-          });
+      if (!director) {
+        console.log(colors.red('User not found...'));
+        throw new NotFoundException('Director not found');
+      }
 
-          // Debug: Check current session details
-          const currentSessionDetails = await this.prisma.academicSession.findUnique({
-            where: { id: currentSessionId },
-            select: { id: true, academic_year: true, term: true, is_current: true }
-          });
+      // Get current academic session for the school
+      const currentSessionResponse =
+        await this.academicSessionService.getCurrentSession(director.school_id);
+      if (!currentSessionResponse.success) {
+        throw new NotFoundException(
+          'No current academic session found for the school',
+        );
+      }
+      const currentSessionId = currentSessionResponse.data.id;
 
-          // Debug: Check total students without session filter
-          const totalStudentsNoFilter = await this.prisma.student.count({
-            where: { school_id: director.school_id }
-          });
+      // Debug: Check all students in the school
+      const allStudents = await this.prisma.student.findMany({
+        where: { school_id: director.school_id },
+        select: {
+          id: true,
+          academic_session_id: true,
+          user: { select: { email: true } },
+        },
+      });
 
-          const [teachers, classes, subjects, totalStudents, activeStudents, suspendedStudents, finance, ongoingClasses, notifications] = await Promise.all([
-            // Count teachers - check both Teacher table and User table with role='teacher'
-            this.prisma.teacher.count({
-              where: { school_id: director.school_id },
-            }),
-            this.prisma.class.count({
-              where: { 
-                schoolId: director.school_id,
-                academic_session_id: currentSessionId
-              },
-            }),
-            this.prisma.subject.count({
-              where: { 
-                schoolId: director.school_id,
-                academic_session_id: currentSessionId
-              },
-            }),
-            // Count all students for the school (not filtered by academic session for now)
-            // This ensures we see all students regardless of when they were created
-            this.prisma.user.count({
-              where: { 
-                school_id: director.school_id,
-                role: "student"
-              },
-            }),
-            this.prisma.user.count({
-              where: {
-                school_id: director.school_id,
-                role: "student",
-                status: "active"
-              },
-            }),
-            this.prisma.user.count({
-              where: {
-                school_id: director.school_id,
-                role: "student",
-                status: "suspended"
-              },
-            }),
-            this.prisma.payment.aggregate({
-              where: { 
-                finance: {
-                  school_id: director.school_id
-                },
-                academic_session_id: currentSessionId
-              },
-              _sum: {
-                amount: true
-              }
-            }),
-            this.prisma.timetableEntry.findMany({
-              where: {
-                school_id: director.school_id,
-                academic_session_id: currentSessionId,
-                day_of_week: this.getCurrentDayOfWeek(),
-                timeSlot: {
-                  startTime: {
-                    lte: this.getCurrentTimeHHMM()
-                  },
-                  endTime: {
-                    gte: this.getCurrentTimeHHMM()
-                  }
-                },
-                isActive: true,
-              },
-              include: {
-                class: {
-                  select: {
-                    name: true
-                  }
-                },
-                subject: {
-                  select: {
-                    name: true
-                  }
-                },
-                teacher: {
-                  select: {
-                    first_name: true,
-                    last_name: true
-                  }
-                },
-                timeSlot: true,
-              }
-            }),
-            this.prisma.notification.findMany({
-              where: {
-                school_id: director.school_id,
-                academic_session_id: currentSessionId,
-                OR: [
-                  { type: 'all' },
-                  { type: 'school_director' }
-                ]
-              },
-              orderBy: {
-                createdAt: 'desc'
-              },
-              take: 5
-            })
-          ]);
-      
-          const formattedResponse = {
-            basic_details: {
-              email: director.email,
+      // Debug: Check current session details
+      const currentSessionDetails =
+        await this.prisma.academicSession.findUnique({
+          where: { id: currentSessionId },
+          select: {
+            id: true,
+            academic_year: true,
+            term: true,
+            is_current: true,
+          },
+        });
+
+      // Debug: Check total students without session filter
+      const totalStudentsNoFilter = await this.prisma.student.count({
+        where: { school_id: director.school_id },
+      });
+
+      const [
+        teachers,
+        classes,
+        subjects,
+        totalStudents,
+        activeStudents,
+        suspendedStudents,
+        finance,
+        ongoingClasses,
+        notifications,
+      ] = await Promise.all([
+        // Count teachers - check both Teacher table and User table with role='teacher'
+        this.prisma.teacher.count({
+          where: { school_id: director.school_id },
+        }),
+        this.prisma.class.count({
+          where: {
+            schoolId: director.school_id,
+            academic_session_id: currentSessionId,
+          },
+        }),
+        this.prisma.subject.count({
+          where: {
+            schoolId: director.school_id,
+            academic_session_id: currentSessionId,
+          },
+        }),
+        // Count all students for the school (not filtered by academic session for now)
+        // This ensures we see all students regardless of when they were created
+        this.prisma.user.count({
+          where: {
+            school_id: director.school_id,
+            role: 'student',
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            school_id: director.school_id,
+            role: 'student',
+            status: 'active',
+          },
+        }),
+        this.prisma.user.count({
+          where: {
+            school_id: director.school_id,
+            role: 'student',
+            status: 'suspended',
+          },
+        }),
+        this.prisma.payment.aggregate({
+          where: {
+            finance: {
               school_id: director.school_id,
             },
-            teachers: {
-              totalTeachers: teachers,
-              activeClasses: classes,
-              totalSubjects: subjects,
+            academic_session_id: currentSessionId,
+          },
+          _sum: {
+            amount: true,
+          },
+        }),
+        this.prisma.timetableEntry.findMany({
+          where: {
+            school_id: director.school_id,
+            academic_session_id: currentSessionId,
+            day_of_week: this.getCurrentDayOfWeek(),
+            timeSlot: {
+              startTime: {
+                lte: this.getCurrentTimeHHMM(),
+              },
+              endTime: {
+                gte: this.getCurrentTimeHHMM(),
+              },
             },
-            students: {
-              totalStudents,
-              activeStudents,
-              suspendedStudents,
+            isActive: true,
+          },
+          include: {
+            class: {
+              select: {
+                name: true,
+              },
             },
-            finance: {
-              totalRevenue: finance?._sum?.amount || 0,
-              outstandingFees: 0, // TODO: Calculate outstanding fees for current session
-              totalExpenses: 0, // TODO: Calculate expenses for current session
-              netBalance: finance?._sum?.amount || 0
+            subject: {
+              select: {
+                name: true,
+              },
             },
-            ongoingClasses: ongoingClasses.map(entry => ({
-              className: entry.class.name,
-              subject: entry.subject.name,
-              teacher: `${entry.teacher.first_name} ${entry.teacher.last_name}`,
-              startTime: entry.timeSlot.startTime,
-              endTime: entry.timeSlot.endTime
-            })),
-            notifications: notifications.map(notification => ({
-              id: notification.id,
-              title: notification.title,
-              description: notification.description,
-              type: notification.type,
-              comingUpOn: notification.comingUpOn ? formatDate(notification.comingUpOn) : null,
-              createdAt: formatDate(notification.createdAt)
-            }))
-          };
-      
-          this.logger.log(colors.magenta("Director dashboard data fetched successfully"));
-          return ResponseHelper.success(
-            "Director dashboard data fetched successfully", 
-            formattedResponse
-        );
-      
-        } catch (error) {
-          console.log(colors.red("Error fetching director dashboard data: "), error);
-          throw error;
-        }
+            teacher: {
+              select: {
+                first_name: true,
+                last_name: true,
+              },
+            },
+            timeSlot: true,
+          },
+        }),
+        this.prisma.notification.findMany({
+          where: {
+            school_id: director.school_id,
+            academic_session_id: currentSessionId,
+            OR: [{ type: 'all' }, { type: 'school_director' }],
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 5,
+        }),
+      ]);
+
+      const formattedResponse = {
+        basic_details: {
+          email: director.email,
+          school_id: director.school_id,
+        },
+        teachers: {
+          totalTeachers: teachers,
+          activeClasses: classes,
+          totalSubjects: subjects,
+        },
+        students: {
+          totalStudents,
+          activeStudents,
+          suspendedStudents,
+        },
+        finance: {
+          totalRevenue: finance?._sum?.amount || 0,
+          outstandingFees: 0, // TODO: Calculate outstanding fees for current session
+          totalExpenses: 0, // TODO: Calculate expenses for current session
+          netBalance: finance?._sum?.amount || 0,
+        },
+        ongoingClasses: ongoingClasses.map((entry) => ({
+          className: entry.class.name,
+          subject: entry.subject.name,
+          teacher: `${entry.teacher.first_name} ${entry.teacher.last_name}`,
+          startTime: entry.timeSlot.startTime,
+          endTime: entry.timeSlot.endTime,
+        })),
+        notifications: notifications.map((notification) => ({
+          id: notification.id,
+          title: notification.title,
+          description: notification.description,
+          type: notification.type,
+          comingUpOn: notification.comingUpOn
+            ? formatDate(notification.comingUpOn)
+            : null,
+          createdAt: formatDate(notification.createdAt),
+        })),
+      };
+
+      this.logger.log(
+        colors.magenta('Director dashboard data fetched successfully'),
+      );
+      return ResponseHelper.success(
+        'Director dashboard data fetched successfully',
+        formattedResponse,
+      );
+    } catch (error) {
+      console.log(
+        colors.red('Error fetching director dashboard data: '),
+        error,
+      );
+      throw error;
     }
-    
+  }
 }

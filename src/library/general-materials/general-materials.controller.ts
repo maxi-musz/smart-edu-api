@@ -22,7 +22,10 @@ import { CreateGeneralMaterialDto } from './dto/create-general-material.dto';
 import { QueryGeneralMaterialsDto } from './dto/query-general-materials.dto';
 
 import { CreateChapterWithFileDto } from './dto/create-chapter-with-file.dto';
-import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import {
+  FileFieldsInterceptor,
+  FileInterceptor,
+} from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
@@ -76,11 +79,11 @@ export class GeneralMaterialsController {
   @GetAllGeneralMaterialsDocs.response401
   @GetAllGeneralMaterialsDocs.response404
   @GetAllGeneralMaterialsDocs.response500
-  async getAll(
-    @Request() req: any,
-    @Query() query: QueryGeneralMaterialsDto,
-  ) {
-    return await this.generalMaterialsService.getAllGeneralMaterials(req.user, query);
+  async getAll(@Request() req: any, @Query() query: QueryGeneralMaterialsDto) {
+    return await this.generalMaterialsService.getAllGeneralMaterials(
+      req.user,
+      query,
+    );
   }
 
   // 4.1) Get chapters for a material (must come before :materialId to avoid route conflicts)
@@ -92,7 +95,10 @@ export class GeneralMaterialsController {
     @Request() req: any,
     @Param('materialId') materialId: string,
   ) {
-    return await this.generalMaterialsService.getMaterialChapters(req.user, materialId);
+    return await this.generalMaterialsService.getMaterialChapters(
+      req.user,
+      materialId,
+    );
   }
 
   // 4.2) Get single general material by ID
@@ -104,7 +110,10 @@ export class GeneralMaterialsController {
     @Request() req: any,
     @Param('materialId') materialId: string,
   ) {
-    return await this.generalMaterialsService.getGeneralMaterialById(req.user, materialId);
+    return await this.generalMaterialsService.getGeneralMaterialById(
+      req.user,
+      materialId,
+    );
   }
 
   // 6) Create chapter with file upload (combined endpoint) - MUST come before generic @Post()
@@ -119,7 +128,12 @@ export class GeneralMaterialsController {
     @Body() payload: CreateChapterWithFileDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return await this.generalMaterialsService.createChapterWithFile(req.user, materialId, payload, file);
+    return await this.generalMaterialsService.createChapterWithFile(
+      req.user,
+      materialId,
+      payload,
+      file,
+    );
   }
 
   // 6.1) Start chapter upload with progress tracking (recommended for large files)
@@ -134,7 +148,12 @@ export class GeneralMaterialsController {
     @Body() payload: CreateChapterWithFileDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return await this.generalMaterialsService.startChapterUploadSession(req.user, materialId, payload, file);
+    return await this.generalMaterialsService.startChapterUploadSession(
+      req.user,
+      materialId,
+      payload,
+      file,
+    );
   }
 
   // 5) Create new general material (full file upload)
@@ -200,25 +219,35 @@ export class GeneralMaterialsController {
   ) {
     const materialFile = files.file?.[0];
     const thumbnailFile = files.thumbnail?.[0];
-    return await this.generalMaterialsService.startGeneralMaterialUploadSession(payload, materialFile, thumbnailFile, req.user);
+    return await this.generalMaterialsService.startGeneralMaterialUploadSession(
+      payload,
+      materialFile,
+      thumbnailFile,
+      req.user,
+    );
   }
 
   // 9) Upload progress (SSE)
   @Get('upload-progress/:sessionId')
   @Sse('upload-progress/:sessionId')
   @GeneralMaterialUploadProgressSseDocs.operation
-  getUploadProgressSse(@Param('sessionId') sessionId: string): Observable<MessageEvent> {
+  getUploadProgressSse(
+    @Param('sessionId') sessionId: string,
+  ): Observable<MessageEvent> {
     return new Observable((observer) => {
       const current = this.uploadProgressService.getCurrentProgress(sessionId);
       if (current) {
         observer.next({ data: JSON.stringify(current) } as MessageEvent);
       }
-      const unsubscribe = this.uploadProgressService.subscribeToProgress(sessionId, (progress) => {
-        observer.next({ data: JSON.stringify(progress) } as MessageEvent);
-        if (progress.stage === 'completed' || progress.stage === 'error') {
-          observer.complete();
-        }
-      });
+      const unsubscribe = this.uploadProgressService.subscribeToProgress(
+        sessionId,
+        (progress) => {
+          observer.next({ data: JSON.stringify(progress) } as MessageEvent);
+          if (progress.stage === 'completed' || progress.stage === 'error') {
+            observer.complete();
+          }
+        },
+      );
       return () => unsubscribe();
     });
   }
@@ -242,7 +271,10 @@ export class GeneralMaterialsController {
     @Request() req: any,
     @Param('chapterId') chapterId: string, // Chapter.id (frontend sends chapter ID)
   ) {
-    return await this.generalMaterialsService.retryProcessing(req.user, chapterId);
+    return await this.generalMaterialsService.retryProcessing(
+      req.user,
+      chapterId,
+    );
   }
 
   // 12) Delete a chapter (soft delete - sets status to deleted)
@@ -255,6 +287,10 @@ export class GeneralMaterialsController {
     @Param('materialId') materialId: string,
     @Param('chapterId') chapterId: string,
   ) {
-    return await this.generalMaterialsService.deleteChapter(req.user, materialId, chapterId);
+    return await this.generalMaterialsService.deleteChapter(
+      req.user,
+      materialId,
+      chapterId,
+    );
   }
 }

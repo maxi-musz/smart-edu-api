@@ -1,11 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsNotEmpty, IsOptional, IsString, Min, Max } from 'class-validator';
+import {
+  IsNumber,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class GradeAssignmentDto {
   @ApiProperty({
     description: 'Grade/Score for the assignment',
     example: 85,
-    minimum: 0
+    minimum: 0,
   })
   @IsNumber()
   @IsNotEmpty()
@@ -14,7 +21,8 @@ export class GradeAssignmentDto {
 
   @ApiPropertyOptional({
     description: 'Feedback for the student',
-    example: 'Good work! You showed clear understanding of the concepts. Consider showing more steps in your solutions.'
+    example:
+      'Good work! You showed clear understanding of the concepts. Consider showing more steps in your solutions.',
   })
   @IsString()
   @IsOptional()
@@ -22,7 +30,7 @@ export class GradeAssignmentDto {
 
   @ApiPropertyOptional({
     description: 'Additional comments from the teacher',
-    example: 'Student demonstrated strong problem-solving skills'
+    example: 'Student demonstrated strong problem-solving skills',
   })
   @IsString()
   @IsOptional()

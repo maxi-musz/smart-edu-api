@@ -1,9 +1,17 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAcademicSessionDto } from './dto/create-academic-session.dto';
 import { UpdateAcademicSessionDto } from './dto/update-academic-session.dto';
 import { AcademicSessionResponseDto } from './dto/academic-session-response.dto';
-import { IAcademicSessionFilters, IAcademicSessionQueryOptions } from './interfaces/academic-session.interface';
+import {
+  IAcademicSessionFilters,
+  IAcademicSessionQueryOptions,
+} from './interfaces/academic-session.interface';
 import { ApiResponse } from '../shared/helper-functions/response';
 import * as colors from 'colors';
 
@@ -17,12 +25,16 @@ export class AcademicSessionService {
    * Create a new academic session
    */
   async create(createDto: CreateAcademicSessionDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`Creating academic session for school: ${createDto.school_id}`));
+    this.logger.log(
+      colors.cyan(
+        `Creating academic session for school: ${createDto.school_id}`,
+      ),
+    );
 
     try {
       // Validate that school exists
       const school = await this.prisma.school.findUnique({
-        where: { id: createDto.school_id }
+        where: { id: createDto.school_id },
       });
 
       if (!school) {
@@ -34,12 +46,16 @@ export class AcademicSessionService {
         where: {
           school_id: createDto.school_id,
           academic_year: createDto.academic_year,
-          term: createDto.term
-        }
+          term: createDto.term,
+        },
       });
 
       if (existingSession) {
-        return new ApiResponse(false, 'Academic session with this year and term already exists', null);
+        return new ApiResponse(
+          false,
+          'Academic session with this year and term already exists',
+          null,
+        );
       }
 
       // If this session is marked as current, deactivate other current sessions
@@ -47,11 +63,11 @@ export class AcademicSessionService {
         await this.prisma.academicSession.updateMany({
           where: {
             school_id: createDto.school_id,
-            is_current: true
+            is_current: true,
           },
           data: {
-            is_current: false
-          }
+            is_current: false,
+          },
         });
       }
 
@@ -65,20 +81,25 @@ export class AcademicSessionService {
           start_date: new Date(createDto.start_date),
           end_date: new Date(createDto.end_date),
           status: createDto.status || 'active',
-          is_current: createDto.is_current || false
-        }
+          is_current: createDto.is_current || false,
+        },
       });
 
-      this.logger.log(colors.green(`✅ Academic session created: ${academicSession.academic_year} - ${academicSession.term}`));
+      this.logger.log(
+        colors.green(
+          `✅ Academic session created: ${academicSession.academic_year} - ${academicSession.term}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Academic session created successfully',
-        academicSession
+        academicSession,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error creating academic session: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error creating academic session: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to create academic session', null);
     }
   }
@@ -88,7 +109,7 @@ export class AcademicSessionService {
    */
   async findAll(
     filters: IAcademicSessionFilters = {},
-    options: IAcademicSessionQueryOptions = {}
+    options: IAcademicSessionQueryOptions = {},
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan('Fetching academic sessions with filters'));
 
@@ -98,7 +119,7 @@ export class AcademicSessionService {
         limit = 10,
         search,
         sort_by = 'createdAt',
-        sort_order = 'desc'
+        sort_order = 'desc',
       } = options;
 
       const skip = (page - 1) * limit;
@@ -113,7 +134,7 @@ export class AcademicSessionService {
       if (filters.academic_year) {
         whereClause.academic_year = {
           contains: filters.academic_year,
-          mode: 'insensitive'
+          mode: 'insensitive',
         };
       }
 
@@ -141,13 +162,13 @@ export class AcademicSessionService {
       if (search) {
         whereClause.OR = [
           { academic_year: { contains: search, mode: 'insensitive' } },
-          { term: { contains: search, mode: 'insensitive' } }
+          { term: { contains: search, mode: 'insensitive' } },
         ];
       }
 
       // Get total count
       const total = await this.prisma.academicSession.count({
-        where: whereClause
+        where: whereClause,
       });
 
       // Get academic sessions
@@ -156,38 +177,37 @@ export class AcademicSessionService {
         skip,
         take: limit,
         orderBy: {
-          [sort_by]: sort_order
+          [sort_by]: sort_order,
         },
         include: {
           school: {
             select: {
               id: true,
-              school_name: true
-            }
-          }
-        }
+              school_name: true,
+            },
+          },
+        },
       });
 
       const total_pages = Math.ceil(total / limit);
 
-      this.logger.log(colors.green(`✅ Found ${academicSessions.length} academic sessions`));
-
-      return new ApiResponse(
-        true,
-        'Academic sessions retrieved successfully',
-        {
-          data: academicSessions,
-          pagination: {
-            page,
-            limit,
-            total,
-            total_pages
-          }
-        }
+      this.logger.log(
+        colors.green(`✅ Found ${academicSessions.length} academic sessions`),
       );
 
+      return new ApiResponse(true, 'Academic sessions retrieved successfully', {
+        data: academicSessions,
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages,
+        },
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching academic sessions: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching academic sessions: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch academic sessions', null);
     }
   }
@@ -205,26 +225,31 @@ export class AcademicSessionService {
           school: {
             select: {
               id: true,
-              school_name: true
-            }
-          }
-        }
+              school_name: true,
+            },
+          },
+        },
       });
 
       if (!academicSession) {
         return new ApiResponse(false, 'Academic session not found', null);
       }
 
-      this.logger.log(colors.green(`✅ Academic session found: ${academicSession.academic_year}`));
+      this.logger.log(
+        colors.green(
+          `✅ Academic session found: ${academicSession.academic_year}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Academic session retrieved successfully',
-        academicSession
+        academicSession,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching academic session: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching academic session: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch academic session', null);
     }
   }
@@ -232,13 +257,16 @@ export class AcademicSessionService {
   /**
    * Update academic session
    */
-  async update(id: string, updateDto: UpdateAcademicSessionDto): Promise<ApiResponse<any>> {
+  async update(
+    id: string,
+    updateDto: UpdateAcademicSessionDto,
+  ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`Updating academic session: ${id}`));
 
     try {
       // Check if academic session exists
       const existingSession = await this.prisma.academicSession.findUnique({
-        where: { id }
+        where: { id },
       });
 
       if (!existingSession) {
@@ -251,11 +279,11 @@ export class AcademicSessionService {
           where: {
             school_id: existingSession.school_id,
             is_current: true,
-            id: { not: id }
+            id: { not: id },
           },
           data: {
-            is_current: false
-          }
+            is_current: false,
+          },
         });
       }
 
@@ -264,49 +292,65 @@ export class AcademicSessionService {
         const duplicateSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: existingSession.school_id,
-            academic_year: updateDto.academic_year || existingSession.academic_year,
+            academic_year:
+              updateDto.academic_year || existingSession.academic_year,
             term: updateDto.term || existingSession.term,
-            id: { not: id }
-          }
+            id: { not: id },
+          },
         });
 
         if (duplicateSession) {
-          return new ApiResponse(false, 'Academic session with this year and term already exists', null);
+          return new ApiResponse(
+            false,
+            'Academic session with this year and term already exists',
+            null,
+          );
         }
       }
 
       const updatedSession = await this.prisma.academicSession.update({
         where: { id },
         data: {
-          ...(updateDto.academic_year && { academic_year: updateDto.academic_year }),
+          ...(updateDto.academic_year && {
+            academic_year: updateDto.academic_year,
+          }),
           ...(updateDto.start_year && { start_year: updateDto.start_year }),
           ...(updateDto.end_year && { end_year: updateDto.end_year }),
           ...(updateDto.term && { term: updateDto.term }),
-          ...(updateDto.start_date && { start_date: new Date(updateDto.start_date) }),
+          ...(updateDto.start_date && {
+            start_date: new Date(updateDto.start_date),
+          }),
           ...(updateDto.end_date && { end_date: new Date(updateDto.end_date) }),
           ...(updateDto.status && { status: updateDto.status }),
-          ...(updateDto.is_current !== undefined && { is_current: updateDto.is_current })
+          ...(updateDto.is_current !== undefined && {
+            is_current: updateDto.is_current,
+          }),
         },
         include: {
           school: {
             select: {
               id: true,
-              school_name: true
-            }
-          }
-        }
+              school_name: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`✅ Academic session updated: ${updatedSession.academic_year}`));
+      this.logger.log(
+        colors.green(
+          `✅ Academic session updated: ${updatedSession.academic_year}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Academic session updated successfully',
-        updatedSession
+        updatedSession,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error updating academic session: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error updating academic session: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to update academic session', null);
     }
   }
@@ -320,7 +364,7 @@ export class AcademicSessionService {
     try {
       // Check if academic session exists
       const existingSession = await this.prisma.academicSession.findUnique({
-        where: { id }
+        where: { id },
       });
 
       if (!existingSession) {
@@ -340,37 +384,49 @@ export class AcademicSessionService {
               payments: true,
               performances: true,
               schedules: true,
-              notifications: true
-            }
-          }
-        }
+              notifications: true,
+            },
+          },
+        },
       });
 
-      if (relatedData && (relatedData._count.students > 0 || 
-          relatedData._count.teachers > 0 || 
+      if (
+        relatedData &&
+        (relatedData._count.students > 0 ||
+          relatedData._count.teachers > 0 ||
           relatedData._count.classes > 0 ||
           relatedData._count.subjects > 0 ||
           relatedData._count.payments > 0 ||
           relatedData._count.performances > 0 ||
           relatedData._count.schedules > 0 ||
-          relatedData._count.notifications > 0)) {
-        return new ApiResponse(false, 'Cannot delete academic session with related data. Please remove related data first.', null);
+          relatedData._count.notifications > 0)
+      ) {
+        return new ApiResponse(
+          false,
+          'Cannot delete academic session with related data. Please remove related data first.',
+          null,
+        );
       }
 
       await this.prisma.academicSession.delete({
-        where: { id }
+        where: { id },
       });
 
-      this.logger.log(colors.green(`✅ Academic session deleted: ${existingSession.academic_year}`));
+      this.logger.log(
+        colors.green(
+          `✅ Academic session deleted: ${existingSession.academic_year}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Academic session deleted successfully',
-        null
+        null,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting academic session: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting academic session: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to delete academic session', null);
     }
   }
@@ -379,40 +435,55 @@ export class AcademicSessionService {
    * Get current academic session for a school
    */
   async getCurrentSession(schoolId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.green(`Getting current academic session for school: ${schoolId}`));
+    this.logger.log(
+      colors.green(`Getting current academic session for school: ${schoolId}`),
+    );
 
     try {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: schoolId,
           is_current: true,
-          status: 'active'
+          status: 'active',
         },
         include: {
           school: {
             select: {
               id: true,
-              school_name: true
-            }
-          }
-        }
+              school_name: true,
+            },
+          },
+        },
       });
 
       if (!currentSession) {
-        return new ApiResponse(false, 'No current academic session found', null);
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
-      this.logger.log(colors.green(`✅ Current session: ${currentSession.academic_year} - ${currentSession.term}`));
+      this.logger.log(
+        colors.green(
+          `✅ Current session: ${currentSession.academic_year} - ${currentSession.term}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Current academic session retrieved successfully',
-        currentSession
+        currentSession,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching current academic session: ${error.message}`));
-      return new ApiResponse(false, 'Failed to fetch current academic session', null);
+      this.logger.error(
+        colors.red(`Error fetching current academic session: ${error.message}`),
+      );
+      return new ApiResponse(
+        false,
+        'Failed to fetch current academic session',
+        null,
+      );
     }
   }
 
@@ -425,14 +496,16 @@ export class AcademicSessionService {
         where: {
           school_id: schoolId,
           is_current: true,
-          status: 'active'
+          status: 'active',
         },
-        select: { id: true }
+        select: { id: true },
       });
 
       return currentSession?.id || null;
     } catch (error) {
-      this.logger.error(colors.red(`Error getting current session ID: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting current session ID: ${error.message}`),
+      );
       return null;
     }
   }
@@ -441,7 +514,7 @@ export class AcademicSessionService {
    * Transition to new academic year
    */
   async transitionToNewAcademicYear(
-    schoolId: string, 
+    schoolId: string,
     newSessionData: {
       academic_year: string;
       start_year: number;
@@ -449,21 +522,23 @@ export class AcademicSessionService {
       term: 'first' | 'second' | 'third';
       start_date: string;
       end_date: string;
-    }
+    },
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`Transitioning to new academic year for school: ${schoolId}`));
+    this.logger.log(
+      colors.cyan(`Transitioning to new academic year for school: ${schoolId}`),
+    );
 
     try {
       // Deactivate current session
       await this.prisma.academicSession.updateMany({
         where: {
           school_id: schoolId,
-          is_current: true
+          is_current: true,
         },
         data: {
           is_current: false,
-          status: 'completed'
-        }
+          status: 'completed',
+        },
       });
 
       // Create new session
@@ -477,21 +552,32 @@ export class AcademicSessionService {
           start_date: new Date(newSessionData.start_date),
           end_date: new Date(newSessionData.end_date),
           status: 'active',
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
-      this.logger.log(colors.green(`✅ Transitioned to new academic year: ${newSession.academic_year}`));
+      this.logger.log(
+        colors.green(
+          `✅ Transitioned to new academic year: ${newSession.academic_year}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Successfully transitioned to new academic year',
-        newSession
+        newSession,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error transitioning to new academic year: ${error.message}`));
-      return new ApiResponse(false, 'Failed to transition to new academic year', null);
+      this.logger.error(
+        colors.red(
+          `Error transitioning to new academic year: ${error.message}`,
+        ),
+      );
+      return new ApiResponse(
+        false,
+        'Failed to transition to new academic year',
+        null,
+      );
     }
   }
 
@@ -499,35 +585,37 @@ export class AcademicSessionService {
    * Get academic sessions by year range
    */
   async getSessionsByYearRange(
-    schoolId: string, 
-    startYear: number, 
-    endYear: number
+    schoolId: string,
+    startYear: number,
+    endYear: number,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`Getting sessions for year range: ${startYear}-${endYear}`));
+    this.logger.log(
+      colors.cyan(`Getting sessions for year range: ${startYear}-${endYear}`),
+    );
 
     try {
       const sessions = await this.prisma.academicSession.findMany({
         where: {
           school_id: schoolId,
           start_year: { gte: startYear },
-          end_year: { lte: endYear }
+          end_year: { lte: endYear },
         },
-        orderBy: [
-          { start_year: 'asc' },
-          { term: 'asc' }
-        ]
+        orderBy: [{ start_year: 'asc' }, { term: 'asc' }],
       });
 
-      this.logger.log(colors.green(`✅ Found ${sessions.length} sessions in range`));
+      this.logger.log(
+        colors.green(`✅ Found ${sessions.length} sessions in range`),
+      );
 
       return new ApiResponse(
         true,
         'Academic sessions retrieved successfully',
-        sessions
+        sessions,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching sessions by year range: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching sessions by year range: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch academic sessions', null);
     }
   }
@@ -535,17 +623,22 @@ export class AcademicSessionService {
   /**
    * Get classes in order for a school and academic session
    */
-  async getClassesInOrder(schoolId: string, academicSessionId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`Getting classes in order for school: ${schoolId}`));
+  async getClassesInOrder(
+    schoolId: string,
+    academicSessionId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`Getting classes in order for school: ${schoolId}`),
+    );
 
     try {
       const classes = await this.prisma.class.findMany({
         where: {
           schoolId: schoolId,
-          academic_session_id: academicSessionId
+          academic_session_id: academicSessionId,
         },
         orderBy: {
-          classId: 'asc'
+          classId: 'asc',
         },
         include: {
           classTeacher: {
@@ -553,27 +646,30 @@ export class AcademicSessionService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           _count: {
             select: {
-              students: true
-            }
-          }
-        }
+              students: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`✅ Found ${classes.length} classes in order`));
+      this.logger.log(
+        colors.green(`✅ Found ${classes.length} classes in order`),
+      );
 
       return new ApiResponse(
         true,
         'Classes retrieved in order successfully',
-        classes
+        classes,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching classes in order: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching classes in order: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch classes in order', null);
     }
   }
@@ -582,7 +678,9 @@ export class AcademicSessionService {
    * Get next class in sequence for student promotion
    */
   async getNextClass(currentClassId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`Getting next class for current class: ${currentClassId}`));
+    this.logger.log(
+      colors.cyan(`Getting next class for current class: ${currentClassId}`),
+    );
 
     try {
       const currentClass = await this.prisma.class.findUnique({
@@ -590,8 +688,8 @@ export class AcademicSessionService {
         select: {
           classId: true,
           schoolId: true,
-          academic_session_id: true
-        }
+          academic_session_id: true,
+        },
       });
 
       if (!currentClass) {
@@ -603,11 +701,11 @@ export class AcademicSessionService {
           schoolId: currentClass.schoolId,
           academic_session_id: currentClass.academic_session_id,
           classId: {
-            gt: currentClass.classId
-          }
+            gt: currentClass.classId,
+          },
         },
         orderBy: {
-          classId: 'asc'
+          classId: 'asc',
         },
         include: {
           classTeacher: {
@@ -615,26 +713,31 @@ export class AcademicSessionService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (!nextClass) {
-        return new ApiResponse(false, 'No next class available (student is in the highest class)', null);
+        return new ApiResponse(
+          false,
+          'No next class available (student is in the highest class)',
+          null,
+        );
       }
 
-      this.logger.log(colors.green(`✅ Next class found: ${nextClass.name} (classId: ${nextClass.classId})`));
-
-      return new ApiResponse(
-        true,
-        'Next class found successfully',
-        nextClass
+      this.logger.log(
+        colors.green(
+          `✅ Next class found: ${nextClass.name} (classId: ${nextClass.classId})`,
+        ),
       );
 
+      return new ApiResponse(true, 'Next class found successfully', nextClass);
     } catch (error) {
-      this.logger.error(colors.red(`Error getting next class: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting next class: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to get next class', null);
     }
   }
@@ -643,7 +746,11 @@ export class AcademicSessionService {
    * Get previous class in sequence for student demotion
    */
   async getPreviousClass(currentClassId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`Getting previous class for current class: ${currentClassId}`));
+    this.logger.log(
+      colors.cyan(
+        `Getting previous class for current class: ${currentClassId}`,
+      ),
+    );
 
     try {
       const currentClass = await this.prisma.class.findUnique({
@@ -651,8 +758,8 @@ export class AcademicSessionService {
         select: {
           classId: true,
           schoolId: true,
-          academic_session_id: true
-        }
+          academic_session_id: true,
+        },
       });
 
       if (!currentClass) {
@@ -664,11 +771,11 @@ export class AcademicSessionService {
           schoolId: currentClass.schoolId,
           academic_session_id: currentClass.academic_session_id,
           classId: {
-            lt: currentClass.classId
-          }
+            lt: currentClass.classId,
+          },
         },
         orderBy: {
-          classId: 'desc'
+          classId: 'desc',
         },
         include: {
           classTeacher: {
@@ -676,26 +783,35 @@ export class AcademicSessionService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (!previousClass) {
-        return new ApiResponse(false, 'No previous class available (student is in the lowest class)', null);
+        return new ApiResponse(
+          false,
+          'No previous class available (student is in the lowest class)',
+          null,
+        );
       }
 
-      this.logger.log(colors.green(`✅ Previous class found: ${previousClass.name} (classId: ${previousClass.classId})`));
+      this.logger.log(
+        colors.green(
+          `✅ Previous class found: ${previousClass.name} (classId: ${previousClass.classId})`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Previous class found successfully',
-        previousClass
+        previousClass,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error getting previous class: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting previous class: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to get previous class', null);
     }
   }
@@ -714,10 +830,10 @@ export class AcademicSessionService {
             select: {
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (!student) {
@@ -725,11 +841,17 @@ export class AcademicSessionService {
       }
 
       if (!student.current_class_id) {
-        return new ApiResponse(false, 'Student is not assigned to any class', null);
+        return new ApiResponse(
+          false,
+          'Student is not assigned to any class',
+          null,
+        );
       }
 
       // Get next class
-      const nextClassResponse = await this.getNextClass(student.current_class_id);
+      const nextClassResponse = await this.getNextClass(
+        student.current_class_id,
+      );
       if (!nextClassResponse.success) {
         return nextClassResponse;
       }
@@ -740,29 +862,34 @@ export class AcademicSessionService {
       const updatedStudent = await this.prisma.student.update({
         where: { id: studentId },
         data: {
-          current_class_id: nextClass.id
+          current_class_id: nextClass.id,
         },
         include: {
           user: {
             select: {
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`✅ Student ${student.user.first_name} ${student.user.last_name} promoted to ${nextClass.name}`));
+      this.logger.log(
+        colors.green(
+          `✅ Student ${student.user.first_name} ${student.user.last_name} promoted to ${nextClass.name}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         `Student promoted successfully to ${nextClass.name}`,
-        updatedStudent
+        updatedStudent,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error promoting student: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error promoting student: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to promote student', null);
     }
   }
@@ -781,10 +908,10 @@ export class AcademicSessionService {
             select: {
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
       if (!student) {
@@ -792,11 +919,17 @@ export class AcademicSessionService {
       }
 
       if (!student.current_class_id) {
-        return new ApiResponse(false, 'Student is not assigned to any class', null);
+        return new ApiResponse(
+          false,
+          'Student is not assigned to any class',
+          null,
+        );
       }
 
       // Get previous class
-      const previousClassResponse = await this.getPreviousClass(student.current_class_id);
+      const previousClassResponse = await this.getPreviousClass(
+        student.current_class_id,
+      );
       if (!previousClassResponse.success) {
         return previousClassResponse;
       }
@@ -807,27 +940,30 @@ export class AcademicSessionService {
       const updatedStudent = await this.prisma.student.update({
         where: { id: studentId },
         data: {
-          current_class_id: previousClass.id
+          current_class_id: previousClass.id,
         },
         include: {
           user: {
             select: {
               first_name: true,
               last_name: true,
-              email: true
-            }
-          }
-        }
+              email: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`✅ Student ${student.user.first_name} ${student.user.last_name} demoted to ${previousClass.name}`));
+      this.logger.log(
+        colors.green(
+          `✅ Student ${student.user.first_name} ${student.user.last_name} demoted to ${previousClass.name}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         `Student demoted successfully to ${previousClass.name}`,
-        updatedStudent
+        updatedStudent,
       );
-
     } catch (error) {
       this.logger.error(colors.red(`Error demoting student: ${error.message}`));
       return new ApiResponse(false, 'Failed to demote student', null);

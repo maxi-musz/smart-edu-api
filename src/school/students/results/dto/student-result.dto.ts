@@ -1,32 +1,52 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CurrentSessionDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Current academic session ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Current academic session ID',
+  })
   id: string;
 
   @ApiProperty({ example: '2024-2025', description: 'Academic year' })
   academic_year: string;
 
-  @ApiProperty({ example: 'first', description: 'Current term', enum: ['first', 'second', 'third'] })
+  @ApiProperty({
+    example: 'first',
+    description: 'Current term',
+    enum: ['first', 'second', 'third'],
+  })
   term: string;
 }
 
 export class SessionSummaryDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Academic session ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Academic session ID',
+  })
   id: string;
 
   @ApiProperty({ example: '2024-2025', description: 'Academic year' })
   academic_year: string;
 
-  @ApiProperty({ example: 'first', description: 'Term', enum: ['first', 'second', 'third'] })
+  @ApiProperty({
+    example: 'first',
+    description: 'Term',
+    enum: ['first', 'second', 'third'],
+  })
   term: string;
 
-  @ApiProperty({ example: true, description: 'Whether this is the current session' })
+  @ApiProperty({
+    example: true,
+    description: 'Whether this is the current session',
+  })
   is_current: boolean;
 }
 
 export class ClassInfoDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Class ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Class ID',
+  })
   id: string;
 
   @ApiProperty({ example: 'Grade 10A', description: 'Class name' })
@@ -37,7 +57,10 @@ export class ClassInfoDto {
 }
 
 export class ClassSubjectDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Subject ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Subject ID',
+  })
   id: string;
 
   @ApiProperty({ example: 'Mathematics', description: 'Subject name' })
@@ -51,7 +74,10 @@ export class ClassSubjectDto {
 }
 
 export class StudentSubjectResultDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Subject ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Subject ID',
+  })
   subject_id: string;
 
   @ApiProperty({ example: 'Mathematics', description: 'Subject name' })
@@ -60,7 +86,11 @@ export class StudentSubjectResultDto {
   @ApiProperty({ example: 'MATH', description: 'Subject code' })
   subject_code: string;
 
-  @ApiProperty({ example: 25, description: 'Continuous assessment score', nullable: true })
+  @ApiProperty({
+    example: 25,
+    description: 'Continuous assessment score',
+    nullable: true,
+  })
   ca_score: number | null;
 
   @ApiProperty({ example: 60, description: 'Exam score', nullable: true })
@@ -69,7 +99,10 @@ export class StudentSubjectResultDto {
   @ApiProperty({ example: 85, description: 'Total score for the subject' })
   total_score: number;
 
-  @ApiProperty({ example: 100, description: 'Maximum obtainable score for the subject' })
+  @ApiProperty({
+    example: 100,
+    description: 'Maximum obtainable score for the subject',
+  })
   total_max_score: number;
 
   @ApiProperty({ example: 85.5, description: 'Percentage score' })
@@ -80,43 +113,83 @@ export class StudentSubjectResultDto {
 }
 
 export class StudentResultDataDto {
-  @ApiProperty({ type: CurrentSessionDto, description: 'Current academic session and term' })
+  @ApiProperty({
+    type: CurrentSessionDto,
+    description: 'Current academic session and term',
+  })
   current_session: CurrentSessionDto;
 
-  @ApiProperty({ type: [SessionSummaryDto], description: 'Available sessions/terms to filter by' })
+  @ApiProperty({
+    type: [SessionSummaryDto],
+    description: 'Available sessions/terms to filter by',
+  })
   sessions: SessionSummaryDto[];
 
   @ApiProperty({ type: ClassInfoDto, description: 'Current class information' })
   current_class: ClassInfoDto;
 
-  @ApiProperty({ type: [ClassSubjectDto], description: 'Subjects offered in the current class' })
+  @ApiProperty({
+    type: [ClassSubjectDto],
+    description: 'Subjects offered in the current class',
+  })
   subjects: ClassSubjectDto[];
 
-  @ApiProperty({ example: 45, description: 'Total CA score across subjects', nullable: true })
+  @ApiProperty({
+    example: 45,
+    description: 'Total CA score across subjects',
+    nullable: true,
+  })
   total_ca_score: number | null;
 
-  @ApiProperty({ example: 60, description: 'Total exam score across subjects', nullable: true })
+  @ApiProperty({
+    example: 60,
+    description: 'Total exam score across subjects',
+    nullable: true,
+  })
   total_exam_score: number | null;
 
-  @ApiProperty({ example: 105, description: 'Overall total score', nullable: true })
+  @ApiProperty({
+    example: 105,
+    description: 'Overall total score',
+    nullable: true,
+  })
   total_score: number | null;
 
-  @ApiProperty({ example: 150, description: 'Overall maximum obtainable score', nullable: true })
+  @ApiProperty({
+    example: 150,
+    description: 'Overall maximum obtainable score',
+    nullable: true,
+  })
   total_max_score: number | null;
 
-  @ApiProperty({ example: 70, description: 'Overall percentage', nullable: true })
+  @ApiProperty({
+    example: 70,
+    description: 'Overall percentage',
+    nullable: true,
+  })
   overall_percentage: number | null;
 
   @ApiProperty({ example: 'B', description: 'Overall grade', nullable: true })
   overall_grade: string | null;
 
-  @ApiProperty({ example: 5, description: 'Student position in class', nullable: true })
+  @ApiProperty({
+    example: 5,
+    description: 'Student position in class',
+    nullable: true,
+  })
   class_position: number | null;
 
-  @ApiProperty({ example: 25, description: 'Total students in class', nullable: true })
+  @ApiProperty({
+    example: 25,
+    description: 'Total students in class',
+    nullable: true,
+  })
   total_students: number | null;
 
-  @ApiProperty({ type: [StudentSubjectResultDto], description: 'Subject results for the student' })
+  @ApiProperty({
+    type: [StudentSubjectResultDto],
+    description: 'Subject results for the student',
+  })
   subject_results: StudentSubjectResultDto[];
 }
 
@@ -124,9 +197,15 @@ export class StudentResultResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Student result retrieved successfully', description: 'Response message' })
+  @ApiProperty({
+    example: 'Student result retrieved successfully',
+    description: 'Response message',
+  })
   message: string;
 
-  @ApiProperty({ type: StudentResultDataDto, description: 'Student result data' })
+  @ApiProperty({
+    type: StudentResultDataDto,
+    description: 'Student result data',
+  })
   data: StudentResultDataDto;
 }

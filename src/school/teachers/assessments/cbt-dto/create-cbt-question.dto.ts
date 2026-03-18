@@ -1,16 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { 
-  IsString, 
-  IsNotEmpty, 
-  IsOptional, 
-  IsNumber, 
-  IsBoolean, 
-  IsArray, 
-  IsEnum, 
-  Min, 
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsArray,
+  IsEnum,
+  Min,
   Max,
   ValidateNested,
-  IsObject
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -26,20 +26,20 @@ export enum QuestionType {
   FILE_UPLOAD = 'FILE_UPLOAD',
   NUMERIC = 'NUMERIC',
   DATE = 'DATE',
-  RATING_SCALE = 'RATING_SCALE'
+  RATING_SCALE = 'RATING_SCALE',
 }
 
 export enum DifficultyLevel {
   EASY = 'EASY',
   MEDIUM = 'MEDIUM',
   HARD = 'HARD',
-  EXPERT = 'EXPERT'
+  EXPERT = 'EXPERT',
 }
 
 export class CreateCBTOptionDto {
   @ApiProperty({
     description: 'Option text',
-    example: 'Paris'
+    example: 'Paris',
   })
   @IsString()
   @IsNotEmpty()
@@ -48,7 +48,7 @@ export class CreateCBTOptionDto {
   @ApiProperty({
     description: 'Order of the option',
     example: 1,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @Min(1)
@@ -56,14 +56,14 @@ export class CreateCBTOptionDto {
 
   @ApiProperty({
     description: 'Whether this option is correct',
-    example: true
+    example: true,
   })
   @IsBoolean()
   is_correct: boolean;
 
   @ApiPropertyOptional({
     description: 'Image URL for the option',
-    example: 'https://example.com/paris-image.jpg'
+    example: 'https://example.com/paris-image.jpg',
   })
   @IsString()
   @IsOptional()
@@ -71,7 +71,7 @@ export class CreateCBTOptionDto {
 
   @ApiPropertyOptional({
     description: 'Audio URL for the option',
-    example: 'https://example.com/paris-audio.mp3'
+    example: 'https://example.com/paris-audio.mp3',
   })
   @IsString()
   @IsOptional()
@@ -81,7 +81,8 @@ export class CreateCBTOptionDto {
 export class CreateCBTCorrectAnswerDto {
   @ApiPropertyOptional({
     description: 'Correct text answer (for text-based questions)',
-    example: 'Photosynthesis is the process by which plants convert sunlight into energy.'
+    example:
+      'Photosynthesis is the process by which plants convert sunlight into energy.',
   })
   @IsString()
   @IsOptional()
@@ -89,7 +90,7 @@ export class CreateCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct numeric answer (for numeric questions)',
-    example: 42.5
+    example: 42.5,
   })
   @IsNumber()
   @IsOptional()
@@ -97,7 +98,7 @@ export class CreateCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct date answer (for date questions)',
-    example: '1945-05-08T00:00:00Z'
+    example: '1945-05-08T00:00:00Z',
   })
   @IsString()
   @IsOptional()
@@ -106,7 +107,7 @@ export class CreateCBTCorrectAnswerDto {
   @ApiPropertyOptional({
     description: 'Array of correct option IDs (for multiple choice)',
     example: ['option_1', 'option_3'],
-    type: [String]
+    type: [String],
   })
   @IsArray()
   @IsString({ each: true })
@@ -115,7 +116,12 @@ export class CreateCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Complex answer data (for matching, ordering, etc.)',
-    example: { pairs: [['A', '1'], ['B', '2']] }
+    example: {
+      pairs: [
+        ['A', '1'],
+        ['B', '2'],
+      ],
+    },
   })
   @IsObject()
   @IsOptional()
@@ -125,7 +131,7 @@ export class CreateCBTCorrectAnswerDto {
 export class CreateAssessmentQuestionDto {
   @ApiProperty({
     description: 'Question text',
-    example: 'What is the capital of France?'
+    example: 'What is the capital of France?',
   })
   @IsString()
   @IsNotEmpty()
@@ -134,15 +140,16 @@ export class CreateAssessmentQuestionDto {
   @ApiProperty({
     description: 'Type of question',
     enum: QuestionType,
-    example: QuestionType.MULTIPLE_CHOICE_SINGLE
+    example: QuestionType.MULTIPLE_CHOICE_SINGLE,
   })
   @IsEnum(QuestionType)
   question_type: QuestionType;
 
   @ApiPropertyOptional({
-    description: 'Order of the question in the quiz (auto-assigned if not provided)',
+    description:
+      'Order of the question in the quiz (auto-assigned if not provided)',
     example: 1,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -153,7 +160,7 @@ export class CreateAssessmentQuestionDto {
     description: 'Points for this question',
     example: 2.0,
     minimum: 0.1,
-    default: 1.0
+    default: 1.0,
   })
   @IsNumber()
   @IsOptional()
@@ -163,7 +170,7 @@ export class CreateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Whether this question is required',
     example: true,
-    default: true
+    default: true,
   })
   @IsBoolean()
   @IsOptional()
@@ -172,7 +179,7 @@ export class CreateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Time limit for this specific question in seconds',
     example: 60,
-    minimum: 10
+    minimum: 10,
   })
   @IsNumber()
   @IsOptional()
@@ -180,16 +187,19 @@ export class CreateAssessmentQuestionDto {
   time_limit?: number;
 
   @ApiPropertyOptional({
-    description: 'Image URL for the question (returned from upload-image endpoint)',
-    example: 'https://example.com/france-map.jpg'
+    description:
+      'Image URL for the question (returned from upload-image endpoint)',
+    example: 'https://example.com/france-map.jpg',
   })
   @IsString()
   @IsOptional()
   image_url?: string;
 
   @ApiPropertyOptional({
-    description: 'S3 key for the image (returned from upload-image endpoint, optional - will be extracted from URL if not provided)',
-    example: 'assessment-images/schools/123/assessments/456/question_1234567890_image.jpg'
+    description:
+      'S3 key for the image (returned from upload-image endpoint, optional - will be extracted from URL if not provided)',
+    example:
+      'assessment-images/schools/123/assessments/456/question_1234567890_image.jpg',
   })
   @IsString()
   @IsOptional()
@@ -197,7 +207,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Audio URL for the question',
-    example: 'https://example.com/question-audio.mp3'
+    example: 'https://example.com/question-audio.mp3',
   })
   @IsString()
   @IsOptional()
@@ -205,7 +215,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Video URL for the question',
-    example: 'https://example.com/question-video.mp4'
+    example: 'https://example.com/question-video.mp4',
   })
   @IsString()
   @IsOptional()
@@ -214,7 +224,7 @@ export class CreateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Whether to allow multiple attempts for this question',
     example: false,
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -223,7 +233,7 @@ export class CreateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Whether to show hint for this question',
     example: true,
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -231,7 +241,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Hint text for the question',
-    example: 'Think about European capitals'
+    example: 'Think about European capitals',
   })
   @IsString()
   @IsOptional()
@@ -240,7 +250,7 @@ export class CreateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Minimum length for text answers',
     example: 10,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -250,7 +260,7 @@ export class CreateAssessmentQuestionDto {
   @ApiPropertyOptional({
     description: 'Maximum length for text answers',
     example: 200,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -259,7 +269,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Minimum value for numeric answers',
-    example: 0
+    example: 0,
   })
   @IsNumber()
   @IsOptional()
@@ -267,7 +277,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Maximum value for numeric answers',
-    example: 100
+    example: 100,
   })
   @IsNumber()
   @IsOptional()
@@ -275,7 +285,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Explanation for the correct answer',
-    example: 'Paris is the capital and largest city of France.'
+    example: 'Paris is the capital and largest city of France.',
   })
   @IsString()
   @IsOptional()
@@ -285,7 +295,7 @@ export class CreateAssessmentQuestionDto {
     description: 'Difficulty level of the question',
     enum: DifficultyLevel,
     example: DifficultyLevel.EASY,
-    default: DifficultyLevel.MEDIUM
+    default: DifficultyLevel.MEDIUM,
   })
   @IsEnum(DifficultyLevel)
   @IsOptional()
@@ -293,7 +303,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Options for multiple choice questions',
-    type: [CreateCBTOptionDto]
+    type: [CreateCBTOptionDto],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -303,7 +313,7 @@ export class CreateAssessmentQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Correct answers for the question',
-    type: [CreateCBTCorrectAnswerDto]
+    type: [CreateCBTCorrectAnswerDto],
   })
   @IsArray()
   @ValidateNested({ each: true })

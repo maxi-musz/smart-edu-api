@@ -15,7 +15,16 @@ import {
   BadRequestException,
   Sse,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { TopicsService } from './topics.service';
 import { VideoUploadService } from '../../../video-upload/video-upload.service';
 import { Observable } from 'rxjs';
@@ -24,8 +33,14 @@ import { UpdateTopicDto } from './dto/update-topic.dto';
 import { TopicResponseDto } from './dto/topic-response.dto';
 import { ReorderTopicsDto } from './dto/reorder-topics.dto';
 import { TopicContentResponseDto } from './dto/topic-content.dto';
-import { UploadVideoLessonDto, VideoLessonResponseDto } from './dto/upload-video-lesson.dto';
-import { UploadMaterialDto, MaterialResponseDto } from './dto/upload-material.dto';
+import {
+  UploadVideoLessonDto,
+  VideoLessonResponseDto,
+} from './dto/upload-video-lesson.dto';
+import {
+  UploadMaterialDto,
+  MaterialResponseDto,
+} from './dto/upload-material.dto';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -40,10 +55,19 @@ export class TopicsController {
     private readonly videoUploadService: VideoUploadService,
   ) {}
   @Post('process-for-chat/:materialId')
-  @ApiOperation({ summary: 'Process a material for AI chat (chunk + embed) if not already processed' })
+  @ApiOperation({
+    summary:
+      'Process a material for AI chat (chunk + embed) if not already processed',
+  })
   @ApiParam({ name: 'materialId', description: 'PDF material ID' })
-  @ApiResponse({ status: 202, description: 'Processing started or already processed' })
-  async processMaterialForChat(@Param('materialId') materialId: string, @GetUser() user: any) {
+  @ApiResponse({
+    status: 202,
+    description: 'Processing started or already processed',
+  })
+  async processMaterialForChat(
+    @Param('materialId') materialId: string,
+    @GetUser() user: any,
+  ) {
     return this.topicsService.processMaterialForChat(materialId, user);
   }
 
@@ -55,7 +79,10 @@ export class TopicsController {
     type: TopicResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  @ApiResponse({ status: 404, description: 'Subject or academic session not found' })
+  @ApiResponse({
+    status: 404,
+    description: 'Subject or academic session not found',
+  })
   async createTopic(
     @Body() createTopicRequestDto: CreateTopicRequestDto,
     @GetUser() user: any,
@@ -100,17 +127,17 @@ export class TopicsController {
         data: {
           connected: isConnected,
           timestamp: new Date().toISOString(),
-          message: isConnected 
-            ? '✅ AWS S3 connection successful!' 
-            : '❌ AWS S3 connection failed. Check your credentials and bucket.'
-        }
+          message: isConnected
+            ? '✅ AWS S3 connection successful!'
+            : '❌ AWS S3 connection failed. Check your credentials and bucket.',
+        },
       };
     } catch (error) {
       return {
         success: false,
         message: 'S3 connection test failed',
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -139,10 +166,7 @@ export class TopicsController {
     type: TopicResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Topic not found' })
-  async getTopicById(
-    @Param('id') id: string,
-    @GetUser() user: any,
-  ) {
+  async getTopicById(@Param('id') id: string, @GetUser() user: any) {
     return this.topicsService.getTopicById(id, user);
   }
 
@@ -192,7 +216,9 @@ export class TopicsController {
   }
 
   @Patch('reorder/:subjectId/:topicId')
-  @ApiOperation({ summary: 'Reorder a single topic to a new position (drag and drop)' })
+  @ApiOperation({
+    summary: 'Reorder a single topic to a new position (drag and drop)',
+  })
   @ApiParam({ name: 'subjectId', description: 'Subject ID' })
   @ApiParam({ name: 'topicId', description: 'Topic ID to reorder' })
   @ApiResponse({ status: 200, description: 'Topic reordered successfully' })
@@ -204,10 +230,13 @@ export class TopicsController {
     @Body() body: { newPosition: number },
     @GetUser() user: any,
   ) {
-    return this.topicsService.reorderSingleTopic(subjectId, topicId, body.newPosition, user);
+    return this.topicsService.reorderSingleTopic(
+      subjectId,
+      topicId,
+      body.newPosition,
+      user,
+    );
   }
-
-  
 
   @Get(':id/content')
   @ApiOperation({ summary: 'Get all content for a specific topic' })
@@ -218,10 +247,7 @@ export class TopicsController {
     type: TopicContentResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Topic not found' })
-  async getTopicContent(
-    @Param('id') id: string,
-    @GetUser() user: any,
-  ) {
+  async getTopicContent(@Param('id') id: string, @GetUser() user: any) {
     return this.topicsService.getTopicContent(id, user);
   }
 
@@ -229,8 +255,8 @@ export class TopicsController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'video', maxCount: 1 },
-      { name: 'thumbnail', maxCount: 1 }
-    ])
+      { name: 'thumbnail', maxCount: 1 },
+    ]),
   )
   @ApiOperation({ summary: 'Upload video lesson for a topic' })
   @ApiConsumes('multipart/form-data')
@@ -245,32 +271,39 @@ export class TopicsController {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Video lesson uploaded successfully' },
+        message: {
+          type: 'string',
+          example: 'Video lesson uploaded successfully',
+        },
         data: { $ref: '#/components/schemas/VideoLessonResponseDto' },
-        statusCode: { type: 'number', example: 201 }
-      }
-    }
+        statusCode: { type: 'number', example: 201 },
+      },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid file or data' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid file or data',
+  })
   @ApiResponse({ status: 404, description: 'Subject or topic not found' })
   @ApiResponse({ status: 413, description: 'File too large' })
   async uploadVideoLesson(
     @Body() uploadDto: UploadVideoLessonDto,
-    @UploadedFiles() files: { video?: Express.Multer.File[], thumbnail?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: { video?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
     @GetUser() user: any,
   ) {
     const videoFile = files.video?.[0];
     const thumbnailFile = files.thumbnail?.[0];
-    
+
     if (!videoFile) {
       throw new BadRequestException('Video file is required');
     }
-    
+
     return this.topicsService.uploadVideoLesson(
       uploadDto,
       videoFile,
       thumbnailFile,
-      user
+      user,
     );
   }
 
@@ -279,37 +312,50 @@ export class TopicsController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'video', maxCount: 1 },
-      { name: 'thumbnail', maxCount: 1 }
-    ])
+      { name: 'thumbnail', maxCount: 1 },
+    ]),
   )
-  @ApiOperation({ summary: 'Start video upload with progress tracking (returns sessionId)' })
+  @ApiOperation({
+    summary: 'Start video upload with progress tracking (returns sessionId)',
+  })
   @ApiConsumes('multipart/form-data')
   async startVideoUpload(
     @Body() uploadDto: UploadVideoLessonDto,
-    @UploadedFiles() files: { video?: Express.Multer.File[], thumbnail?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: { video?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
     @GetUser() user: any,
   ) {
     const videoFile = files.video?.[0];
     const thumbnailFile = files.thumbnail?.[0];
-    return this.topicsService.startVideoUploadSession(uploadDto, videoFile!, thumbnailFile, user);
+    return this.topicsService.startVideoUploadSession(
+      uploadDto,
+      videoFile!,
+      thumbnailFile,
+      user,
+    );
   }
 
   // SSE progress stream (same pattern as ai-chat)
   @Get('upload-progress/:sessionId')
   @Sse('upload-progress/:sessionId')
   @ApiOperation({ summary: 'Stream video upload progress via SSE' })
-  getVideoUploadProgress(@Param('sessionId') sessionId: string): Observable<MessageEvent> {
-    return new Observable(observer => {
+  getVideoUploadProgress(
+    @Param('sessionId') sessionId: string,
+  ): Observable<MessageEvent> {
+    return new Observable((observer) => {
       const current = this.videoUploadService.getProgress(sessionId);
       if (current) {
         observer.next({ data: JSON.stringify(current) } as MessageEvent);
       }
-      const unsubscribe = this.videoUploadService.subscribeToProgress(sessionId, (progress) => {
-        observer.next({ data: JSON.stringify(progress) } as MessageEvent);
-        if (progress.stage === 'completed' || progress.stage === 'error') {
-          observer.complete();
-        }
-      });
+      const unsubscribe = this.videoUploadService.subscribeToProgress(
+        sessionId,
+        (progress) => {
+          observer.next({ data: JSON.stringify(progress) } as MessageEvent);
+          if (progress.stage === 'completed' || progress.stage === 'error') {
+            observer.complete();
+          }
+        },
+      );
       return () => unsubscribe();
     });
   }
@@ -329,12 +375,10 @@ export class TopicsController {
   }
 
   @Post('upload-material')
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'material', maxCount: 1 }
-    ])
-  )
-  @ApiOperation({ summary: 'Upload material (PDF, DOC, DOCX, PPT, PPTX) for a topic' })
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'material', maxCount: 1 }]))
+  @ApiOperation({
+    summary: 'Upload material (PDF, DOC, DOCX, PPT, PPTX) for a topic',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Material upload data',
@@ -349,11 +393,14 @@ export class TopicsController {
         success: { type: 'boolean', example: true },
         message: { type: 'string', example: 'Material uploaded successfully' },
         data: { $ref: '#/components/schemas/MaterialResponseDto' },
-        statusCode: { type: 'number', example: 201 }
-      }
-    }
+        statusCode: { type: 'number', example: 201 },
+      },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid file or data' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid file or data',
+  })
   @ApiResponse({ status: 404, description: 'Subject or topic not found' })
   @ApiResponse({ status: 413, description: 'File too large' })
   async uploadMaterial(
@@ -362,26 +409,20 @@ export class TopicsController {
     @GetUser() user: any,
   ) {
     const materialFile = files.material?.[0];
-    
+
     if (!materialFile) {
       throw new BadRequestException('Material file is required');
     }
-    
-    return this.topicsService.uploadMaterial(
-      uploadDto,
-      materialFile,
-      user
-    );
+
+    return this.topicsService.uploadMaterial(uploadDto, materialFile, user);
   }
 
   // Start material upload with progress tracking
   @Post('upload-material/start')
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'material', maxCount: 1 }
-    ])
-  )
-  @ApiOperation({ summary: 'Start material upload with progress (returns sessionId)' })
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'material', maxCount: 1 }]))
+  @ApiOperation({
+    summary: 'Start material upload with progress (returns sessionId)',
+  })
   @ApiConsumes('multipart/form-data')
   async startMaterialUpload(
     @Body() uploadDto: UploadMaterialDto,
@@ -389,7 +430,10 @@ export class TopicsController {
     @GetUser() user: any,
   ) {
     const materialFile = files.material?.[0];
-    return this.topicsService.startMaterialUploadSession(uploadDto, materialFile!, user);
+    return this.topicsService.startMaterialUploadSession(
+      uploadDto,
+      materialFile!,
+      user,
+    );
   }
-
 }

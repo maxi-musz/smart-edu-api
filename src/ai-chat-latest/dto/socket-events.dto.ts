@@ -101,4 +101,3 @@ export interface SocketSuccessResponseDto<T = any> {
   data: T;
   event: string;
 }
-

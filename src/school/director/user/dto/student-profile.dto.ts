@@ -1,7 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class StudentClassDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Class ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Class ID',
+  })
   id: string;
 
   @ApiProperty({ example: 'Class 10A', description: 'Class name' })
@@ -10,7 +13,10 @@ export class StudentClassDto {
   @ApiProperty({ example: 10, description: 'Class level' })
   classId: number;
 
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra1', description: 'Class teacher ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra1',
+    description: 'Class teacher ID',
+  })
   classTeacherId: string;
 
   @ApiProperty({ example: 'John Doe', description: 'Class teacher name' })
@@ -18,7 +24,10 @@ export class StudentClassDto {
 }
 
 export class StudentParentDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Parent ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Parent ID',
+  })
   id: string;
 
   @ApiProperty({ example: 'Jane Smith', description: 'Parent name' })
@@ -50,10 +59,16 @@ export class StudentAcademicInfoDto {
   @ApiProperty({ example: 'ADM2024001', description: 'Admission number' })
   admissionNumber?: string;
 
-  @ApiProperty({ example: '2024-09-01T00:00:00Z', description: 'Admission date' })
+  @ApiProperty({
+    example: '2024-09-01T00:00:00Z',
+    description: 'Admission date',
+  })
   admissionDate: string;
 
-  @ApiProperty({ example: '2010-05-15T00:00:00Z', description: 'Date of birth' })
+  @ApiProperty({
+    example: '2010-05-15T00:00:00Z',
+    description: 'Date of birth',
+  })
   dateOfBirth?: string;
 
   @ApiProperty({ example: 'Grade 10', description: 'Academic level' })
@@ -62,13 +77,20 @@ export class StudentAcademicInfoDto {
   @ApiProperty({ example: 'ABC High School', description: 'Previous school' })
   previousSchool?: string;
 
-  @ApiProperty({ type: StudentClassDto, description: 'Current class information' })
+  @ApiProperty({
+    type: StudentClassDto,
+    description: 'Current class information',
+  })
   currentClass: StudentClassDto;
 
   @ApiProperty({ example: '2024-2025', description: 'Current academic year' })
   academicYear: string;
 
-  @ApiProperty({ example: 'first', description: 'Current term', enum: ['first', 'second', 'third'] })
+  @ApiProperty({
+    example: 'first',
+    description: 'Current term',
+    enum: ['first', 'second', 'third'],
+  })
   currentTerm: string;
 }
 
@@ -108,7 +130,10 @@ export class StudentGuardianInfoDto {
   @ApiProperty({ example: '+1234567890', description: 'Guardian phone' })
   guardianPhone?: string;
 
-  @ApiProperty({ example: 'john.smith@email.com', description: 'Guardian email' })
+  @ApiProperty({
+    example: 'john.smith@email.com',
+    description: 'Guardian email',
+  })
   guardianEmail?: string;
 
   @ApiProperty({ example: 'Father', description: 'Relationship to student' })
@@ -149,26 +174,46 @@ export class StudentProfileDto {
   @ApiProperty({ example: '+1234567890', description: 'Phone number' })
   phoneNumber?: string;
 
-  @ApiProperty({ example: 'male', description: 'Gender', enum: ['male', 'female', 'other'] })
+  @ApiProperty({
+    example: 'male',
+    description: 'Gender',
+    enum: ['male', 'female', 'other'],
+  })
   gender?: string;
 
-  @ApiProperty({ example: 'https://example.com/avatar.jpg', description: 'Display picture URL' })
+  @ApiProperty({
+    example: 'https://example.com/avatar.jpg',
+    description: 'Display picture URL',
+  })
   displayPicture?: string;
 
-  @ApiProperty({ example: 'active', description: 'User status', enum: ['active', 'inactive', 'suspended'] })
+  @ApiProperty({
+    example: 'active',
+    description: 'User status',
+    enum: ['active', 'inactive', 'suspended'],
+  })
   status: string;
 
   @ApiProperty({ example: true, description: 'Email verified status' })
   isEmailVerified: boolean;
 
-  @ApiProperty({ example: '2024-09-01T00:00:00Z', description: 'Account creation date' })
+  @ApiProperty({
+    example: '2024-09-01T00:00:00Z',
+    description: 'Account creation date',
+  })
   createdAt: string;
 
-  @ApiProperty({ example: '2024-09-15T00:00:00Z', description: 'Last update date' })
+  @ApiProperty({
+    example: '2024-09-15T00:00:00Z',
+    description: 'Last update date',
+  })
   updatedAt: string;
 
   // School information
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'School ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'School ID',
+  })
   schoolId: string;
 
   @ApiProperty({ example: 'ABC High School', description: 'School name' })
@@ -184,19 +229,31 @@ export class StudentProfileDto {
   schoolAddress: string;
 
   // Student-specific information
-  @ApiProperty({ type: StudentAcademicInfoDto, description: 'Academic information' })
+  @ApiProperty({
+    type: StudentAcademicInfoDto,
+    description: 'Academic information',
+  })
   academicInfo: StudentAcademicInfoDto;
 
-  @ApiProperty({ type: StudentPersonalInfoDto, description: 'Personal information' })
+  @ApiProperty({
+    type: StudentPersonalInfoDto,
+    description: 'Personal information',
+  })
   personalInfo: StudentPersonalInfoDto;
 
-  @ApiProperty({ type: StudentGuardianInfoDto, description: 'Guardian information' })
+  @ApiProperty({
+    type: StudentGuardianInfoDto,
+    description: 'Guardian information',
+  })
   guardianInfo: StudentGuardianInfoDto;
 
   @ApiProperty({ type: StudentParentDto, description: 'Parent information' })
   parentInfo?: StudentParentDto;
 
-  @ApiProperty({ type: StudentPerformanceDto, description: 'Performance metrics' })
+  @ApiProperty({
+    type: StudentPerformanceDto,
+    description: 'Performance metrics',
+  })
   performance: StudentPerformanceDto;
 }
 
@@ -204,7 +261,10 @@ export class StudentProfileResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Student profile retrieved successfully', description: 'Response message' })
+  @ApiProperty({
+    example: 'Student profile retrieved successfully',
+    description: 'Response message',
+  })
   message: string;
 
   @ApiProperty({ type: StudentProfileDto, description: 'Student profile data' })

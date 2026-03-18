@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -14,7 +19,11 @@ import { CreateLibraryUserDto, UpdateLibraryUserDto } from './dto';
 import type { LibraryDashboardQueryDto } from './dto/library-dashboard-query.dto';
 
 /** Roles that can manage/upload content (included in "library users" list for CRUD). */
-const ROLES_THAT_CAN_MANAGE_OR_UPLOAD: LibraryUserRole[] = ['admin', 'manager', 'content_creator'];
+const ROLES_THAT_CAN_MANAGE_OR_UPLOAD: LibraryUserRole[] = [
+  'admin',
+  'manager',
+  'content_creator',
+];
 
 @Injectable()
 export class LibraryUsersService {
@@ -26,13 +35,20 @@ export class LibraryUsersService {
    * Dashboard for the library of the currently logged-in user: library info, summary stats, content stats,
    * schools with access, and paginated/filterable/sortable list of library users.
    */
-  async getDashboard(platformId: string, query: LibraryDashboardQueryDto = {}): Promise<ApiResponse<any>> {
+  async getDashboard(
+    platformId: string,
+    query: LibraryDashboardQueryDto = {},
+  ): Promise<ApiResponse<any>> {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const sortBy = query.sortBy ?? 'createdAt';
     const sortOrder = query.sortOrder ?? 'desc';
 
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Dashboard for platform: ${platformId} (page=${page}, limit=${limit})`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY USERS] Dashboard for platform: ${platformId} (page=${page}, limit=${limit})`,
+      ),
+    );
 
     const baseWhere = { platformId };
     const search = query.search?.trim();
@@ -66,7 +82,13 @@ export class LibraryUsersService {
     ] = await Promise.all([
       this.prisma.libraryPlatform.findUnique({
         where: { id: platformId },
-        select: { id: true, name: true, slug: true, description: true, status: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          status: true,
+        },
       }),
       this.prisma.libraryResourceUser.count({ where }),
       this.prisma.libraryResourceUser.findMany({
@@ -119,7 +141,10 @@ export class LibraryUsersService {
         },
       }),
       this.prisma.libraryResourceAccess
-        .findMany({ where: { platformId, isActive: true }, select: { schoolId: true } })
+        .findMany({
+          where: { platformId, isActive: true },
+          select: { schoolId: true },
+        })
         .then((rows) => new Set(rows.map((r) => r.schoolId)).size),
     ]);
 
@@ -131,15 +156,19 @@ export class LibraryUsersService {
     const byRole = {
       admin: allUsersForSummary.filter((u) => u.role === 'admin').length,
       manager: allUsersForSummary.filter((u) => u.role === 'manager').length,
-      content_creator: allUsersForSummary.filter((u) => u.role === 'content_creator').length,
+      content_creator: allUsersForSummary.filter(
+        (u) => u.role === 'content_creator',
+      ).length,
       reviewer: allUsersForSummary.filter((u) => u.role === 'reviewer').length,
       viewer: allUsersForSummary.filter((u) => u.role === 'viewer').length,
     };
 
     const byStatus = {
       active: allUsersForSummary.filter((u) => u.status === 'active').length,
-      inactive: allUsersForSummary.filter((u) => u.status === 'inactive').length,
-      suspended: allUsersForSummary.filter((u) => u.status === 'suspended').length,
+      inactive: allUsersForSummary.filter((u) => u.status === 'inactive')
+        .length,
+      suspended: allUsersForSummary.filter((u) => u.status === 'suspended')
+        .length,
     };
 
     const payload = {
@@ -164,7 +193,14 @@ export class LibraryUsersService {
             assessments: contentStats._count.assessments,
             generalMaterials: contentStats._count.generalMaterials,
           }
-        : { subjects: 0, topics: 0, videos: 0, materials: 0, assessments: 0, generalMaterials: 0 },
+        : {
+            subjects: 0,
+            topics: 0,
+            videos: 0,
+            materials: 0,
+            assessments: 0,
+            generalMaterials: 0,
+          },
       schoolsWithAccess: schoolsWithAccessCount,
       users,
       meta: {
@@ -177,12 +213,18 @@ export class LibraryUsersService {
       },
     };
 
-    return new ApiResponse(true, 'Library users dashboard retrieved successfully', payload);
+    return new ApiResponse(
+      true,
+      'Library users dashboard retrieved successfully',
+      payload,
+    );
   }
 
   /** List library users under the platform who can manage/upload resources. */
   async list(platformId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Listing users for platform: ${platformId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY USERS] Listing users for platform: ${platformId}`),
+    );
 
     const users = await this.prisma.libraryResourceUser.findMany({
       where: {
@@ -221,7 +263,9 @@ export class LibraryUsersService {
 
   /** Get one library user by id with complete profile and all uploads (videos, materials, assignments, links, general materials, assessments) including topic and subject. */
   async getOne(platformId: string, userId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Getting full profile for user: ${userId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY USERS] Getting full profile for user: ${userId}`),
+    );
 
     const topicSubjectSelect = {
       id: true,
@@ -433,20 +477,32 @@ export class LibraryUsersService {
       createdAssessments,
     };
 
-    return new ApiResponse(true, 'Library user retrieved successfully', payload);
+    return new ApiResponse(
+      true,
+      'Library user retrieved successfully',
+      payload,
+    );
   }
 
   /** Fetch all available permission definitions (catalog) for library owners to assign to users. */
   async getAvailablePermissions(): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan('[LIBRARY USERS] Fetching available permissions'));
+    this.logger.log(
+      colors.cyan('[LIBRARY USERS] Fetching available permissions'),
+    );
 
     const permissions = await this.prisma.libraryPermissionDefinition.findMany({
       orderBy: { code: 'asc' },
       select: { id: true, code: true, name: true, description: true },
     });
 
-    this.logger.log(colors.green('Available permissions retrieved successfully'));
-    return new ApiResponse(true, 'Available permissions retrieved successfully', permissions);
+    this.logger.log(
+      colors.green('Available permissions retrieved successfully'),
+    );
+    return new ApiResponse(
+      true,
+      'Available permissions retrieved successfully',
+      permissions,
+    );
   }
 
   /**
@@ -464,8 +520,13 @@ export class LibraryUsersService {
    * If the platform has ≤2 users, ensure the given user has the first permission (so they can manage others).
    * Idempotent: only adds if missing.
    */
-  async ensureFirstPermissionIfSmallPlatform(platformId: string, userId: string): Promise<boolean> {
-    const userCount = await this.prisma.libraryResourceUser.count({ where: { platformId } });
+  async ensureFirstPermissionIfSmallPlatform(
+    platformId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const userCount = await this.prisma.libraryResourceUser.count({
+      where: { platformId },
+    });
     if (userCount > 2) return false;
 
     const firstCode = await this.getFirstPermissionCode();
@@ -481,7 +542,11 @@ export class LibraryUsersService {
       where: { id: userId },
       data: { permissions: [...(user.permissions ?? []), firstCode] },
     });
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Auto-granted first permission "${firstCode}" to user ${userId} (platform has ${userCount} user(s))`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY USERS] Auto-granted first permission "${firstCode}" to user ${userId} (platform has ${userCount} user(s))`,
+      ),
+    );
     return true;
   }
 
@@ -491,14 +556,18 @@ export class LibraryUsersService {
     dto: CreateLibraryUserDto,
     creatorId: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Creating user for platform: ${platformId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY USERS] Creating user for platform: ${platformId}`),
+    );
 
     const emailLower = dto.email.toLowerCase();
     const existing = await this.prisma.libraryResourceUser.findUnique({
       where: { email: emailLower },
     });
     if (existing) {
-      throw new BadRequestException('A library user with this email already exists');
+      throw new BadRequestException(
+        'A library user with this email already exists',
+      );
     }
 
     const plainPassword =
@@ -540,7 +609,10 @@ export class LibraryUsersService {
     });
 
     // If this library has only 1–2 users, auto-attach first permission so they can manage others
-    const didAttach = await this.ensureFirstPermissionIfSmallPlatform(platformId, user.id);
+    const didAttach = await this.ensureFirstPermissionIfSmallPlatform(
+      platformId,
+      user.id,
+    );
     if (didAttach) {
       const refreshed = await this.prisma.libraryResourceUser.findUnique({
         where: { id: user.id },
@@ -600,7 +672,11 @@ export class LibraryUsersService {
   }
 
   /** Update a library user (must belong to same platform). */
-  async update(platformId: string, userId: string, dto: UpdateLibraryUserDto): Promise<ApiResponse<any>> {
+  async update(
+    platformId: string,
+    userId: string,
+    dto: UpdateLibraryUserDto,
+  ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[LIBRARY USERS] Updating user: ${userId}`));
 
     const existing = await this.prisma.libraryResourceUser.findFirst({
@@ -616,7 +692,9 @@ export class LibraryUsersService {
         where: { email: emailLower, id: { not: userId } },
       });
       if (duplicate) {
-        throw new BadRequestException('A library user with this email already exists');
+        throw new BadRequestException(
+          'A library user with this email already exists',
+        );
       }
     }
 
@@ -628,7 +706,9 @@ export class LibraryUsersService {
       ...(dto.role !== undefined && { role: dto.role as any }),
       ...(dto.userType !== undefined && { userType: dto.userType as any }),
       ...(dto.permissions !== undefined && { permissions: dto.permissions }),
-      ...(dto.permissionLevel !== undefined && { permissionLevel: dto.permissionLevel }),
+      ...(dto.permissionLevel !== undefined && {
+        permissionLevel: dto.permissionLevel,
+      }),
     };
     if (dto.password !== undefined && dto.password.length >= 8) {
       updateData.password = await argon.hash(dto.password);
@@ -709,7 +789,11 @@ export class LibraryUsersService {
     userId: string,
     permissionCode: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Adding permission "${permissionCode}" to user: ${userId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY USERS] Adding permission "${permissionCode}" to user: ${userId}`,
+      ),
+    );
 
     const existing = await this.prisma.libraryResourceUser.findFirst({
       where: { id: userId, platformId },
@@ -719,16 +803,22 @@ export class LibraryUsersService {
       throw new NotFoundException('Library user not found');
     }
 
-    const definition = await this.prisma.libraryPermissionDefinition.findUnique({
-      where: { code: permissionCode },
-    });
+    const definition = await this.prisma.libraryPermissionDefinition.findUnique(
+      {
+        where: { code: permissionCode },
+      },
+    );
     if (!definition) {
-      throw new BadRequestException(`Permission "${permissionCode}" is not defined in the catalog`);
+      throw new BadRequestException(
+        `Permission "${permissionCode}" is not defined in the catalog`,
+      );
     }
 
     const current = existing.permissions ?? [];
     if (current.includes(permissionCode)) {
-      throw new BadRequestException(`User already has permission "${permissionCode}"`);
+      throw new BadRequestException(
+        `User already has permission "${permissionCode}"`,
+      );
     }
 
     const updated = await this.prisma.libraryResourceUser.update({
@@ -771,8 +861,14 @@ export class LibraryUsersService {
       );
     }
 
-    this.logger.log(colors.green(`Permission "${permissionCode}" added successfully`));
-    return new ApiResponse(true, `Permission "${permissionCode}" added successfully`, updated);
+    this.logger.log(
+      colors.green(`Permission "${permissionCode}" added successfully`),
+    );
+    return new ApiResponse(
+      true,
+      `Permission "${permissionCode}" added successfully`,
+      updated,
+    );
   }
 
   /** Remove a single permission code from a library user's permissions array (elevated only). */
@@ -781,7 +877,11 @@ export class LibraryUsersService {
     userId: string,
     permissionCode: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Removing permission "${permissionCode}" from user: ${userId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY USERS] Removing permission "${permissionCode}" from user: ${userId}`,
+      ),
+    );
 
     const existing = await this.prisma.libraryResourceUser.findFirst({
       where: { id: userId, platformId },
@@ -793,7 +893,9 @@ export class LibraryUsersService {
 
     const current = existing.permissions ?? [];
     if (!current.includes(permissionCode)) {
-      throw new BadRequestException(`User does not have permission "${permissionCode}"`);
+      throw new BadRequestException(
+        `User does not have permission "${permissionCode}"`,
+      );
     }
 
     const newPermissions = current.filter((p) => p !== permissionCode);
@@ -838,8 +940,14 @@ export class LibraryUsersService {
       );
     }
 
-    this.logger.log(colors.green(`Permission "${permissionCode}" removed successfully`));
-    return new ApiResponse(true, `Permission "${permissionCode}" removed successfully`, updated);
+    this.logger.log(
+      colors.green(`Permission "${permissionCode}" removed successfully`),
+    );
+    return new ApiResponse(
+      true,
+      `Permission "${permissionCode}" removed successfully`,
+      updated,
+    );
   }
 
   /** Delete (or deactivate) a library user. Prefer soft delete if you have status; here we hard delete for simplicity. */
@@ -863,7 +971,11 @@ export class LibraryUsersService {
 
   /** Upload analytics: who uploaded what, how many uploaders, counts by type. For library owners. */
   async getUploadAnalytics(platformId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY USERS] Upload analytics for platform: ${platformId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY USERS] Upload analytics for platform: ${platformId}`,
+      ),
+    );
 
     const usersWithUploads = await this.prisma.libraryResourceUser.findMany({
       where: { platformId, status: 'active' },
@@ -898,22 +1010,46 @@ export class LibraryUsersService {
 
     const byType = {
       videos: usersWithUploads.reduce((s, u) => s + u._count.uploadedVideos, 0),
-      materials: usersWithUploads.reduce((s, u) => s + u._count.uploadedMaterials, 0),
-      assignments: usersWithUploads.reduce((s, u) => s + u._count.uploadedAssignments, 0),
+      materials: usersWithUploads.reduce(
+        (s, u) => s + u._count.uploadedMaterials,
+        0,
+      ),
+      assignments: usersWithUploads.reduce(
+        (s, u) => s + u._count.uploadedAssignments,
+        0,
+      ),
       links: usersWithUploads.reduce((s, u) => s + u._count.uploadedLinks, 0),
-      generalMaterials: usersWithUploads.reduce((s, u) => s + u._count.uploadedGeneralMaterials, 0),
-      assessments: usersWithUploads.reduce((s, u) => s + u._count.createdAssessments, 0),
+      generalMaterials: usersWithUploads.reduce(
+        (s, u) => s + u._count.uploadedGeneralMaterials,
+        0,
+      ),
+      assessments: usersWithUploads.reduce(
+        (s, u) => s + u._count.createdAssessments,
+        0,
+      ),
     };
 
     const uploadsDetail: Array<{
       resourceType: string;
       resourceId: string;
       title?: string;
-      uploadedBy: { id: string; email: string; first_name: string; last_name: string };
+      uploadedBy: {
+        id: string;
+        email: string;
+        first_name: string;
+        last_name: string;
+      };
       createdAt: string;
     }> = [];
 
-    const [videos, materials, assignments, links, generalMaterials, assessments] = await Promise.all([
+    const [
+      videos,
+      materials,
+      assignments,
+      links,
+      generalMaterials,
+      assessments,
+    ] = await Promise.all([
       this.prisma.libraryVideoLesson.findMany({
         where: { topic: { subject: { platformId } } },
         select: { id: true, title: true, uploadedById: true, createdAt: true },
@@ -955,7 +1091,12 @@ export class LibraryUsersService {
     const uploaderMap = new Map(
       usersWithUploads.map((u) => [
         u.id,
-        { id: u.id, email: u.email, first_name: u.first_name, last_name: u.last_name },
+        {
+          id: u.id,
+          email: u.email,
+          first_name: u.first_name,
+          last_name: u.last_name,
+        },
       ]),
     );
 
@@ -1044,7 +1185,10 @@ export class LibraryUsersService {
       });
     });
 
-    uploadsDetail.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    uploadsDetail.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
     const payload = {
       uploadersCount,
@@ -1060,6 +1204,10 @@ export class LibraryUsersService {
       recentUploads: uploadsDetail.slice(0, 50),
     };
 
-    return new ApiResponse(true, 'Upload analytics retrieved successfully', payload);
+    return new ApiResponse(
+      true,
+      'Upload analytics retrieved successfully',
+      payload,
+    );
   }
 }

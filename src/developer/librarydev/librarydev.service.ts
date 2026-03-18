@@ -1,8 +1,17 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
-import { AddLibraryOwnerDto, CreateLibraryDevDto, UpdateLibraryDevDto } from './dto/librarydev.dto';
+import {
+  AddLibraryOwnerDto,
+  CreateLibraryDevDto,
+  UpdateLibraryDevDto,
+} from './dto/librarydev.dto';
 import * as argon from 'argon2';
 
 @Injectable()
@@ -14,11 +23,17 @@ export class LibraryDevService {
   // ===== Library CRUD (developer-only) =====
 
   async createLibrary(payload: CreateLibraryDevDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Onboarding new library: ${JSON.stringify(payload)}`));
+    this.logger.log(
+      colors.cyan(`[DEV] Onboarding new library: ${JSON.stringify(payload)}`),
+    );
 
     if (!payload.name || !payload.slug || !payload.email || !payload.password) {
-      this.logger.error(colors.red('name, slug, email and password are required'));
-      throw new BadRequestException('name, slug, email and password are required');
+      this.logger.error(
+        colors.red('name, slug, email and password are required'),
+      );
+      throw new BadRequestException(
+        'name, slug, email and password are required',
+      );
     }
 
     const existing = await this.prisma.libraryPlatform.findFirst({
@@ -28,8 +43,12 @@ export class LibraryDevService {
     });
 
     if (existing) {
-      this.logger.error(colors.red('A library with this name or slug already exists'));
-      throw new BadRequestException('A library with this name or slug already exists');
+      this.logger.error(
+        colors.red('A library with this name or slug already exists'),
+      );
+      throw new BadRequestException(
+        'A library with this name or slug already exists',
+      );
     }
 
     const emailLower = payload.email.toLowerCase();
@@ -67,8 +86,14 @@ export class LibraryDevService {
     return new ApiResponse(true, 'Library onboarded successfully', result);
   }
 
-  async addLibraryOwner(payload: AddLibraryOwnerDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Adding library owner to platform: ${payload.libraryId}`));
+  async addLibraryOwner(
+    payload: AddLibraryOwnerDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[DEV] Adding library owner to platform: ${payload.libraryId}`,
+      ),
+    );
 
     const emailLower = payload.email.toLowerCase();
     await this.ensureEmailIsUnique(emailLower);
@@ -106,20 +131,35 @@ export class LibraryDevService {
   }
 
   private async ensureEmailIsUnique(emailLower: string): Promise<void> {
-    const [existingUser, existingTeacher, existingDeveloper, existingLibraryUser] = await this.prisma.$transaction([
+    const [
+      existingUser,
+      existingTeacher,
+      existingDeveloper,
+      existingLibraryUser,
+    ] = await this.prisma.$transaction([
       this.prisma.user.findUnique({ where: { email: emailLower } }),
       this.prisma.teacher.findFirst({ where: { email: emailLower } }),
       this.prisma.developer.findUnique({ where: { email: emailLower } }),
-      this.prisma.libraryResourceUser.findUnique({ where: { email: emailLower } }),
+      this.prisma.libraryResourceUser.findUnique({
+        where: { email: emailLower },
+      }),
     ]);
 
-    if (existingUser || existingTeacher || existingDeveloper || existingLibraryUser) {
+    if (
+      existingUser ||
+      existingTeacher ||
+      existingDeveloper ||
+      existingLibraryUser
+    ) {
       this.logger.error(colors.red('Email is already in use on the platform'));
       throw new BadRequestException('Email is already in use on the platform');
     }
   }
 
-  async updateLibrary(id: string, payload: UpdateLibraryDevDto): Promise<ApiResponse<any>> {
+  async updateLibrary(
+    id: string,
+    payload: UpdateLibraryDevDto,
+  ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[DEV] Updating library: ${id}`));
 
     const existing = await this.prisma.libraryPlatform.findUnique({
@@ -152,7 +192,11 @@ export class LibraryDevService {
 
     this.logger.log(colors.green('Library updated successfully'));
 
-    return new ApiResponse(true, 'Library updated successfully', updatedLibrary);
+    return new ApiResponse(
+      true,
+      'Library updated successfully',
+      updatedLibrary,
+    );
   }
 
   async deleteLibrary(id: string): Promise<ApiResponse<null>> {
@@ -204,5 +248,3 @@ export class LibraryDevService {
     return new ApiResponse(true, 'Library retrieved successfully', library);
   }
 }
-
-

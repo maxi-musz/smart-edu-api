@@ -162,7 +162,10 @@ export interface UnauthorizedError extends ErrorResponse {
 }
 
 export interface NotFoundError extends ErrorResponse {
-  message: 'User not found' | 'Student record not found' | 'Student class not found';
+  message:
+    | 'User not found'
+    | 'Student record not found'
+    | 'Student class not found';
   statusCode: 404;
 }
 

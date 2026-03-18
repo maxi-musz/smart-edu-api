@@ -6,7 +6,7 @@ export class UpdateNotificationDto {
   @ApiProperty({
     description: 'Notification title',
     example: 'Updated Student Enrollment',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsString()
@@ -15,7 +15,7 @@ export class UpdateNotificationDto {
   @ApiProperty({
     description: 'Notification description',
     example: 'An updated notification about student enrollment',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsString()
@@ -25,7 +25,7 @@ export class UpdateNotificationDto {
     description: 'Notification type',
     enum: NotificationType,
     example: 'school_director',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsEnum(NotificationType)
@@ -34,7 +34,7 @@ export class UpdateNotificationDto {
   @ApiProperty({
     description: 'When the notification is coming up',
     example: '2024-09-15T10:00:00Z',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsDateString()

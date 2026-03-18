@@ -6,7 +6,10 @@ export class DirectorAssessmentsService {
   private readonly logger = new Logger(DirectorAssessmentsService.name);
 
   constructor() {
-    this.logger.log(colors.cyan('DirectorAssessmentsService initialized (no logic implemented yet).'));
+    this.logger.log(
+      colors.cyan(
+        'DirectorAssessmentsService initialized (no logic implemented yet).',
+      ),
+    );
   }
 }
-

@@ -1,7 +1,22 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExamBodyAssessmentService } from './exam-body-assessment.service';
-import { CreateExamBodyAssessmentDto, CreateExamBodyQuestionDto, UpdateExamBodyAssessmentDto } from './dto';
+import {
+  CreateExamBodyAssessmentDto,
+  CreateExamBodyQuestionDto,
+  UpdateExamBodyAssessmentDto,
+} from './dto';
 
 @ApiTags('Developer - Exam Body Assessments')
 @ApiBearerAuth()
@@ -17,7 +32,12 @@ export class ExamBodyAssessmentController {
     @Query('yearId') yearId: string,
     @Body() createDto: CreateExamBodyAssessmentDto,
   ) {
-    return this.service.createAssessment(examBodyId, subjectId, yearId, createDto);
+    return this.service.createAssessment(
+      examBodyId,
+      subjectId,
+      yearId,
+      createDto,
+    );
   }
 
   @Get()
@@ -35,7 +55,10 @@ export class ExamBodyAssessmentController {
   }
 
   @Patch(':id')
-  updateAssessment(@Param('id') id: string, @Body() updateDto: UpdateExamBodyAssessmentDto) {
+  updateAssessment(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateExamBodyAssessmentDto,
+  ) {
     return this.service.updateAssessment(id, updateDto);
   }
 
@@ -46,7 +69,10 @@ export class ExamBodyAssessmentController {
 
   @Post(':id/questions')
   @HttpCode(HttpStatus.CREATED)
-  createQuestion(@Param('id') assessmentId: string, @Body() createDto: CreateExamBodyQuestionDto) {
+  createQuestion(
+    @Param('id') assessmentId: string,
+    @Body() createDto: CreateExamBodyQuestionDto,
+  ) {
     return this.service.createQuestion(assessmentId, createDto);
   }
 
@@ -70,4 +96,3 @@ export class ExamBodyAssessmentController {
     return this.service.unpublishAssessment(id);
   }
 }
-

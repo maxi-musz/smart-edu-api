@@ -1,2 +1,2 @@
 // Export auth documentation
-export * from './auth.docs'; 
+export * from './auth.docs';

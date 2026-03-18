@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsInt, Min, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  MaxLength,
+  IsInt,
+  Min,
+  IsBoolean,
+} from 'class-validator';
 
 export class CreateGeneralMaterialChapterDto {
   @ApiProperty({
@@ -21,7 +29,8 @@ export class CreateGeneralMaterialChapterDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Starting page number of this chapter in the full material (optional)',
+    description:
+      'Starting page number of this chapter in the full material (optional)',
     example: 1,
   })
   @IsInt()
@@ -30,7 +39,8 @@ export class CreateGeneralMaterialChapterDto {
   pageStart?: number;
 
   @ApiPropertyOptional({
-    description: 'Ending page number of this chapter in the full material (optional)',
+    description:
+      'Ending page number of this chapter in the full material (optional)',
     example: 20,
   })
   @IsInt()
@@ -39,7 +49,8 @@ export class CreateGeneralMaterialChapterDto {
   pageEnd?: number;
 
   @ApiPropertyOptional({
-    description: 'Whether AI chat is enabled for this chapter. Note: The parent material must also have isAiEnabled=true for this to take effect.',
+    description:
+      'Whether AI chat is enabled for this chapter. Note: The parent material must also have isAiEnabled=true for this to take effect.',
     example: false,
     default: false,
   })

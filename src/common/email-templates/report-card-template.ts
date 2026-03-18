@@ -120,7 +120,9 @@ function toTitleCase(s: string | null | undefined): string {
  * Builds the report card PDF buffer from template data.
  * Professional layout: top accent bar, school header, banner, 12-row subject table with borders, summary box.
  */
-export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer> {
+export function buildReportCardPdf(
+  data: ReportCardTemplateData,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -160,7 +162,10 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
     const termLabelStr = termLabel(session.term);
 
     let cursorY = 28;
-    const logoSize = { w: REPORT_CARD_DESIGN.logoMaxWidth, h: REPORT_CARD_DESIGN.logoMaxHeight };
+    const logoSize = {
+      w: REPORT_CARD_DESIGN.logoMaxWidth,
+      h: REPORT_CARD_DESIGN.logoMaxHeight,
+    };
     const logoX = left;
     const logoY = cursorY;
 
@@ -168,7 +173,10 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
     doc.rect(0, 0, doc.page.width, 6).fill(brandPrimaryDark);
 
     // ----- School logo or placeholder -----
-    const hasLogo = school.school_logo && Buffer.isBuffer(school.school_logo) && school.school_logo.length > 0;
+    const hasLogo =
+      school.school_logo &&
+      Buffer.isBuffer(school.school_logo) &&
+      school.school_logo.length > 0;
     doc.rect(logoX, logoY, logoSize.w, logoSize.h).stroke(tableBorder);
     if (hasLogo) {
       try {
@@ -182,20 +190,30 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
           .fontSize(REPORT_CARD_DESIGN.logoPlaceholderFontSize)
           .font('Helvetica')
           .fillColor(brandMuted)
-          .text(REPORT_CARD_DESIGN.logoPlaceholderText, logoX, logoY + logoSize.h / 2 - 4, {
-            width: logoSize.w,
-            align: 'center',
-          });
+          .text(
+            REPORT_CARD_DESIGN.logoPlaceholderText,
+            logoX,
+            logoY + logoSize.h / 2 - 4,
+            {
+              width: logoSize.w,
+              align: 'center',
+            },
+          );
       }
     } else {
       doc
         .fontSize(REPORT_CARD_DESIGN.logoPlaceholderFontSize)
         .font('Helvetica')
         .fillColor(brandMuted)
-        .text(REPORT_CARD_DESIGN.logoPlaceholderText, logoX, logoY + logoSize.h / 2 - 4, {
-          width: logoSize.w,
-          align: 'center',
-        });
+        .text(
+          REPORT_CARD_DESIGN.logoPlaceholderText,
+          logoX,
+          logoY + logoSize.h / 2 - 4,
+          {
+            width: logoSize.w,
+            align: 'center',
+          },
+        );
     }
 
     // ----- Header: school name and contact centered on full page (logo stays left, does not shift center) -----
@@ -203,50 +221,86 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
       .fontSize(REPORT_CARD_DESIGN.schoolNameFontSize)
       .fillColor(brandPrimary)
       .font('Helvetica-Bold')
-      .text(toTitleCase(school.school_name) || school.school_name, left, cursorY, { width, align: 'center' });
+      .text(
+        toTitleCase(school.school_name) || school.school_name,
+        left,
+        cursorY,
+        { width, align: 'center' },
+      );
     cursorY += 26;
-    doc.fontSize(REPORT_CARD_DESIGN.bodyFontSize).font('Helvetica').fillColor(brandMuted);
+    doc
+      .fontSize(REPORT_CARD_DESIGN.bodyFontSize)
+      .font('Helvetica')
+      .fillColor(brandMuted);
     if (school.school_address) {
-      doc.text(`Address: ${school.school_address}`, left, cursorY, { width, align: 'center' });
+      doc.text(`Address: ${school.school_address}`, left, cursorY, {
+        width,
+        align: 'center',
+      });
       cursorY += 14;
     }
     if (school.school_phone) {
-      doc.text(`Tel: ${school.school_phone}`, left, cursorY, { width, align: 'center' });
+      doc.text(`Tel: ${school.school_phone}`, left, cursorY, {
+        width,
+        align: 'center',
+      });
       cursorY += 14;
     }
     if (school.school_email) {
-      doc.text(`Email: ${school.school_email}`, left, cursorY, { width, align: 'center' });
+      doc.text(`Email: ${school.school_email}`, left, cursorY, {
+        width,
+        align: 'center',
+      });
       cursorY += 14;
     }
     cursorY = Math.max(cursorY + 8, logoY + logoSize.h + 10);
 
     // ----- Banner: STUDENT REPORT CARD -----
     const bannerY = cursorY;
-    doc.rect(left, bannerY, width, REPORT_CARD_DESIGN.bannerHeight).fill(brandPrimary);
-    doc.rect(left, bannerY, width, REPORT_CARD_DESIGN.bannerHeight).stroke(brandPrimaryDark);
+    doc
+      .rect(left, bannerY, width, REPORT_CARD_DESIGN.bannerHeight)
+      .fill(brandPrimary);
+    doc
+      .rect(left, bannerY, width, REPORT_CARD_DESIGN.bannerHeight)
+      .stroke(brandPrimaryDark);
     doc
       .fontSize(REPORT_CARD_DESIGN.bannerTitleFontSize)
       .fillColor(tableHeaderColor)
       .font('Helvetica-Bold')
-      .text('STUDENT REPORT CARD', left, bannerY + 10, { width, align: 'center' });
+      .text('STUDENT REPORT CARD', left, bannerY + 10, {
+        width,
+        align: 'center',
+      });
     cursorY = bannerY + REPORT_CARD_DESIGN.bannerHeight + 22;
 
     // ----- Academic details (two-column layout) -----
-    doc.fontSize(REPORT_CARD_DESIGN.bodyFontSize).font('Helvetica').fillColor(brandHeading);
+    doc
+      .fontSize(REPORT_CARD_DESIGN.bodyFontSize)
+      .font('Helvetica')
+      .fillColor(brandHeading);
     const infoLineH = 20;
     doc.text(`Session: ${sessionLabel}`, left, cursorY);
     doc.text(`Term: ${termLabelStr}`, right - 160, cursorY);
     cursorY += infoLineH;
     doc.text(`Class: ${className}`, left, cursorY);
-    doc.text(`Total Students in Class: ${data.total_students ?? '—'}`, right - 200, cursorY);
+    doc.text(
+      `Total Students in Class: ${data.total_students ?? '—'}`,
+      right - 200,
+      cursorY,
+    );
     cursorY += infoLineH;
-    const posText = data.class_position != null ? `${data.class_position}${getOrdinal(data.class_position)}` : '—';
+    const posText =
+      data.class_position != null
+        ? `${data.class_position}${getOrdinal(data.class_position)}`
+        : '—';
     doc.text(`Position in Class: ${posText}`, left, cursorY);
     cursorY += 28;
 
     // ----- Subject results table: fixed 12 rows with full border -----
     const tableTop = cursorY;
-    const subjects = Array.isArray(data.subject_results) ? data.subject_results : [];
+    const subjects = Array.isArray(data.subject_results)
+      ? data.subject_results
+      : [];
     const colWidths = {
       sn: 32,
       subject: width - 32 - 48 - 48 - 72 - 44 - 44,
@@ -287,9 +341,19 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
 
     // Vertical lines between columns (header + data area)
     let colX = startX;
-    [colWidths.sn, colWidths.subject, colWidths.ca1, colWidths.ca2, colWidths.overall, colWidths.pct].forEach((w) => {
+    [
+      colWidths.sn,
+      colWidths.subject,
+      colWidths.ca1,
+      colWidths.ca2,
+      colWidths.overall,
+      colWidths.pct,
+    ].forEach((w) => {
       colX += w;
-      doc.moveTo(colX, tableTop).lineTo(colX, tableTop + tableTotalHeight).stroke(tableBorder);
+      doc
+        .moveTo(colX, tableTop)
+        .lineTo(colX, tableTop + tableTotalHeight)
+        .stroke(tableBorder);
     });
 
     // Data rows: always 12 rows (fill with subject data, then empty rows)
@@ -303,14 +367,20 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
       const row = subjects[i];
       const isFilled = row != null;
       const sn = isFilled ? String(i + 1) : '—';
-      const name = isFilled ? ((toTitleCase(row.subject_name) || row.subject_name) ?? '—') : '—';
+      const name = isFilled
+        ? ((toTitleCase(row.subject_name) || row.subject_name) ?? '—')
+        : '—';
       const ca1 = isFilled ? (row.ca1 ?? row.ca_score ?? '—') : '—';
       const ca2 = isFilled ? (row.ca2 ?? row.exam_score ?? '—') : '—';
       const total = isFilled ? (row.total_score ?? 0) : '—';
       const pct = isFilled
-        ? (row.percentage ?? (row.total_max_score ? ((row.total_score ?? 0) / row.total_max_score) * 100 : 0))
+        ? (row.percentage ??
+          (row.total_max_score
+            ? ((row.total_score ?? 0) / row.total_max_score) * 100
+            : 0))
         : '—';
-      const pctStr = typeof pct === 'number' ? `${Number(pct).toFixed(0)}%` : '—';
+      const pctStr =
+        typeof pct === 'number' ? `${Number(pct).toFixed(0)}%` : '—';
       const grade = isFilled ? (row.grade ?? '—') : '—';
 
       doc.fillColor(brandHeading);
@@ -337,20 +407,37 @@ export function buildReportCardPdf(data: ReportCardTemplateData): Promise<Buffer
     const summaryBoxH = 52;
     const summaryBoxW = 220;
     const summaryLeft = left;
-    doc.rect(summaryLeft, cursorY, summaryBoxW, summaryBoxH).fill(summaryBg).stroke(summaryBorder);
-    doc.font('Helvetica-Bold').fontSize(REPORT_CARD_DESIGN.summaryFontSize).fillColor(brandHeading);
-    doc.text(`Total Marks: ${data.total_score ?? 0}`, summaryLeft + 14, cursorY + 12);
+    doc
+      .rect(summaryLeft, cursorY, summaryBoxW, summaryBoxH)
+      .fill(summaryBg)
+      .stroke(summaryBorder);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(REPORT_CARD_DESIGN.summaryFontSize)
+      .fillColor(brandHeading);
+    doc.text(
+      `Total Marks: ${data.total_score ?? 0}`,
+      summaryLeft + 14,
+      cursorY + 12,
+    );
     doc.text(
       `Average: ${data.overall_percentage != null ? data.overall_percentage.toFixed(1) : '0'}%`,
       summaryLeft + 14,
       cursorY + 28,
     );
-    doc.text(`Final Grade: ${data.overall_grade ?? '—'}`, summaryLeft + 14, cursorY + 44);
+    doc.text(
+      `Final Grade: ${data.overall_grade ?? '—'}`,
+      summaryLeft + 14,
+      cursorY + 44,
+    );
 
     // ----- Watermark: diagonal lower-left to upper-right (drawn on top so it is visible) -----
     doc.save();
     doc.opacity(REPORT_CARD_DESIGN.watermarkOpacity);
-    doc.fontSize(REPORT_CARD_DESIGN.watermarkFontSize).font('Helvetica').fillColor(brandMuted);
+    doc
+      .fontSize(REPORT_CARD_DESIGN.watermarkFontSize)
+      .font('Helvetica')
+      .fillColor(brandMuted);
     doc.translate(pageWidth / 2, pageHeight / 2);
     doc.rotate(45, { origin: [0, 0] });
     doc.text(REPORT_CARD_WATERMARK, -pageWidth / 2, -10, {

@@ -8,7 +8,13 @@ interface UploadSession {
   schoolId: string;
   totalBytes: number;
   bytesUploaded: number;
-  stage: 'validating' | 'uploading' | 'processing' | 'saving' | 'completed' | 'error';
+  stage:
+    | 'validating'
+    | 'uploading'
+    | 'processing'
+    | 'saving'
+    | 'completed'
+    | 'error';
   startTime: Date;
   materialId?: string;
   error?: string;
@@ -18,14 +24,21 @@ interface UploadSession {
 export class UploadProgressService {
   private readonly logger = new Logger(UploadProgressService.name);
   private uploadSessions = new Map<string, UploadSession>();
-  private progressSubscribers = new Map<string, Set<(progress: UploadProgressDto) => void>>();
+  private progressSubscribers = new Map<
+    string,
+    Set<(progress: UploadProgressDto) => void>
+  >();
 
   /**
    * Create a new upload session
    */
-  createUploadSession(userId: string, schoolId: string, totalBytes: number): string {
+  createUploadSession(
+    userId: string,
+    schoolId: string,
+    totalBytes: number,
+  ): string {
     const sessionId = `upload_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const session: UploadSession = {
       sessionId,
       userId,
@@ -38,7 +51,7 @@ export class UploadProgressService {
 
     this.uploadSessions.set(sessionId, session);
     this.progressSubscribers.set(sessionId, new Set());
-    
+
     this.logger.log(colors.cyan(`📊 Created upload session: ${sessionId}`));
     return sessionId;
   }
@@ -47,16 +60,18 @@ export class UploadProgressService {
    * Update upload progress
    */
   updateProgress(
-    sessionId: string, 
-    stage: UploadSession['stage'], 
-    bytesUploaded?: number, 
+    sessionId: string,
+    stage: UploadSession['stage'],
+    bytesUploaded?: number,
     message?: string,
     error?: string,
-    materialId?: string
+    materialId?: string,
   ): void {
     const session = this.uploadSessions.get(sessionId);
     if (!session) {
-      this.logger.error(colors.red(`❌ Upload session not found: ${sessionId}`));
+      this.logger.error(
+        colors.red(`❌ Upload session not found: ${sessionId}`),
+      );
       return;
     }
 
@@ -73,13 +88,19 @@ export class UploadProgressService {
     }
 
     // Calculate progress percentage
-    const progress = Math.min(100, Math.round((session.bytesUploaded / session.totalBytes) * 100));
-    
+    const progress = Math.min(
+      100,
+      Math.round((session.bytesUploaded / session.totalBytes) * 100),
+    );
+
     // Calculate estimated time remaining
     const elapsedTime = Date.now() - session.startTime.getTime();
     const bytesPerSecond = session.bytesUploaded / (elapsedTime / 1000);
     const remainingBytes = session.totalBytes - session.bytesUploaded;
-    const estimatedTimeRemaining = bytesPerSecond > 0 ? Math.round(remainingBytes / bytesPerSecond) : undefined;
+    const estimatedTimeRemaining =
+      bytesPerSecond > 0
+        ? Math.round(remainingBytes / bytesPerSecond)
+        : undefined;
 
     // Create progress DTO
     const progressDto: UploadProgressDto = {
@@ -101,14 +122,19 @@ export class UploadProgressService {
   /**
    * Subscribe to progress updates
    */
-  subscribeToProgress(sessionId: string, callback: (progress: UploadProgressDto) => void): () => void {
-    this.logger.log(colors.yellow(`📡 Subscribing to progress for session: ${sessionId}`));
+  subscribeToProgress(
+    sessionId: string,
+    callback: (progress: UploadProgressDto) => void,
+  ): () => void {
+    this.logger.log(
+      colors.yellow(`📡 Subscribing to progress for session: ${sessionId}`),
+    );
     if (!this.progressSubscribers.has(sessionId)) {
       this.progressSubscribers.set(sessionId, new Set());
     }
-    
+
     this.progressSubscribers.get(sessionId)!.add(callback);
-    
+
     // Return unsubscribe function
     return () => {
       const subscribers = this.progressSubscribers.get(sessionId);
@@ -130,8 +156,11 @@ export class UploadProgressService {
       return null;
     }
 
-    const progress = Math.min(100, Math.round((session.bytesUploaded / session.totalBytes) * 100));
-    
+    const progress = Math.min(
+      100,
+      Math.round((session.bytesUploaded / session.totalBytes) * 100),
+    );
+
     return {
       sessionId,
       progress,
@@ -156,7 +185,9 @@ export class UploadProgressService {
         if (now - session.startTime.getTime() > maxAge) {
           this.uploadSessions.delete(sessionId);
           this.progressSubscribers.delete(sessionId);
-          this.logger.log(colors.yellow(`🧹 Cleaned up old session: ${sessionId}`));
+          this.logger.log(
+            colors.yellow(`🧹 Cleaned up old session: ${sessionId}`),
+          );
         }
       }
     }
@@ -165,14 +196,19 @@ export class UploadProgressService {
   /**
    * Notify all subscribers of a session
    */
-  private notifySubscribers(sessionId: string, progress: UploadProgressDto): void {
+  private notifySubscribers(
+    sessionId: string,
+    progress: UploadProgressDto,
+  ): void {
     const subscribers = this.progressSubscribers.get(sessionId);
     if (subscribers) {
-      subscribers.forEach(callback => {
+      subscribers.forEach((callback) => {
         try {
           callback(progress);
         } catch (error) {
-          this.logger.error(colors.red(`❌ Error notifying subscriber: ${error.message}`));
+          this.logger.error(
+            colors.red(`❌ Error notifying subscriber: ${error.message}`),
+          );
         }
       });
     }

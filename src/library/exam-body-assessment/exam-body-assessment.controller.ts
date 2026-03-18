@@ -1,6 +1,26 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpCode, HttpStatus, UseGuards, Request, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  Request,
+  UploadedFile,
+  UploadedFiles,
+  UseInterceptors,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
-import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  FileInterceptor,
+  FileFieldsInterceptor,
+} from '@nestjs/platform-express';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { LibraryOwnerGuard } from '../library-auth/guard/library-owner.guard';
 import { LibraryExamBodyAssessmentService } from './exam-body-assessment.service';
@@ -52,7 +72,13 @@ export class LibraryExamBodyAssessmentController {
     @Query('yearId') yearId: string,
     @Body() createDto: CreateLibraryExamBodyAssessmentDto,
   ) {
-    return this.service.createAssessment(req.user, examBodyId, subjectId, yearId, createDto);
+    return this.service.createAssessment(
+      req.user,
+      examBodyId,
+      subjectId,
+      yearId,
+      createDto,
+    );
   }
 
   // List all assessments for an exam body (optionally filtered by subjectId/yearId)
@@ -70,7 +96,12 @@ export class LibraryExamBodyAssessmentController {
     @Query('subjectId') subjectId?: string,
     @Query('yearId') yearId?: string,
   ) {
-    return this.service.findAllAssessments(req.user, examBodyId, subjectId, yearId);
+    return this.service.findAllAssessments(
+      req.user,
+      examBodyId,
+      subjectId,
+      yearId,
+    );
   }
 
   // Get a single assessment by ID with all details
@@ -107,7 +138,13 @@ export class LibraryExamBodyAssessmentController {
   ) {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 20;
-    return this.service.getAttemptsForAssessment(req.user, examBodyId, assessmentId, pageNum, limitNum);
+    return this.service.getAttemptsForAssessment(
+      req.user,
+      examBodyId,
+      assessmentId,
+      pageNum,
+      limitNum,
+    );
   }
 
   // Get a single attempt with responses (view a specific submission)
@@ -125,7 +162,12 @@ export class LibraryExamBodyAssessmentController {
     @Param('id') assessmentId: string,
     @Param('attemptId') attemptId: string,
   ) {
-    return this.service.getAttemptById(req.user, examBodyId, assessmentId, attemptId);
+    return this.service.getAttemptById(
+      req.user,
+      examBodyId,
+      assessmentId,
+      attemptId,
+    );
   }
 
   // Update assessment metadata (title, description, maxAttempts, etc.)
@@ -172,7 +214,12 @@ export class LibraryExamBodyAssessmentController {
     @Param('id') assessmentId: string,
     @Body() createDto: CreateLibraryExamBodyQuestionDto,
   ) {
-    return this.service.createQuestion(req.user, examBodyId, assessmentId, createDto);
+    return this.service.createQuestion(
+      req.user,
+      examBodyId,
+      assessmentId,
+      createDto,
+    );
   }
 
   // Create a question with image upload (multipart/form-data with image file)
@@ -268,7 +315,14 @@ export class LibraryExamBodyAssessmentController {
       updateDto = body as UpdateLibraryExamBodyQuestionDto;
     }
 
-    return this.service.updateQuestion(req.user, examBodyId, questionId, updateDto, imageFile, optionImageFiles);
+    return this.service.updateQuestion(
+      req.user,
+      examBodyId,
+      questionId,
+      updateDto,
+      imageFile,
+      optionImageFiles,
+    );
   }
 
   // Delete only the image from a question (keeps the question, removes image from S3)

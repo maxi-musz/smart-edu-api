@@ -1,8 +1,16 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
-import { CreatePermissionDefinitionDto, UpdatePermissionDefinitionDto } from './dto';
+import {
+  CreatePermissionDefinitionDto,
+  UpdatePermissionDefinitionDto,
+} from './dto';
 
 @Injectable()
 export class LibraryPermissionsService {
@@ -10,14 +18,20 @@ export class LibraryPermissionsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(payload: CreatePermissionDefinitionDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Creating permission definition: ${payload.code}`));
+  async create(
+    payload: CreatePermissionDefinitionDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`[DEV] Creating permission definition: ${payload.code}`),
+    );
 
     const existing = await this.prisma.libraryPermissionDefinition.findUnique({
       where: { code: payload.code },
     });
     if (existing) {
-      throw new BadRequestException(`Permission with code "${payload.code}" already exists`);
+      throw new BadRequestException(
+        `Permission with code "${payload.code}" already exists`,
+      );
     }
 
     const created = await this.prisma.libraryPermissionDefinition.create({
@@ -29,7 +43,11 @@ export class LibraryPermissionsService {
     });
 
     this.logger.log(colors.green('Permission definition created successfully'));
-    return new ApiResponse(true, 'Permission definition created successfully', created);
+    return new ApiResponse(
+      true,
+      'Permission definition created successfully',
+      created,
+    );
   }
 
   async findAll(): Promise<ApiResponse<any>> {
@@ -39,7 +57,11 @@ export class LibraryPermissionsService {
       orderBy: { code: 'asc' },
     });
 
-    return new ApiResponse(true, 'Permission definitions retrieved successfully', list);
+    return new ApiResponse(
+      true,
+      'Permission definitions retrieved successfully',
+      list,
+    );
   }
 
   async findOne(id: string): Promise<ApiResponse<any>> {
@@ -52,10 +74,17 @@ export class LibraryPermissionsService {
       throw new NotFoundException('Permission definition not found');
     }
 
-    return new ApiResponse(true, 'Permission definition retrieved successfully', item);
+    return new ApiResponse(
+      true,
+      'Permission definition retrieved successfully',
+      item,
+    );
   }
 
-  async update(id: string, payload: UpdatePermissionDefinitionDto): Promise<ApiResponse<any>> {
+  async update(
+    id: string,
+    payload: UpdatePermissionDefinitionDto,
+  ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[DEV] Updating permission definition: ${id}`));
 
     const existing = await this.prisma.libraryPermissionDefinition.findUnique({
@@ -69,12 +98,18 @@ export class LibraryPermissionsService {
       where: { id },
       data: {
         ...(payload.name !== undefined && { name: payload.name }),
-        ...(payload.description !== undefined && { description: payload.description }),
+        ...(payload.description !== undefined && {
+          description: payload.description,
+        }),
       },
     });
 
     this.logger.log(colors.green('Permission definition updated successfully'));
-    return new ApiResponse(true, 'Permission definition updated successfully', updated);
+    return new ApiResponse(
+      true,
+      'Permission definition updated successfully',
+      updated,
+    );
   }
 
   async remove(id: string): Promise<ApiResponse<void>> {

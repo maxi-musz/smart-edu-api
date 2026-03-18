@@ -1,9 +1,23 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { LibraryOwnerGuard } from '../library-auth/guard/library-owner.guard';
 import { LibraryExamBodyYearService } from './exam-body-year.service';
-import { CreateLibraryExamBodyYearDto, UpdateLibraryExamBodyYearDto } from './dto';
+import {
+  CreateLibraryExamBodyYearDto,
+  UpdateLibraryExamBodyYearDto,
+} from './dto';
 import { LibraryExamBodyYearDocs } from './docs/exam-body-year.docs';
 
 @ApiTags('Exam Body Years')
@@ -19,7 +33,10 @@ export class LibraryExamBodyYearController {
   @LibraryExamBodyYearDocs.create.body
   @LibraryExamBodyYearDocs.create.response201
   @LibraryExamBodyYearDocs.create.response400
-  create(@Param('examBodyId') examBodyId: string, @Body() createDto: CreateLibraryExamBodyYearDto) {
+  create(
+    @Param('examBodyId') examBodyId: string,
+    @Body() createDto: CreateLibraryExamBodyYearDto,
+  ) {
     return this.service.create(examBodyId, createDto);
   }
 
@@ -47,7 +64,10 @@ export class LibraryExamBodyYearController {
   @LibraryExamBodyYearDocs.update.body
   @LibraryExamBodyYearDocs.update.response200
   @LibraryExamBodyYearDocs.update.response404
-  update(@Param('id') id: string, @Body() updateDto: UpdateLibraryExamBodyYearDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateLibraryExamBodyYearDto,
+  ) {
     return this.service.update(id, updateDto);
   }
 

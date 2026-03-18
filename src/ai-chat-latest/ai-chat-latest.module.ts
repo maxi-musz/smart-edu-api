@@ -22,7 +22,7 @@ import { S3Module } from '../shared/services/s3.module';
       useFactory: async (config: ConfigService) => {
         const secret = config.get('JWT_SECRET');
         const expiresIn = config.get('JWT_EXPIRES_IN') || '7d';
-        
+
         return {
           secret,
           signOptions: {
@@ -33,15 +33,7 @@ import { S3Module } from '../shared/services/s3.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [
-    AiChatLatestGateway,
-    AiChatSocketService,
-    SocketJwtGuard,
-  ],
-  exports: [
-    AiChatLatestGateway,
-    AiChatSocketService,
-  ],
+  providers: [AiChatLatestGateway, AiChatSocketService, SocketJwtGuard],
+  exports: [AiChatLatestGateway, AiChatSocketService],
 })
 export class AiChatLatestModule {}
-

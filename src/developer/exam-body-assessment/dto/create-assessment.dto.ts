@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min, IsBoolean, IsNumber, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  Min,
+  IsBoolean,
+  IsNumber,
+  IsEnum,
+} from 'class-validator';
 import { AssessmentType } from '@prisma/client';
 
 export class CreateExamBodyAssessmentDto {
@@ -63,4 +72,3 @@ export class CreateExamBodyAssessmentDto {
 
   // assessmentType is not in DTO - defaults to CBT in service
 }
-

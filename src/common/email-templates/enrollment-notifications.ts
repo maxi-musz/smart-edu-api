@@ -37,7 +37,9 @@ export const newStudentEnrollmentTemplate = (payload: {
             </div>
           </div>
           
-          ${payload.studentDetails.guardianName ? `
+          ${
+            payload.studentDetails.guardianName
+              ? `
           <div style="background-color: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #1e40af;">👨‍👩‍👧‍👦 Guardian Information</h3>
             <div style="color: #1e40af;">
@@ -47,9 +49,14 @@ export const newStudentEnrollmentTemplate = (payload: {
               ${payload.studentDetails.address ? `<p style="margin: 5px 0;"><strong>Address:</strong> ${payload.studentDetails.address}</p>` : ''}
             </div>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
-          ${payload.studentDetails.academicLevel || payload.studentDetails.previousSchool ? `
+          ${
+            payload.studentDetails.academicLevel ||
+            payload.studentDetails.previousSchool
+              ? `
           <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #92400e;">📖 Academic Information</h3>
             <div style="color: #92400e;">
@@ -57,7 +64,9 @@ export const newStudentEnrollmentTemplate = (payload: {
               ${payload.studentDetails.previousSchool ? `<p style="margin: 5px 0;"><strong>Previous School:</strong> ${payload.studentDetails.previousSchool}</p>` : ''}
             </div>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
           <div style="background-color: #f0fdf4; border: 1px solid #22c55e; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <p style="margin: 0; color: #15803d;"><strong>✅ Action Required:</strong> Please review the student's enrollment details and ensure all necessary documentation is in place.</p>
@@ -186,7 +195,9 @@ export const classTeacherNotificationTemplate = (payload: {
             </div>
           </div>
           
-          ${payload.studentDetails.guardianName ? `
+          ${
+            payload.studentDetails.guardianName
+              ? `
           <div style="background-color: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #1e40af;">👨‍👩‍👧‍👦 Guardian Information</h3>
             <div style="color: #1e40af;">
@@ -195,9 +206,14 @@ export const classTeacherNotificationTemplate = (payload: {
               ${payload.studentDetails.guardianEmail ? `<p style="margin: 5px 0;"><strong>Guardian Email:</strong> ${payload.studentDetails.guardianEmail}</p>` : ''}
             </div>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
-          ${payload.studentDetails.academicLevel || payload.studentDetails.previousSchool ? `
+          ${
+            payload.studentDetails.academicLevel ||
+            payload.studentDetails.previousSchool
+              ? `
           <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #15803d;">📖 Academic Background</h3>
             <div style="color: #15803d;">
@@ -205,7 +221,9 @@ export const classTeacherNotificationTemplate = (payload: {
               ${payload.studentDetails.previousSchool ? `<p style="margin: 5px 0;"><strong>Previous School:</strong> ${payload.studentDetails.previousSchool}</p>` : ''}
             </div>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <p style="margin: 0; color: #92400e;"><strong>✅ Action Required:</strong> Please welcome the new student and ensure they are properly integrated into your class activities.</p>

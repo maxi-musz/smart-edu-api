@@ -1,2 +1,2 @@
 // Export director classes documentation
-export * from './classes.docs'; 
+export * from './classes.docs';

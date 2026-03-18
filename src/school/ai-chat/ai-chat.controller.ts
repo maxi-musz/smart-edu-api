@@ -1,4 +1,20 @@
-import { Controller, Post, Get, UseGuards, HttpCode, HttpStatus, Body, UseInterceptors, UploadedFiles, BadRequestException, Param, Sse, Logger, Query, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  Body,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
+  Param,
+  Sse,
+  Logger,
+  Query,
+  Delete,
+} from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AiChatService, AiChatDeletionService } from './ai-chat.service';
 import { UploadProgressService } from './upload-progress.service';
@@ -7,13 +23,27 @@ import { JwtGuard } from '../auth/guard';
 import { GetUser } from '../auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { UploadDocumentDto, DocumentUploadResponseDto, UploadSessionDto, UploadProgressDto } from './dto';
-import { SendMessageDto, ChatMessageResponseDto, CreateConversationDto, ConversationResponseDto, GetChatHistoryDto } from './dto/chat.dto';
-import { InitiateAiChatDto, InitiateAiChatResponseDto } from './dto/initiate-ai-chat.dto';
-import { 
-  UploadDocumentDocs, 
-  StartUploadDocs, 
-  UploadProgressDocs, 
+import {
+  UploadDocumentDto,
+  DocumentUploadResponseDto,
+  UploadSessionDto,
+  UploadProgressDto,
+} from './dto';
+import {
+  SendMessageDto,
+  ChatMessageResponseDto,
+  CreateConversationDto,
+  ConversationResponseDto,
+  GetChatHistoryDto,
+} from './dto/chat.dto';
+import {
+  InitiateAiChatDto,
+  InitiateAiChatResponseDto,
+} from './dto/initiate-ai-chat.dto';
+import {
+  UploadDocumentDocs,
+  StartUploadDocs,
+  UploadProgressDocs,
   UploadStatusDocs,
   ProcessDocumentDocs,
   ProcessingStatusDocs,
@@ -24,7 +54,7 @@ import {
   InitiateAiChatDocs,
   GetUserConversationsDocs,
   GetChatHistoryDocs,
-  DeleteConversationDocs
+  DeleteConversationDocs,
 } from './api-docs';
 import { Observable } from 'rxjs';
 import * as colors from 'colors';
@@ -58,9 +88,9 @@ export class AiChatController {
   async uploadDocument(
     @Body() uploadDto: UploadDocumentDto,
     @UploadedFiles() files: { document?: Express.Multer.File[] },
-    @GetUser() user: User
+    @GetUser() user: User,
   ) {
-    return this.aiChatService.uploadDocument(uploadDto, files, user); 
+    return this.aiChatService.uploadDocument(uploadDto, files, user);
   }
 
   @Post('start-upload')
@@ -76,15 +106,15 @@ export class AiChatController {
   async startUpload(
     @Body() uploadDto: UploadDocumentDto,
     @UploadedFiles() files: { document?: Express.Multer.File[] },
-    @GetUser() user: User
+    @GetUser() user: User,
   ) {
     const documentFile = files.document?.[0];
-    
+
     if (!documentFile) {
       this.logger.error(colors.red(`❌ Document file is required`));
       throw new BadRequestException('Document file is required');
     }
-    
+
     return this.aiChatService.startUpload(uploadDto, documentFile, user);
   }
 
@@ -93,27 +123,33 @@ export class AiChatController {
   @UploadProgressDocs.operation()
   @UploadProgressDocs.responses.success()
   @UploadProgressDocs.responses.notFound()
-  getUploadProgress(@Param('sessionId') sessionId: string): Observable<MessageEvent> {
-    return new Observable(observer => {
+  getUploadProgress(
+    @Param('sessionId') sessionId: string,
+  ): Observable<MessageEvent> {
+    return new Observable((observer) => {
       // Send current progress immediately
-      const currentProgress = this.uploadProgressService.getCurrentProgress(sessionId);
+      const currentProgress =
+        this.uploadProgressService.getCurrentProgress(sessionId);
       if (currentProgress) {
         observer.next({
-          data: JSON.stringify(currentProgress)
+          data: JSON.stringify(currentProgress),
         } as MessageEvent);
       }
 
       // Subscribe to progress updates
-      const unsubscribe = this.uploadProgressService.subscribeToProgress(sessionId, (progress) => {
-        observer.next({
-          data: JSON.stringify(progress)
-        } as MessageEvent);
+      const unsubscribe = this.uploadProgressService.subscribeToProgress(
+        sessionId,
+        (progress) => {
+          observer.next({
+            data: JSON.stringify(progress),
+          } as MessageEvent);
 
-        // Close stream when upload is completed or errored
-        if (progress.stage === 'completed' || progress.stage === 'error') {
-          observer.complete();
-        }
-      });
+          // Close stream when upload is completed or errored
+          if (progress.stage === 'completed' || progress.stage === 'error') {
+            observer.complete();
+          }
+        },
+      );
 
       // Cleanup on unsubscribe
       return () => {
@@ -130,7 +166,7 @@ export class AiChatController {
   @UploadStatusDocs.responses.notFound()
   getUploadStatus(@Param('sessionId') sessionId: string) {
     const progress = this.uploadProgressService.getCurrentProgress(sessionId);
-    
+
     if (!progress) {
       this.logger.error(colors.red(`❌ Upload session not found`));
       throw new BadRequestException('Upload session not found');
@@ -140,7 +176,7 @@ export class AiChatController {
       success: true,
       message: 'Upload status retrieved',
       data: progress,
-      statusCode: 200
+      statusCode: 200,
     };
   }
 
@@ -151,24 +187,30 @@ export class AiChatController {
   @ProcessDocumentDocs.responses.success()
   @ProcessDocumentDocs.responses.notFound()
   async processDocument(@Param('materialId') materialId: string) {
-    this.logger.log(colors.cyan(`🔄 Starting document processing for: ${materialId}`));
-    
+    this.logger.log(
+      colors.cyan(`🔄 Starting document processing for: ${materialId}`),
+    );
+
     try {
       // Start processing in background
       this.documentProcessingService.processDocument(materialId);
-      
+
       return {
         success: true,
         message: 'Document processing started successfully',
         data: {
           materialId,
-          status: 'PROCESSING'
+          status: 'PROCESSING',
         },
-        statusCode: 202
+        statusCode: 202,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error starting document processing: ${error.message}`));
-      throw new BadRequestException(`Failed to start document processing: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error starting document processing: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to start document processing: ${error.message}`,
+      );
     }
   }
 
@@ -179,10 +221,13 @@ export class AiChatController {
   @ProcessingStatusDocs.responses.success()
   async getProcessingStatus(@Param('materialId') materialId: string) {
     try {
-      const status = await this.documentProcessingService.getProcessingStatus(materialId);
-      
+      const status =
+        await this.documentProcessingService.getProcessingStatus(materialId);
+
       if (!status) {
-        throw new BadRequestException('Processing status not found for this material');
+        throw new BadRequestException(
+          'Processing status not found for this material',
+        );
       }
 
       return {
@@ -198,11 +243,15 @@ export class AiChatController {
           createdAt: status.createdAt.toISOString(),
           updatedAt: status.updatedAt.toISOString(),
         },
-        statusCode: 200
+        statusCode: 200,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting processing status: ${error.message}`));
-      throw new BadRequestException(`Failed to get processing status: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error getting processing status: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to get processing status: ${error.message}`,
+      );
     }
   }
 
@@ -213,17 +262,22 @@ export class AiChatController {
   @DocumentChunksDocs.responses.success()
   async getDocumentChunks(@Param('materialId') materialId: string) {
     try {
-      const chunks = await this.documentProcessingService.getMaterialChunks(materialId);
-      
+      const chunks =
+        await this.documentProcessingService.getMaterialChunks(materialId);
+
       return {
         success: true,
         message: 'Document chunks retrieved',
         data: chunks,
-        statusCode: 200
+        statusCode: 200,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting document chunks: ${error.message}`));
-      throw new BadRequestException(`Failed to get document chunks: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error getting document chunks: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to get document chunks: ${error.message}`,
+      );
     }
   }
 
@@ -235,7 +289,7 @@ export class AiChatController {
   async searchChunks(
     @Param('materialId') materialId: string,
     @Query('query') query: string,
-    @Query('topK') topK: string = '5'
+    @Query('topK') topK: string = '5',
   ) {
     try {
       if (!query) {
@@ -244,20 +298,24 @@ export class AiChatController {
 
       const topKNumber = parseInt(topK, 10) || 5;
       const chunks = await this.documentProcessingService.searchRelevantChunks(
-        materialId, 
-        query, 
-        topKNumber
+        materialId,
+        query,
+        topKNumber,
       );
-      
+
       return {
         success: true,
         message: 'Relevant chunks found',
         data: chunks,
-        statusCode: 200
+        statusCode: 200,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error searching chunks: ${error.message}`));
-      throw new BadRequestException(`Failed to search chunks: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error searching chunks: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to search chunks: ${error.message}`,
+      );
     }
   }
 
@@ -270,20 +328,27 @@ export class AiChatController {
   @CreateConversationDocs.responses.success()
   async createConversation(
     @Body() createConversationDto: CreateConversationDto,
-    @GetUser() user: User
+    @GetUser() user: User,
   ) {
     try {
-      const conversation = await this.chatService.createConversation(user, createConversationDto);
-      
+      const conversation = await this.chatService.createConversation(
+        user,
+        createConversationDto,
+      );
+
       return {
         success: true,
         message: 'Conversation created successfully',
         data: conversation,
-        statusCode: 201
+        statusCode: 201,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error creating conversation: ${error.message}`));
-      throw new BadRequestException(`Failed to create conversation: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error creating conversation: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to create conversation: ${error.message}`,
+      );
     }
   }
 
@@ -294,19 +359,21 @@ export class AiChatController {
   @SendMessageDocs.responses.success()
   async sendMessage(
     @Body() sendMessageDto: SendMessageDto,
-    @GetUser() user: User
+    @GetUser() user: User,
   ) {
     try {
       const response = await this.chatService.sendMessage(user, sendMessageDto);
-      
+
       return {
         success: true,
         message: 'Message processed successfully',
         data: response,
-        statusCode: 200
+        statusCode: 200,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error sending message: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error sending message: ${error.message}`),
+      );
       throw new BadRequestException(`Failed to send message: ${error.message}`);
     }
   }
@@ -319,15 +386,15 @@ export class AiChatController {
   @InitiateAiChatDocs.responses.badRequest()
   async initiateAiChat(
     @Body() initiateDto: InitiateAiChatDto,
-    @GetUser() user: User
+    @GetUser() user: User,
   ): Promise<InitiateAiChatResponseDto> {
     const response = await this.aiChatService.initiateAiChat(user, initiateDto);
-    
+
     return {
       success: true,
       message: 'AI chat session initiated successfully',
       data: response,
-      statusCode: 200
+      statusCode: 200,
     };
   }
 
@@ -339,16 +406,20 @@ export class AiChatController {
   async getUserConversations(@GetUser() user: User) {
     try {
       const conversations = await this.chatService.getUserConversations(user);
-      
+
       return {
         success: true,
         message: 'Conversations retrieved successfully',
         data: conversations,
-        statusCode: 200
+        statusCode: 200,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting conversations: ${error.message}`));
-      throw new BadRequestException(`Failed to get conversations: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error getting conversations: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to get conversations: ${error.message}`,
+      );
     }
   }
 
@@ -360,19 +431,31 @@ export class AiChatController {
   async getChatHistory(
     @Param('conversationId') conversationId: string,
     @Query() getChatHistoryDto: GetChatHistoryDto,
-    @GetUser() user: User
+    @GetUser() user: User,
   ) {
-    this.logger.log(colors.blue(`📖 HTTP Request: Loading conversation history - Conversation: ${conversationId}, User: ${user.email}`));
-    
-    const response = await this.chatService.getChatHistory(user, conversationId, getChatHistoryDto);
-    
-    this.logger.log(colors.green(`✅ HTTP Response: Conversation history sent - ${response.conversationHistory.length} messages`));
-    
+    this.logger.log(
+      colors.blue(
+        `📖 HTTP Request: Loading conversation history - Conversation: ${conversationId}, User: ${user.email}`,
+      ),
+    );
+
+    const response = await this.chatService.getChatHistory(
+      user,
+      conversationId,
+      getChatHistoryDto,
+    );
+
+    this.logger.log(
+      colors.green(
+        `✅ HTTP Response: Conversation history sent - ${response.conversationHistory.length} messages`,
+      ),
+    );
+
     return {
       success: true,
       message: 'Chat history retrieved successfully',
       data: response,
-      statusCode: 200
+      statusCode: 200,
     };
   }
 
@@ -384,7 +467,7 @@ export class AiChatController {
   async deleteConversation(
     @Param('conversationId') conversationId: string,
     @Body() body: { materialId?: string; alsoDeleteDocument?: boolean },
-    @GetUser() user: User
+    @GetUser() user: User,
   ) {
     try {
       const result = await this.aiChatDeletionService.deleteConversation(user, {
@@ -397,11 +480,15 @@ export class AiChatController {
         success: result.success,
         message: result.message,
         data: result.data,
-        statusCode: 200
+        statusCode: 200,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error deleting conversation: ${error.message}`));
-      throw new BadRequestException(`Failed to delete conversation: ${error.message}`);
+      this.logger.error(
+        colors.red(`❌ Error deleting conversation: ${error.message}`),
+      );
+      throw new BadRequestException(
+        `Failed to delete conversation: ${error.message}`,
+      );
     }
   }
 }

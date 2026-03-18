@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { LibraryDevService } from './librarydev.service';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
@@ -9,7 +19,11 @@ import {
   DeleteLibraryDevDocs,
   AddLibraryOwnerDocs,
 } from './docs/librarydev.docs';
-import { AddLibraryOwnerDto, CreateLibraryDevDto, UpdateLibraryDevDto } from './dto/librarydev.dto';
+import {
+  AddLibraryOwnerDto,
+  CreateLibraryDevDto,
+  UpdateLibraryDevDto,
+} from './dto/librarydev.dto';
 
 @ApiTags('Developer - Library')
 @Controller('developer/librarydev')
@@ -45,7 +59,10 @@ export class LibraryDevController {
   @HttpCode(HttpStatus.OK)
   @UpdateLibraryDevDocs.operation
   @UpdateLibraryDevDocs.response200
-  async updateLibrary(@Param('id') id: string, @Body() dto: UpdateLibraryDevDto) {
+  async updateLibrary(
+    @Param('id') id: string,
+    @Body() dto: UpdateLibraryDevDto,
+  ) {
     return this.libraryDevService.updateLibrary(id, dto);
   }
 
@@ -66,5 +83,3 @@ export class LibraryDevController {
     return this.libraryDevService.addLibraryOwner(dto);
   }
 }
-
-

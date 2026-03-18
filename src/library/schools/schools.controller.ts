@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Patch, Post, HttpCode, HttpStatus, Param, Request, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Request,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import { SchoolsService } from './schools.service';
@@ -51,7 +64,8 @@ export class SchoolsController {
   )
   async onboardSchool(
     @Body() dto: OnboardSchoolDto,
-    @UploadedFiles() files: {
+    @UploadedFiles()
+    files: {
       cac_or_approval_letter?: Express.Multer.File[];
       utility_bill?: Express.Multer.File[];
       tax_cert?: Express.Multer.File[];
@@ -65,7 +79,12 @@ export class SchoolsController {
       files.tax_cert?.[0],
     ].filter((file): file is Express.Multer.File => file !== undefined);
     const schoolIcon = files.school_icon?.[0];
-    return this.schoolsService.onboardSchool(dto, fileArray, schoolIcon, req.libraryUser);
+    return this.schoolsService.onboardSchool(
+      dto,
+      fileArray,
+      schoolIcon,
+      req.libraryUser,
+    );
   }
 
   @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
@@ -156,7 +175,12 @@ export class SchoolsController {
     @Body() dto: EditSubjectDto,
     @Request() req: { libraryUser: { id: string } },
   ) {
-    return this.schoolsService.editSubject(schoolId, subjectId, dto, req.libraryUser);
+    return this.schoolsService.editSubject(
+      schoolId,
+      subjectId,
+      dto,
+      req.libraryUser,
+    );
   }
 
   @Get('getallschools')
@@ -189,4 +213,3 @@ export class SchoolsController {
     return this.schoolsService.approveSchool(id);
   }
 }
-

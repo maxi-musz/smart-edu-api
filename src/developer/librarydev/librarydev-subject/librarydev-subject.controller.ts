@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { LibraryDevSubjectService } from './librarydev-subject.service';
 import { ApiTags, ApiResponse } from '@nestjs/swagger';
 import { CreateLibrarySubjectDevDto, UpdateLibrarySubjectDevDto } from './dto';
@@ -13,7 +24,9 @@ import {
 @ApiTags('Developer - Library Subject')
 @Controller('developer/librarydev/subjects')
 export class LibraryDevSubjectController {
-  constructor(private readonly libraryDevSubjectService: LibraryDevSubjectService) {}
+  constructor(
+    private readonly libraryDevSubjectService: LibraryDevSubjectService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -37,7 +50,10 @@ export class LibraryDevSubjectController {
     @Query('platformId') platformId: string,
     @Query('classId') classId?: string,
   ) {
-    const result = await this.libraryDevSubjectService.listSubjects(platformId, classId);
+    const result = await this.libraryDevSubjectService.listSubjects(
+      platformId,
+      classId,
+    );
     return {
       success: result.success,
       message: result.message,
@@ -62,7 +78,10 @@ export class LibraryDevSubjectController {
   @HttpCode(HttpStatus.OK)
   @UpdateLibrarySubjectDevDocs.operation
   @UpdateLibrarySubjectDevDocs.response200
-  async updateSubject(@Param('id') id: string, @Body() dto: UpdateLibrarySubjectDevDto) {
+  async updateSubject(
+    @Param('id') id: string,
+    @Body() dto: UpdateLibrarySubjectDevDto,
+  ) {
     const result = await this.libraryDevSubjectService.updateSubject(id, dto);
     return {
       success: result.success,
@@ -84,5 +103,3 @@ export class LibraryDevSubjectController {
     };
   }
 }
-
-

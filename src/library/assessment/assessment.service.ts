@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  InternalServerErrorException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { StorageService } from '../../shared/services/providers/storage.service';
@@ -20,8 +26,15 @@ export class AssessmentService {
   /**
    * Get all assessments under a specific topic
    */
-  async getAssessmentsByTopic(user: any, topicId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY ASSESSMENT] Fetching assessments for topic: ${topicId} for library user: ${user.email}`));
+  async getAssessmentsByTopic(
+    user: any,
+    topicId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ASSESSMENT] Fetching assessments for topic: ${topicId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get the library user to ensure they exist and get their platform
@@ -56,8 +69,14 @@ export class AssessmentService {
       });
 
       if (!topic) {
-        this.logger.error(colors.red(`Topic not found or does not belong to user's platform: ${topicId}`));
-        throw new NotFoundException('Topic not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Topic not found or does not belong to user's platform: ${topicId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to your platform',
+        );
       }
 
       // Fetch all assessments for this topic
@@ -114,7 +133,11 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Successfully retrieved ${assessments.length} assessments for topic: ${topic.title}`));
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved ${assessments.length} assessments for topic: ${topic.title}`,
+        ),
+      );
 
       const responseData = {
         topic: {
@@ -127,13 +150,20 @@ export class AssessmentService {
         totalCount: assessments.length,
       };
 
-      return new ApiResponse(true, 'Assessments retrieved successfully', responseData);
+      return new ApiResponse(
+        true,
+        'Assessments retrieved successfully',
+        responseData,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error fetching assessments: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error fetching assessments: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to retrieve assessments');
     }
   }
@@ -141,8 +171,15 @@ export class AssessmentService {
   /**
    * Get assessment analytics with user participation breakdown
    */
-  async getAssessmentAnalytics(user: any, assessmentId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY ASSESSMENT] Fetching analytics for assessment: ${assessmentId}`));
+  async getAssessmentAnalytics(
+    user: any,
+    assessmentId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ASSESSMENT] Fetching analytics for assessment: ${assessmentId}`,
+      ),
+    );
 
     try {
       // Get the library user to ensure they exist and get their platform
@@ -171,8 +208,14 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        this.logger.error(colors.red(`Assessment not found or does not belong to user's platform: ${assessmentId}`));
-        throw new NotFoundException('Assessment not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Assessment not found or does not belong to user's platform: ${assessmentId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Assessment not found or does not belong to your platform',
+        );
       }
 
       // Get all attempts with user information
@@ -217,71 +260,96 @@ export class AssessmentService {
 
       // Calculate analytics
       const totalAttempts = attempts.length;
-      const submittedAttempts = attempts.filter(a => a.status === 'SUBMITTED' || a.status === 'GRADED');
-      const uniqueUsers = new Set(attempts.map(a => a.userId)).size;
-      
-      const scores = submittedAttempts.map(a => a.percentage).filter(s => s !== null && s !== undefined);
-      const averageScore = scores.length > 0 
-        ? scores.reduce((sum, score) => sum + score, 0) / scores.length 
-        : 0;
-      
-      const passedCount = submittedAttempts.filter(a => a.passed).length;
-      const passRate = submittedAttempts.length > 0 
-        ? (passedCount / submittedAttempts.length) * 100 
-        : 0;
+      const submittedAttempts = attempts.filter(
+        (a) => a.status === 'SUBMITTED' || a.status === 'GRADED',
+      );
+      const uniqueUsers = new Set(attempts.map((a) => a.userId)).size;
+
+      const scores = submittedAttempts
+        .map((a) => a.percentage)
+        .filter((s) => s !== null && s !== undefined);
+      const averageScore =
+        scores.length > 0
+          ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+          : 0;
+
+      const passedCount = submittedAttempts.filter((a) => a.passed).length;
+      const passRate =
+        submittedAttempts.length > 0
+          ? (passedCount / submittedAttempts.length) * 100
+          : 0;
 
       const timeSpentValues = submittedAttempts
-        .map(a => a.timeSpent)
-        .filter(t => t !== null && t !== undefined) as number[];
-      const averageTime = timeSpentValues.length > 0
-        ? Math.round(timeSpentValues.reduce((sum, time) => sum + time, 0) / timeSpentValues.length)
-        : 0;
+        .map((a) => a.timeSpent)
+        .filter((t) => t !== null && t !== undefined);
+      const averageTime =
+        timeSpentValues.length > 0
+          ? Math.round(
+              timeSpentValues.reduce((sum, time) => sum + time, 0) /
+                timeSpentValues.length,
+            )
+          : 0;
 
       // User participation breakdown
-      const userParticipation = attempts.reduce((acc, attempt) => {
-        const userId = attempt.userId;
-        if (!acc[userId]) {
-          acc[userId] = {
-            user: attempt.user,
-            totalAttempts: 0,
-            submittedAttempts: 0,
-            bestScore: 0,
-            bestPercentage: 0,
-            averageScore: 0,
-            passedCount: 0,
-            lastAttemptAt: null,
-          };
-        }
-        
-        acc[userId].totalAttempts++;
-        if (attempt.status === 'SUBMITTED' || attempt.status === 'GRADED') {
-          acc[userId].submittedAttempts++;
-          if (attempt.percentage > acc[userId].bestPercentage) {
-            acc[userId].bestPercentage = attempt.percentage;
-            acc[userId].bestScore = attempt.totalScore;
+      const userParticipation = attempts.reduce(
+        (acc, attempt) => {
+          const userId = attempt.userId;
+          if (!acc[userId]) {
+            acc[userId] = {
+              user: attempt.user,
+              totalAttempts: 0,
+              submittedAttempts: 0,
+              bestScore: 0,
+              bestPercentage: 0,
+              averageScore: 0,
+              passedCount: 0,
+              lastAttemptAt: null,
+            };
           }
-          if (attempt.passed) {
-            acc[userId].passedCount++;
+
+          acc[userId].totalAttempts++;
+          if (attempt.status === 'SUBMITTED' || attempt.status === 'GRADED') {
+            acc[userId].submittedAttempts++;
+            if (attempt.percentage > acc[userId].bestPercentage) {
+              acc[userId].bestPercentage = attempt.percentage;
+              acc[userId].bestScore = attempt.totalScore;
+            }
+            if (attempt.passed) {
+              acc[userId].passedCount++;
+            }
+            if (
+              !acc[userId].lastAttemptAt ||
+              (attempt.submittedAt &&
+                attempt.submittedAt > acc[userId].lastAttemptAt)
+            ) {
+              acc[userId].lastAttemptAt = attempt.submittedAt;
+            }
           }
-          if (!acc[userId].lastAttemptAt || (attempt.submittedAt && attempt.submittedAt > acc[userId].lastAttemptAt)) {
-            acc[userId].lastAttemptAt = attempt.submittedAt;
-          }
-        }
-        
-        return acc;
-      }, {} as Record<string, any>);
+
+          return acc;
+        },
+        {} as Record<string, any>,
+      );
 
       // Calculate average scores per user
-      Object.keys(userParticipation).forEach(userId => {
+      Object.keys(userParticipation).forEach((userId) => {
         const userData = userParticipation[userId];
         const userScores = attempts
-          .filter(a => a.userId === userId && (a.status === 'SUBMITTED' || a.status === 'GRADED'))
-          .map(a => a.percentage)
-          .filter(s => s !== null && s !== undefined);
-        
-        userData.averageScore = userScores.length > 0
-          ? userScores.reduce((sum: number, score: number) => sum + score, 0) / userScores.length
-          : 0;
+          .filter(
+            (a) =>
+              a.userId === userId &&
+              (a.status === 'SUBMITTED' || a.status === 'GRADED'),
+          )
+          .map((a) => a.percentage)
+          .filter((s) => s !== null && s !== undefined);
+
+        userData.averageScore =
+          userScores.length > 0
+            ? userScores.reduce(
+                (sum: number, score: number) => sum + score,
+                0,
+              ) / userScores.length
+            : 0;
       });
 
       const analytics = {
@@ -304,15 +372,28 @@ export class AssessmentService {
         attempts: attempts.slice(0, 50), // Limit to last 50 attempts for response size
       };
 
-      this.logger.log(colors.green(`Successfully retrieved analytics for assessment: ${assessment.title}`));
-      return new ApiResponse(true, 'Assessment analytics retrieved successfully', analytics);
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved analytics for assessment: ${assessment.title}`,
+        ),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment analytics retrieved successfully',
+        analytics,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error fetching assessment analytics: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to retrieve assessment analytics');
+      this.logger.error(
+        colors.red(`Error fetching assessment analytics: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve assessment analytics',
+      );
     }
   }
 
@@ -320,7 +401,11 @@ export class AssessmentService {
    * Get all assessments taken by a specific user (across all assessments)
    */
   async getUserAssessmentHistory(userId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY ASSESSMENT] Fetching assessment history for user: ${userId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY ASSESSMENT] Fetching assessment history for user: ${userId}`,
+      ),
+    );
 
     try {
       // Verify user exists
@@ -387,18 +472,25 @@ export class AssessmentService {
       });
 
       // Calculate user statistics
-      const submittedAttempts = attempts.filter(a => a.status === 'SUBMITTED' || a.status === 'GRADED');
-      const uniqueAssessments = new Set(attempts.map(a => a.assessmentId)).size;
-      
-      const scores = submittedAttempts.map(a => a.percentage).filter(s => s !== null && s !== undefined);
-      const averageScore = scores.length > 0 
-        ? scores.reduce((sum, score) => sum + score, 0) / scores.length 
-        : 0;
-      
-      const passedCount = submittedAttempts.filter(a => a.passed).length;
-      const passRate = submittedAttempts.length > 0 
-        ? (passedCount / submittedAttempts.length) * 100 
-        : 0;
+      const submittedAttempts = attempts.filter(
+        (a) => a.status === 'SUBMITTED' || a.status === 'GRADED',
+      );
+      const uniqueAssessments = new Set(attempts.map((a) => a.assessmentId))
+        .size;
+
+      const scores = submittedAttempts
+        .map((a) => a.percentage)
+        .filter((s) => s !== null && s !== undefined);
+      const averageScore =
+        scores.length > 0
+          ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+          : 0;
+
+      const passedCount = submittedAttempts.filter((a) => a.passed).length;
+      const passRate =
+        submittedAttempts.length > 0
+          ? (passedCount / submittedAttempts.length) * 100
+          : 0;
 
       const statistics = {
         totalAttempts: attempts.length,
@@ -416,24 +508,44 @@ export class AssessmentService {
         attempts,
       };
 
-      this.logger.log(colors.green(`Successfully retrieved ${attempts.length} attempts for user: ${user.email}`));
-      return new ApiResponse(true, 'User assessment history retrieved successfully', responseData);
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved ${attempts.length} attempts for user: ${user.email}`,
+        ),
+      );
+      return new ApiResponse(
+        true,
+        'User assessment history retrieved successfully',
+        responseData,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error fetching user assessment history: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to retrieve user assessment history');
+      this.logger.error(
+        colors.red(`Error fetching user assessment history: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve user assessment history',
+      );
     }
   }
 
   /**
    * Create a new library assessment
    */
-  async createAssessment(createAssessmentDto: CreateLibraryAssessmentDto, user: any): Promise<ApiResponse<any>> {
+  async createAssessment(
+    createAssessmentDto: CreateLibraryAssessmentDto,
+    user: any,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`[LIBRARY ASSESSMENT] Creating New Library Assessment: ${createAssessmentDto.title}`));
+      this.logger.log(
+        colors.cyan(
+          `[LIBRARY ASSESSMENT] Creating New Library Assessment: ${createAssessmentDto.title}`,
+        ),
+      );
 
       // Get library user to ensure they exist and get their platform
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -455,8 +567,12 @@ export class AssessmentService {
       });
 
       if (!subject) {
-        this.logger.error(colors.red(`Subject not found or does not belong to your Platform`));
-        throw new NotFoundException('Subject not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(`Subject not found or does not belong to your Platform`),
+        );
+        throw new NotFoundException(
+          'Subject not found or does not belong to your platform',
+        );
       }
 
       // If topicId is provided, verify it exists and belongs to the subject
@@ -470,8 +586,12 @@ export class AssessmentService {
         });
 
         if (!topic) {
-          this.logger.error(colors.red(`Topic not found or does not belong to this subject`));
-          throw new NotFoundException('Topic not found or does not belong to this subject');
+          this.logger.error(
+            colors.red(`Topic not found or does not belong to this subject`),
+          );
+          throw new NotFoundException(
+            'Topic not found or does not belong to this subject',
+          );
         }
       }
 
@@ -494,8 +614,12 @@ export class AssessmentService {
         showCorrectAnswers: createAssessmentDto.showCorrectAnswers || false,
         showFeedback: createAssessmentDto.showFeedback !== false,
         allowReview: createAssessmentDto.allowReview !== false,
-        startDate: createAssessmentDto.startDate ? new Date(createAssessmentDto.startDate) : null,
-        endDate: createAssessmentDto.endDate ? new Date(createAssessmentDto.endDate) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        startDate: createAssessmentDto.startDate
+          ? new Date(createAssessmentDto.startDate)
+          : null,
+        endDate: createAssessmentDto.endDate
+          ? new Date(createAssessmentDto.endDate)
+          : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
         timeLimit: createAssessmentDto.timeLimit,
         autoSubmit: createAssessmentDto.autoSubmit || false,
         tags: createAssessmentDto.tags || [],
@@ -535,10 +659,18 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Assessment created successfully: ${assessment.id}`));
-      return new ApiResponse(true, 'Assessment created successfully', assessment);
+      this.logger.log(
+        colors.green(`Assessment created successfully: ${assessment.id}`),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment created successfully',
+        assessment,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error creating Assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error creating Assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -546,9 +678,17 @@ export class AssessmentService {
   /**
    * Upload an image for a question (separate endpoint)
    */
-  async uploadQuestionImage(assessmentId: string, imageFile: Express.Multer.File, userId: string): Promise<ApiResponse<any>> {
+  async uploadQuestionImage(
+    assessmentId: string,
+    imageFile: Express.Multer.File,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Uploading question image for assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Uploading question image for assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -578,13 +718,23 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Validate image file type
-      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+      ];
       if (!allowedMimeTypes.includes(imageFile.mimetype)) {
-        throw new BadRequestException('Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP');
+        throw new BadRequestException(
+          'Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP',
+        );
       }
 
       // Validate file size (max 5MB)
@@ -596,25 +746,33 @@ export class AssessmentService {
       // Upload to S3
       const s3Folder = `assessment-images/platforms/${assessment.platform.id}/assessments/${assessmentId}`;
       const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      
-      try {
-        const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
-        this.logger.log(colors.green(`✅ Image uploaded to S3: ${uploadResult.key}`));
 
-        return new ApiResponse(
-          true,
-          'Image uploaded successfully',
-          {
-            imageUrl: uploadResult.url,
-            imageS3Key: uploadResult.key,
-          }
+      try {
+        const uploadResult = await this.storageService.uploadFile(
+          imageFile,
+          s3Folder,
+          fileName,
         );
+        this.logger.log(
+          colors.green(`✅ Image uploaded to S3: ${uploadResult.key}`),
+        );
+
+        return new ApiResponse(true, 'Image uploaded successfully', {
+          imageUrl: uploadResult.url,
+          imageS3Key: uploadResult.key,
+        });
       } catch (s3Error) {
-        this.logger.error(colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`));
-        throw new BadRequestException(`Failed to upload image: ${s3Error.message}`);
+        this.logger.error(
+          colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`),
+        );
+        throw new BadRequestException(
+          `Failed to upload image: ${s3Error.message}`,
+        );
       }
     } catch (error) {
-      this.logger.error(colors.red(`Error uploading question image: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error uploading question image: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -623,13 +781,17 @@ export class AssessmentService {
    * Create a new question for an assessment
    */
   async createQuestion(
-    assessmentId: string, 
-    createQuestionDto: CreateLibraryAssessmentQuestionDto, 
+    assessmentId: string,
+    createQuestionDto: CreateLibraryAssessmentQuestionDto,
     userId: string,
-    imageFile?: Express.Multer.File
+    imageFile?: Express.Multer.File,
   ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Creating question for assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Creating question for assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -651,12 +813,16 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows adding questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot add questions to a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot add questions to a closed or archived assessment',
+        );
       }
 
       // Handle image upload if file is provided
@@ -669,42 +835,60 @@ export class AssessmentService {
           const timestamp = Date.now();
           const s3Folder = `library-assessment-images/platforms/${libraryUser.platformId}/assessments/${assessmentId}`;
           const fileName = `question_${timestamp}_${imageFile.originalname}`;
-          
-          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+
+          const uploadResult = await this.storageService.uploadFile(
+            imageFile,
+            s3Folder,
+            fileName,
+          );
 
           imageUrl = uploadResult.url;
           imageS3Key = uploadResult.key;
-          this.logger.log(colors.green(`✅ Image uploaded successfully to S3: ${imageS3Key}`));
+          this.logger.log(
+            colors.green(`✅ Image uploaded successfully to S3: ${imageS3Key}`),
+          );
         } catch (uploadError) {
-          this.logger.error(colors.red(`Error uploading image to S3: ${uploadError.message}`), uploadError.stack);
-          throw new InternalServerErrorException('Failed to upload image to S3');
+          this.logger.error(
+            colors.red(`Error uploading image to S3: ${uploadError.message}`),
+            uploadError.stack,
+          );
+          throw new InternalServerErrorException(
+            'Failed to upload image to S3',
+          );
         }
       }
 
       // Auto-calculate the next available order if not provided
       let questionOrder = createQuestionDto.order;
-      
-      if (!questionOrder) {
-        const lastQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
-          where: { assessmentId: assessmentId },
-          orderBy: { order: 'desc' },
-        });
-        questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
-      } else {
-        const existingQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
-          where: {
-            assessmentId: assessmentId,
-            order: questionOrder,
-          },
-        });
 
-        if (existingQuestion) {
-          const lastQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
+      if (!questionOrder) {
+        const lastQuestion =
+          await this.prisma.libraryAssessmentQuestion.findFirst({
             where: { assessmentId: assessmentId },
             orderBy: { order: 'desc' },
           });
+        questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
+      } else {
+        const existingQuestion =
+          await this.prisma.libraryAssessmentQuestion.findFirst({
+            where: {
+              assessmentId: assessmentId,
+              order: questionOrder,
+            },
+          });
+
+        if (existingQuestion) {
+          const lastQuestion =
+            await this.prisma.libraryAssessmentQuestion.findFirst({
+              where: { assessmentId: assessmentId },
+              orderBy: { order: 'desc' },
+            });
           questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
-          this.logger.log(colors.yellow(`Order ${createQuestionDto.order} already exists, auto-assigning order ${questionOrder}`));
+          this.logger.log(
+            colors.yellow(
+              `Order ${createQuestionDto.order} already exists, auto-assigning order ${questionOrder}`,
+            ),
+          );
         }
       }
 
@@ -718,13 +902,17 @@ export class AssessmentService {
             questionType: createQuestionDto.questionType,
             order: questionOrder,
             points: createQuestionDto.points || 1.0,
-            isRequired: createQuestionDto.isRequired !== undefined ? createQuestionDto.isRequired : true,
+            isRequired:
+              createQuestionDto.isRequired !== undefined
+                ? createQuestionDto.isRequired
+                : true,
             timeLimit: createQuestionDto.timeLimit,
             imageUrl: imageUrl ?? undefined,
             imageS3Key: imageS3Key ?? undefined,
             audioUrl: createQuestionDto.audioUrl,
             videoUrl: createQuestionDto.videoUrl,
-            allowMultipleAttempts: createQuestionDto.allowMultipleAttempts || false,
+            allowMultipleAttempts:
+              createQuestionDto.allowMultipleAttempts || false,
             showHint: createQuestionDto.showHint || false,
             hintText: createQuestionDto.hintText,
             minLength: createQuestionDto.minLength,
@@ -751,13 +939,16 @@ export class AssessmentService {
                   audioUrl: optionData.audioUrl,
                 },
               });
-            })
+            }),
           );
         }
 
         // Create correct answers if provided explicitly
         let correctAnswers: any[] = [];
-        if (createQuestionDto.correctAnswers && createQuestionDto.correctAnswers.length > 0) {
+        if (
+          createQuestionDto.correctAnswers &&
+          createQuestionDto.correctAnswers.length > 0
+        ) {
           correctAnswers = await Promise.all(
             createQuestionDto.correctAnswers.map(async (answerData: any) => {
               return await prisma.libraryAssessmentCorrectAnswer.create({
@@ -765,31 +956,48 @@ export class AssessmentService {
                   questionId: question.id,
                   answerText: answerData.answerText,
                   answerNumber: answerData.answerNumber,
-                  answerDate: answerData.answerDate ? new Date(answerData.answerDate) : null,
+                  answerDate: answerData.answerDate
+                    ? new Date(answerData.answerDate)
+                    : null,
                   optionIds: answerData.optionIds || [],
                   answerJson: answerData.answerJson,
                 },
               });
-            })
+            }),
           );
         } else if (options.length > 0) {
           // AUTO-GENERATE correct answers from options marked as isCorrect
-          const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
-          
+          const correctOptionIds = options
+            .filter((opt) => opt.isCorrect)
+            .map((opt) => opt.id);
+
           if (correctOptionIds.length > 0) {
-            this.logger.log(colors.yellow(`🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options`));
-            
-            const correctAnswer = await prisma.libraryAssessmentCorrectAnswer.create({
-              data: {
-                questionId: question.id,
-                optionIds: correctOptionIds,
-              },
-            });
+            this.logger.log(
+              colors.yellow(
+                `🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options`,
+              ),
+            );
+
+            const correctAnswer =
+              await prisma.libraryAssessmentCorrectAnswer.create({
+                data: {
+                  questionId: question.id,
+                  optionIds: correctOptionIds,
+                },
+              });
             correctAnswers = [correctAnswer];
-            
-            this.logger.log(colors.green(`✅ Correct answer auto-generated with optionIds: [${correctOptionIds.join(', ')}]`));
+
+            this.logger.log(
+              colors.green(
+                `✅ Correct answer auto-generated with optionIds: [${correctOptionIds.join(', ')}]`,
+              ),
+            );
           } else {
-            this.logger.warn(colors.red(`⚠️ No options marked as correct and no correctAnswers provided for question: ${question.questionText}`));
+            this.logger.warn(
+              colors.red(
+                `⚠️ No options marked as correct and no correctAnswers provided for question: ${question.questionText}`,
+              ),
+            );
           }
         }
 
@@ -797,70 +1005,74 @@ export class AssessmentService {
       });
 
       // Update the assessment's total points
-      const totalPoints = await this.prisma.libraryAssessmentQuestion.aggregate({
-        where: { assessmentId: assessmentId },
-        _sum: { points: true },
-      });
+      const totalPoints = await this.prisma.libraryAssessmentQuestion.aggregate(
+        {
+          where: { assessmentId: assessmentId },
+          _sum: { points: true },
+        },
+      );
 
       await this.prisma.libraryAssessment.update({
         where: { id: assessmentId },
         data: { totalPoints: totalPoints._sum?.points || 0 },
       });
 
-      this.logger.log(colors.green(`Question created successfully with ID: ${result.question.id}`));
-
-      return new ApiResponse(
-        true,
-        'Question created successfully',
-        {
-          question: {
-            id: result.question.id,
-            questionText: result.question.questionText,
-            questionType: result.question.questionType,
-            order: result.question.order,
-            points: result.question.points,
-            isRequired: result.question.isRequired,
-            timeLimit: result.question.timeLimit,
-            imageUrl: result.question.imageUrl,
-            audioUrl: result.question.audioUrl,
-            videoUrl: result.question.videoUrl,
-            allowMultipleAttempts: result.question.allowMultipleAttempts,
-            showHint: result.question.showHint,
-            hintText: result.question.hintText,
-            minLength: result.question.minLength,
-            maxLength: result.question.maxLength,
-            minValue: result.question.minValue,
-            maxValue: result.question.maxValue,
-            explanation: result.question.explanation,
-            difficultyLevel: result.question.difficultyLevel,
-            createdAt: result.question.createdAt,
-            updatedAt: result.question.updatedAt,
-          },
-          options: result.options.map(option => ({
-            id: option.id,
-            optionText: option.optionText,
-            order: option.order,
-            isCorrect: option.isCorrect,
-            imageUrl: option.imageUrl,
-            audioUrl: option.audioUrl,
-          })),
-          correctAnswers: result.correctAnswers.map(answer => ({
-            id: answer.id,
-            answerText: answer.answerText,
-            answerNumber: answer.answerNumber,
-            answerDate: answer.answerDate,
-            optionIds: answer.optionIds,
-            answerJson: answer.answerJson,
-          })),
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            totalPoints: totalPoints._sum?.points || 0,
-          },
-        }
+      this.logger.log(
+        colors.green(
+          `Question created successfully with ID: ${result.question.id}`,
+        ),
       );
+
+      return new ApiResponse(true, 'Question created successfully', {
+        question: {
+          id: result.question.id,
+          questionText: result.question.questionText,
+          questionType: result.question.questionType,
+          order: result.question.order,
+          points: result.question.points,
+          isRequired: result.question.isRequired,
+          timeLimit: result.question.timeLimit,
+          imageUrl: result.question.imageUrl,
+          audioUrl: result.question.audioUrl,
+          videoUrl: result.question.videoUrl,
+          allowMultipleAttempts: result.question.allowMultipleAttempts,
+          showHint: result.question.showHint,
+          hintText: result.question.hintText,
+          minLength: result.question.minLength,
+          maxLength: result.question.maxLength,
+          minValue: result.question.minValue,
+          maxValue: result.question.maxValue,
+          explanation: result.question.explanation,
+          difficultyLevel: result.question.difficultyLevel,
+          createdAt: result.question.createdAt,
+          updatedAt: result.question.updatedAt,
+        },
+        options: result.options.map((option) => ({
+          id: option.id,
+          optionText: option.optionText,
+          order: option.order,
+          isCorrect: option.isCorrect,
+          imageUrl: option.imageUrl,
+          audioUrl: option.audioUrl,
+        })),
+        correctAnswers: result.correctAnswers.map((answer) => ({
+          id: answer.id,
+          answerText: answer.answerText,
+          answerNumber: answer.answerNumber,
+          answerDate: answer.answerDate,
+          optionIds: answer.optionIds,
+          answerJson: answer.answerJson,
+        })),
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          totalPoints: totalPoints._sum?.points || 0,
+        },
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error creating question: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error creating question: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -868,9 +1080,16 @@ export class AssessmentService {
   /**
    * Get all questions for a specific assessment
    */
-  async getAssessmentQuestions(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async getAssessmentQuestions(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Getting questions for assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Getting questions for assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -907,7 +1126,9 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Get all questions for this assessment
@@ -950,7 +1171,7 @@ export class AssessmentService {
             subject: assessment.subject,
             topic: assessment.topic,
           },
-          questions: questions.map(question => ({
+          questions: questions.map((question) => ({
             id: question.id,
             questionText: question.questionText,
             questionType: question.questionType,
@@ -970,7 +1191,7 @@ export class AssessmentService {
             maxValue: question.maxValue,
             explanation: question.explanation,
             difficultyLevel: question.difficultyLevel,
-            options: question.options.map(option => ({
+            options: question.options.map((option) => ({
               id: option.id,
               optionText: option.optionText,
               order: option.order,
@@ -978,7 +1199,7 @@ export class AssessmentService {
               imageUrl: option.imageUrl,
               audioUrl: option.audioUrl,
             })),
-            correctAnswers: question.correctAnswers.map(answer => ({
+            correctAnswers: question.correctAnswers.map((answer) => ({
               id: answer.id,
               answerText: answer.answerText,
               answerNumber: answer.answerNumber,
@@ -992,10 +1213,12 @@ export class AssessmentService {
           })),
           totalQuestions: questions.length,
           totalPoints: questions.reduce((sum, q) => sum + q.points, 0),
-        }
+        },
       );
     } catch (error) {
-      this.logger.error(colors.red(`Error getting assessment questions: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting assessment questions: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1008,11 +1231,19 @@ export class AssessmentService {
     questionId: string,
     updateQuestionDto: UpdateLibraryAssessmentQuestionDto,
     userId: string,
-    imageFile?: Express.Multer.File
+    imageFile?: Express.Multer.File,
   ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
-      this.logger.log(colors.cyan(`📋 Update payload: options=${updateQuestionDto.options !== undefined ? `${updateQuestionDto.options?.length || 0} items` : 'not provided'}, correctAnswers=${updateQuestionDto.correctAnswers !== undefined ? `${updateQuestionDto.correctAnswers?.length || 0} items` : 'not provided'}`));
+      this.logger.log(
+        colors.cyan(
+          `Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
+      this.logger.log(
+        colors.cyan(
+          `📋 Update payload: options=${updateQuestionDto.options !== undefined ? `${updateQuestionDto.options?.length || 0} items` : 'not provided'}, correctAnswers=${updateQuestionDto.correctAnswers !== undefined ? `${updateQuestionDto.correctAnswers?.length || 0} items` : 'not provided'}`,
+        ),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -1041,21 +1272,26 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows editing questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot edit questions in a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot edit questions in a closed or archived assessment',
+        );
       }
 
       // Verify the question exists and belongs to this assessment
-      const existingQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
-        where: {
-          id: questionId,
-          assessmentId: assessmentId,
-        },
-      });
+      const existingQuestion =
+        await this.prisma.libraryAssessmentQuestion.findFirst({
+          where: {
+            id: questionId,
+            assessmentId: assessmentId,
+          },
+        });
 
       if (!existingQuestion) {
         throw new NotFoundException('Question not found in this assessment');
@@ -1063,14 +1299,24 @@ export class AssessmentService {
 
       // Handle image upload/replacement if new image file is provided
       let imageUrl: string | undefined = updateQuestionDto.imageUrl;
-      let imageS3Key: string | undefined = existingQuestion.imageS3Key ?? undefined;
-      let oldImageS3Key: string | undefined = existingQuestion.imageS3Key ?? undefined;
+      let imageS3Key: string | undefined =
+        existingQuestion.imageS3Key ?? undefined;
+      let oldImageS3Key: string | undefined =
+        existingQuestion.imageS3Key ?? undefined;
 
       if (imageFile) {
         // Validate image file type
-        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
         if (!allowedMimeTypes.includes(imageFile.mimetype)) {
-          throw new BadRequestException('Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP');
+          throw new BadRequestException(
+            'Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP',
+          );
         }
 
         // Validate file size (max 5MB)
@@ -1082,17 +1328,30 @@ export class AssessmentService {
         // Upload new image to S3
         const s3Folder = `assessment-images/platforms/${assessment.platform.id}/assessments/${assessmentId}`;
         const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        
+
         try {
-          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+          const uploadResult = await this.storageService.uploadFile(
+            imageFile,
+            s3Folder,
+            fileName,
+          );
           imageUrl = uploadResult.url;
           imageS3Key = uploadResult.key;
-          this.logger.log(colors.green(`✅ New image uploaded to S3: ${imageS3Key}`));
+          this.logger.log(
+            colors.green(`✅ New image uploaded to S3: ${imageS3Key}`),
+          );
         } catch (s3Error) {
-          this.logger.error(colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`));
-          throw new BadRequestException(`Failed to upload image: ${s3Error.message}`);
+          this.logger.error(
+            colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`),
+          );
+          throw new BadRequestException(
+            `Failed to upload image: ${s3Error.message}`,
+          );
         }
-      } else if (updateQuestionDto.imageUrl === null || updateQuestionDto.imageUrl === '') {
+      } else if (
+        updateQuestionDto.imageUrl === null ||
+        updateQuestionDto.imageUrl === ''
+      ) {
         // If image_url is explicitly set to null/empty, remove the image
         imageUrl = undefined;
         imageS3Key = undefined;
@@ -1100,17 +1359,23 @@ export class AssessmentService {
       }
 
       // If order is being changed, check for conflicts
-      if (updateQuestionDto.order && updateQuestionDto.order !== existingQuestion.order) {
-        const conflictingQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
-          where: {
-            assessmentId: assessmentId,
-            order: updateQuestionDto.order,
-            id: { not: questionId },
-          },
-        });
+      if (
+        updateQuestionDto.order &&
+        updateQuestionDto.order !== existingQuestion.order
+      ) {
+        const conflictingQuestion =
+          await this.prisma.libraryAssessmentQuestion.findFirst({
+            where: {
+              assessmentId: assessmentId,
+              order: updateQuestionDto.order,
+              id: { not: questionId },
+            },
+          });
 
         if (conflictingQuestion) {
-          throw new BadRequestException(`A question with order ${updateQuestionDto.order} already exists in this assessment`);
+          throw new BadRequestException(
+            `A question with order ${updateQuestionDto.order} already exists in this assessment`,
+          );
         }
       }
 
@@ -1118,26 +1383,48 @@ export class AssessmentService {
       const result = await this.prisma.$transaction(async (prisma) => {
         // Prepare update data
         const updateData: any = {};
-        if (updateQuestionDto.questionText !== undefined) updateData.questionText = updateQuestionDto.questionText;
-        if (updateQuestionDto.questionType !== undefined) updateData.questionType = updateQuestionDto.questionType;
-        if (updateQuestionDto.order !== undefined) updateData.order = updateQuestionDto.order;
-        if (updateQuestionDto.points !== undefined) updateData.points = updateQuestionDto.points;
-        if (updateQuestionDto.isRequired !== undefined) updateData.isRequired = updateQuestionDto.isRequired;
-        if (updateQuestionDto.timeLimit !== undefined) updateData.timeLimit = updateQuestionDto.timeLimit;
-        if (updateQuestionDto.audioUrl !== undefined) updateData.audioUrl = updateQuestionDto.audioUrl;
-        if (updateQuestionDto.videoUrl !== undefined) updateData.videoUrl = updateQuestionDto.videoUrl;
-        if (updateQuestionDto.allowMultipleAttempts !== undefined) updateData.allowMultipleAttempts = updateQuestionDto.allowMultipleAttempts;
-        if (updateQuestionDto.showHint !== undefined) updateData.showHint = updateQuestionDto.showHint;
-        if (updateQuestionDto.hintText !== undefined) updateData.hintText = updateQuestionDto.hintText;
-        if (updateQuestionDto.minLength !== undefined) updateData.minLength = updateQuestionDto.minLength;
-        if (updateQuestionDto.maxLength !== undefined) updateData.maxLength = updateQuestionDto.maxLength;
-        if (updateQuestionDto.minValue !== undefined) updateData.minValue = updateQuestionDto.minValue;
-        if (updateQuestionDto.maxValue !== undefined) updateData.maxValue = updateQuestionDto.maxValue;
-        if (updateQuestionDto.explanation !== undefined) updateData.explanation = updateQuestionDto.explanation;
-        if (updateQuestionDto.difficultyLevel !== undefined) updateData.difficultyLevel = updateQuestionDto.difficultyLevel;
+        if (updateQuestionDto.questionText !== undefined)
+          updateData.questionText = updateQuestionDto.questionText;
+        if (updateQuestionDto.questionType !== undefined)
+          updateData.questionType = updateQuestionDto.questionType;
+        if (updateQuestionDto.order !== undefined)
+          updateData.order = updateQuestionDto.order;
+        if (updateQuestionDto.points !== undefined)
+          updateData.points = updateQuestionDto.points;
+        if (updateQuestionDto.isRequired !== undefined)
+          updateData.isRequired = updateQuestionDto.isRequired;
+        if (updateQuestionDto.timeLimit !== undefined)
+          updateData.timeLimit = updateQuestionDto.timeLimit;
+        if (updateQuestionDto.audioUrl !== undefined)
+          updateData.audioUrl = updateQuestionDto.audioUrl;
+        if (updateQuestionDto.videoUrl !== undefined)
+          updateData.videoUrl = updateQuestionDto.videoUrl;
+        if (updateQuestionDto.allowMultipleAttempts !== undefined)
+          updateData.allowMultipleAttempts =
+            updateQuestionDto.allowMultipleAttempts;
+        if (updateQuestionDto.showHint !== undefined)
+          updateData.showHint = updateQuestionDto.showHint;
+        if (updateQuestionDto.hintText !== undefined)
+          updateData.hintText = updateQuestionDto.hintText;
+        if (updateQuestionDto.minLength !== undefined)
+          updateData.minLength = updateQuestionDto.minLength;
+        if (updateQuestionDto.maxLength !== undefined)
+          updateData.maxLength = updateQuestionDto.maxLength;
+        if (updateQuestionDto.minValue !== undefined)
+          updateData.minValue = updateQuestionDto.minValue;
+        if (updateQuestionDto.maxValue !== undefined)
+          updateData.maxValue = updateQuestionDto.maxValue;
+        if (updateQuestionDto.explanation !== undefined)
+          updateData.explanation = updateQuestionDto.explanation;
+        if (updateQuestionDto.difficultyLevel !== undefined)
+          updateData.difficultyLevel = updateQuestionDto.difficultyLevel;
 
         // Only update image fields if they've changed
-        if (imageFile || updateQuestionDto.imageUrl === null || updateQuestionDto.imageUrl === '') {
+        if (
+          imageFile ||
+          updateQuestionDto.imageUrl === null ||
+          updateQuestionDto.imageUrl === ''
+        ) {
           updateData.imageUrl = imageUrl;
           updateData.imageS3Key = imageS3Key;
         } else if (updateQuestionDto.imageUrl !== undefined) {
@@ -1172,7 +1459,7 @@ export class AssessmentService {
                     audioUrl: optionData.audioUrl,
                   },
                 });
-              })
+              }),
             );
           }
         } else {
@@ -1191,18 +1478,28 @@ export class AssessmentService {
             where: { questionId: questionId },
           });
 
-          this.logger.log(colors.cyan(`📝 Processing correctAnswers update: ${updateQuestionDto.correctAnswers.length} answers provided`));
+          this.logger.log(
+            colors.cyan(
+              `📝 Processing correctAnswers update: ${updateQuestionDto.correctAnswers.length} answers provided`,
+            ),
+          );
 
           // Create new correct answers if provided
           if (updateQuestionDto.correctAnswers.length > 0) {
             // If options were also updated, validate that optionIds in correctAnswers match the new option IDs
             if (updateQuestionDto.options !== undefined && options.length > 0) {
-              const newOptionIds = new Set(options.map(opt => opt.id));
+              const newOptionIds = new Set(options.map((opt) => opt.id));
               for (const answerData of updateQuestionDto.correctAnswers) {
                 if (answerData.optionIds && answerData.optionIds.length > 0) {
-                  const invalidOptionIds = answerData.optionIds.filter(id => !newOptionIds.has(id));
+                  const invalidOptionIds = answerData.optionIds.filter(
+                    (id) => !newOptionIds.has(id),
+                  );
                   if (invalidOptionIds.length > 0) {
-                    this.logger.warn(colors.yellow(`⚠️ Warning: correctAnswers contains optionIds that don't match new options: [${invalidOptionIds.join(', ')}]`));
+                    this.logger.warn(
+                      colors.yellow(
+                        `⚠️ Warning: correctAnswers contains optionIds that don't match new options: [${invalidOptionIds.join(', ')}]`,
+                      ),
+                    );
                   }
                 }
               }
@@ -1210,75 +1507,122 @@ export class AssessmentService {
 
             correctAnswers = await Promise.all(
               updateQuestionDto.correctAnswers.map(async (answerData: any) => {
-                const created = await prisma.libraryAssessmentCorrectAnswer.create({
-                  data: {
-                    questionId: questionId,
-                    answerText: answerData.answerText,
-                    answerNumber: answerData.answerNumber,
-                    answerDate: answerData.answerDate ? new Date(answerData.answerDate) : null,
-                    optionIds: answerData.optionIds || [],
-                    answerJson: answerData.answerJson,
-                  },
-                });
-                this.logger.log(colors.green(`✅ Created correct answer with optionIds: [${(answerData.optionIds || []).join(', ')}]`));
+                const created =
+                  await prisma.libraryAssessmentCorrectAnswer.create({
+                    data: {
+                      questionId: questionId,
+                      answerText: answerData.answerText,
+                      answerNumber: answerData.answerNumber,
+                      answerDate: answerData.answerDate
+                        ? new Date(answerData.answerDate)
+                        : null,
+                      optionIds: answerData.optionIds || [],
+                      answerJson: answerData.answerJson,
+                    },
+                  });
+                this.logger.log(
+                  colors.green(
+                    `✅ Created correct answer with optionIds: [${(answerData.optionIds || []).join(', ')}]`,
+                  ),
+                );
                 return created;
-              })
+              }),
             );
-          } else if (options.length > 0 && (updateQuestionDto.questionType === 'MULTIPLE_CHOICE_SINGLE' || updateQuestionDto.questionType === 'MULTIPLE_CHOICE_MULTIPLE' || !updateQuestionDto.questionType)) {
+          } else if (
+            options.length > 0 &&
+            (updateQuestionDto.questionType === 'MULTIPLE_CHOICE_SINGLE' ||
+              updateQuestionDto.questionType === 'MULTIPLE_CHOICE_MULTIPLE' ||
+              !updateQuestionDto.questionType)
+          ) {
             // If correctAnswers is explicitly set to empty array and options exist, auto-generate from options marked as isCorrect
             // This handles the case where user updates options but doesn't send correctAnswers
-            const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
-            
+            const correctOptionIds = options
+              .filter((opt) => opt.isCorrect)
+              .map((opt) => opt.id);
+
             if (correctOptionIds.length > 0) {
-              this.logger.log(colors.yellow(`🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options (update)`));
-              
-              const correctAnswer = await prisma.libraryAssessmentCorrectAnswer.create({
-                data: {
-                  questionId: questionId,
-                  optionIds: correctOptionIds,
-                },
-              });
+              this.logger.log(
+                colors.yellow(
+                  `🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options (update)`,
+                ),
+              );
+
+              const correctAnswer =
+                await prisma.libraryAssessmentCorrectAnswer.create({
+                  data: {
+                    questionId: questionId,
+                    optionIds: correctOptionIds,
+                  },
+                });
               correctAnswers = [correctAnswer];
-              
-              this.logger.log(colors.green(`✅ Correct answer auto-generated with optionIds: [${correctOptionIds.join(', ')}]`));
+
+              this.logger.log(
+                colors.green(
+                  `✅ Correct answer auto-generated with optionIds: [${correctOptionIds.join(', ')}]`,
+                ),
+              );
             }
           } else {
-            this.logger.log(colors.yellow(`⚠️ correctAnswers explicitly set to empty array, all correct answers removed`));
+            this.logger.log(
+              colors.yellow(
+                `⚠️ correctAnswers explicitly set to empty array, all correct answers removed`,
+              ),
+            );
           }
-        } else if (updateQuestionDto.options !== undefined && options.length > 0) {
+        } else if (
+          updateQuestionDto.options !== undefined &&
+          options.length > 0
+        ) {
           // If options were updated but correctAnswers were not provided, auto-generate from new options
           // This ensures correctAnswers reference the NEW option IDs, not the old ones
-          const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
-          
+          const correctOptionIds = options
+            .filter((opt) => opt.isCorrect)
+            .map((opt) => opt.id);
+
           if (correctOptionIds.length > 0) {
             // Delete old correct answers first
             await prisma.libraryAssessmentCorrectAnswer.deleteMany({
               where: { questionId: questionId },
             });
-            
-            this.logger.log(colors.yellow(`🔧 Auto-updating correct answers from ${correctOptionIds.length} correct options (options updated)`));
-            
-            const correctAnswer = await prisma.libraryAssessmentCorrectAnswer.create({
-              data: {
-                questionId: questionId,
-                optionIds: correctOptionIds,
-              },
-            });
+
+            this.logger.log(
+              colors.yellow(
+                `🔧 Auto-updating correct answers from ${correctOptionIds.length} correct options (options updated)`,
+              ),
+            );
+
+            const correctAnswer =
+              await prisma.libraryAssessmentCorrectAnswer.create({
+                data: {
+                  questionId: questionId,
+                  optionIds: correctOptionIds,
+                },
+              });
             correctAnswers = [correctAnswer];
-            
-            this.logger.log(colors.green(`✅ Correct answer auto-updated with new optionIds: [${correctOptionIds.join(', ')}]`));
+
+            this.logger.log(
+              colors.green(
+                `✅ Correct answer auto-updated with new optionIds: [${correctOptionIds.join(', ')}]`,
+              ),
+            );
           } else {
             // No correct options, but options were updated - delete old correct answers
             await prisma.libraryAssessmentCorrectAnswer.deleteMany({
               where: { questionId: questionId },
             });
-            this.logger.log(colors.yellow(`⚠️ No options marked as correct after update, removed old correct answers`));
+            this.logger.log(
+              colors.yellow(
+                `⚠️ No options marked as correct after update, removed old correct answers`,
+              ),
+            );
           }
         } else {
           // Keep existing correct answers (neither options nor correctAnswers were updated)
-          correctAnswers = await prisma.libraryAssessmentCorrectAnswer.findMany({
-            where: { questionId: questionId },
-          });
+          correctAnswers = await prisma.libraryAssessmentCorrectAnswer.findMany(
+            {
+              where: { questionId: questionId },
+            },
+          );
         }
 
         return { question: updatedQuestion, options, correctAnswers };
@@ -1288,78 +1632,86 @@ export class AssessmentService {
       if (oldImageS3Key && imageS3Key !== oldImageS3Key) {
         try {
           await this.storageService.deleteFile(oldImageS3Key);
-          this.logger.log(colors.green(`🗑️ Old image deleted from S3: ${oldImageS3Key}`));
+          this.logger.log(
+            colors.green(`🗑️ Old image deleted from S3: ${oldImageS3Key}`),
+          );
         } catch (deleteError) {
           // Log error but don't fail the update
-          this.logger.error(colors.yellow(`⚠️ Failed to delete old image from S3: ${deleteError.message}`));
+          this.logger.error(
+            colors.yellow(
+              `⚠️ Failed to delete old image from S3: ${deleteError.message}`,
+            ),
+          );
         }
       }
 
       // Update the assessment's total points
-      const totalPoints = await this.prisma.libraryAssessmentQuestion.aggregate({
-        where: { assessmentId: assessmentId },
-        _sum: { points: true },
-      });
+      const totalPoints = await this.prisma.libraryAssessmentQuestion.aggregate(
+        {
+          where: { assessmentId: assessmentId },
+          _sum: { points: true },
+        },
+      );
 
       await this.prisma.libraryAssessment.update({
         where: { id: assessmentId },
         data: { totalPoints: totalPoints._sum?.points || 0 },
       });
 
-      this.logger.log(colors.green(`Question updated successfully: ${questionId}`));
-
-      return new ApiResponse(
-        true,
-        'Question updated successfully',
-        {
-          question: {
-            id: result.question.id,
-            questionText: result.question.questionText,
-            questionType: result.question.questionType,
-            order: result.question.order,
-            points: result.question.points,
-            isRequired: result.question.isRequired,
-            timeLimit: result.question.timeLimit,
-            imageUrl: result.question.imageUrl,
-            audioUrl: result.question.audioUrl,
-            videoUrl: result.question.videoUrl,
-            allowMultipleAttempts: result.question.allowMultipleAttempts,
-            showHint: result.question.showHint,
-            hintText: result.question.hintText,
-            minLength: result.question.minLength,
-            maxLength: result.question.maxLength,
-            minValue: result.question.minValue,
-            maxValue: result.question.maxValue,
-            explanation: result.question.explanation,
-            difficultyLevel: result.question.difficultyLevel,
-            createdAt: result.question.createdAt,
-            updatedAt: result.question.updatedAt,
-          },
-          options: result.options.map(option => ({
-            id: option.id,
-            optionText: option.optionText,
-            order: option.order,
-            isCorrect: option.isCorrect,
-            imageUrl: option.imageUrl,
-            audioUrl: option.audioUrl,
-          })),
-          correctAnswers: result.correctAnswers.map(answer => ({
-            id: answer.id,
-            answerText: answer.answerText,
-            answerNumber: answer.answerNumber,
-            answerDate: answer.answerDate,
-            optionIds: answer.optionIds,
-            answerJson: answer.answerJson,
-          })),
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            totalPoints: totalPoints._sum?.points || 0,
-          },
-        }
+      this.logger.log(
+        colors.green(`Question updated successfully: ${questionId}`),
       );
+
+      return new ApiResponse(true, 'Question updated successfully', {
+        question: {
+          id: result.question.id,
+          questionText: result.question.questionText,
+          questionType: result.question.questionType,
+          order: result.question.order,
+          points: result.question.points,
+          isRequired: result.question.isRequired,
+          timeLimit: result.question.timeLimit,
+          imageUrl: result.question.imageUrl,
+          audioUrl: result.question.audioUrl,
+          videoUrl: result.question.videoUrl,
+          allowMultipleAttempts: result.question.allowMultipleAttempts,
+          showHint: result.question.showHint,
+          hintText: result.question.hintText,
+          minLength: result.question.minLength,
+          maxLength: result.question.maxLength,
+          minValue: result.question.minValue,
+          maxValue: result.question.maxValue,
+          explanation: result.question.explanation,
+          difficultyLevel: result.question.difficultyLevel,
+          createdAt: result.question.createdAt,
+          updatedAt: result.question.updatedAt,
+        },
+        options: result.options.map((option) => ({
+          id: option.id,
+          optionText: option.optionText,
+          order: option.order,
+          isCorrect: option.isCorrect,
+          imageUrl: option.imageUrl,
+          audioUrl: option.audioUrl,
+        })),
+        correctAnswers: result.correctAnswers.map((answer) => ({
+          id: answer.id,
+          answerText: answer.answerText,
+          answerNumber: answer.answerNumber,
+          answerDate: answer.answerDate,
+          optionIds: answer.optionIds,
+          answerJson: answer.answerJson,
+        })),
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          totalPoints: totalPoints._sum?.points || 0,
+        },
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error updating question: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error updating question: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1367,9 +1719,17 @@ export class AssessmentService {
   /**
    * Delete an orphaned image by S3 key (for images uploaded but never attached to a question)
    */
-  async deleteOrphanedImage(assessmentId: string, imageS3Key: string, userId: string): Promise<ApiResponse<any>> {
+  async deleteOrphanedImage(
+    assessmentId: string,
+    imageS3Key: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Deleting orphaned image: ${imageS3Key} for assessment: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(
+          `Deleting orphaned image: ${imageS3Key} for assessment: ${assessmentId}`,
+        ),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -1391,29 +1751,37 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Delete the image from S3
       try {
         await this.storageService.deleteFile(imageS3Key);
-        this.logger.log(colors.green(`✅ Orphaned image deleted from S3: ${imageS3Key}`));
+        this.logger.log(
+          colors.green(`✅ Orphaned image deleted from S3: ${imageS3Key}`),
+        );
       } catch (s3Error) {
-        this.logger.error(colors.red(`Failed to delete orphaned image from S3: ${s3Error.message}`));
-        throw new BadRequestException(`Failed to delete image from S3: ${s3Error.message}`);
+        this.logger.error(
+          colors.red(
+            `Failed to delete orphaned image from S3: ${s3Error.message}`,
+          ),
+        );
+        throw new BadRequestException(
+          `Failed to delete image from S3: ${s3Error.message}`,
+        );
       }
 
-      return new ApiResponse(
-        true,
-        'Orphaned image deleted successfully',
-        {
-          assessmentId: assessmentId,
-          imageS3Key: imageS3Key,
-          imageDeleted: true,
-        }
-      );
+      return new ApiResponse(true, 'Orphaned image deleted successfully', {
+        assessmentId: assessmentId,
+        imageS3Key: imageS3Key,
+        imageDeleted: true,
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting orphaned image: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting orphaned image: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1421,9 +1789,15 @@ export class AssessmentService {
   /**
    * Delete the image for a specific question
    */
-  async deleteQuestionImage(assessmentId: string, questionId: string, userId: string): Promise<ApiResponse<any>> {
+  async deleteQuestionImage(
+    assessmentId: string,
+    questionId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Deleting image for question: ${questionId}`));
+      this.logger.log(
+        colors.cyan(`Deleting image for question: ${questionId}`),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -1445,26 +1819,31 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows editing questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot edit questions in a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot edit questions in a closed or archived assessment',
+        );
       }
 
       // Verify the question exists and belongs to this assessment
-      const existingQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
-        where: {
-          id: questionId,
-          assessmentId: assessmentId,
-        },
-        select: {
-          id: true,
-          imageS3Key: true,
-          imageUrl: true,
-        },
-      });
+      const existingQuestion =
+        await this.prisma.libraryAssessmentQuestion.findFirst({
+          where: {
+            id: questionId,
+            assessmentId: assessmentId,
+          },
+          select: {
+            id: true,
+            imageS3Key: true,
+            imageUrl: true,
+          },
+        });
 
       if (!existingQuestion) {
         throw new NotFoundException('Question not found in this assessment');
@@ -1472,17 +1851,27 @@ export class AssessmentService {
 
       // Check if the question has an image
       if (!existingQuestion.imageS3Key && !existingQuestion.imageUrl) {
-        throw new BadRequestException('Question does not have an image to delete');
+        throw new BadRequestException(
+          'Question does not have an image to delete',
+        );
       }
 
       // Delete the image from S3 if S3 key exists
       if (existingQuestion.imageS3Key) {
         try {
           await this.storageService.deleteFile(existingQuestion.imageS3Key);
-          this.logger.log(colors.green(`✅ Image deleted from S3: ${existingQuestion.imageS3Key}`));
+          this.logger.log(
+            colors.green(
+              `✅ Image deleted from S3: ${existingQuestion.imageS3Key}`,
+            ),
+          );
         } catch (s3Error) {
           // Log error but don't fail - the image might already be deleted
-          this.logger.warn(colors.yellow(`⚠️ Failed to delete image from S3 (may already be deleted): ${s3Error.message}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Failed to delete image from S3 (may already be deleted): ${s3Error.message}`,
+            ),
+          );
         }
       }
 
@@ -1495,18 +1884,18 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Image deleted successfully for question: ${questionId}`));
-
-      return new ApiResponse(
-        true,
-        'Question image deleted successfully',
-        {
-          questionId: questionId,
-          imageDeleted: true,
-        }
+      this.logger.log(
+        colors.green(`Image deleted successfully for question: ${questionId}`),
       );
+
+      return new ApiResponse(true, 'Question image deleted successfully', {
+        questionId: questionId,
+        imageDeleted: true,
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting question image: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting question image: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1514,9 +1903,17 @@ export class AssessmentService {
   /**
    * Delete a specific question from an assessment
    */
-  async deleteQuestion(assessmentId: string, questionId: string, userId: string): Promise<ApiResponse<any>> {
+  async deleteQuestion(
+    assessmentId: string,
+    questionId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -1538,33 +1935,38 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows deleting questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot delete questions from a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot delete questions from a closed or archived assessment',
+        );
       }
 
       // Verify the question exists and belongs to this assessment
-      const existingQuestion = await this.prisma.libraryAssessmentQuestion.findFirst({
-        where: {
-          id: questionId,
-          assessmentId: assessmentId,
-        },
-        select: {
-          id: true,
-          questionText: true,
-          order: true,
-          points: true,
-          imageS3Key: true,
-          _count: {
-            select: {
-              responses: true,
+      const existingQuestion =
+        await this.prisma.libraryAssessmentQuestion.findFirst({
+          where: {
+            id: questionId,
+            assessmentId: assessmentId,
+          },
+          select: {
+            id: true,
+            questionText: true,
+            order: true,
+            points: true,
+            imageS3Key: true,
+            _count: {
+              select: {
+                responses: true,
+              },
             },
           },
-        },
-      });
+        });
 
       if (!existingQuestion) {
         throw new NotFoundException('Question not found in this assessment');
@@ -1572,7 +1974,9 @@ export class AssessmentService {
 
       // Check if the question has any user responses
       if (existingQuestion._count.responses > 0) {
-        throw new BadRequestException('Cannot delete question that has user responses. Consider archiving the assessment instead.');
+        throw new BadRequestException(
+          'Cannot delete question that has user responses. Consider archiving the assessment instead.',
+        );
       }
 
       // Store S3 key for deletion after question is deleted
@@ -1597,10 +2001,12 @@ export class AssessmentService {
       });
 
       // Update the assessment's total points
-      const totalPoints = await this.prisma.libraryAssessmentQuestion.aggregate({
-        where: { assessmentId: assessmentId },
-        _sum: { points: true },
-      });
+      const totalPoints = await this.prisma.libraryAssessmentQuestion.aggregate(
+        {
+          where: { assessmentId: assessmentId },
+          _sum: { points: true },
+        },
+      );
 
       await this.prisma.libraryAssessment.update({
         where: { id: assessmentId },
@@ -1611,34 +2017,40 @@ export class AssessmentService {
       if (imageS3Key) {
         try {
           await this.storageService.deleteFile(imageS3Key);
-          this.logger.log(colors.green(`🗑️ Image deleted from S3: ${imageS3Key}`));
+          this.logger.log(
+            colors.green(`🗑️ Image deleted from S3: ${imageS3Key}`),
+          );
         } catch (deleteError) {
           // Log error but don't fail the deletion
-          this.logger.error(colors.yellow(`⚠️ Failed to delete image from S3: ${deleteError.message}`));
+          this.logger.error(
+            colors.yellow(
+              `⚠️ Failed to delete image from S3: ${deleteError.message}`,
+            ),
+          );
         }
       }
 
-      this.logger.log(colors.green(`Question deleted successfully: ${questionId}`));
-
-      return new ApiResponse(
-        true,
-        'Question deleted successfully',
-        {
-          deletedQuestion: {
-            id: questionId,
-            questionText: existingQuestion.questionText,
-            order: existingQuestion.order,
-            points: existingQuestion.points,
-          },
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            totalPoints: totalPoints._sum?.points || 0,
-          },
-        }
+      this.logger.log(
+        colors.green(`Question deleted successfully: ${questionId}`),
       );
+
+      return new ApiResponse(true, 'Question deleted successfully', {
+        deletedQuestion: {
+          id: questionId,
+          questionText: existingQuestion.questionText,
+          order: existingQuestion.order,
+          points: existingQuestion.points,
+        },
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          totalPoints: totalPoints._sum?.points || 0,
+        },
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting question: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting question: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1649,7 +2061,7 @@ export class AssessmentService {
   async updateAssessment(
     assessmentId: string,
     updateAssessmentDto: UpdateLibraryAssessmentDto,
-    userId: string
+    userId: string,
   ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Updating assessment: ${assessmentId}`));
@@ -1678,7 +2090,10 @@ export class AssessmentService {
       }
 
       // If subject is being changed, verify access to new subject
-      if (updateAssessmentDto.subjectId && updateAssessmentDto.subjectId !== existingAssessment.subjectId) {
+      if (
+        updateAssessmentDto.subjectId &&
+        updateAssessmentDto.subjectId !== existingAssessment.subjectId
+      ) {
         const subject = await this.prisma.librarySubject.findFirst({
           where: {
             id: updateAssessmentDto.subjectId,
@@ -1687,38 +2102,53 @@ export class AssessmentService {
         });
 
         if (!subject) {
-          throw new NotFoundException('Subject not found or does not belong to your platform');
+          throw new NotFoundException(
+            'Subject not found or does not belong to your platform',
+          );
         }
       }
 
       // If topic is being changed, verify access
-      if (updateAssessmentDto.topicId && updateAssessmentDto.topicId !== existingAssessment.topicId) {
+      if (
+        updateAssessmentDto.topicId &&
+        updateAssessmentDto.topicId !== existingAssessment.topicId
+      ) {
         const topic = await this.prisma.libraryTopic.findFirst({
           where: {
             id: updateAssessmentDto.topicId,
-            subjectId: updateAssessmentDto.subjectId || existingAssessment.subjectId,
+            subjectId:
+              updateAssessmentDto.subjectId || existingAssessment.subjectId,
             platformId: libraryUser.platformId,
           },
         });
 
         if (!topic) {
-          throw new NotFoundException('Topic not found or does not belong to this subject');
+          throw new NotFoundException(
+            'Topic not found or does not belong to this subject',
+          );
         }
       }
 
       // Check if assessment has attempts and is being changed to a state that would affect users
-      if (updateAssessmentDto.status && ['CLOSED', 'ARCHIVED'].includes(updateAssessmentDto.status)) {
+      if (
+        updateAssessmentDto.status &&
+        ['CLOSED', 'ARCHIVED'].includes(updateAssessmentDto.status)
+      ) {
         const attemptCount = await this.prisma.libraryAssessmentAttempt.count({
           where: { assessmentId: assessmentId },
         });
 
         if (attemptCount > 0) {
-          this.logger.warn(colors.yellow(`Assessment ${assessmentId} has ${attemptCount} attempts but status is being changed to ${updateAssessmentDto.status}`));
+          this.logger.warn(
+            colors.yellow(
+              `Assessment ${assessmentId} has ${attemptCount} attempts but status is being changed to ${updateAssessmentDto.status}`,
+            ),
+          );
         }
       }
 
       const updateData: any = { ...updateAssessmentDto };
-      
+
       // Convert date strings to Date objects
       if (updateAssessmentDto.startDate) {
         updateData.startDate = new Date(updateAssessmentDto.startDate);
@@ -1728,9 +2158,16 @@ export class AssessmentService {
       }
 
       // Track status changes
-      const wasPublished = existingAssessment.status === 'ACTIVE' || existingAssessment.status === 'PUBLISHED' || existingAssessment.isPublished;
-      const isBeingUnpublished = updateAssessmentDto.status === 'DRAFT' && wasPublished;
-      const isBeingPublished = (updateAssessmentDto.status === 'PUBLISHED' || updateAssessmentDto.status === 'ACTIVE') && !wasPublished;
+      const wasPublished =
+        existingAssessment.status === 'ACTIVE' ||
+        existingAssessment.status === 'PUBLISHED' ||
+        existingAssessment.isPublished;
+      const isBeingUnpublished =
+        updateAssessmentDto.status === 'DRAFT' && wasPublished;
+      const isBeingPublished =
+        (updateAssessmentDto.status === 'PUBLISHED' ||
+          updateAssessmentDto.status === 'ACTIVE') &&
+        !wasPublished;
 
       // If status is being changed to PUBLISHED/ACTIVE, set published_at
       if (isBeingPublished) {
@@ -1748,30 +2185,52 @@ export class AssessmentService {
 
       // Map DTO field names to Prisma field names
       const mappedData: any = {};
-      if (updateData.subjectId !== undefined) mappedData.subjectId = updateData.subjectId;
-      if (updateData.topicId !== undefined) mappedData.topicId = updateData.topicId;
+      if (updateData.subjectId !== undefined)
+        mappedData.subjectId = updateData.subjectId;
+      if (updateData.topicId !== undefined)
+        mappedData.topicId = updateData.topicId;
       if (updateData.title !== undefined) mappedData.title = updateData.title;
-      if (updateData.description !== undefined) mappedData.description = updateData.description;
-      if (updateData.instructions !== undefined) mappedData.instructions = updateData.instructions;
-      if (updateData.assessmentType !== undefined) mappedData.assessmentType = updateData.assessmentType;
-      if (updateData.gradingType !== undefined) mappedData.gradingType = updateData.gradingType;
-      if (updateData.duration !== undefined) mappedData.duration = updateData.duration;
-      if (updateData.maxAttempts !== undefined) mappedData.maxAttempts = updateData.maxAttempts;
-      if (updateData.passingScore !== undefined) mappedData.passingScore = updateData.passingScore;
-      if (updateData.totalPoints !== undefined) mappedData.totalPoints = updateData.totalPoints;
-      if (updateData.shuffleQuestions !== undefined) mappedData.shuffleQuestions = updateData.shuffleQuestions;
-      if (updateData.shuffleOptions !== undefined) mappedData.shuffleOptions = updateData.shuffleOptions;
-      if (updateData.showCorrectAnswers !== undefined) mappedData.showCorrectAnswers = updateData.showCorrectAnswers;
-      if (updateData.showFeedback !== undefined) mappedData.showFeedback = updateData.showFeedback;
-      if (updateData.allowReview !== undefined) mappedData.allowReview = updateData.allowReview;
-      if (updateData.startDate !== undefined) mappedData.startDate = updateData.startDate;
-      if (updateData.endDate !== undefined) mappedData.endDate = updateData.endDate;
-      if (updateData.timeLimit !== undefined) mappedData.timeLimit = updateData.timeLimit;
-      if (updateData.autoSubmit !== undefined) mappedData.autoSubmit = updateData.autoSubmit;
+      if (updateData.description !== undefined)
+        mappedData.description = updateData.description;
+      if (updateData.instructions !== undefined)
+        mappedData.instructions = updateData.instructions;
+      if (updateData.assessmentType !== undefined)
+        mappedData.assessmentType = updateData.assessmentType;
+      if (updateData.gradingType !== undefined)
+        mappedData.gradingType = updateData.gradingType;
+      if (updateData.duration !== undefined)
+        mappedData.duration = updateData.duration;
+      if (updateData.maxAttempts !== undefined)
+        mappedData.maxAttempts = updateData.maxAttempts;
+      if (updateData.passingScore !== undefined)
+        mappedData.passingScore = updateData.passingScore;
+      if (updateData.totalPoints !== undefined)
+        mappedData.totalPoints = updateData.totalPoints;
+      if (updateData.shuffleQuestions !== undefined)
+        mappedData.shuffleQuestions = updateData.shuffleQuestions;
+      if (updateData.shuffleOptions !== undefined)
+        mappedData.shuffleOptions = updateData.shuffleOptions;
+      if (updateData.showCorrectAnswers !== undefined)
+        mappedData.showCorrectAnswers = updateData.showCorrectAnswers;
+      if (updateData.showFeedback !== undefined)
+        mappedData.showFeedback = updateData.showFeedback;
+      if (updateData.allowReview !== undefined)
+        mappedData.allowReview = updateData.allowReview;
+      if (updateData.startDate !== undefined)
+        mappedData.startDate = updateData.startDate;
+      if (updateData.endDate !== undefined)
+        mappedData.endDate = updateData.endDate;
+      if (updateData.timeLimit !== undefined)
+        mappedData.timeLimit = updateData.timeLimit;
+      if (updateData.autoSubmit !== undefined)
+        mappedData.autoSubmit = updateData.autoSubmit;
       if (updateData.tags !== undefined) mappedData.tags = updateData.tags;
-      if (updateData.status !== undefined) mappedData.status = updateData.status;
-      if (updateData.isPublished !== undefined) mappedData.isPublished = updateData.isPublished;
-      if (updateData.publishedAt !== undefined) mappedData.publishedAt = updateData.publishedAt;
+      if (updateData.status !== undefined)
+        mappedData.status = updateData.status;
+      if (updateData.isPublished !== undefined)
+        mappedData.isPublished = updateData.isPublished;
+      if (updateData.publishedAt !== undefined)
+        mappedData.publishedAt = updateData.publishedAt;
 
       const assessment = await this.prisma.libraryAssessment.update({
         where: { id: assessmentId },
@@ -1806,10 +2265,18 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Assessment updated successfully: ${assessment.title}`));
-      return new ApiResponse(true, 'Assessment updated successfully', assessment);
+      this.logger.log(
+        colors.green(`Assessment updated successfully: ${assessment.title}`),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment updated successfully',
+        assessment,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error updating assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error updating assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1817,7 +2284,10 @@ export class AssessmentService {
   /**
    * Delete an assessment
    */
-  async deleteAssessment(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async deleteAssessment(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Deleting Assessment: ${assessmentId}`));
 
@@ -1850,17 +2320,23 @@ export class AssessmentService {
       });
 
       if (attemptCount > 0) {
-        throw new BadRequestException('Cannot delete assessment that has user attempts. Consider archiving instead.');
+        throw new BadRequestException(
+          'Cannot delete assessment that has user attempts. Consider archiving instead.',
+        );
       }
 
       await this.prisma.libraryAssessment.delete({
         where: { id: assessmentId },
       });
 
-      this.logger.log(colors.green(`Assessment deleted successfully: ${assessmentId}`));
+      this.logger.log(
+        colors.green(`Assessment deleted successfully: ${assessmentId}`),
+      );
       return new ApiResponse(true, 'Assessment deleted successfully');
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1868,7 +2344,10 @@ export class AssessmentService {
   /**
    * Publish an assessment (make it available to users)
    */
-  async publishAssessment(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async publishAssessment(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Publishing assessment: ${assessmentId}`));
 
@@ -1900,7 +2379,9 @@ export class AssessmentService {
 
       // Check if assessment has questions
       if (existingAssessment.questions.length === 0) {
-        throw new BadRequestException('Cannot publish assessment without questions');
+        throw new BadRequestException(
+          'Cannot publish assessment without questions',
+        );
       }
 
       const assessment = await this.prisma.libraryAssessment.update({
@@ -1927,10 +2408,18 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Assessment published successfully: ${assessment.title}`));
-      return new ApiResponse(true, 'Assessment published successfully', assessment);
+      this.logger.log(
+        colors.green(`Assessment published successfully: ${assessment.title}`),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment published successfully',
+        assessment,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error publishing assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error publishing assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1938,7 +2427,10 @@ export class AssessmentService {
   /**
    * Unpublish an assessment (make it unavailable to users)
    */
-  async unpublishAssessment(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async unpublishAssessment(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Unpublishing assessment: ${assessmentId}`));
 
@@ -1982,10 +2474,20 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`Assessment unpublished successfully: ${assessment.title}`));
-      return new ApiResponse(true, 'Assessment unpublished successfully', assessment);
+      this.logger.log(
+        colors.green(
+          `Assessment unpublished successfully: ${assessment.title}`,
+        ),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment unpublished successfully',
+        assessment,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error unpublishing assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error unpublishing assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1993,9 +2495,14 @@ export class AssessmentService {
   /**
    * Release assessment results and close the assessment
    */
-  async releaseResults(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async releaseResults(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
-      this.logger.log(colors.cyan(`Releasing results for assessment: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(`Releasing results for assessment: ${assessmentId}`),
+      );
 
       // Get library user
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -2022,8 +2529,16 @@ export class AssessmentService {
 
       // Check if results are already released
       if (existingAssessment.isResultReleased) {
-        this.logger.warn(colors.yellow(`Results already released for assessment: ${assessmentId}`));
-        return new ApiResponse(true, 'Results already released', existingAssessment);
+        this.logger.warn(
+          colors.yellow(
+            `Results already released for assessment: ${assessmentId}`,
+          ),
+        );
+        return new ApiResponse(
+          true,
+          'Results already released',
+          existingAssessment,
+        );
       }
 
       // Update assessment: release results and close it
@@ -2051,10 +2566,20 @@ export class AssessmentService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Results released and assessment closed: ${assessment.title}`));
-      return new ApiResponse(true, 'Assessment results released successfully. Assessment has been closed.', assessment);
+      this.logger.log(
+        colors.green(
+          `✅ Results released and assessment closed: ${assessment.title}`,
+        ),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment results released successfully. Assessment has been closed.',
+        assessment,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error releasing assessment results: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error releasing assessment results: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2062,7 +2587,10 @@ export class AssessmentService {
   /**
    * Get a specific assessment by ID
    */
-  async getAssessmentById(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async getAssessmentById(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     try {
       this.logger.log(colors.cyan(`Getting assessment: ${assessmentId}`));
 
@@ -2129,10 +2657,18 @@ export class AssessmentService {
         throw new NotFoundException('Assessment not found or access denied');
       }
 
-      this.logger.log(colors.green(`Assessment retrieved successfully: ${assessment.title}`));
-      return new ApiResponse(true, 'Assessment retrieved successfully', assessment);
+      this.logger.log(
+        colors.green(`Assessment retrieved successfully: ${assessment.title}`),
+      );
+      return new ApiResponse(
+        true,
+        'Assessment retrieved successfully',
+        assessment,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error getting assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2142,12 +2678,11 @@ export class AssessmentService {
    */
   private formatDuration(seconds: number): string {
     if (!seconds || seconds < 0) return '00:00:00';
-    
+
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
 }
-

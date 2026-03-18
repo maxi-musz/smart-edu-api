@@ -1,7 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as colors from 'colors';
-import { IStorageProvider, StorageUploadResult } from './storage-provider.interface';
+import {
+  IStorageProvider,
+  StorageUploadResult,
+} from './storage-provider.interface';
 import { S3StorageProvider } from './aws-provider/s3-storage.provider';
 import { CloudinaryStorageProvider } from './cloudinary-provider/cloudinary-storage.provider';
 
@@ -18,27 +21,43 @@ export class StorageService implements OnModuleInit {
 
   onModuleInit() {
     const provider = this.config.get('STORAGE_PROVIDER') || 's3';
-    
+
     try {
       switch (provider.toLowerCase()) {
         case 's3':
         case 'aws':
         case 'aws-s3':
           this.storageProvider = this.s3Provider;
-          this.logger.log(colors.green(`✅ Storage Service initialized with provider: AWS S3`));
+          this.logger.log(
+            colors.green(
+              `✅ Storage Service initialized with provider: AWS S3`,
+            ),
+          );
           break;
-        
+
         case 'cloudinary':
           this.storageProvider = this.cloudinaryProvider;
-          this.logger.log(colors.green(`✅ Storage Service initialized with provider: Cloudinary`));
+          this.logger.log(
+            colors.green(
+              `✅ Storage Service initialized with provider: Cloudinary`,
+            ),
+          );
           break;
-        
+
         default:
-          this.logger.warn(colors.yellow(`⚠️ Unknown storage provider: ${provider}. Defaulting to S3.`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Unknown storage provider: ${provider}. Defaulting to S3.`,
+            ),
+          );
           this.storageProvider = this.s3Provider;
       }
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to initialize storage provider: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Failed to initialize storage provider: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
@@ -47,7 +66,7 @@ export class StorageService implements OnModuleInit {
     file: Express.Multer.File,
     folder: string,
     fileName?: string,
-    onProgress?: (loadedBytes: number, totalBytes?: number) => void
+    onProgress?: (loadedBytes: number, totalBytes?: number) => void,
   ): Promise<StorageUploadResult> {
     return this.storageProvider.uploadFile(file, folder, fileName, onProgress);
   }
@@ -64,4 +83,3 @@ export class StorageService implements OnModuleInit {
     return this.storageProvider.getFileUrl(key);
   }
 }
-

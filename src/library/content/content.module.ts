@@ -22,4 +22,3 @@ import { VideoUploadModule } from '../../video-upload/video-upload.module';
   exports: [ContentService],
 })
 export class ContentModule {}
-

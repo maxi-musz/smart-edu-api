@@ -1,10 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsEnum, IsInt, Min, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  MaxLength,
+  IsEnum,
+  IsInt,
+  Min,
+  IsBoolean,
+} from 'class-validator';
 import { LibraryMaterialType } from '@prisma/client';
 
 export class UploadChapterFileDto {
   @ApiPropertyOptional({
-    description: 'Title/name for the file (optional, defaults to original filename)',
+    description:
+      'Title/name for the file (optional, defaults to original filename)',
     example: 'Chapter 1 - Introduction PDF',
     maxLength: 200,
   })
@@ -33,7 +43,8 @@ export class UploadChapterFileDto {
   fileType?: LibraryMaterialType;
 
   @ApiPropertyOptional({
-    description: 'Order/sequence number for the file within the chapter (default: 1)',
+    description:
+      'Order/sequence number for the file within the chapter (default: 1)',
     example: 1,
     minimum: 1,
   })
@@ -43,7 +54,8 @@ export class UploadChapterFileDto {
   order?: number;
 
   @ApiPropertyOptional({
-    description: 'Enable AI chat processing for this chapter file (default: true). Set to false to disable. Requires material to have AI chat enabled.',
+    description:
+      'Enable AI chat processing for this chapter file (default: true). Set to false to disable. Requires material to have AI chat enabled.',
     example: true,
     default: true,
   })
@@ -58,4 +70,3 @@ export class UploadChapterFileDto {
   })
   file: any; // For Swagger documentation
 }
-

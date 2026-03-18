@@ -1,23 +1,32 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AttendanceRecordDto {
-  @ApiProperty({ example: 'cmft0keqn00avsbkyybjn0ra0', description: 'Student database ID' })
+  @ApiProperty({
+    example: 'cmft0keqn00avsbkyybjn0ra0',
+    description: 'Student database ID',
+  })
   id: string;
 
-  @ApiProperty({ example: 'STU0001', description: 'Student ID (admission number)' })
+  @ApiProperty({
+    example: 'STU0001',
+    description: 'Student ID (admission number)',
+  })
   student_id: string;
 
   @ApiProperty({ example: true, description: 'Whether student is present' })
   is_present: boolean;
 
-  @ApiProperty({ 
-    example: '2024-01-15T08:30:00Z', 
+  @ApiProperty({
+    example: '2024-01-15T08:30:00Z',
     description: 'When attendance was marked',
-    nullable: true
+    nullable: true,
   })
   marked_at: string | null;
 
-  @ApiProperty({ example: 'teacher_1', description: 'Teacher who marked the attendance' })
+  @ApiProperty({
+    example: 'teacher_1',
+    description: 'Teacher who marked the attendance',
+  })
   marked_by: string;
 }
 
@@ -28,24 +37,30 @@ export class AttendanceForDateDto {
   @ApiProperty({ example: 'class_1', description: 'Class ID' })
   class_id: string;
 
-  @ApiProperty({ 
-    example: 'pending', 
+  @ApiProperty({
+    example: 'pending',
     description: 'Attendance status',
-    enum: ['pending', 'submitted', 'approved']
+    enum: ['pending', 'submitted', 'approved'],
   })
   attendance_status: 'pending' | 'submitted' | 'approved';
 
-  @ApiProperty({ type: [AttendanceRecordDto], description: 'Attendance records for students' })
+  @ApiProperty({
+    type: [AttendanceRecordDto],
+    description: 'Attendance records for students',
+  })
   attendance_records: AttendanceRecordDto[];
 
   // Status information for UI
-  @ApiProperty({ example: true, description: 'Whether attendance has been marked' })
+  @ApiProperty({
+    example: true,
+    description: 'Whether attendance has been marked',
+  })
   is_marked: boolean;
 
-  @ApiProperty({ 
-    example: '2024-01-15T08:30:00.000Z', 
+  @ApiProperty({
+    example: '2024-01-15T08:30:00.000Z',
     description: 'When attendance was submitted',
-    nullable: true
+    nullable: true,
   })
   submitted_at: string | null;
 
@@ -69,7 +84,10 @@ export class AttendanceForDateResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Attendance retrieved successfully', description: 'Response message' })
+  @ApiProperty({
+    example: 'Attendance retrieved successfully',
+    description: 'Response message',
+  })
   message: string;
 
   @ApiProperty({ type: AttendanceForDateDto, description: 'Attendance data' })

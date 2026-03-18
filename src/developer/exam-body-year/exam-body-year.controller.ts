@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExamBodyYearService } from './exam-body-year.service';
 import { CreateExamBodyYearDto, UpdateExamBodyYearDto } from './dto';
@@ -38,4 +48,3 @@ export class ExamBodyYearController {
     return this.service.remove(id);
   }
 }
-

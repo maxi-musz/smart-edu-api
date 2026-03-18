@@ -1,5 +1,17 @@
-import { Controller, Get, Query, Param, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { ExploreAiBooksService } from './explore-aibooks.service';
 import { QueryAiBooksDto } from './dto';
 import { JwtGuard } from '../school/auth/guard';
@@ -13,10 +25,19 @@ export class ExploreAiBooksController {
   @UseGuards(JwtGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Fetch AI book landing page data' })
-  @ApiResponse({ status: 200, description: 'Landing page data fetched successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Landing page data fetched successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async fetchAiBookLandingPageData(@Request() req: any, @Query() queryDto: QueryAiBooksDto) {
-    return this.exploreAiBooksService.fetchAiBookLandingPageData(req.user, queryDto);
+  async fetchAiBookLandingPageData(
+    @Request() req: any,
+    @Query() queryDto: QueryAiBooksDto,
+  ) {
+    return this.exploreAiBooksService.fetchAiBookLandingPageData(
+      req.user,
+      queryDto,
+    );
   }
 
   @Get(':bookId/chapters')
@@ -37,7 +58,15 @@ export class ExploreAiBooksController {
   @ApiResponse({ status: 200, description: 'Chapter retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Book or chapter not found' })
-  async getBookChapter(@Request() req: any, @Param('bookId') bookId: string, @Param('chapterId') chapterId: string) {
-    return this.exploreAiBooksService.getBookChapter(req.user, bookId, chapterId);
+  async getBookChapter(
+    @Request() req: any,
+    @Param('bookId') bookId: string,
+    @Param('chapterId') chapterId: string,
+  ) {
+    return this.exploreAiBooksService.getBookChapter(
+      req.user,
+      bookId,
+      chapterId,
+    );
   }
 }

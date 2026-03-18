@@ -2,13 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import * as colors from 'colors';
-import { 
-  StudentResultDataDto, 
-  CurrentSessionDto, 
-  ClassSubjectDto, 
+import {
+  StudentResultDataDto,
+  CurrentSessionDto,
+  ClassSubjectDto,
   ClassInfoDto,
   StudentSubjectResultDto,
-  SessionSummaryDto
+  SessionSummaryDto,
 } from './dto/student-result.dto';
 
 @Injectable()
@@ -24,9 +24,11 @@ export class ResultsService {
    */
   async getStudentResults(
     user: any,
-    filters: { sessionId?: string; term?: string } = {}
+    filters: { sessionId?: string; term?: string } = {},
   ): Promise<ApiResponse<StudentResultDataDto | null>> {
-    this.logger.log(colors.cyan(`📊 Fetching results for student: ${user.email}`));
+    this.logger.log(
+      colors.cyan(`📊 Fetching results for student: ${user.email}`),
+    );
 
     try {
       const { sessionId, term } = filters;
@@ -36,7 +38,7 @@ export class ResultsService {
         where: {
           user_id: user.id,
           school_id: user.school_id,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
@@ -46,22 +48,32 @@ export class ResultsService {
           user: {
             select: {
               first_name: true,
-              last_name: true
-            }
-          }
-        }
+              last_name: true,
+            },
+          },
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse<null>(false, 'Student not found', null);
       }
 
-      this.logger.log(colors.green(`✅ Student found: ${student.user.first_name} ${student.user.last_name}`));
+      this.logger.log(
+        colors.green(
+          `✅ Student found: ${student.user.first_name} ${student.user.last_name}`,
+        ),
+      );
 
       if (!student.current_class_id) {
         this.logger.error(colors.red(`❌ Student not assigned to any class`));
-        return new ApiResponse<null>(false, 'Student not assigned to any class', null);
+        return new ApiResponse<null>(
+          false,
+          'Student not assigned to any class',
+          null,
+        );
       }
 
       // Get target academic session (filtered or current)
@@ -70,38 +82,52 @@ export class ResultsService {
             where: {
               id: sessionId,
               school_id: user.school_id,
-              ...(term ? { term: term as any } : {})
+              ...(term ? { term: term as any } : {}),
             },
             select: {
               id: true,
               academic_year: true,
-              term: true
-            }
+              term: true,
+            },
           })
         : await this.prisma.academicSession.findFirst({
             where: {
               school_id: user.school_id,
-              is_current: true
+              is_current: true,
             },
             select: {
               id: true,
               academic_year: true,
-              term: true
-            }
+              term: true,
+            },
           });
 
       if (!targetSession) {
-        this.logger.error(colors.red(`❌ No academic session found for school: ${user.school_id}`));
+        this.logger.error(
+          colors.red(
+            `❌ No academic session found for school: ${user.school_id}`,
+          ),
+        );
         return new ApiResponse<null>(false, 'No academic session found', null);
       }
 
-      this.logger.log(colors.green(`✅ Session in use: ${targetSession.academic_year} - ${targetSession.term}`));
+      this.logger.log(
+        colors.green(
+          `✅ Session in use: ${targetSession.academic_year} - ${targetSession.term}`,
+        ),
+      );
 
       // Available sessions/terms for dropdown/filtering
       const availableSessions = await this.prisma.academicSession.findMany({
         where: { school_id: user.school_id },
-        select: { id: true, academic_year: true, term: true, is_current: true, createdAt: true },
-        orderBy: [{ is_current: 'desc' }, { createdAt: 'desc' }]
+        select: {
+          id: true,
+          academic_year: true,
+          term: true,
+          is_current: true,
+          createdAt: true,
+        },
+        orderBy: [{ is_current: 'desc' }, { createdAt: 'desc' }],
       });
 
       // Get released result for the student (computed by director)
@@ -111,7 +137,7 @@ export class ResultsService {
           school_id: user.school_id,
           academic_session_id: targetSession.id,
           student_id: student.id,
-          released_by_school_admin: true
+          released_by_school_admin: true,
         },
         select: {
           class_id: true,
@@ -123,16 +149,22 @@ export class ResultsService {
           overall_percentage: true,
           overall_grade: true,
           class_position: true,
-          total_students: true
-        }
+          total_students: true,
+        },
       });
 
       // Use class_id from result if available, otherwise fall back to student's current_class_id
       const classIdToUse = studentResult?.class_id || student.current_class_id;
 
       if (!classIdToUse) {
-        this.logger.error(colors.red(`❌ No class found for student in this session`));
-        return new ApiResponse<null>(false, 'No class found for student in this session', null);
+        this.logger.error(
+          colors.red(`❌ No class found for student in this session`),
+        );
+        return new ApiResponse<null>(
+          false,
+          'No class found for student in this session',
+          null,
+        );
       }
 
       // Get class information for the session
@@ -140,13 +172,13 @@ export class ResultsService {
         where: {
           id: classIdToUse,
           schoolId: user.school_id,
-          academic_session_id: targetSession.id
+          academic_session_id: targetSession.id,
         },
         select: {
           id: true,
           name: true,
-          classId: true
-        }
+          classId: true,
+        },
       });
 
       if (!currentClass) {
@@ -155,27 +187,29 @@ export class ResultsService {
       }
 
       // Get subjects for the class in the target session
-      const classSubjects = await this.prisma.subject.findMany({
+      const classSubjects = (await this.prisma.subject.findMany({
         where: {
           classId: currentClass.id,
           schoolId: user.school_id,
-          academic_session_id: targetSession.id
+          academic_session_id: targetSession.id,
         },
         select: {
           id: true,
           name: true,
           code: true,
-          color: true
+          color: true,
         },
         orderBy: {
-          name: 'asc'
-        }
-      }) as ClassSubjectDto[];
+          name: 'asc',
+        },
+      })) as ClassSubjectDto[];
 
       // Parse subject results from JSON
       const subjectResultsRaw = (studentResult?.subject_results ?? []) as any[];
-      const subjectResults: StudentSubjectResultDto[] = Array.isArray(subjectResultsRaw)
-        ? subjectResultsRaw.map(subject => ({
+      const subjectResults: StudentSubjectResultDto[] = Array.isArray(
+        subjectResultsRaw,
+      )
+        ? subjectResultsRaw.map((subject) => ({
             subject_id: subject.subject_id ?? '',
             subject_name: subject.subject_name ?? '',
             subject_code: subject.subject_code ?? '',
@@ -184,7 +218,7 @@ export class ResultsService {
             total_score: subject.total_score ?? 0,
             total_max_score: subject.total_max_score ?? 0,
             percentage: subject.percentage ?? 0,
-            grade: subject.grade ?? null
+            grade: subject.grade ?? null,
           }))
         : [];
 
@@ -192,20 +226,20 @@ export class ResultsService {
       const currentSessionDto: CurrentSessionDto = {
         id: targetSession.id,
         academic_year: targetSession.academic_year,
-        term: targetSession.term
+        term: targetSession.term,
       };
 
-      const sessionsDto: SessionSummaryDto[] = availableSessions.map(s => ({
+      const sessionsDto: SessionSummaryDto[] = availableSessions.map((s) => ({
         id: s.id,
         academic_year: s.academic_year,
         term: s.term,
-        is_current: s.is_current
+        is_current: s.is_current,
       }));
 
       const classInfoDto: ClassInfoDto = {
         id: currentClass.id,
         name: currentClass.name,
-        classId: currentClass.classId.toString()
+        classId: currentClass.classId.toString(),
       };
 
       const responseData: StudentResultDataDto = {
@@ -221,20 +255,37 @@ export class ResultsService {
         overall_grade: studentResult?.overall_grade ?? null,
         class_position: studentResult?.class_position ?? null,
         total_students: studentResult?.total_students ?? null,
-        subject_results: subjectResults
+        subject_results: subjectResults,
       };
 
-      this.logger.log(colors.green(`🎉 Student result retrieved successfully:`));
-      this.logger.log(colors.green(`   - Session: ${targetSession.academic_year} - ${targetSession.term}`));
+      this.logger.log(
+        colors.green(`🎉 Student result retrieved successfully:`),
+      );
+      this.logger.log(
+        colors.green(
+          `   - Session: ${targetSession.academic_year} - ${targetSession.term}`,
+        ),
+      );
       this.logger.log(colors.green(`   - Class: ${currentClass.name}`));
       this.logger.log(colors.green(`   - Subjects: ${classSubjects.length}`));
-      this.logger.log(colors.green(`   - Subject results: ${subjectResults.length}`));
+      this.logger.log(
+        colors.green(`   - Subject results: ${subjectResults.length}`),
+      );
 
-      return new ApiResponse(true, 'Student result retrieved successfully', responseData);
-
+      return new ApiResponse(
+        true,
+        'Student result retrieved successfully',
+        responseData,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching student result: ${error.message}`));
-      return new ApiResponse<null>(false, 'Failed to fetch student result', null);
+      this.logger.error(
+        colors.red(`❌ Error fetching student result: ${error.message}`),
+      );
+      return new ApiResponse<null>(
+        false,
+        'Failed to fetch student result',
+        null,
+      );
     }
   }
 }

@@ -74,7 +74,9 @@ export class ExploreChatGateway
       // Join user-specific room for targeted messaging
       await client.join(`user:${userId}`);
 
-      this.logger.log(colors.green(`🔌 NEW CLIENT CONNECTED - User: ${user.email || userId}`));
+      this.logger.log(
+        colors.green(`🔌 NEW CLIENT CONNECTED - User: ${user.email || userId}`),
+      );
 
       // Emit connection success
       client.emit('connection:success', {
@@ -88,22 +90,35 @@ export class ExploreChatGateway
         event: 'connection:success',
       } as ExploreChatSuccessResponseDto);
     } catch (error) {
-      const clientIp = client.handshake.address || client.request?.socket?.remoteAddress || 'unknown';
+      const clientIp =
+        client.handshake.address ||
+        client.request?.socket?.remoteAddress ||
+        'unknown';
       const userAgent = client.handshake.headers['user-agent'] || 'unknown';
-      
+
       this.logger.log(
-        colors.red('═══════════════════════════════════════════════════════════'),
+        colors.red(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
       this.logger.error(colors.red('❌ CONNECTION FAILED'));
       this.logger.error(colors.red(`   Socket ID: ${client.id}`));
       this.logger.error(colors.red(`   IP Address: ${clientIp}`));
-      this.logger.error(colors.red(`   User Agent: ${userAgent.substring(0, 80)}${userAgent.length > 80 ? '...' : ''}`));
-      this.logger.error(colors.red(`   Error: ${error.message}`));
-      this.logger.error(colors.red(`   Failed At: ${new Date().toISOString()}`));
-      this.logger.log(
-        colors.red('═══════════════════════════════════════════════════════════'),
+      this.logger.error(
+        colors.red(
+          `   User Agent: ${userAgent.substring(0, 80)}${userAgent.length > 80 ? '...' : ''}`,
+        ),
       );
-      
+      this.logger.error(colors.red(`   Error: ${error.message}`));
+      this.logger.error(
+        colors.red(`   Failed At: ${new Date().toISOString()}`),
+      );
+      this.logger.log(
+        colors.red(
+          '═══════════════════════════════════════════════════════════',
+        ),
+      );
+
       client.emit('connection:error', {
         success: false,
         message: 'Connection failed',
@@ -118,7 +133,7 @@ export class ExploreChatGateway
     try {
       const userId = client.data.userId || 'unknown';
       const userEmail = client.data.user?.email || 'unknown';
-      
+
       // Safely get total clients count
       let totalClients = 0;
       try {
@@ -127,9 +142,13 @@ export class ExploreChatGateway
         totalClients = 0;
       }
 
-      this.logger.log(colors.yellow(`🔌 CLIENT DISCONNECTED - User: ${userEmail || userId}`));
+      this.logger.log(
+        colors.yellow(`🔌 CLIENT DISCONNECTED - User: ${userEmail || userId}`),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error logging disconnect: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error logging disconnect: ${error.message}`),
+      );
     }
   }
 
@@ -148,24 +167,40 @@ export class ExploreChatGateway
 
       // Log the full received payload
       this.logger.log(
-        colors.cyan('═══════════════════════════════════════════════════════════'),
+        colors.cyan(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
       this.logger.log(colors.blue('💬 MESSAGE RECEIVED FROM FRONTEND'));
       this.logger.log(colors.cyan(`   User: ${user.email || userId}`));
       this.logger.log(colors.cyan(`   Socket ID: ${client.id}`));
-      this.logger.log(colors.cyan(`   Received At: ${new Date().toISOString()}`));
+      this.logger.log(
+        colors.cyan(`   Received At: ${new Date().toISOString()}`),
+      );
       this.logger.log(colors.cyan('   Payload:'));
       this.logger.log(colors.cyan(`     - message: "${data.message}"`));
-      this.logger.log(colors.cyan(`     - materialId (chapterId): "${data.materialId}"`));
-      this.logger.log(colors.cyan(`     - userId: "${data.userId}"`));
-      this.logger.log(colors.cyan(`     - language: "${data.language || 'en'}" (${data.language ? 'provided' : 'default'})`));
       this.logger.log(
-        colors.cyan('═══════════════════════════════════════════════════════════'),
+        colors.cyan(`     - materialId (chapterId): "${data.materialId}"`),
+      );
+      this.logger.log(colors.cyan(`     - userId: "${data.userId}"`));
+      this.logger.log(
+        colors.cyan(
+          `     - language: "${data.language || 'en'}" (${data.language ? 'provided' : 'default'})`,
+        ),
+      );
+      this.logger.log(
+        colors.cyan(
+          '═══════════════════════════════════════════════════════════',
+        ),
       );
 
       // Validate that the userId in the message matches the authenticated user
       if (data.userId !== userId) {
-        this.logger.error(colors.red(`❌ User ID mismatch. Authenticated: ${userId}, Provided: ${data.userId}`));
+        this.logger.error(
+          colors.red(
+            `❌ User ID mismatch. Authenticated: ${userId}, Provided: ${data.userId}`,
+          ),
+        );
         client.emit('message:error', {
           success: false,
           message: 'User ID mismatch',
@@ -189,7 +224,7 @@ export class ExploreChatGateway
         materialId: data.materialId,
         language: data.language, // Language for OpenAI response
       };
-      
+
       const result = await this.chatService.sendMessage(user, sendMessageDto);
 
       // Check if material was not found
@@ -233,10 +268,14 @@ export class ExploreChatGateway
         event: 'message:typing',
       } as ExploreChatSuccessResponseDto);
 
-      this.logger.log(colors.green(`✅ Message processed successfully for user: ${userId}`));
+      this.logger.log(
+        colors.green(`✅ Message processed successfully for user: ${userId}`),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error processing message: ${error.message}`));
-      
+      this.logger.error(
+        colors.red(`❌ Error processing message: ${error.message}`),
+      );
+
       client.emit('message:error', {
         success: false,
         message: 'Failed to process message',

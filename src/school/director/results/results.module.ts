@@ -8,7 +8,6 @@ import { PushNotificationsModule } from '../../../push-notifications/push-notifi
   imports: [PrismaModule, PushNotificationsModule],
   controllers: [ResultsController],
   providers: [ResultsService],
-  exports: [ResultsService]
+  exports: [ResultsService],
 })
 export class ResultsModule {}
-

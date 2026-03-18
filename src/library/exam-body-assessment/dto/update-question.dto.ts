@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsEnum, IsArray, ValidateNested, Min } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { QuestionType } from '@prisma/client';
 import { CreateLibraryExamBodyQuestionOptionDto } from './create-question.dto';
@@ -10,7 +18,10 @@ export class UpdateLibraryExamBodyQuestionDto {
   @IsOptional()
   questionText?: string;
 
-  @ApiPropertyOptional({ enum: QuestionType, example: QuestionType.MULTIPLE_CHOICE_SINGLE })
+  @ApiPropertyOptional({
+    enum: QuestionType,
+    example: QuestionType.MULTIPLE_CHOICE_SINGLE,
+  })
   @IsEnum(QuestionType)
   @IsOptional()
   questionType?: QuestionType;

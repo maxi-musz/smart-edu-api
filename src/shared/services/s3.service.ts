@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as colors from 'colors';
@@ -32,7 +37,9 @@ export class S3Service {
     const bucketName = this.getBucketNameForEnvironment(nodeEnv);
 
     if (!bucketName || !region || !accessKeyId || !secretAccessKey) {
-      throw new Error('Missing required AWS S3 configuration. Please check your .env file.');
+      throw new Error(
+        'Missing required AWS S3 configuration. Please check your .env file.',
+      );
     }
 
     this.bucketName = bucketName;
@@ -40,7 +47,7 @@ export class S3Service {
 
     // Get optional endpoint override (useful for custom S3-compatible services or specific regions)
     const endpoint = this.config.get('AWS_S3_ENDPOINT');
-    
+
     const s3ClientConfig: Record<string, any> = {
       region: this.region,
       credentials: {
@@ -56,7 +63,8 @@ export class S3Service {
     }
 
     // Force path-style addressing if needed (some buckets require this)
-    const forcePathStyle = this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
+    const forcePathStyle =
+      this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
     if (forcePathStyle) {
       s3ClientConfig.forcePathStyle = true;
       this.logger.log(colors.cyan(`   - Using path-style addressing`));
@@ -69,7 +77,11 @@ export class S3Service {
    * Log S3 service status (called from main.ts after startup)
    */
   logStatus(): void {
-    this.logger.log(colors.green(`✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`));
+    this.logger.log(
+      colors.green(
+        `✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`,
+      ),
+    );
   }
 
   /**
@@ -93,23 +105,37 @@ export class S3Service {
     switch (nodeEnv.toLowerCase()) {
       case 'production':
       case 'prod':
-        return this.config.get('AWS_S3_BUCKET_PROD') || this.config.get('AWS_S3_BUCKET') || '';
-      
+        return (
+          this.config.get('AWS_S3_BUCKET_PROD') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          ''
+        );
+
       case 'staging':
-        return this.config.get('AWS_S3_BUCKET_STAGING') || this.config.get('AWS_S3_BUCKET') || '';
-      
+        return (
+          this.config.get('AWS_S3_BUCKET_STAGING') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          ''
+        );
+
       case 'development':
       case 'dev':
       case 'local':
-        return this.config.get('AWS_S3_BUCKET_DEV') || this.config.get('AWS_S3_BUCKET') || '';
-      
+        return (
+          this.config.get('AWS_S3_BUCKET_DEV') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          ''
+        );
+
       default:
         // Fallback to default bucket or environment-specific if available
-        return this.config.get('AWS_S3_BUCKET_DEV') || 
-               this.config.get('AWS_S3_BUCKET') || 
-               this.config.get('AWS_S3_BUCKET_STAGING') || 
-               this.config.get('AWS_S3_BUCKET_PROD') || 
-               '';
+        return (
+          this.config.get('AWS_S3_BUCKET_DEV') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          this.config.get('AWS_S3_BUCKET_STAGING') ||
+          this.config.get('AWS_S3_BUCKET_PROD') ||
+          ''
+        );
     }
   }
 
@@ -120,13 +146,17 @@ export class S3Service {
     file: Express.Multer.File,
     folder: string,
     fileName?: string,
-    onProgress?: (loadedBytes: number, totalBytes?: number) => void
+    onProgress?: (loadedBytes: number, totalBytes?: number) => void,
   ): Promise<S3UploadResult> {
     const key = fileName || `${folder}/${Date.now()}_${file.originalname}`;
     const resolvedContentType = this.resolveContentType(file);
-    
-    this.logger.log(colors.cyan(`🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`));
-    
+
+    this.logger.log(
+      colors.cyan(
+        `🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`,
+      ),
+    );
+
     try {
       const upload = new Upload({
         client: this.s3Client,
@@ -160,14 +190,20 @@ export class S3Service {
       }
 
       const result: any = await upload.done();
-      
+
       // Generate URL based on endpoint configuration
       const url = this.getFileUrl(key);
-      
-      this.logger.log(colors.green(`✅ S3 upload successful: ${file.originalname}`));
+
+      this.logger.log(
+        colors.green(`✅ S3 upload successful: ${file.originalname}`),
+      );
       this.logger.log(colors.blue(`   - URL: ${url}`));
-      this.logger.log(colors.blue(`   - ETag: ${result.ETag || result.ETag?.toString?.() || ''}`));
-      
+      this.logger.log(
+        colors.blue(
+          `   - ETag: ${result.ETag || result.ETag?.toString?.() || ''}`,
+        ),
+      );
+
       return {
         url,
         key,
@@ -176,13 +212,31 @@ export class S3Service {
       };
     } catch (error: any) {
       // Enhanced error handling for region/endpoint issues
-      if (error.message?.includes('must be addressed using the specified endpoint')) {
-        this.logger.error(colors.red(`❌ S3 region/endpoint mismatch detected`));
-        this.logger.error(colors.yellow(`   - Configured region: ${this.region}`));
+      if (
+        error.message?.includes(
+          'must be addressed using the specified endpoint',
+        )
+      ) {
+        this.logger.error(
+          colors.red(`❌ S3 region/endpoint mismatch detected`),
+        );
+        this.logger.error(
+          colors.yellow(`   - Configured region: ${this.region}`),
+        );
         this.logger.error(colors.yellow(`   - Bucket: ${this.bucketName}`));
-        this.logger.error(colors.yellow(`   - Tip: Check if AWS_REGION matches the bucket's actual region`));
-        this.logger.error(colors.yellow(`   - Tip: Or set AWS_S3_ENDPOINT in .env if using custom endpoint`));
-        throw new Error(`S3 upload failed: Region/endpoint mismatch. Please verify AWS_REGION matches the bucket's region. Original error: ${error.message}`);
+        this.logger.error(
+          colors.yellow(
+            `   - Tip: Check if AWS_REGION matches the bucket's actual region`,
+          ),
+        );
+        this.logger.error(
+          colors.yellow(
+            `   - Tip: Or set AWS_S3_ENDPOINT in .env if using custom endpoint`,
+          ),
+        );
+        throw new Error(
+          `S3 upload failed: Region/endpoint mismatch. Please verify AWS_REGION matches the bucket's region. Original error: ${error.message}`,
+        );
       }
       this.logger.error(colors.red(`❌ S3 upload failed: ${error.message}`));
       throw new Error(`S3 upload failed: ${error.message}`);
@@ -205,11 +259,19 @@ export class S3Service {
   /**
    * Download an S3 object to a temporary file and return its path and contentType
    */
-  async downloadToTempFile(key: string): Promise<{ filePath: string; contentType?: string }> {
+  async downloadToTempFile(
+    key: string,
+  ): Promise<{ filePath: string; contentType?: string }> {
     try {
-      const command = new GetObjectCommand({ Bucket: this.bucketName, Key: key });
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
       const res: any = await this.s3Client.send(command);
-      const tmpPath = path.join(os.tmpdir(), `s3_${Date.now()}_${path.basename(key)}`);
+      const tmpPath = path.join(
+        os.tmpdir(),
+        `s3_${Date.now()}_${path.basename(key)}`,
+      );
       await new Promise<void>((resolve, reject) => {
         const write = fs.createWriteStream(tmpPath);
         res.Body.pipe(write);
@@ -219,7 +281,9 @@ export class S3Service {
       });
       return { filePath: tmpPath, contentType: res.ContentType };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to download S3 object ${key}: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to download S3 object ${key}: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -231,7 +295,7 @@ export class S3Service {
     localFilePath: string,
     folder: string,
     fileName: string,
-    contentType: string
+    contentType: string,
   ): Promise<S3UploadResult> {
     const key = `${folder}/${fileName}`;
     try {
@@ -254,7 +318,11 @@ export class S3Service {
       const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
       return { url, key, bucket: this.bucketName, etag: result.ETag || '' };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to upload local file ${localFilePath}: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Failed to upload local file ${localFilePath}: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
@@ -285,7 +353,7 @@ export class S3Service {
   async generatePresignedUrl(
     key: string,
     contentType: string,
-    expiresIn: number = 3600
+    expiresIn: number = 3600,
   ): Promise<string> {
     try {
       const command = new PutObjectCommand({
@@ -294,12 +362,16 @@ export class S3Service {
         ContentType: contentType,
       });
 
-      const presignedUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
-      
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
       this.logger.log(colors.blue(`🔗 Generated presigned URL for: ${key}`));
       return presignedUrl;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to generate presigned URL: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to generate presigned URL: ${error.message}`),
+      );
       throw new Error(`Failed to generate presigned URL: ${error.message}`);
     }
   }
@@ -317,7 +389,9 @@ export class S3Service {
       await this.s3Client.send(command);
       this.logger.log(colors.green(`🗑️ File deleted from S3: ${key}`));
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to delete file from S3: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to delete file from S3: ${error.message}`),
+      );
       throw new Error(`Failed to delete file from S3: ${error.message}`);
     }
   }
@@ -328,8 +402,9 @@ export class S3Service {
    */
   getFileUrl(key: string): string {
     const endpoint = this.config.get('AWS_S3_ENDPOINT');
-    const forcePathStyle = this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
-    
+    const forcePathStyle =
+      this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
+
     // If custom endpoint is set, use it
     if (endpoint) {
       if (forcePathStyle) {
@@ -341,7 +416,7 @@ export class S3Service {
         return `${endpoint}/${key}`;
       }
     }
-    
+
     // Default AWS S3 URL format
     // Handle special cases for certain regions
     if (this.region === 'us-east-1') {
@@ -356,20 +431,33 @@ export class S3Service {
   /**
    * Generate presigned URL for reading files (expires in 1 hour by default)
    */
-  async generateReadPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  async generateReadPresignedUrl(
+    key: string,
+    expiresIn: number = 3600,
+  ): Promise<string> {
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
       });
 
-      const presignedUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
-      
-      this.logger.log(colors.blue(`🔗 Generated read presigned URL for: ${key}`));
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
+      this.logger.log(
+        colors.blue(`🔗 Generated read presigned URL for: ${key}`),
+      );
       return presignedUrl;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to generate read presigned URL: ${error.message}`));
-      throw new Error(`Failed to generate read presigned URL: ${error.message}`);
+      this.logger.error(
+        colors.red(
+          `❌ Failed to generate read presigned URL: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to generate read presigned URL: ${error.message}`,
+      );
     }
   }
 
@@ -383,7 +471,7 @@ export class S3Service {
         Bucket: this.bucketName,
         Key: 'test-connection',
       });
-      
+
       // This will fail but confirms S3 client is working
       await this.s3Client.send(command);
       return true;
@@ -392,7 +480,9 @@ export class S3Service {
         // This is expected - means S3 client is working
         return true;
       }
-      this.logger.error(colors.red(`❌ S3 connection test failed: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ S3 connection test failed: ${error.message}`),
+      );
       return false;
     }
   }

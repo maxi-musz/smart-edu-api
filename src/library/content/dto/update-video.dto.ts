@@ -13,7 +13,8 @@ export class UpdateLibraryVideoDto {
 
   @ApiPropertyOptional({
     description: 'Description of the video lesson',
-    example: 'Learn about variables, their types, and how to use them in algebraic expressions',
+    example:
+      'Learn about variables, their types, and how to use them in algebraic expressions',
   })
   @IsString()
   @IsOptional()
@@ -21,11 +22,11 @@ export class UpdateLibraryVideoDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'ID of the video to swap order with. If provided, the orders of both videos will be swapped.',
+    description:
+      'ID of the video to swap order with. If provided, the orders of both videos will be swapped.',
     example: 'cmjftk4ym0002sbliiepnlu15',
   })
   @IsString()
   @IsOptional()
   swapOrderWith?: string;
 }
-

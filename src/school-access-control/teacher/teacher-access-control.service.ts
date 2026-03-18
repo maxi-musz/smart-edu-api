@@ -16,7 +16,10 @@ import {
   QueryStudentResourcesDto,
   TeacherExcludeResourceDto,
 } from './dto';
-import { LibraryResourceType, AccessLevel } from '../../library-access-control/dto';
+import {
+  LibraryResourceType,
+  AccessLevel,
+} from '../../library-access-control/dto';
 import * as colors from 'colors';
 
 @Injectable()
@@ -29,8 +32,13 @@ export class TeacherAccessControlService {
    * Get resources available to teacher = all library resources the school has access to.
    * Teachers see the same list as "what the library gave the school" (not restricted by old SchoolResourceAccess grants).
    */
-  async getAvailableResources(user: any, query: QueryTeacherAvailableResourcesDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Fetching available resources for teacher`));
+  async getAvailableResources(
+    user: any,
+    query: QueryTeacherAvailableResourcesDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Fetching available resources for teacher`),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -52,83 +60,88 @@ export class TeacherAccessControlService {
       const where: any = {
         schoolId: userData.school_id,
         isActive: true,
-        AND: [
-          { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-        ],
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }],
       };
       if (resourceType) where.resourceType = resourceType;
 
-      const totalCount = await this.prisma.libraryResourceAccess.count({ where });
-
-      const availableResources = await this.prisma.libraryResourceAccess.findMany({
+      const totalCount = await this.prisma.libraryResourceAccess.count({
         where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          platform: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              description: true,
-              status: true,
-            },
-          },
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              description: true,
-              thumbnailUrl: true,
-            },
-          },
-          topic: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-            },
-          },
-          video: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              thumbnailUrl: true,
-              durationSeconds: true,
-            },
-          },
-          material: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              materialType: true,
-            },
-          },
-          assessment: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              assessmentType: true,
-            },
-          },
-          school: {
-            select: {
-              id: true,
-              school_name: true,
-              school_email: true,
-            },
-          },
-        },
       });
+
+      const availableResources =
+        await this.prisma.libraryResourceAccess.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            platform: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                description: true,
+                status: true,
+              },
+            },
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                description: true,
+                thumbnailUrl: true,
+              },
+            },
+            topic: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+              },
+            },
+            video: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                thumbnailUrl: true,
+                durationSeconds: true,
+              },
+            },
+            material: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                materialType: true,
+              },
+            },
+            assessment: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                assessmentType: true,
+              },
+            },
+            school: {
+              select: {
+                id: true,
+                school_name: true,
+                school_email: true,
+              },
+            },
+          },
+        });
 
       const totalPages = Math.ceil(totalCount / limit);
 
-      this.logger.log(colors.green(`✅ Retrieved ${availableResources.length} available resources for teacher`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${availableResources.length} available resources for teacher`,
+        ),
+      );
 
       // Expose as libraryResourceAccess-shaped items so frontend can use item.libraryResourceAccess.subject etc.
       const items = availableResources.map((la) => ({
@@ -173,8 +186,13 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching available resources: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to fetch available resources');
+      this.logger.error(
+        colors.red(`❌ Error fetching available resources: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch available resources',
+      );
     }
   }
 
@@ -183,7 +201,9 @@ export class TeacherAccessControlService {
    * Teacher cannot exclude subjects. Exclusions affect only this school; students in other schools are unaffected.
    */
   async excludeResource(user: any, dto: TeacherExcludeResourceDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Excluding resource: ${dto.resourceType}`));
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Excluding resource: ${dto.resourceType}`),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -201,7 +221,9 @@ export class TeacherAccessControlService {
       }
 
       if (!dto.classId && !dto.libraryClassId && !dto.studentId) {
-        throw new BadRequestException('Must specify either classId (library class), libraryClassId, or studentId');
+        throw new BadRequestException(
+          'Must specify either classId (library class), libraryClassId, or studentId',
+        );
       }
 
       const resourceId = this.getResourceIdFromDto(dto);
@@ -219,11 +241,19 @@ export class TeacherAccessControlService {
         throw new NotFoundException('Subject not found');
       }
 
-      await this.validateResourceBelongsToSubject(dto.subjectId, dto.resourceType, resourceId);
+      await this.validateResourceBelongsToSubject(
+        dto.subjectId,
+        dto.resourceType,
+        resourceId,
+      );
 
       if (dto.studentId) {
         const student = await this.prisma.user.findFirst({
-          where: { id: dto.studentId, school_id: userData.school_id, role: 'student' },
+          where: {
+            id: dto.studentId,
+            school_id: userData.school_id,
+            role: 'student',
+          },
         });
         if (!student) {
           throw new NotFoundException('Student not found in your school');
@@ -254,7 +284,11 @@ export class TeacherAccessControlService {
       });
 
       if (existing) {
-        return { success: true, message: 'Resource already excluded', data: existing };
+        return {
+          success: true,
+          message: 'Resource already excluded',
+          data: existing,
+        };
       }
 
       const exclusion = await this.prisma.teacherResourceExclusion.create({
@@ -273,8 +307,14 @@ export class TeacherAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Teacher exclusion created: ${exclusion.id}`));
-      return { success: true, message: 'Resource excluded successfully', data: exclusion };
+      this.logger.log(
+        colors.green(`✅ Teacher exclusion created: ${exclusion.id}`),
+      );
+      return {
+        success: true,
+        message: 'Resource excluded successfully',
+        data: exclusion,
+      };
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -283,7 +323,10 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error excluding resource: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error excluding resource: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to exclude resource');
     }
   }
@@ -292,7 +335,9 @@ export class TeacherAccessControlService {
    * Include (turn on) a previously excluded resource for students/class.
    */
   async includeResource(user: any, dto: TeacherExcludeResourceDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Including resource: ${dto.resourceType}`));
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Including resource: ${dto.resourceType}`),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -326,12 +371,24 @@ export class TeacherAccessControlService {
       });
 
       if (!existing) {
-        return { success: true, message: 'Resource was not excluded', data: null };
+        return {
+          success: true,
+          message: 'Resource was not excluded',
+          data: null,
+        };
       }
 
-      await this.prisma.teacherResourceExclusion.delete({ where: { id: existing.id } });
-      this.logger.log(colors.green(`✅ Teacher exclusion removed: ${existing.id}`));
-      return { success: true, message: 'Resource included successfully', data: { id: existing.id, removed: true } };
+      await this.prisma.teacherResourceExclusion.delete({
+        where: { id: existing.id },
+      });
+      this.logger.log(
+        colors.green(`✅ Teacher exclusion removed: ${existing.id}`),
+      );
+      return {
+        success: true,
+        message: 'Resource included successfully',
+        data: { id: existing.id, removed: true },
+      };
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -340,7 +397,10 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error including resource: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error including resource: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to include resource');
     }
   }
@@ -370,7 +430,9 @@ export class TeacherAccessControlService {
         where: { id: resourceId, subjectId },
       });
       if (!topic) {
-        throw new BadRequestException('Topic not found or does not belong to this subject');
+        throw new BadRequestException(
+          'Topic not found or does not belong to this subject',
+        );
       }
       return;
     }
@@ -379,7 +441,9 @@ export class TeacherAccessControlService {
         where: { id: resourceId, subjectId },
       });
       if (!video) {
-        throw new BadRequestException('Video not found or does not belong to this subject');
+        throw new BadRequestException(
+          'Video not found or does not belong to this subject',
+        );
       }
       return;
     }
@@ -388,7 +452,9 @@ export class TeacherAccessControlService {
         where: { id: resourceId, subjectId },
       });
       if (!material) {
-        throw new BadRequestException('Material not found or does not belong to this subject');
+        throw new BadRequestException(
+          'Material not found or does not belong to this subject',
+        );
       }
       return;
     }
@@ -397,7 +463,9 @@ export class TeacherAccessControlService {
         where: { id: resourceId, subjectId },
       });
       if (!assessment) {
-        throw new BadRequestException('Assessment not found or does not belong to this subject');
+        throw new BadRequestException(
+          'Assessment not found or does not belong to this subject',
+        );
       }
     }
   }
@@ -406,7 +474,9 @@ export class TeacherAccessControlService {
    * Grant students/classes access to resources
    */
   async grantAccess(user: any, dto: TeacherGrantAccessDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Granting access to students`));
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Granting access to students`),
+    );
 
     try {
       // Verify user is a teacher
@@ -425,7 +495,9 @@ export class TeacherAccessControlService {
 
       // Validate that at least one scope is provided
       if (!dto.studentId && !dto.classId) {
-        throw new BadRequestException('Must specify either studentId or classId');
+        throw new BadRequestException(
+          'Must specify either studentId or classId',
+        );
       }
 
       // Verify the school resource access exists
@@ -499,7 +571,9 @@ export class TeacherAccessControlService {
           },
         });
 
-        this.logger.log(colors.green(`✅ Reactivated teacher access: ${updated.id}`));
+        this.logger.log(
+          colors.green(`✅ Reactivated teacher access: ${updated.id}`),
+        );
         return {
           success: true,
           message: 'Access reactivated successfully',
@@ -526,20 +600,24 @@ export class TeacherAccessControlService {
           notes: dto.notes,
         },
         include: {
-          student: dto.studentId ? {
-            select: {
-              id: true,
-              email: true,
-              first_name: true,
-              last_name: true,
-            },
-          } : undefined,
-          class: dto.classId ? {
-            select: {
-              id: true,
-              name: true,
-            },
-          } : undefined,
+          student: dto.studentId
+            ? {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                },
+              }
+            : undefined,
+          class: dto.classId
+            ? {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              }
+            : undefined,
         },
       });
 
@@ -559,7 +637,11 @@ export class TeacherAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Teacher access granted successfully: ${accessGrant.id}`));
+      this.logger.log(
+        colors.green(
+          `✅ Teacher access granted successfully: ${accessGrant.id}`,
+        ),
+      );
       return {
         success: true,
         message: 'Access granted successfully',
@@ -573,7 +655,10 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error granting teacher access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error granting teacher access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to grant access');
     }
   }
@@ -666,10 +751,14 @@ export class TeacherAccessControlService {
         }
       }
 
-      const successful = results.filter(r => r.status === 'success').length;
-      const failed = results.filter(r => r.status === 'failed').length;
+      const successful = results.filter((r) => r.status === 'success').length;
+      const failed = results.filter((r) => r.status === 'failed').length;
 
-      this.logger.log(colors.green(`✅ Bulk grant completed: ${successful} successful, ${failed} failed`));
+      this.logger.log(
+        colors.green(
+          `✅ Bulk grant completed: ${successful} successful, ${failed} failed`,
+        ),
+      );
 
       return {
         success: true,
@@ -688,7 +777,10 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error in bulk grant: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error in bulk grant: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to grant bulk access');
     }
   }
@@ -697,7 +789,9 @@ export class TeacherAccessControlService {
    * Update an existing teacher resource access grant
    */
   async updateAccess(user: any, accessId: string, dto: TeacherUpdateAccessDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Updating access: ${accessId}`));
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Updating access: ${accessId}`),
+    );
 
     try {
       // Verify user is a teacher
@@ -720,7 +814,9 @@ export class TeacherAccessControlService {
       });
 
       if (!existingAccess) {
-        throw new NotFoundException('Access not found or does not belong to you');
+        throw new NotFoundException(
+          'Access not found or does not belong to you',
+        );
       }
 
       // Update
@@ -745,7 +841,9 @@ export class TeacherAccessControlService {
         changes: dto,
       });
 
-      this.logger.log(colors.green(`✅ Access updated successfully: ${accessId}`));
+      this.logger.log(
+        colors.green(`✅ Access updated successfully: ${accessId}`),
+      );
       return {
         success: true,
         message: 'Access updated successfully',
@@ -758,7 +856,10 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error updating access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error updating access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to update access');
     }
   }
@@ -766,8 +867,14 @@ export class TeacherAccessControlService {
   /**
    * Revoke access
    */
-  async revokeAccess(user: any, accessId: string, dto?: TeacherRevokeAccessDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Revoking access: ${accessId}`));
+  async revokeAccess(
+    user: any,
+    accessId: string,
+    dto?: TeacherRevokeAccessDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Revoking access: ${accessId}`),
+    );
 
     try {
       // Verify user is a teacher
@@ -790,7 +897,9 @@ export class TeacherAccessControlService {
       });
 
       if (!existingAccess) {
-        throw new NotFoundException('Access not found or does not belong to you');
+        throw new NotFoundException(
+          'Access not found or does not belong to you',
+        );
       }
 
       // Soft delete
@@ -813,7 +922,9 @@ export class TeacherAccessControlService {
         changes: { reason: dto?.reason },
       });
 
-      this.logger.log(colors.green(`✅ Access revoked successfully: ${accessId}`));
+      this.logger.log(
+        colors.green(`✅ Access revoked successfully: ${accessId}`),
+      );
       return {
         success: true,
         message: 'Access revoked successfully',
@@ -826,7 +937,10 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error revoking access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error revoking access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to revoke access');
     }
   }
@@ -834,8 +948,14 @@ export class TeacherAccessControlService {
   /**
    * Get resources accessible to a specific student
    */
-  async getStudentResources(user: any, studentId: string, query: QueryStudentResourcesDto) {
-    this.logger.log(colors.cyan(`[TEACHER ACCESS] Fetching student resources: ${studentId}`));
+  async getStudentResources(
+    user: any,
+    studentId: string,
+    query: QueryStudentResourcesDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`[TEACHER ACCESS] Fetching student resources: ${studentId}`),
+    );
 
     try {
       // Verify user is a teacher
@@ -845,7 +965,9 @@ export class TeacherAccessControlService {
       });
 
       if (!userData || userData.role !== 'teacher') {
-        throw new ForbiddenException('Only teachers can view student resources');
+        throw new ForbiddenException(
+          'Only teachers can view student resources',
+        );
       }
 
       // Verify student exists in same school
@@ -876,10 +998,7 @@ export class TeacherAccessControlService {
       const where: any = {
         schoolId: userData.school_id,
         isActive: true,
-        OR: [
-          { studentId },
-          { classId: student.student?.current_class_id },
-        ],
+        OR: [{ studentId }, { classId: student.student?.current_class_id }],
       };
 
       if (query.resourceType) where.resourceType = query.resourceType;
@@ -888,10 +1007,7 @@ export class TeacherAccessControlService {
       if (!query.includeExpired) {
         where.AND = [
           {
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: new Date() } },
-            ],
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
           },
         ];
       }
@@ -917,7 +1033,11 @@ export class TeacherAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Retrieved ${accessGrants.length} accessible resources for student`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${accessGrants.length} accessible resources for student`,
+        ),
+      );
 
       return {
         success: true,
@@ -938,8 +1058,13 @@ export class TeacherAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching student resources: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to fetch student resources');
+      this.logger.error(
+        colors.red(`❌ Error fetching student resources: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch student resources',
+      );
     }
   }
 
@@ -972,7 +1097,9 @@ export class TeacherAccessControlService {
         },
       });
     } catch (error) {
-      this.logger.error(colors.yellow(`⚠️ Failed to log audit trail: ${error.message}`));
+      this.logger.error(
+        colors.yellow(`⚠️ Failed to log audit trail: ${error.message}`),
+      );
     }
   }
 

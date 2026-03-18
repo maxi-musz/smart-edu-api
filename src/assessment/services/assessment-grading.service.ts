@@ -4,7 +4,7 @@ import { GradingResult, AssessmentContextType } from './assessment.types';
 
 /**
  * Assessment Grading Service
- * 
+ *
  * Handles all grading-related utilities including:
  * - Answer normalization
  * - Answer correctness checking
@@ -44,7 +44,9 @@ export class AssessmentGradingService {
     for (const answer of answers) {
       const question = questions.find((q) => q.id === answer.question_id);
       if (!question) {
-        this.logger.warn(colors.yellow(`Question not found: ${answer.question_id}`));
+        this.logger.warn(
+          colors.yellow(`Question not found: ${answer.question_id}`),
+        );
         continue;
       }
 
@@ -59,8 +61,14 @@ export class AssessmentGradingService {
         max_points: question.points,
         selected_options: answer.selected_options || [],
         text_answer: answer.text_answer,
-        numeric_answer: answer.question_type === 'NUMERIC' && answer.text_answer ? parseFloat(answer.text_answer) : null,
-        date_answer: answer.question_type === 'DATE' && answer.text_answer ? new Date(answer.text_answer) : null,
+        numeric_answer:
+          answer.question_type === 'NUMERIC' && answer.text_answer
+            ? parseFloat(answer.text_answer)
+            : null,
+        date_answer:
+          answer.question_type === 'DATE' && answer.text_answer
+            ? new Date(answer.text_answer)
+            : null,
       });
 
       totalScore += pointsEarned;
@@ -81,11 +89,17 @@ export class AssessmentGradingService {
     for (const answer of answers) {
       const question = questions.find((q) => q.id === answer.question_id);
       if (!question) {
-        this.logger.warn(colors.yellow(`Question not found: ${answer.question_id}`));
+        this.logger.warn(
+          colors.yellow(`Question not found: ${answer.question_id}`),
+        );
         continue;
       }
 
-      const isCorrect = this.checkAnswerCorrectness(answer, question, 'library');
+      const isCorrect = this.checkAnswerCorrectness(
+        answer,
+        question,
+        'library',
+      );
       const pointsEarned = isCorrect ? question.points : 0;
 
       gradedAnswers.push({
@@ -96,8 +110,14 @@ export class AssessmentGradingService {
         max_points: question.points,
         selected_options: answer.selected_options || [],
         text_answer: answer.text_answer,
-        numeric_answer: answer.question_type === 'NUMERIC' && answer.text_answer ? parseFloat(answer.text_answer) : null,
-        date_answer: answer.question_type === 'DATE' && answer.text_answer ? new Date(answer.text_answer) : null,
+        numeric_answer:
+          answer.question_type === 'NUMERIC' && answer.text_answer
+            ? parseFloat(answer.text_answer)
+            : null,
+        date_answer:
+          answer.question_type === 'DATE' && answer.text_answer
+            ? new Date(answer.text_answer)
+            : null,
       });
 
       totalScore += pointsEarned;
@@ -110,10 +130,16 @@ export class AssessmentGradingService {
   /**
    * Check if an answer is correct
    */
-  checkAnswerCorrectness(answer: any, question: any, context: AssessmentContextType): boolean {
+  checkAnswerCorrectness(
+    answer: any,
+    question: any,
+    context: AssessmentContextType,
+  ): boolean {
     // Get correct answers based on context (different field names)
-    const correctAnswers = context === 'school' ? question.correct_answers : question.correctAnswers;
-    const questionType = context === 'school' ? question.question_type : question.questionType;
+    const correctAnswers =
+      context === 'school' ? question.correct_answers : question.correctAnswers;
+    const questionType =
+      context === 'school' ? question.question_type : question.questionType;
 
     if (!correctAnswers || correctAnswers.length === 0) {
       // Fallback: check options' is_correct flag
@@ -121,13 +147,17 @@ export class AssessmentGradingService {
       if (selectedOptions.length > 0) {
         const options = question.options || [];
         const correctOptionIds = options
-          .filter((o: any) => (context === 'school' ? o.is_correct : o.isCorrect))
+          .filter((o: any) =>
+            context === 'school' ? o.is_correct : o.isCorrect,
+          )
           .map((o: any) => o.id);
-        
+
         if (correctOptionIds.length > 0) {
           const studentOptions = [...selectedOptions].sort();
           const correctSorted = [...correctOptionIds].sort();
-          return JSON.stringify(studentOptions) === JSON.stringify(correctSorted);
+          return (
+            JSON.stringify(studentOptions) === JSON.stringify(correctSorted)
+          );
         }
       }
       return false;
@@ -135,7 +165,8 @@ export class AssessmentGradingService {
 
     const correctAnswer = correctAnswers[0];
     const selectedOptions = answer.selected_options || [];
-    const optionIds = context === 'school' ? correctAnswer.option_ids : correctAnswer.optionIds;
+    const optionIds =
+      context === 'school' ? correctAnswer.option_ids : correctAnswer.optionIds;
 
     switch (questionType) {
       case 'MULTIPLE_CHOICE':
@@ -144,32 +175,52 @@ export class AssessmentGradingService {
         if (selectedOptions.length > 0 && optionIds) {
           const studentOptions = [...selectedOptions].sort();
           const correctOptions = [...(optionIds || [])].sort();
-          return JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
+          return (
+            JSON.stringify(studentOptions) === JSON.stringify(correctOptions)
+          );
         }
         break;
 
       case 'FILL_IN_BLANK':
       case 'SHORT_ANSWER':
-        const answerText = context === 'school' ? correctAnswer.answer_text : correctAnswer.answerText;
+        const answerText =
+          context === 'school'
+            ? correctAnswer.answer_text
+            : correctAnswer.answerText;
         if (answer.text_answer && answerText) {
-          return answer.text_answer.toLowerCase().trim() === answerText.toLowerCase().trim();
+          return (
+            answer.text_answer.toLowerCase().trim() ===
+            answerText.toLowerCase().trim()
+          );
         }
         break;
 
       case 'NUMERIC':
-        const answerNumber = context === 'school' ? correctAnswer.answer_number : correctAnswer.answerNumber;
+        const answerNumber =
+          context === 'school'
+            ? correctAnswer.answer_number
+            : correctAnswer.answerNumber;
         if (answer.text_answer && answerNumber !== undefined) {
           const studentNumber = parseFloat(answer.text_answer);
-          return !isNaN(studentNumber) && Math.abs(studentNumber - answerNumber) < 0.01;
+          return (
+            !isNaN(studentNumber) &&
+            Math.abs(studentNumber - answerNumber) < 0.01
+          );
         }
         break;
 
       case 'DATE':
-        const answerDate = context === 'school' ? correctAnswer.answer_date : correctAnswer.answerDate;
+        const answerDate =
+          context === 'school'
+            ? correctAnswer.answer_date
+            : correctAnswer.answerDate;
         if (answer.text_answer && answerDate) {
           const studentDate = new Date(answer.text_answer);
           const correctDate = new Date(answerDate);
-          return !isNaN(studentDate.getTime()) && studentDate.getTime() === correctDate.getTime();
+          return (
+            !isNaN(studentDate.getTime()) &&
+            studentDate.getTime() === correctDate.getTime()
+          );
         }
         break;
 

@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsEnum, IsDateString, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -37,7 +45,8 @@ export class GrantAccessDto {
   resourceType: LibraryResourceType;
 
   @ApiPropertyOptional({
-    description: 'Subject ID (required if resourceType is SUBJECT, TOPIC, VIDEO, MATERIAL, or ASSESSMENT under a subject)',
+    description:
+      'Subject ID (required if resourceType is SUBJECT, TOPIC, VIDEO, MATERIAL, or ASSESSMENT under a subject)',
     example: 'clxxx123456',
   })
   @IsOptional()
@@ -45,7 +54,8 @@ export class GrantAccessDto {
   subjectId?: string;
 
   @ApiPropertyOptional({
-    description: 'Topic ID (required if resourceType is TOPIC, VIDEO, MATERIAL, or ASSESSMENT under a topic)',
+    description:
+      'Topic ID (required if resourceType is TOPIC, VIDEO, MATERIAL, or ASSESSMENT under a topic)',
     example: 'clxxx123456',
   })
   @IsOptional()
@@ -251,28 +261,45 @@ export class ExcludeResourceDto {
 
   @ApiProperty({
     description: 'Type of resource to turn off',
-    enum: [LibraryResourceType.TOPIC, LibraryResourceType.VIDEO, LibraryResourceType.MATERIAL, LibraryResourceType.ASSESSMENT],
+    enum: [
+      LibraryResourceType.TOPIC,
+      LibraryResourceType.VIDEO,
+      LibraryResourceType.MATERIAL,
+      LibraryResourceType.ASSESSMENT,
+    ],
     example: LibraryResourceType.TOPIC,
   })
   @IsEnum(LibraryResourceType)
-  resourceType: LibraryResourceType.TOPIC | LibraryResourceType.VIDEO | LibraryResourceType.MATERIAL | LibraryResourceType.ASSESSMENT;
+  resourceType:
+    | LibraryResourceType.TOPIC
+    | LibraryResourceType.VIDEO
+    | LibraryResourceType.MATERIAL
+    | LibraryResourceType.ASSESSMENT;
 
-  @ApiPropertyOptional({ description: 'Topic ID (required if resourceType is TOPIC)' })
+  @ApiPropertyOptional({
+    description: 'Topic ID (required if resourceType is TOPIC)',
+  })
   @IsOptional()
   @IsString()
   topicId?: string;
 
-  @ApiPropertyOptional({ description: 'Video ID (required if resourceType is VIDEO)' })
+  @ApiPropertyOptional({
+    description: 'Video ID (required if resourceType is VIDEO)',
+  })
   @IsOptional()
   @IsString()
   videoId?: string;
 
-  @ApiPropertyOptional({ description: 'Material ID (required if resourceType is MATERIAL)' })
+  @ApiPropertyOptional({
+    description: 'Material ID (required if resourceType is MATERIAL)',
+  })
   @IsOptional()
   @IsString()
   materialId?: string;
 
-  @ApiPropertyOptional({ description: 'Assessment ID (required if resourceType is ASSESSMENT)' })
+  @ApiPropertyOptional({
+    description: 'Assessment ID (required if resourceType is ASSESSMENT)',
+  })
   @IsOptional()
   @IsString()
   assessmentId?: string;

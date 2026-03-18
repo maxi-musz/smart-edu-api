@@ -2,18 +2,33 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
-export const DASHBOARD_SORT_BY = ['createdAt', 'email', 'first_name', 'last_name', 'role', 'status'] as const;
+export const DASHBOARD_SORT_BY = [
+  'createdAt',
+  'email',
+  'first_name',
+  'last_name',
+  'role',
+  'status',
+] as const;
 export const SORT_ORDER = ['asc', 'desc'] as const;
 
 export class LibraryDashboardQueryDto {
-  @ApiPropertyOptional({ description: 'Page number (1-based)', example: 1, default: 1 })
+  @ApiPropertyOptional({
+    description: 'Page number (1-based)',
+    example: 1,
+    default: 1,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ description: 'Items per page', example: 20, default: 20 })
+  @ApiPropertyOptional({
+    description: 'Items per page',
+    example: 20,
+    default: 20,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

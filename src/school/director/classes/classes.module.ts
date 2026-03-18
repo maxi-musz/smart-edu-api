@@ -7,6 +7,6 @@ import { AcademicSessionModule } from '../../../academic-session/academic-sessio
 @Module({
   imports: [PrismaModule, AcademicSessionModule],
   providers: [ClassesService],
-  controllers: [ClassesController]
+  controllers: [ClassesController],
 })
 export class ClassesModule {}

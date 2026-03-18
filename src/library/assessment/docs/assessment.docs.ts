@@ -1,4 +1,10 @@
-import { ApiOperation, ApiResponse, ApiBody, ApiParam, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiParam,
+  ApiConsumes,
+} from '@nestjs/swagger';
 import { CreateLibraryAssessmentDto } from '../dto/create-assessment.dto';
 import { UpdateLibraryAssessmentDto } from '../dto/update-assessment.dto';
 import { CreateLibraryAssessmentQuestionDto } from '../dto/create-question.dto';
@@ -36,7 +42,8 @@ export const CreateAssessmentDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - Library user not found, subject/chapter/topic not found or does not belong to user\'s platform',
+    description:
+      "Not found - Library user not found, subject/chapter/topic not found or does not belong to user's platform",
   }),
 
   response500: ApiResponse({
@@ -50,7 +57,7 @@ export const GetAssessmentsByTopicDocs = {
     summary: 'Get all assessments under a topic',
     description:
       'Retrieves all published assessments associated with a specific library topic. ' +
-      'Only assessments from the user\'s platform are returned. ' +
+      "Only assessments from the user's platform are returned. " +
       'Requires a valid JWT token in the Authorization header. ' +
       'Response is wrapped in { success, message, data } where data contains the topic information and assessments list.',
   }),
@@ -73,7 +80,8 @@ export const GetAssessmentsByTopicDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - Library user not found or topic not found/does not belong to user\'s platform',
+    description:
+      "Not found - Library user not found or topic not found/does not belong to user's platform",
   }),
 
   response500: ApiResponse({
@@ -136,7 +144,8 @@ export const GetAssessmentQuestionsDocs = {
 
 export const UploadQuestionImageDocs = {
   operation: ApiOperation({
-    summary: 'Upload an image for a question (use this before creating the question)',
+    summary:
+      'Upload an image for a question (use this before creating the question)',
     description:
       'Uploads an image file to S3 for use in a question. Returns the image URL and S3 key which should be used when creating the question. ' +
       'Image must be JPEG, PNG, GIF, or WEBP format and max 5MB. ' +
@@ -198,7 +207,8 @@ export const CreateQuestionDocs = {
   }),
 
   body: ApiBody({
-    description: 'Question data. If you have an image, upload it first using /upload-image endpoint and use the returned imageUrl here.',
+    description:
+      'Question data. If you have an image, upload it first using /upload-image endpoint and use the returned imageUrl here.',
     type: CreateLibraryAssessmentQuestionDto,
   }),
 
@@ -209,7 +219,8 @@ export const CreateQuestionDocs = {
 
   response400: ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid question data or assessment is closed/archived',
+    description:
+      'Bad request - Invalid question data or assessment is closed/archived',
   }),
 
   response404: ApiResponse({
@@ -253,12 +264,14 @@ export const UpdateQuestionDocs = {
 
   response400: ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid question data or assessment is closed/archived',
+    description:
+      'Bad request - Invalid question data or assessment is closed/archived',
   }),
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - Assessment or question not found or access denied',
+    description:
+      'Not found - Assessment or question not found or access denied',
   }),
 };
 
@@ -289,12 +302,14 @@ export const DeleteQuestionImageDocs = {
 
   response400: ApiResponse({
     status: 400,
-    description: 'Bad request - Question does not have an image or assessment is closed',
+    description:
+      'Bad request - Question does not have an image or assessment is closed',
   }),
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - Assessment or question not found or access denied',
+    description:
+      'Not found - Assessment or question not found or access denied',
   }),
 };
 
@@ -331,7 +346,8 @@ export const DeleteQuestionDocs = {
 
   response404: ApiResponse({
     status: 404,
-    description: 'Not found - Assessment or question not found or access denied',
+    description:
+      'Not found - Assessment or question not found or access denied',
   }),
 };
 
@@ -476,7 +492,8 @@ export const ReleaseResultsDocs = {
 
   response200: ApiResponse({
     status: 200,
-    description: 'Assessment results released successfully. Assessment has been closed.',
+    description:
+      'Assessment results released successfully. Assessment has been closed.',
   }),
 
   response404: ApiResponse({
@@ -535,4 +552,3 @@ export const GetUserAssessmentHistoryDocs = {
     description: 'Not found - User not found',
   }),
 };
-

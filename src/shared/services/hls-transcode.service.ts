@@ -24,7 +24,7 @@ interface RetryConfig {
 
 /**
  * HLS Transcode Service with pluggable providers.
- * 
+ *
  * Set HLS_TRANSCODE_PROVIDER env var to switch providers:
  * - 'ffmpeg' (default): Local FFmpeg transcoding (free, uses server CPU)
  * - 'mediaconvert': AWS MediaConvert (paid ~$0.015/min, fast, managed)
@@ -50,7 +50,8 @@ export class HlsTranscodeService {
     private readonly mediaConvertProvider: MediaConvertTranscodeProvider,
   ) {
     // Select provider based on env var (default: ffmpeg)
-    this.providerName = this.configService.get<string>('HLS_TRANSCODE_PROVIDER') || 'ffmpeg';
+    this.providerName =
+      this.configService.get<string>('HLS_TRANSCODE_PROVIDER') || 'ffmpeg';
 
     if (this.providerName.toLowerCase() === 'mediaconvert') {
       this.provider = this.mediaConvertProvider;
@@ -63,14 +64,20 @@ export class HlsTranscodeService {
    * Log the active HLS transcode provider (called from main.ts after app init so it appears last).
    */
   logActiveProvider(): void {
-    this.logger.log(colors.cyan(`🎬 HLS Active provider: ${this.provider.name} (HLS_TRANSCODE_PROVIDER=${this.providerName})`));
+    this.logger.log(
+      colors.cyan(
+        `🎬 HLS Active provider: ${this.provider.name} (HLS_TRANSCODE_PROVIDER=${this.providerName})`,
+      ),
+    );
   }
 
   /**
    * Master playlist filename differs by provider: MediaConvert uses main.m3u8, FFmpeg uses master.m3u8.
    */
   private getMasterPlaylistFilename(): string {
-    return this.providerName.toLowerCase() === 'mediaconvert' ? 'main.m3u8' : 'master.m3u8';
+    return this.providerName.toLowerCase() === 'mediaconvert'
+      ? 'main.m3u8'
+      : 'master.m3u8';
   }
 
   /**
@@ -85,21 +92,30 @@ export class HlsTranscodeService {
    * Sleep for specified milliseconds
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
    * Options for transcode when the source file is already on disk (e.g. right after upload).
    * When set, skips downloading from S3 and uses the local file instead.
    */
-  async transcodeLibraryVideo(videoId: string, options?: { localFilePath: string }): Promise<TranscodeResult> {
-    this.logger.log(colors.cyan(`🎬 Starting HLS transcode for library video: ${videoId}`));
+  async transcodeLibraryVideo(
+    videoId: string,
+    options?: { localFilePath: string },
+  ): Promise<TranscodeResult> {
+    this.logger.log(
+      colors.cyan(`🎬 Starting HLS transcode for library video: ${videoId}`),
+    );
 
     let lastError: string = '';
 
     for (let attempt = 1; attempt <= this.retryConfig.maxAttempts; attempt++) {
       try {
-        this.logger.log(colors.blue(`🔄 Transcode attempt ${attempt}/${this.retryConfig.maxAttempts} for library video: ${videoId}`));
+        this.logger.log(
+          colors.blue(
+            `🔄 Transcode attempt ${attempt}/${this.retryConfig.maxAttempts} for library video: ${videoId}`,
+          ),
+        );
 
         // Get video details
         const video = await this.prisma.libraryVideoLesson.findUnique({
@@ -135,7 +151,12 @@ export class HlsTranscodeService {
         const hlsS3Prefix = `library/videos-hls/${videoId}`;
 
         // Perform transcode (use local file when provided to avoid re-downloading from S3)
-        const result = await this.performTranscode(video.videoS3Key, hlsS3Prefix, video.title, options?.localFilePath);
+        const result = await this.performTranscode(
+          video.videoS3Key,
+          hlsS3Prefix,
+          video.title,
+          options?.localFilePath,
+        );
 
         if (result.success) {
           // Build CloudFront URL for the master playlist (MediaConvert: main.m3u8, FFmpeg: master.m3u8)
@@ -155,14 +176,27 @@ export class HlsTranscodeService {
             },
           });
 
-          this.logger.log(colors.green(`✅ HLS transcode completed for library video: ${videoId} (attempt ${attempt})`));
-          return { success: true, hlsPlaybackUrl, hlsS3Prefix, attempts: attempt };
+          this.logger.log(
+            colors.green(
+              `✅ HLS transcode completed for library video: ${videoId} (attempt ${attempt})`,
+            ),
+          );
+          return {
+            success: true,
+            hlsPlaybackUrl,
+            hlsS3Prefix,
+            attempts: attempt,
+          };
         } else {
           throw new Error(result.error || 'Transcode failed');
         }
       } catch (error) {
         lastError = error.message;
-        this.logger.error(colors.red(`❌ Attempt ${attempt} failed for library video ${videoId}: ${error.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Attempt ${attempt} failed for library video ${videoId}: ${error.message}`,
+          ),
+        );
 
         // If not the last attempt, wait and retry
         if (attempt < this.retryConfig.maxAttempts) {
@@ -174,27 +208,44 @@ export class HlsTranscodeService {
     }
 
     // All retries exhausted - mark as failed
-    this.logger.error(colors.red(`❌ All ${this.retryConfig.maxAttempts} attempts failed for library video ${videoId}`));
+    this.logger.error(
+      colors.red(
+        `❌ All ${this.retryConfig.maxAttempts} attempts failed for library video ${videoId}`,
+      ),
+    );
     await this.prisma.libraryVideoLesson.update({
       where: { id: videoId },
       data: { hlsStatus: HlsTranscodeStatus.failed },
     });
 
-    return { success: false, error: lastError, attempts: this.retryConfig.maxAttempts };
+    return {
+      success: false,
+      error: lastError,
+      attempts: this.retryConfig.maxAttempts,
+    };
   }
 
   /**
    * Transcode a school video to HLS format with automatic retry.
    * Pass options.localFilePath when the file is already on disk (e.g. right after upload) to skip S3 download.
    */
-  async transcodeSchoolVideo(videoId: string, options?: { localFilePath: string }): Promise<TranscodeResult> {
-    this.logger.log(colors.cyan(`🎬 Starting HLS transcode for school video: ${videoId}`));
+  async transcodeSchoolVideo(
+    videoId: string,
+    options?: { localFilePath: string },
+  ): Promise<TranscodeResult> {
+    this.logger.log(
+      colors.cyan(`🎬 Starting HLS transcode for school video: ${videoId}`),
+    );
 
     let lastError: string = '';
 
     for (let attempt = 1; attempt <= this.retryConfig.maxAttempts; attempt++) {
       try {
-        this.logger.log(colors.blue(`🔄 Transcode attempt ${attempt}/${this.retryConfig.maxAttempts} for school video: ${videoId}`));
+        this.logger.log(
+          colors.blue(
+            `🔄 Transcode attempt ${attempt}/${this.retryConfig.maxAttempts} for school video: ${videoId}`,
+          ),
+        );
 
         // Get video details
         const video = await this.prisma.videoContent.findUnique({
@@ -227,7 +278,12 @@ export class HlsTranscodeService {
         const hlsS3Prefix = `school/videos-hls/schools/${video.schoolId || 'general'}/topics/${video.topic_id || 'general'}/${videoId}`;
 
         // Perform transcode (use local file when provided to avoid re-downloading from S3)
-        const result = await this.performTranscode(video.videoS3Key, hlsS3Prefix, video.title, options?.localFilePath);
+        const result = await this.performTranscode(
+          video.videoS3Key,
+          hlsS3Prefix,
+          video.title,
+          options?.localFilePath,
+        );
 
         if (result.success) {
           // Build CloudFront URL for the master playlist (MediaConvert: main.m3u8, FFmpeg: master.m3u8)
@@ -247,14 +303,27 @@ export class HlsTranscodeService {
             },
           });
 
-          this.logger.log(colors.green(`✅ HLS transcode completed for school video: ${videoId} (attempt ${attempt})`));
-          return { success: true, hlsPlaybackUrl, hlsS3Prefix, attempts: attempt };
+          this.logger.log(
+            colors.green(
+              `✅ HLS transcode completed for school video: ${videoId} (attempt ${attempt})`,
+            ),
+          );
+          return {
+            success: true,
+            hlsPlaybackUrl,
+            hlsS3Prefix,
+            attempts: attempt,
+          };
         } else {
           throw new Error(result.error || 'Transcode failed');
         }
       } catch (error) {
         lastError = error.message;
-        this.logger.error(colors.red(`❌ Attempt ${attempt} failed for school video ${videoId}: ${error.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Attempt ${attempt} failed for school video ${videoId}: ${error.message}`,
+          ),
+        );
 
         // If not the last attempt, wait and retry
         if (attempt < this.retryConfig.maxAttempts) {
@@ -266,13 +335,21 @@ export class HlsTranscodeService {
     }
 
     // All retries exhausted - mark as failed
-    this.logger.error(colors.red(`❌ All ${this.retryConfig.maxAttempts} attempts failed for school video ${videoId}`));
+    this.logger.error(
+      colors.red(
+        `❌ All ${this.retryConfig.maxAttempts} attempts failed for school video ${videoId}`,
+      ),
+    );
     await this.prisma.videoContent.update({
       where: { id: videoId },
       data: { hlsStatus: HlsTranscodeStatus.failed },
     });
 
-    return { success: false, error: lastError, attempts: this.retryConfig.maxAttempts };
+    return {
+      success: false,
+      error: lastError,
+      attempts: this.retryConfig.maxAttempts,
+    };
   }
 
   /**
@@ -284,8 +361,10 @@ export class HlsTranscodeService {
     title: string,
     localFilePath?: string,
   ): Promise<TranscodeResult> {
-    this.logger.log(colors.cyan(`🎬 Using ${this.provider.name} for transcoding`));
-    
+    this.logger.log(
+      colors.cyan(`🎬 Using ${this.provider.name} for transcoding`),
+    );
+
     const result = await this.provider.transcode({
       sourceS3Key,
       hlsS3Prefix,
@@ -413,7 +492,7 @@ export class HlsTranscodeService {
         failed: 0,
         none: 0,
       };
-      stats.forEach(s => {
+      stats.forEach((s) => {
         const status = s.hlsStatus || 'none';
         result[status] = s._count.id;
       });
@@ -429,19 +508,32 @@ export class HlsTranscodeService {
   /**
    * Retry all failed library video transcodes
    */
-  async retryAllFailedLibraryVideos(): Promise<{ queued: number; videoIds: string[] }> {
+  async retryAllFailedLibraryVideos(): Promise<{
+    queued: number;
+    videoIds: string[];
+  }> {
     const failedVideos = await this.prisma.libraryVideoLesson.findMany({
       where: { hlsStatus: HlsTranscodeStatus.failed },
       select: { id: true },
     });
 
-    const videoIds = failedVideos.map(v => v.id);
+    const videoIds = failedVideos.map((v) => v.id);
 
     // Trigger retries in background (don't await)
-    videoIds.forEach(id => {
+    videoIds.forEach((id) => {
       this.retryLibraryVideoTranscode(id)
-        .then(() => this.logger.log(colors.green(`✅ Retry completed for library video: ${id}`)))
-        .catch(err => this.logger.error(colors.red(`❌ Retry failed for library video ${id}: ${err.message}`)));
+        .then(() =>
+          this.logger.log(
+            colors.green(`✅ Retry completed for library video: ${id}`),
+          ),
+        )
+        .catch((err) =>
+          this.logger.error(
+            colors.red(
+              `❌ Retry failed for library video ${id}: ${err.message}`,
+            ),
+          ),
+        );
     });
 
     return { queued: videoIds.length, videoIds };
@@ -450,19 +542,32 @@ export class HlsTranscodeService {
   /**
    * Retry all failed school video transcodes
    */
-  async retryAllFailedSchoolVideos(): Promise<{ queued: number; videoIds: string[] }> {
+  async retryAllFailedSchoolVideos(): Promise<{
+    queued: number;
+    videoIds: string[];
+  }> {
     const failedVideos = await this.prisma.videoContent.findMany({
       where: { hlsStatus: HlsTranscodeStatus.failed },
       select: { id: true },
     });
 
-    const videoIds = failedVideos.map(v => v.id);
+    const videoIds = failedVideos.map((v) => v.id);
 
     // Trigger retries in background (don't await)
-    videoIds.forEach(id => {
+    videoIds.forEach((id) => {
       this.retrySchoolVideoTranscode(id)
-        .then(() => this.logger.log(colors.green(`✅ Retry completed for school video: ${id}`)))
-        .catch(err => this.logger.error(colors.red(`❌ Retry failed for school video ${id}: ${err.message}`)));
+        .then(() =>
+          this.logger.log(
+            colors.green(`✅ Retry completed for school video: ${id}`),
+          ),
+        )
+        .catch((err) =>
+          this.logger.error(
+            colors.red(
+              `❌ Retry failed for school video ${id}: ${err.message}`,
+            ),
+          ),
+        );
     });
 
     return { queued: videoIds.length, videoIds };

@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateLibraryLinkDto {
   @ApiProperty({
@@ -46,7 +52,8 @@ export class CreateLibraryLinkDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Type of link (e.g., article, video, reference, tutorial, documentation)',
+    description:
+      'Type of link (e.g., article, video, reference, tutorial, documentation)',
     example: 'tutorial',
   })
   @IsString()
@@ -54,4 +61,3 @@ export class CreateLibraryLinkDto {
   @MaxLength(50)
   linkType?: string;
 }
-

@@ -29,7 +29,8 @@ export class UploadLibraryVideoDto {
 
   @ApiPropertyOptional({
     description: 'Description of the video lesson',
-    example: 'Learn about variables, their types, and how to use them in algebraic expressions',
+    example:
+      'Learn about variables, their types, and how to use them in algebraic expressions',
   })
   @IsString()
   @IsOptional()
@@ -44,4 +45,3 @@ export class UploadLibraryVideoResponseDto {
   @ApiProperty()
   progressEndpoint: string;
 }
-

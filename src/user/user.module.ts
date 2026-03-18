@@ -7,6 +7,6 @@ import { StorageModule } from '../shared/services/providers/storage.module';
 @Module({
   imports: [PrismaModule, StorageModule],
   controllers: [UserController],
-  providers: [UserService]
+  providers: [UserService],
 })
 export class UserModule {}

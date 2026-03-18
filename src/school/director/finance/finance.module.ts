@@ -10,6 +10,6 @@ import { AcademicSessionModule } from '../../../academic-session/academic-sessio
   imports: [PrismaModule, AcademicSessionModule],
   controllers: [FinanceController, PaymentController],
   providers: [FinanceService, PaymentProcessorService],
-  exports: [FinanceService, PaymentProcessorService]
+  exports: [FinanceService, PaymentProcessorService],
 })
 export class FinanceModule {}
