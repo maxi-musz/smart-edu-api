@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GetAssessmentsQueryDto } from 'src/assessment/dto/get-assessments-query.dto';
+import { DuplicateAssessmentDto } from 'src/assessment/dto/duplicate-assessment.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
@@ -589,6 +590,243 @@ export class TeachersAssessmentsService {
         assessmentContext: 'school',
       },
     );
+  }
+
+  /**
+   * Duplicate an assessment (teacher-only).
+   *
+   * Mirrors `SchoolAssessmentService.duplicateSchoolAssessment(...)`,
+   * but keeps the logic self-contained inside this teacher module.
+   */
+  async duplicateTeacherAssessmentById(
+    assessmentId: string,
+    duplicateDto: DuplicateAssessmentDto,
+    user: any,
+  ) {
+
+    this.logger.log(colors.cyan(`[TEACHER] duplicating current assessment`));
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      this.logger.error(colors.red('Invalid teacher authentication data'));
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    const sourceAssessment = await this.prisma.assessment.findFirst({
+      where: {
+        id: assessmentId,
+        school_id: schoolId,
+      },
+      include: {
+        questions: {
+          include: {
+            options: true,
+            correct_answers: true,
+          },
+          orderBy: { order: 'asc' },
+        },
+      },
+    });
+
+    if (!sourceAssessment) {
+      this.logger.error(colors.red('Assessment not found'));
+      throw new NotFoundException('Assessment not found');
+    }
+
+    // Teacher access control: teacher must teach the subject of the source assessment
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: {
+          select: { subjectId: true },
+        },
+      },
+    });
+
+    if (!teacher) {
+      this.logger.error(colors.red('Teacher not found'));
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map((st) => st.subjectId);
+    if (!teacherSubjectIds.includes(sourceAssessment.subject_id)) {
+      this.logger.error(colors.red('You do not have access to duplicate this assessment'));
+      throw new ForbiddenException(
+        'You do not have access to duplicate this assessment',
+      );
+    }
+
+    // Get current academic session
+    const currentSession = await this.prisma.academicSession.findFirst({
+      where: {
+        school_id: schoolId,
+        is_current: true,
+      },
+    });
+
+    if (!currentSession) {
+      this.logger.error(colors.red('No current academic session found'));
+      throw new BadRequestException('No current academic session found');
+    }
+
+    // Prepare questions with optional shuffling
+    let questions = [...sourceAssessment.questions];
+    if (duplicateDto.shuffle_questions) {
+      this.logger.log(colors.green('[TEACHER] shuffling questions'));
+      questions = this.shuffleArray(questions);
+    }
+
+    const newAssessment = await this.prisma.$transaction(async (tx) => {
+      this.logger.log(colors.yellow('[TEACHER] creating new assessment'));
+      const assessment = await tx.assessment.create({
+        data: {
+          school_id: schoolId!,
+          academic_session_id: currentSession.id,
+          subject_id: sourceAssessment.subject_id,
+          topic_id: sourceAssessment.topic_id,
+          created_by: userId,
+          title: duplicateDto.new_title,
+          description:
+            duplicateDto.new_description || sourceAssessment.description,
+          instructions: sourceAssessment.instructions,
+          assessment_type: sourceAssessment.assessment_type,
+          grading_type: sourceAssessment.grading_type,
+          duration: sourceAssessment.duration,
+          max_attempts: sourceAssessment.max_attempts,
+          passing_score: sourceAssessment.passing_score,
+          total_points: sourceAssessment.total_points,
+          shuffle_questions:
+            duplicateDto.shuffle_questions ||
+            sourceAssessment.shuffle_questions,
+          shuffle_options:
+            duplicateDto.shuffle_options || sourceAssessment.shuffle_options,
+          show_correct_answers: sourceAssessment.show_correct_answers,
+          show_feedback: sourceAssessment.show_feedback,
+          allow_review: sourceAssessment.allow_review,
+          time_limit: sourceAssessment.time_limit,
+          auto_submit: sourceAssessment.auto_submit,
+          tags: sourceAssessment.tags,
+          status: 'DRAFT',
+          is_published: false,
+          // Reset dates - user must set new dates
+          start_date: null,
+          end_date: null,
+        },
+      });
+
+      this.logger.log(colors.blue('[TEACHER] creating questions'));
+      // Create questions with options + correct answers
+      for (let i = 0; i < questions.length; i++) {
+        const sourceQuestion = questions[i];
+
+        // Prepare options with optional shuffling
+        let options = [...sourceQuestion.options];
+        if (duplicateDto.shuffle_options) {
+          options = this.shuffleArray(options);
+        }
+
+        const newQuestion = await tx.assessmentQuestion.create({
+          data: {
+            assessment_id: assessment.id,
+            question_text: sourceQuestion.question_text,
+            question_type: sourceQuestion.question_type,
+            order: i + 1,
+            points: sourceQuestion.points,
+            is_required: sourceQuestion.is_required,
+            time_limit: sourceQuestion.time_limit,
+            image_url: sourceQuestion.image_url,
+            image_s3_key: sourceQuestion.image_s3_key,
+            audio_url: sourceQuestion.audio_url,
+            video_url: sourceQuestion.video_url,
+            allow_multiple_attempts: sourceQuestion.allow_multiple_attempts,
+            show_hint: sourceQuestion.show_hint,
+            hint_text: sourceQuestion.hint_text,
+            min_length: sourceQuestion.min_length,
+            max_length: sourceQuestion.max_length,
+            min_value: sourceQuestion.min_value,
+            max_value: sourceQuestion.max_value,
+            explanation: sourceQuestion.explanation,
+            difficulty_level: sourceQuestion.difficulty_level,
+          },
+        });
+
+        // Create option ID mapping (old -> new) for correct_answers
+        const optionIdMap = new Map<string, string>();
+
+        // Create options
+        for (let j = 0; j < options.length; j++) {
+          const sourceOption = options[j];
+          const newOption = await tx.assessmentOption.create({
+            data: {
+              question_id: newQuestion.id,
+              option_text: sourceOption.option_text,
+              order: j + 1,
+              is_correct: sourceOption.is_correct,
+              image_url: sourceOption.image_url,
+              image_s3_key: sourceOption.image_s3_key,
+              audio_url: sourceOption.audio_url,
+            },
+          });
+
+          optionIdMap.set(sourceOption.id, newOption.id);
+        }
+
+        // Create correct answers with updated option IDs
+        for (const sourceAnswer of sourceQuestion.correct_answers) {
+          const newOptionIds = (sourceAnswer.option_ids || []).map(
+            (oldId) => optionIdMap.get(oldId) || oldId,
+          );
+
+          await tx.assessmentCorrectAnswer.create({
+            data: {
+              question_id: newQuestion.id,
+              answer_text: sourceAnswer.answer_text,
+              answer_number: sourceAnswer.answer_number,
+              answer_date: sourceAnswer.answer_date,
+              option_ids: newOptionIds,
+              answer_json: sourceAnswer.answer_json ?? undefined,
+            },
+          });
+        }
+      }
+
+      return tx.assessment.findUnique({
+        where: { id: assessment.id },
+        include: {
+          subject: { select: { id: true, name: true, code: true } },
+          topic: { select: { id: true, title: true } },
+          createdBy: {
+            select: { id: true, first_name: true, last_name: true },
+          },
+          _count: { select: { questions: true } },
+        },
+      });
+    });
+
+    this.logger.log(
+      colors.magenta(
+        `[TEACHER] Assessment duplicated successfully`,
+      ),
+    );
+
+    return ResponseHelper.success('Assessment duplicated successfully', {
+      assessment: newAssessment,
+      source_assessment_id: assessmentId,
+      shuffle_applied: {
+        questions: duplicateDto.shuffle_questions || false,
+        options: duplicateDto.shuffle_options || false,
+      },
+    });
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
   }
 
   /**

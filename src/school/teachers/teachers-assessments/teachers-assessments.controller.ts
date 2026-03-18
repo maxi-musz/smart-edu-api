@@ -3,21 +3,22 @@ import {
   Controller,
   Get,
   Param,
+  Post,
   Patch,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { GetAssessmentsQueryDto } from 'src/assessment/dto/get-assessments-query.dto';
 import { UpdateAssessmentDto } from 'src/assessment/dto/update-assessment.dto';
+import { DuplicateAssessmentDto } from 'src/assessment/dto/duplicate-assessment.dto';
 import { TeachersAssessmentsService } from './teachers-assessments.service';
+import { TeachersAssessmentsDocs } from './docs/teachers-assessments.docs';
 
 @ApiTags('Teachers - Assessments (Teacher-specific)')
 @ApiBearerAuth()
@@ -37,15 +38,10 @@ export class TeachersAssessmentsController {
    * Response shape and analytics match the central `GET /assessment` behavior.
    */
   @Get()
-  @ApiOperation({
-    summary: 'Fetch all assessments for the authenticated teacher',
-  })
-  @ApiResponse({ status: 200, description: 'Assessments fetched successfully' })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request - invalid query/auth context',
-  })
-  @ApiResponse({ status: 404, description: 'Teacher record not found' })
+  @TeachersAssessmentsDocs.getAll.operation
+  @TeachersAssessmentsDocs.getAll.response200
+  @TeachersAssessmentsDocs.getAll.response400
+  @TeachersAssessmentsDocs.getAll.response404
   async getAllTeacherAssessments(
     @Query() query: GetAssessmentsQueryDto,
     @GetUser() user: any,
@@ -57,12 +53,14 @@ export class TeachersAssessmentsController {
   }
 
   // teacher preview questions for a specific assessment
+  // GET /teachers-assessments/:id/questions
+  // Private endpoint
   @Get(':id/questions')
-  @ApiOperation({ summary: 'Fetch assessment questions (teacher preview mode)' })
-  @ApiResponse({ status: 200, description: 'Questions fetched successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - invalid auth/context' })
-  @ApiResponse({ status: 403, description: 'Forbidden - teacher has no access to this assessment' })
-  @ApiResponse({ status: 404, description: 'Not found - teacher/assessment not found' })
+  @TeachersAssessmentsDocs.getQuestionsPreview.operation
+  @TeachersAssessmentsDocs.getQuestionsPreview.response200
+  @TeachersAssessmentsDocs.getQuestionsPreview.response400
+  @TeachersAssessmentsDocs.getQuestionsPreview.response403
+  @TeachersAssessmentsDocs.getQuestionsPreview.response404
   async getTeacherAssessmentQuestionsPreview(
     @Param('id') id: string,
     @GetUser() user: any,
@@ -77,25 +75,11 @@ export class TeachersAssessmentsController {
   // GET /teachers-assessments/:id
   // Private endpoint
   @Get(':id')
-  @ApiOperation({
-    summary: 'Fetch full assessment details for the authenticated teacher',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Assessment details fetched successfully',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request - invalid auth or missing session',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - teacher has no access to this assessment',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Not found - teacher or assessment not found',
-  })
+  @TeachersAssessmentsDocs.getById.operation
+  @TeachersAssessmentsDocs.getById.response200
+  @TeachersAssessmentsDocs.getById.response400
+  @TeachersAssessmentsDocs.getById.response403
+  @TeachersAssessmentsDocs.getById.response404
   async getTeacherAssessmentById(
     @Param('id') id: string,
     @GetUser() user: any,
@@ -103,22 +87,32 @@ export class TeachersAssessmentsController {
     return this.teachersAssessmentsService.getTeacherAssessmentById(id, user);
   }
 
+  // duplicate a specific assessment by id for a teacher
+  @Post(':id/duplicate')
+  @TeachersAssessmentsDocs.duplicateById.operation
+  @TeachersAssessmentsDocs.duplicateById.response201
+  @TeachersAssessmentsDocs.duplicateById.response400
+  @TeachersAssessmentsDocs.duplicateById.response403
+  @TeachersAssessmentsDocs.duplicateById.response404
+  async duplicateTeacherAssessmentById(
+    @Param('id') id: string,
+    @Body() duplicateDto: DuplicateAssessmentDto,
+    @GetUser() user: any,
+  ) {
+    return this.teachersAssessmentsService.duplicateTeacherAssessmentById(
+      id,
+      duplicateDto,
+      user,
+    );
+  }
+
   // fourth endpoint is to update a specific assessment by id for a teacher
   @Patch(':id')
-  @ApiOperation({ summary: 'Update an assessment (teacher-only)' })
-  @ApiResponse({ status: 200, description: 'Assessment updated successfully' })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request - cannot update published/active assessments',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - teacher does not have access to update',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Not found - assessment not found or access denied',
-  })
+  @TeachersAssessmentsDocs.updateById.operation
+  @TeachersAssessmentsDocs.updateById.response200
+  @TeachersAssessmentsDocs.updateById.response400
+  @TeachersAssessmentsDocs.updateById.response403
+  @TeachersAssessmentsDocs.updateById.response404
   async updateTeacherAssessmentById(
     @Param('id') id: string,
     @Body() updateDto: UpdateAssessmentDto,
