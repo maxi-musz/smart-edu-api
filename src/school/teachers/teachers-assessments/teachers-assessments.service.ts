@@ -4,12 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { GetAssessmentsQueryDto } from 'src/assessment/dto/get-assessments-query.dto';
-import { DuplicateAssessmentDto } from 'src/assessment/dto/duplicate-assessment.dto';
+import { GetAssessmentsQueryDto } from './dto/get-assessments-query.dto';
+import { DuplicateAssessmentDto } from './dto/duplicate-assessment.dto';
+import { AddQuestionsDto } from './dto/add-questions.dto';
+import { StorageService } from '../../../shared/services/providers/storage.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
 import { Logger } from '@nestjs/common';
+import { DifficultyLevel, QuestionType } from '@prisma/client';
 
 type StatusAnalytics = {
   all: number;
@@ -23,7 +26,10 @@ type StatusAnalytics = {
 @Injectable()
 export class TeachersAssessmentsService {
   private readonly logger = new Logger(TeachersAssessmentsService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storageService: StorageService,
+  ) {}
 
   /**
    * Fetch all assessments for the authenticated teacher.
@@ -1070,6 +1076,1036 @@ export class TeachersAssessmentsService {
     return ResponseHelper.success('Assessment updated successfully', {
       assessment: updatedAssessment,
       assessmentContext: 'school',
+    });
+  }
+
+  // ========================================
+  // ADD QUESTIONS TO ASSESSMENT
+  // ========================================
+
+  /**
+   * Add questions to an existing assessment (teacher module).
+   * Mirrors `SchoolAssessmentService.addSchoolAssessmentQuestions(...)`.
+   */
+  async addTeacherAssessmentQuestions(
+    assessmentId: string,
+    addQuestionsDto: AddQuestionsDto,
+    user: any,
+  ) {
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    this.logger.log(
+      colors.cyan(
+        `[TEACHER] Adding ${addQuestionsDto.questions.length} question(s) to assessment: ${assessmentId}`,
+      ),
+    );
+
+    const assessment = await this.prisma.assessment.findFirst({
+      where: {
+        id: assessmentId,
+        school_id: schoolId,
+      },
+      include: {
+        _count: { select: { questions: true } },
+      },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Assessment not found: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found');
+    }
+
+    // Prevent modification of published/active assessments
+    if (['PUBLISHED', 'ACTIVE'].includes(assessment.status)) {
+      throw new BadRequestException(
+        `Cannot add questions to a ${assessment.status} assessment. Change the status to DRAFT or CLOSED first.`,
+      );
+    }
+
+    // Teacher subject access control
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: { select: { subjectId: true } },
+      },
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map(
+      (st: any) => st.subjectId,
+    );
+    if (!teacherSubjectIds.includes(assessment.subject_id)) {
+      throw new ForbiddenException(
+        'You do not have access to modify this assessment',
+      );
+    }
+
+    // Get current max order to continue numbering
+    const lastQuestion = await this.prisma.assessmentQuestion.findFirst({
+      where: { assessment_id: assessmentId },
+      orderBy: { order: 'desc' },
+      select: { order: true },
+    });
+    let nextOrder = (lastQuestion?.order ?? 0) + 1;
+
+    const createdQuestions = await this.prisma.$transaction(async (tx) => {
+      const results: any[] = [];
+
+      for (const questionDto of addQuestionsDto.questions) {
+        const questionOrder = questionDto.order ?? nextOrder++;
+
+        const newQuestion = await tx.assessmentQuestion.create({
+          data: {
+            assessment_id: assessmentId,
+            question_text: questionDto.question_text,
+            question_type: questionDto.question_type as QuestionType,
+            order: questionOrder,
+            points: questionDto.points ?? 1.0,
+            is_required: questionDto.is_required ?? true,
+            time_limit: questionDto.time_limit ?? null,
+            image_url: questionDto.image_url ?? null,
+            image_s3_key: questionDto.image_s3_key ?? null,
+            audio_url: questionDto.audio_url ?? null,
+            video_url: questionDto.video_url ?? null,
+            allow_multiple_attempts: questionDto.allow_multiple_attempts ?? false,
+            show_hint: questionDto.show_hint ?? false,
+            hint_text: questionDto.hint_text ?? null,
+            min_length: questionDto.min_length ?? null,
+            max_length: questionDto.max_length ?? null,
+            min_value: questionDto.min_value ?? null,
+            max_value: questionDto.max_value ?? null,
+            explanation: questionDto.explanation ?? null,
+            difficulty_level: (questionDto.difficulty_level ?? 'MEDIUM') as DifficultyLevel,
+          },
+        });
+
+        const createdOptionIds: string[] = [];
+
+        // Create options (MCQ / TRUE_FALSE)
+        if (questionDto.options?.length) {
+          for (let j = 0; j < questionDto.options.length; j++) {
+            const optDto = questionDto.options[j];
+            const newOption = await tx.assessmentOption.create({
+              data: {
+                question_id: newQuestion.id,
+                option_text: optDto.option_text,
+                order: optDto.order ?? j + 1,
+                is_correct: optDto.is_correct,
+                image_url: optDto.image_url ?? null,
+                image_s3_key: optDto.image_s3_key ?? null,
+                audio_url: optDto.audio_url ?? null,
+              },
+            });
+
+            if (optDto.is_correct) {
+              createdOptionIds.push(newOption.id);
+            }
+          }
+
+          if (createdOptionIds.length > 0) {
+            await tx.assessmentCorrectAnswer.create({
+              data: {
+                question_id: newQuestion.id,
+                option_ids: createdOptionIds,
+              },
+            });
+          }
+        }
+
+        // Create explicit correct answers (non-MCQ types)
+        if (questionDto.correct_answers?.length) {
+          for (const answerDto of questionDto.correct_answers) {
+            await tx.assessmentCorrectAnswer.create({
+              data: {
+                question_id: newQuestion.id,
+                answer_text: answerDto.answer_text ?? null,
+                answer_number: answerDto.answer_number ?? null,
+                answer_date: answerDto.answer_date
+                  ? new Date(answerDto.answer_date)
+                  : null,
+                answer_json: answerDto.answer_json ?? undefined,
+              },
+            });
+          }
+        }
+
+        const fullQuestion = await tx.assessmentQuestion.findUnique({
+          where: { id: newQuestion.id },
+          include: {
+            options: { orderBy: { order: 'asc' } },
+            correct_answers: true,
+          },
+        });
+
+        results.push(fullQuestion);
+      }
+
+      const totalPoints = await tx.assessmentQuestion.aggregate({
+        where: { assessment_id: assessmentId },
+        _sum: { points: true },
+      });
+
+      await tx.assessment.update({
+        where: { id: assessmentId },
+        data: { total_points: totalPoints._sum.points ?? 0 },
+      });
+
+      return results;
+    });
+
+    return ResponseHelper.success('Questions added successfully', {
+      assessment_id: assessmentId,
+      questions_added: createdQuestions.length,
+      total_questions: assessment._count.questions + createdQuestions.length,
+      questions: createdQuestions,
+    });
+  }
+
+  /**
+   * Validates an image file (type and size).
+   */
+  private validateImageFile(file: Express.Multer.File): void {
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Invalid image file type: ${file.originalname}. Allowed: JPEG, PNG, GIF, WEBP`,
+      );
+    }
+
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        `Image file ${file.originalname} exceeds 5MB limit`,
+      );
+    }
+  }
+
+  // ========================================
+  // ATOMIC: ADD QUESTION WITH IMAGES
+  // ========================================
+
+  /**
+   * Create a single question with image uploads atomically.
+   * Supports question image + option images (matched by `imageIndex`).
+   */
+  async addTeacherQuestionWithImage(
+    assessmentId: string,
+    questionDataString: string,
+    questionImage: Express.Multer.File | undefined,
+    optionImages: Express.Multer.File[],
+    user: any,
+  ) {
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    const uploadedKeys: string[] = [];
+
+    try {
+      this.logger.log(
+        colors.cyan(
+          `[TEACHER] Creating question with images for assessment: ${assessmentId}`,
+        ),
+      );
+
+      // Parse JSON question data
+      let questionData: any;
+      try {
+        questionData = JSON.parse(questionDataString);
+      } catch {
+        throw new BadRequestException('Invalid JSON in questionData field');
+      }
+
+      // Verify assessment exists and belongs to the school
+      const assessment = await this.prisma.assessment.findFirst({
+        where: {
+          id: assessmentId,
+          school_id: schoolId,
+        },
+        include: {
+          _count: { select: { questions: true } },
+        },
+      });
+
+      if (!assessment) {
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
+      }
+
+      // Check assessment status
+      if (['PUBLISHED', 'ACTIVE'].includes(assessment.status)) {
+        throw new BadRequestException(
+          'Cannot add questions to a published, active, closed, or archived assessment',
+        );
+      }
+
+      // Mirror general atomic endpoint: teachers can only add to their own assessments
+      if (assessment.created_by !== userId) {
+        throw new ForbiddenException('You do not have access to this assessment');
+      }
+
+      const s3Folder = `assessment-images/schools/${schoolId}/assessments/${assessmentId}`;
+
+      // Upload question image (optional)
+      if (questionImage) {
+        this.logger.log(
+          colors.blue(
+            `[TEACHER] Uploading question image: ${questionImage.originalname}`,
+          ),
+        );
+        this.validateImageFile(questionImage);
+
+        const fileName = `question_${Date.now()}_${questionImage.originalname.replace(
+          /[^a-zA-Z0-9.-]/g,
+          '_',
+        )}`;
+
+        const uploadResult = await this.storageService.uploadFile(
+          questionImage,
+          s3Folder,
+          fileName,
+        );
+
+        uploadedKeys.push(uploadResult.key);
+        questionData.image_url = uploadResult.url;
+        questionData.image_s3_key = uploadResult.key;
+      }
+
+      // Upload option images (optional) and match by option.imageIndex
+      if (optionImages.length > 0 && questionData.options?.length) {
+        for (let i = 0; i < optionImages.length; i++) {
+          const optFile = optionImages[i];
+          this.logger.log(
+            colors.blue(
+              `[TEACHER] Uploading option image [${i}]: ${optFile.originalname}`,
+            ),
+          );
+
+          this.validateImageFile(optFile);
+
+          const fileName = `option_${Date.now()}_${i}_${optFile.originalname.replace(
+            /[^a-zA-Z0-9.-]/g,
+            '_',
+          )}`;
+
+          const uploadResult = await this.storageService.uploadFile(
+            optFile,
+            s3Folder,
+            fileName,
+          );
+
+          uploadedKeys.push(uploadResult.key);
+
+          const matchingOption = questionData.options.find(
+            (opt: any) => opt.imageIndex === i,
+          );
+
+          if (matchingOption) {
+            matchingOption.image_url = uploadResult.url;
+            matchingOption.image_s3_key = uploadResult.key;
+          }
+        }
+      }
+
+      // Delegate creation to the non-image add method
+      const addQuestionsDto: AddQuestionsDto = { questions: [questionData] };
+      return this.addTeacherAssessmentQuestions(
+        assessmentId,
+        addQuestionsDto,
+        user,
+      );
+    } catch (err: any) {
+      // Rollback: delete ALL uploaded images if question creation failed
+      if (uploadedKeys.length > 0) {
+        for (const key of uploadedKeys) {
+          try {
+            await this.storageService.deleteFile(key);
+          } catch {
+            // Best-effort rollback; don't mask the original error
+          }
+        }
+      }
+      throw err;
+    }
+  }
+
+  // ========================================
+  // UPDATE QUESTION (SMART MERGE)
+  // ========================================
+
+  /**
+   * Update a question in an assessment (teacher-only, subject-scoped).
+   * Mirrors `SchoolAssessmentService.updateSchoolQuestion(...)` including smart merge logic.
+   */
+  async updateTeacherQuestion(
+    assessmentId: string,
+    questionId: string,
+    updateQuestionDto: any,
+    user: any,
+  ) {
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    // 1. Fetch assessment and verify access
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, school_id: schoolId },
+      select: { id: true, status: true, subject_id: true },
+    });
+
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    // 2. Prevent modification of published/active assessments
+    if (['PUBLISHED', 'ACTIVE'].includes(assessment.status)) {
+      throw new BadRequestException(
+        `Cannot update questions in a ${assessment.status} assessment. Change the status to DRAFT first.`,
+      );
+    }
+
+    // 3. Teacher subject access check
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: { select: { subjectId: true } },
+      },
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map(
+      (st: any) => st.subjectId,
+    );
+
+    if (!teacherSubjectIds.includes(assessment.subject_id)) {
+      throw new ForbiddenException(
+        'You do not have access to modify this assessment',
+      );
+    }
+
+    // 4. Fetch question with all relations
+    const question = await this.prisma.assessmentQuestion.findFirst({
+      where: { id: questionId, assessment_id: assessmentId },
+      include: {
+        options: { orderBy: { order: 'asc' } },
+        correct_answers: true,
+      },
+    });
+
+    if (!question) {
+      this.logger.error(colors.red(`Question not found: ${questionId}`));
+      throw new NotFoundException('Question not found');
+    }
+
+    // 5. Update question in a transaction
+    const updatedQuestion = await this.prisma.$transaction(async (tx) => {
+      const updateData: any = {};
+
+      if (updateQuestionDto.question_text !== undefined) {
+        updateData.question_text = updateQuestionDto.question_text;
+      }
+      if (updateQuestionDto.question_type !== undefined) {
+        updateData.question_type =
+          updateQuestionDto.question_type as QuestionType;
+      }
+      if (updateQuestionDto.order !== undefined) {
+        updateData.order = updateQuestionDto.order;
+      }
+      if (updateQuestionDto.points !== undefined) {
+        updateData.points = updateQuestionDto.points;
+      }
+      if (updateQuestionDto.is_required !== undefined) {
+        updateData.is_required = updateQuestionDto.is_required;
+      }
+      if (updateQuestionDto.time_limit !== undefined) {
+        updateData.time_limit = updateQuestionDto.time_limit;
+      }
+
+      const questionImageUpdateRequested =
+        updateQuestionDto.image_url !== undefined ||
+        updateQuestionDto.image_s3_key !== undefined;
+
+      if (
+        questionImageUpdateRequested &&
+        question.image_s3_key
+      ) {
+        try {
+          await this.storageService.deleteFile(question.image_s3_key);
+          this.logger.log(
+            colors.green(
+              `[TEACHER] Deleted old question image: ${question.image_s3_key}`,
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            colors.yellow(
+              `[TEACHER] Failed to delete old question image: ${question.image_s3_key}`,
+            ),
+          );
+        }
+      }
+
+      if (updateQuestionDto.image_url !== undefined) {
+        updateData.image_url = updateQuestionDto.image_url;
+      }
+      if (updateQuestionDto.image_s3_key !== undefined) {
+        updateData.image_s3_key = updateQuestionDto.image_s3_key;
+      }
+      if (updateQuestionDto.audio_url !== undefined) {
+        updateData.audio_url = updateQuestionDto.audio_url;
+      }
+      if (updateQuestionDto.video_url !== undefined) {
+        updateData.video_url = updateQuestionDto.video_url;
+      }
+      if (updateQuestionDto.allow_multiple_attempts !== undefined) {
+        updateData.allow_multiple_attempts =
+          updateQuestionDto.allow_multiple_attempts;
+      }
+      if (updateQuestionDto.show_hint !== undefined) {
+        updateData.show_hint = updateQuestionDto.show_hint;
+      }
+      if (updateQuestionDto.hint_text !== undefined) {
+        updateData.hint_text = updateQuestionDto.hint_text;
+      }
+      if (updateQuestionDto.min_length !== undefined) {
+        updateData.min_length = updateQuestionDto.min_length;
+      }
+      if (updateQuestionDto.max_length !== undefined) {
+        updateData.max_length = updateQuestionDto.max_length;
+      }
+      if (updateQuestionDto.min_value !== undefined) {
+        updateData.min_value = updateQuestionDto.min_value;
+      }
+      if (updateQuestionDto.max_value !== undefined) {
+        updateData.max_value = updateQuestionDto.max_value;
+      }
+      if (updateQuestionDto.explanation !== undefined) {
+        updateData.explanation = updateQuestionDto.explanation;
+      }
+      if (updateQuestionDto.difficulty_level !== undefined) {
+        updateData.difficulty_level =
+          updateQuestionDto.difficulty_level as DifficultyLevel;
+      }
+
+      await tx.assessmentQuestion.update({
+        where: { id: questionId },
+        data: updateData,
+      });
+
+      // 5a. Smart merge/update options if provided
+      if (updateQuestionDto.options !== undefined) {
+        if (updateQuestionDto.options.length === 0) {
+          throw new BadRequestException(
+            'options cannot be empty when provided',
+          );
+        }
+
+        const correctOptionIds: string[] = [];
+
+        for (let j = 0; j < updateQuestionDto.options.length; j++) {
+          const optDto = updateQuestionDto.options[j];
+
+          if (optDto.id) {
+            const existingOption = question.options.find(
+              (opt: any) => opt.id === optDto.id,
+            );
+
+            if (!existingOption) {
+              throw new BadRequestException(
+                `Option with id ${optDto.id} not found in this question`,
+              );
+            }
+
+            const updateOptionData: any = {};
+
+            if (optDto.option_text !== undefined) {
+              if (optDto.option_text === '') {
+                throw new BadRequestException('option_text cannot be empty');
+              }
+              updateOptionData.option_text = optDto.option_text;
+            }
+
+            if (optDto.order !== undefined) {
+              updateOptionData.order = optDto.order;
+            }
+            if (optDto.is_correct !== undefined) {
+              updateOptionData.is_correct = optDto.is_correct;
+            }
+            if (optDto.audio_url !== undefined) {
+              updateOptionData.audio_url = optDto.audio_url;
+            }
+
+            if (optDto.image_url !== undefined) {
+              if (
+                existingOption.image_s3_key &&
+                optDto.image_s3_key !== existingOption.image_s3_key
+              ) {
+                try {
+                  await this.storageService.deleteFile(
+                    existingOption.image_s3_key,
+                  );
+                  this.logger.log(
+                    colors.green(
+                      `[TEACHER] Deleted old option image: ${existingOption.image_s3_key}`,
+                    ),
+                  );
+                } catch (error) {
+                  this.logger.warn(
+                    colors.yellow(
+                      `[TEACHER] Failed to delete old option image: ${existingOption.image_s3_key}`,
+                    ),
+                  );
+                }
+              }
+
+              updateOptionData.image_url = optDto.image_url;
+              updateOptionData.image_s3_key = optDto.image_s3_key ?? null;
+            }
+
+            const updatedOption = await tx.assessmentOption.update({
+              where: { id: optDto.id },
+              data: updateOptionData,
+            });
+
+            const isCorrect =
+              optDto.is_correct !== undefined
+                ? optDto.is_correct
+                : existingOption.is_correct;
+
+            if (isCorrect) {
+              correctOptionIds.push(updatedOption.id);
+            }
+          } else {
+            const optionText = optDto.option_text ?? '';
+            if (optionText === '') {
+              throw new BadRequestException(
+                'option_text is required when creating new options',
+              );
+            }
+            if (optDto.is_correct === undefined) {
+              throw new BadRequestException(
+                'is_correct is required when creating new options',
+              );
+            }
+
+            const newOption = await tx.assessmentOption.create({
+              data: {
+                question_id: questionId,
+                option_text: optionText,
+                order: optDto.order ?? j + 1,
+                is_correct: optDto.is_correct,
+                image_url: optDto.image_url ?? null,
+                image_s3_key: optDto.image_s3_key ?? null,
+                audio_url: optDto.audio_url ?? null,
+              },
+            });
+
+            if (optDto.is_correct) {
+              correctOptionIds.push(newOption.id);
+            }
+          }
+        }
+
+        if (correctOptionIds.length > 0) {
+          await tx.assessmentCorrectAnswer.deleteMany({
+            where: { question_id: questionId },
+          });
+
+          await tx.assessmentCorrectAnswer.create({
+            data: {
+              question_id: questionId,
+              option_ids: correctOptionIds,
+            },
+          });
+        }
+      }
+
+      // 5b. Update correct answers if provided (for non-MCQ types)
+      if (updateQuestionDto.correct_answers !== undefined) {
+        if (!updateQuestionDto.options) {
+          await tx.assessmentCorrectAnswer.deleteMany({
+            where: { question_id: questionId },
+          });
+
+          for (const answerDto of updateQuestionDto.correct_answers) {
+            await tx.assessmentCorrectAnswer.create({
+              data: {
+                question_id: questionId,
+                answer_text: answerDto.answer_text ?? null,
+                answer_number: answerDto.answer_number ?? null,
+                answer_date: answerDto.answer_date
+                  ? new Date(answerDto.answer_date)
+                  : null,
+                answer_json: answerDto.answer_json ?? undefined,
+              },
+            });
+          }
+        }
+      }
+
+      // 5c. Fetch and return the updated question
+      const fullQuestion = await tx.assessmentQuestion.findUnique({
+        where: { id: questionId },
+        include: {
+          options: { orderBy: { order: 'asc' } },
+          correct_answers: true,
+        },
+      });
+
+      // 5d. Recalculate assessment total_points
+      const totalPoints = await tx.assessmentQuestion.aggregate({
+        where: { assessment_id: assessmentId },
+        _sum: { points: true },
+      });
+
+      await tx.assessment.update({
+        where: { id: assessmentId },
+        data: { total_points: totalPoints._sum.points ?? 0 },
+      });
+
+      return fullQuestion;
+    });
+
+    this.logger.log(
+      colors.green(`[TEACHER] Successfully updated question: ${questionId}`),
+    );
+
+    return ResponseHelper.success('Question updated successfully', {
+      assessment_id: assessmentId,
+      question: updatedQuestion,
+    });
+  }
+
+  // ========================================
+  // UPDATE QUESTION WITH IMAGE UPLOADS
+  // ========================================
+
+  /**
+   * Update a question with image uploads (multipart).
+   * Mirrors `SchoolAssessmentService.updateSchoolQuestionWithImage(...)`,
+   * but keeps the access control inside this teacher module via
+   * `updateTeacherQuestion(...)`.
+   */
+  async updateTeacherQuestionWithImage(
+    assessmentId: string,
+    questionId: string,
+    updateQuestionDto: any,
+    user: any,
+    newQuestionImage?: Express.Multer.File,
+    optionImageUpdates?: Array<{ optionId: string; oldS3Key?: string }>,
+    newOptionImages?: Express.Multer.File[],
+  ) {
+    const schoolId = user?.school_id;
+
+    if (!schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    const uploadedFiles: string[] = [];
+
+    try {
+      // 1) Upload question image (optional)
+      if (newQuestionImage) {
+        const timestamp = Date.now();
+        const sanitizedFilename = newQuestionImage.originalname.replace(
+          /[^a-zA-Z0-9._-]/g,
+          '_',
+        );
+
+        const s3Folder = `assessment-images/schools/${schoolId}/assessments/${assessmentId}`;
+        const fileName = `question_${timestamp}_${sanitizedFilename}`;
+
+        const uploadResult = await this.storageService.uploadFile(
+          newQuestionImage,
+          s3Folder,
+          fileName,
+        );
+
+        uploadedFiles.push(uploadResult.key);
+
+        // Delete old question image if it exists
+        if (updateQuestionDto.image_s3_key) {
+          try {
+            await this.storageService.deleteFile(updateQuestionDto.image_s3_key);
+          } catch (error) {
+            this.logger.warn(
+              colors.yellow(
+                `[TEACHER] Failed to delete old question image: ${updateQuestionDto.image_s3_key}`,
+              ),
+            );
+          }
+        }
+
+        updateQuestionDto.image_url = uploadResult.url;
+        updateQuestionDto.image_s3_key = uploadResult.key;
+      }
+
+      // 2) Upload option images (optional)
+      if (
+        optionImageUpdates &&
+        newOptionImages &&
+        newOptionImages.length > 0
+      ) {
+        if (optionImageUpdates.length !== newOptionImages.length) {
+          throw new BadRequestException(
+            'Mismatch between optionImageUpdates and newOptionImages count',
+          );
+        }
+
+        if (!updateQuestionDto.options) {
+          updateQuestionDto.options = [];
+        }
+
+        for (let i = 0; i < optionImageUpdates.length; i++) {
+          const { optionId, oldS3Key } = optionImageUpdates[i];
+          const imageFile = newOptionImages[i];
+
+          const timestamp = Date.now();
+          const sanitizedFilename = imageFile.originalname.replace(
+            /[^a-zA-Z0-9._-]/g,
+            '_',
+          );
+
+          const s3Folder = `assessment-images/schools/${schoolId}/assessments/${assessmentId}`;
+          const fileName = `option_${timestamp}_${i}_${sanitizedFilename}`;
+
+          const uploadResult = await this.storageService.uploadFile(
+            imageFile,
+            s3Folder,
+            fileName,
+          );
+
+          uploadedFiles.push(uploadResult.key);
+
+          // Delete old option image if it exists
+          if (oldS3Key) {
+            try {
+              await this.storageService.deleteFile(oldS3Key);
+            } catch (error) {
+              this.logger.warn(
+                colors.yellow(
+                  `[TEACHER] Failed to delete old option image: ${oldS3Key}`,
+                ),
+              );
+            }
+          }
+
+          // Find or create option update in DTO
+          let optionUpdate = updateQuestionDto.options.find(
+            (opt: any) => opt.id === optionId,
+          );
+
+          if (!optionUpdate) {
+            optionUpdate = { id: optionId };
+            updateQuestionDto.options.push(optionUpdate);
+          }
+
+          optionUpdate.image_url = uploadResult.url;
+          optionUpdate.image_s3_key = uploadResult.key;
+        }
+      }
+
+      // 3) Call smart merge update
+      const result = await this.updateTeacherQuestion(
+        assessmentId,
+        questionId,
+        updateQuestionDto,
+        user,
+      );
+
+      return result;
+    } catch (error) {
+      // Rollback: delete all newly uploaded files
+      for (const s3Key of uploadedFiles) {
+        try {
+          await this.storageService.deleteFile(s3Key);
+        } catch (rollbackError) {
+          this.logger.warn(
+            colors.yellow(
+              `[TEACHER] Failed to rollback file: ${s3Key}`,
+            ),
+          );
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  // ========================================
+  // DELETE QUESTION FROM ASSESSMENT
+  // ========================================
+
+  /**
+   * Delete a question from a teacher assessment.
+   * Mirrors `SchoolAssessmentService.deleteSchoolQuestion(...)` logic,
+   * but enforces teacher subject access using this module's teacher model.
+   */
+  async deleteTeacherAssessmentQuestion(
+    assessmentId: string,
+    questionId: string,
+    user: any,
+  ) {
+    this.logger.log(
+      colors.cyan(
+        `[TEACHER] Deleting question: ${questionId} from assessment: ${assessmentId}`,
+      ),
+    );
+
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    // 1) Fetch assessment and verify it belongs to the teacher's school
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, school_id: schoolId },
+      select: { id: true, status: true, subject_id: true },
+    });
+
+    if (!assessment) {
+      this.logger.error(colors.red(`Assessment not found: ${assessmentId}`));
+      throw new NotFoundException('Assessment not found');
+    }
+
+    // 2) Prevent modification of published/active assessments
+    if (['PUBLISHED', 'ACTIVE'].includes(assessment.status)) {
+      throw new BadRequestException(
+        `Cannot delete questions from a ${assessment.status} assessment. Change the status to DRAFT first.`,
+      );
+    }
+
+    // 3) Teacher subject access check (teacher must teach assessment.subject_id)
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: { select: { subjectId: true } },
+      },
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map(
+      (st: any) => st.subjectId,
+    );
+
+    if (!teacherSubjectIds.includes(assessment.subject_id)) {
+      throw new ForbiddenException(
+        'You do not have access to delete from this assessment',
+      );
+    }
+
+    // 4) Fetch question with options to clean up media (best-effort)
+    const question = await this.prisma.assessmentQuestion.findFirst({
+      where: { id: questionId, assessment_id: assessmentId },
+      include: { options: true },
+    });
+
+    if (!question) {
+      this.logger.error(colors.red(`Question not found: ${questionId}`));
+      throw new NotFoundException('Question not found');
+    }
+
+    // 5) Delete question and then clean up media + recalculate total_points
+    await this.prisma.$transaction(async (tx) => {
+      // DB deletion (cascade delete should remove options/correct_answers/responses)
+      await tx.assessmentQuestion.delete({
+        where: { id: questionId },
+      });
+
+      const mediaToDelete: string[] = [];
+
+      // Question media
+      if (question.image_s3_key) {
+        mediaToDelete.push(question.image_s3_key);
+      }
+
+      if (question.audio_url) {
+        const urlMatch = question.audio_url.match(/\/([^\/]+)$/);
+        if (urlMatch) mediaToDelete.push(urlMatch[1]);
+      }
+
+      if (question.video_url) {
+        const urlMatch = question.video_url.match(/\/([^\/]+)$/);
+        if (urlMatch) mediaToDelete.push(urlMatch[1]);
+      }
+
+      // Option media
+      for (const option of question.options) {
+        if (option.image_s3_key) {
+          mediaToDelete.push(option.image_s3_key);
+        }
+
+        if (option.audio_url) {
+          const urlMatch = option.audio_url.match(/\/([^\/]+)$/);
+          if (urlMatch) mediaToDelete.push(urlMatch[1]);
+        }
+      }
+
+      // Best-effort delete media from S3
+      for (const key of mediaToDelete) {
+        try {
+          await this.storageService.deleteFile(key);
+          this.logger.log(colors.green(`[TEACHER] ✅ Deleted media file: ${key}`));
+        } catch (error: any) {
+          const errMsg = error?.message ?? String(error);
+          this.logger.warn(
+            colors.yellow(
+              `[TEACHER] ⚠️ Failed to delete media file: ${key} - ${errMsg}`,
+            ),
+          );
+        }
+      }
+
+      // Recalculate assessment total_points
+      const totalPoints = await tx.assessmentQuestion.aggregate({
+        where: { assessment_id: assessmentId },
+        _sum: { points: true },
+      });
+
+      await tx.assessment.update({
+        where: { id: assessmentId },
+        data: { total_points: totalPoints._sum.points ?? 0 },
+      });
+    });
+
+    this.logger.log(
+      colors.green(`[TEACHER] ✅ Successfully deleted question: ${questionId}`),
+    );
+
+    return ResponseHelper.success('Question deleted successfully', {
+      assessment_id: assessmentId,
+      deleted_question_id: questionId,
+      message: 'Question and all associated media have been removed',
     });
   }
 }
