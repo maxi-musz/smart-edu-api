@@ -456,6 +456,142 @@ export class TeachersAssessmentsService {
   }
 
   /**
+   * Fetch assessment questions in teacher preview mode.
+   * Mirrors `SchoolAssessmentService.getSchoolAssessmentQuestionsForPreview(...)`,
+   * but strictly scopes access to the assessment's subject assigned to the teacher.
+   */
+  async getTeacherAssessmentQuestionsForPreview(
+    assessmentId: string,
+    user: any,
+  ) {
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    const assessment = await this.prisma.assessment.findFirst({
+      where: {
+        id: assessmentId,
+        school_id: schoolId,
+      },
+      include: {
+        subject: {
+          select: { id: true, name: true, code: true, color: true },
+        },
+        createdBy: {
+          select: { id: true, first_name: true, last_name: true },
+        },
+        questions: {
+          include: {
+            options: {
+              select: {
+                id: true,
+                option_text: true,
+                is_correct: true,
+                order: true,
+              },
+              orderBy: { order: 'asc' },
+            },
+            correct_answers: {
+              select: { id: true, answer_text: true, option_ids: true },
+            },
+          },
+          orderBy: { order: 'asc' },
+        },
+        _count: {
+          select: { attempts: true },
+        },
+      },
+    });
+
+    if (!assessment) {
+      throw new NotFoundException(
+        'Assessment not found or you do not have access',
+      );
+    }
+
+    // Teacher access control:
+    // teacher must be assigned to this assessment's subject
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: {
+          where: { subjectId: assessment.subject_id },
+          select: { subjectId: true },
+        },
+      },
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    if (teacher.subjectsTeaching.length === 0) {
+      throw new ForbiddenException(
+        'You do not have access to this assessment',
+      );
+    }
+
+    const questions = assessment.questions.map((q) => ({
+      id: q.id,
+      question_text: q.question_text,
+      question_type: q.question_type,
+      points: q.points,
+      order: q.order,
+      image_url: q.image_url,
+      audio_url: q.audio_url,
+      video_url: q.video_url,
+      is_required: q.is_required,
+      explanation: q.explanation,
+      difficulty_level: q.difficulty_level,
+      options: q.options.map((o) => ({
+        id: o.id,
+        text: o.option_text,
+        is_correct: o.is_correct,
+        order: o.order,
+      })),
+      correct_answers: q.correct_answers.map((ca) => ({
+        id: ca.id,
+        answer_text: ca.answer_text,
+        option_ids: ca.option_ids,
+      })),
+    }));
+
+    return ResponseHelper.success(
+      'Assessment questions retrieved successfully (preview mode)',
+      {
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          description: assessment.description,
+          instructions: assessment.instructions,
+          duration: assessment.duration,
+          time_limit: assessment.time_limit,
+          total_points: assessment.total_points,
+          max_attempts: assessment.max_attempts,
+          passing_score: assessment.passing_score,
+          status: assessment.status,
+          is_published: assessment.is_published,
+          start_date: assessment.start_date,
+          end_date: assessment.end_date,
+          subject: assessment.subject,
+          teacher: {
+            id: assessment.createdBy.id,
+            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+          },
+          total_attempts: assessment._count.attempts,
+        },
+        questions,
+        total_questions: questions.length,
+        isPreview: true,
+        assessmentContext: 'school',
+      },
+    );
+  }
+
+  /**
    * Update a specific assessment by id (teacher-only).
    *
    * Logic mirrors `SchoolAssessmentService.updateSchoolAssessment(...)` for school users,

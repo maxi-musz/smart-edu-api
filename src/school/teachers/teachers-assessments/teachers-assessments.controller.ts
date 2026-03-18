@@ -56,6 +56,23 @@ export class TeachersAssessmentsController {
     );
   }
 
+  // teacher preview questions for a specific assessment
+  @Get(':id/questions')
+  @ApiOperation({ summary: 'Fetch assessment questions (teacher preview mode)' })
+  @ApiResponse({ status: 200, description: 'Questions fetched successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - invalid auth/context' })
+  @ApiResponse({ status: 403, description: 'Forbidden - teacher has no access to this assessment' })
+  @ApiResponse({ status: 404, description: 'Not found - teacher/assessment not found' })
+  async getTeacherAssessmentQuestionsPreview(
+    @Param('id') id: string,
+    @GetUser() user: any,
+  ) {
+    return this.teachersAssessmentsService.getTeacherAssessmentQuestionsForPreview(
+      id,
+      user,
+    );
+  }
+
   // second endpoint is to get a specific assessment by id for a teacher
   // GET /teachers-assessments/:id
   // Private endpoint
