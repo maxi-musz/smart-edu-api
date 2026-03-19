@@ -202,6 +202,32 @@ export class TeachersAssessmentsService {
       }
     });
 
+    // Auto-close expired assessments in the current page response.
+    // If an assessment has passed end_date and is still ACTIVE/PUBLISHED,
+    // mark it CLOSED in DB and reflect the change in the response payload.
+    const now = new Date();
+    const expiredAssessmentIds = assessments
+      .filter(
+        (assessment: any) =>
+          assessment?.end_date &&
+          new Date(assessment.end_date) < now &&
+          ['ACTIVE', 'PUBLISHED'].includes(assessment.status),
+      )
+      .map((assessment: any) => assessment.id);
+
+    if (expiredAssessmentIds.length > 0) {
+      await this.prisma.assessment.updateMany({
+        where: { id: { in: expiredAssessmentIds } },
+        data: { status: 'CLOSED' },
+      });
+
+      assessments.forEach((assessment: any) => {
+        if (expiredAssessmentIds.includes(assessment.id)) {
+          assessment.status = 'CLOSED';
+        }
+      });
+    }
+
     const totalPages = Math.ceil(total / limit);
 
     const responseData = {
@@ -760,41 +786,46 @@ export class TeachersAssessmentsService {
         // Create option ID mapping (old -> new) for correct_answers
         const optionIdMap = new Map<string, string>();
 
-        // Create options
-        for (let j = 0; j < options.length; j++) {
-          const sourceOption = options[j];
-          const newOption = await tx.assessmentOption.create({
-            data: {
-              question_id: newQuestion.id,
-              option_text: sourceOption.option_text,
-              order: j + 1,
-              is_correct: sourceOption.is_correct,
-              image_url: sourceOption.image_url,
-              image_s3_key: sourceOption.image_s3_key,
-              audio_url: sourceOption.audio_url,
-            },
-          });
+        // Create options concurrently (preserves behavior while reducing transaction time)
+        const createdOptions = await Promise.all(
+          options.map((sourceOption, index) =>
+            tx.assessmentOption.create({
+              data: {
+                question_id: newQuestion.id,
+                option_text: sourceOption.option_text,
+                order: index + 1,
+                is_correct: sourceOption.is_correct,
+                image_url: sourceOption.image_url,
+                image_s3_key: sourceOption.image_s3_key,
+                audio_url: sourceOption.audio_url,
+              },
+            }),
+          ),
+        );
 
-          optionIdMap.set(sourceOption.id, newOption.id);
-        }
+        createdOptions.forEach((createdOption, index) => {
+          optionIdMap.set(options[index].id, createdOption.id);
+        });
 
-        // Create correct answers with updated option IDs
-        for (const sourceAnswer of sourceQuestion.correct_answers) {
-          const newOptionIds = (sourceAnswer.option_ids || []).map(
-            (oldId) => optionIdMap.get(oldId) || oldId,
-          );
+        // Create correct answers concurrently with remapped option IDs
+        await Promise.all(
+          sourceQuestion.correct_answers.map((sourceAnswer) => {
+            const newOptionIds = (sourceAnswer.option_ids || []).map(
+              (oldId) => optionIdMap.get(oldId) || oldId,
+            );
 
-          await tx.assessmentCorrectAnswer.create({
-            data: {
-              question_id: newQuestion.id,
-              answer_text: sourceAnswer.answer_text,
-              answer_number: sourceAnswer.answer_number,
-              answer_date: sourceAnswer.answer_date,
-              option_ids: newOptionIds,
-              answer_json: sourceAnswer.answer_json ?? undefined,
-            },
-          });
-        }
+            return tx.assessmentCorrectAnswer.create({
+              data: {
+                question_id: newQuestion.id,
+                answer_text: sourceAnswer.answer_text,
+                answer_number: sourceAnswer.answer_number,
+                answer_date: sourceAnswer.answer_date,
+                option_ids: newOptionIds,
+                answer_json: sourceAnswer.answer_json ?? undefined,
+              },
+            });
+          }),
+        );
       }
 
       return tx.assessment.findUnique({
@@ -808,7 +839,7 @@ export class TeachersAssessmentsService {
           _count: { select: { questions: true } },
         },
       });
-    });
+    }, { maxWait: 10000, timeout: 120000 });
 
     this.logger.log(
       colors.magenta(
@@ -862,7 +893,6 @@ export class TeachersAssessmentsService {
     const whereClause: any = {
       id: assessmentId,
       school_id: schoolId,
-      created_by: userId,
     };
 
     const existingAssessment = await this.prisma.assessment.findFirst({
@@ -880,11 +910,38 @@ export class TeachersAssessmentsService {
     if (!existingAssessment) {
       this.logger.error(
         colors.red(
-          'Assessment not found or you do not have permission to update it',
+          'Assessment not found or you do not have access to update it',
         ),
       );
       throw new NotFoundException(
-        'Assessment not found or you do not have permission to update it',
+        'Assessment not found or you do not have access to update it',
+      );
+    }
+
+    // Teacher access control: teacher must teach the assessment subject
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: {
+          select: { subjectId: true },
+        },
+      },
+    });
+
+    if (!teacher) {
+      this.logger.error(colors.red('Teacher not found'));
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map(
+      (st: any) => st.subjectId,
+    );
+    if (!teacherSubjectIds.includes(existingAssessment.subject_id)) {
+      this.logger.error(
+        colors.red('You do not have access to update this assessment'),
+      );
+      throw new ForbiddenException(
+        'You do not have access to update this assessment',
       );
     }
 
