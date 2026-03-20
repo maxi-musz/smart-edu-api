@@ -5,6 +5,11 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -158,26 +163,28 @@ export class S3Service {
     );
 
     try {
+      // Use file stream from disk when available (diskStorage), fall back to buffer (memoryStorage)
+      const body: any =
+        file.path && fs.existsSync(file.path)
+          ? fs.createReadStream(file.path)
+          : file.buffer;
+
       const upload = new Upload({
         client: this.s3Client,
         params: {
           Bucket: this.bucketName,
           Key: key,
-          Body: file.buffer,
+          Body: body,
           ContentType: resolvedContentType,
           ContentDisposition: 'inline',
-          // ACL removed - bucket uses "Bucket owner enforced" which disables ACLs
-          // Use bucket policies for public access instead
           Metadata: {
-            // Encode originalName to handle special characters (spaces, unicode, etc.)
-            // HTTP headers cannot contain certain characters
             originalName: encodeURIComponent(file.originalname),
             size: file.size.toString(),
             uploadedAt: new Date().toISOString(),
           },
         },
         queueSize: 4,
-        partSize: 5 * 1024 * 1024,
+        partSize: 10 * 1024 * 1024, // 10MB parts for better large-file performance
         leavePartsOnError: false,
       });
 
@@ -457,6 +464,200 @@ export class S3Service {
       );
       throw new Error(
         `Failed to generate read presigned URL: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Verify an uploaded object exists in S3 and return its metadata.
+   */
+  async headObject(
+    key: string,
+  ): Promise<{ contentLength: number; contentType?: string; etag?: string }> {
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      const res = await this.s3Client.send(command);
+      return {
+        contentLength: res.ContentLength ?? 0,
+        contentType: res.ContentType,
+        etag: res.ETag,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(`❌ HeadObject failed for key ${key}: ${error.message}`),
+      );
+      throw new Error(`S3 HeadObject failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate a presigned URL for direct client-to-S3 PUT upload.
+   * For files up to 5GB. The client PUTs the file body directly to this URL.
+   */
+  async generateUploadPresignedUrl(
+    key: string,
+    contentType: string,
+    expiresIn: number = 3600,
+  ): Promise<{ presignedUrl: string; key: string; bucket: string }> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ContentType: contentType,
+      });
+
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
+      this.logger.log(
+        colors.blue(`🔗 Generated upload presigned URL for: ${key}`),
+      );
+      return { presignedUrl, key, bucket: this.bucketName };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to generate upload presigned URL: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to generate upload presigned URL: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Initiate a multipart upload and return presigned URLs for each part.
+   * Useful for files >100MB where a single PUT may be unreliable.
+   */
+  async createMultipartPresignedUpload(
+    key: string,
+    contentType: string,
+    fileSizeBytes: number,
+    partSizeBytes: number = 10 * 1024 * 1024, // 10MB per part
+    expiresIn: number = 3600,
+  ): Promise<{
+    uploadId: string;
+    key: string;
+    bucket: string;
+    parts: { partNumber: number; presignedUrl: string }[];
+  }> {
+    try {
+      const createCommand = new CreateMultipartUploadCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ContentType: contentType,
+      });
+      const { UploadId } = await this.s3Client.send(createCommand);
+      if (!UploadId) {
+        throw new Error('Failed to obtain UploadId from S3');
+      }
+
+      const partCount = Math.ceil(fileSizeBytes / partSizeBytes);
+      const parts: { partNumber: number; presignedUrl: string }[] = [];
+
+      for (let i = 1; i <= partCount; i++) {
+        const uploadPartCommand = new UploadPartCommand({
+          Bucket: this.bucketName,
+          Key: key,
+          UploadId,
+          PartNumber: i,
+        });
+        const url = await getSignedUrl(this.s3Client, uploadPartCommand, {
+          expiresIn,
+        });
+        parts.push({ partNumber: i, presignedUrl: url });
+      }
+
+      this.logger.log(
+        colors.blue(
+          `🔗 Created multipart upload for ${key}: ${partCount} parts, uploadId=${UploadId}`,
+        ),
+      );
+
+      return {
+        uploadId: UploadId,
+        key,
+        bucket: this.bucketName,
+        parts,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to create multipart presigned upload: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to create multipart presigned upload: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Complete a multipart upload after the client has uploaded all parts.
+   */
+  async completeMultipartUpload(
+    key: string,
+    uploadId: string,
+    parts: { partNumber: number; etag: string }[],
+  ): Promise<{ url: string; key: string; bucket: string }> {
+    try {
+      // S3 requires parts in strictly ascending PartNumber order (parallel client uploads often finish out of order).
+      const sortedParts = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+
+      const command = new CompleteMultipartUploadCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: sortedParts.map((p) => ({
+            PartNumber: p.partNumber,
+            ETag: p.etag,
+          })),
+        },
+      });
+
+      await this.s3Client.send(command);
+      const url = this.getFileUrl(key);
+
+      this.logger.log(
+        colors.green(`✅ Multipart upload completed for: ${key}`),
+      );
+      return { url, key, bucket: this.bucketName };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to complete multipart upload: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to complete multipart upload: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Abort a multipart upload (cleanup on client failure).
+   */
+  async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+    try {
+      const command = new AbortMultipartUploadCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        UploadId: uploadId,
+      });
+      await this.s3Client.send(command);
+      this.logger.log(
+        colors.yellow(`🗑️ Aborted multipart upload for: ${key}`),
+      );
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to abort multipart upload: ${error.message}`,
+        ),
       );
     }
   }

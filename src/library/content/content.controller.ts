@@ -10,6 +10,7 @@ import {
   UploadedFiles,
   Get,
   Param,
+  Query,
   Sse,
   Delete,
   Patch,
@@ -27,6 +28,11 @@ import {
 } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
 import { UpdateLibraryVideoDto } from './dto/update-video.dto';
+import {
+  RequestVideoUploadDto,
+  ConfirmVideoUploadDto,
+  RequestThumbnailUploadDto,
+} from './dto/request-video-upload.dto';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { UploadProgressService } from '../../school/ai-chat/upload-progress.service';
 import {
@@ -116,6 +122,148 @@ export class ContentController {
       thumbnailFile,
       req.user,
     );
+  }
+
+  // ==================== DIRECT-TO-S3 PRESIGNED UPLOAD (FAST) ====================
+
+  @Post('request-video-upload')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get presigned URL for direct-to-S3 video upload (fast path)',
+    description:
+      'Returns presigned URL(s) for the client to upload directly to S3, bypassing the backend. ' +
+      'For files <= 100MB: returns a single presigned PUT URL. ' +
+      'For files > 100MB: initiates multipart upload with per-part presigned URLs. ' +
+      'After uploading to S3, call confirm-video-upload to save the record.',
+  })
+  @ApiResponse({ status: 200, description: 'Presigned URL(s) generated' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Topic not found' })
+  async requestVideoUpload(
+    @Request() req: any,
+    @Body() dto: RequestVideoUploadDto,
+  ) {
+    return await this.contentService.requestVideoUpload(dto, req.user);
+  }
+
+  @Post('request-thumbnail-upload')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get presigned URL for direct-to-S3 thumbnail upload',
+    description:
+      'Returns a presigned PUT URL for uploading a thumbnail directly to S3. ' +
+      'Use the returned s3Key in the confirm-video-upload call.',
+  })
+  @ApiResponse({ status: 200, description: 'Presigned URL generated' })
+  async requestThumbnailUpload(
+    @Request() req: any,
+    @Body() dto: RequestThumbnailUploadDto,
+  ) {
+    return await this.contentService.requestThumbnailUpload(dto, req.user);
+  }
+
+  @Post('confirm-video-upload')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Confirm a direct-to-S3 video upload',
+    description:
+      'After the client has uploaded the video directly to S3 via presigned URL, ' +
+      'call this to verify the S3 object, save the DB record, and trigger HLS transcoding.',
+  })
+  @ApiResponse({ status: 201, description: 'Video confirmed and saved' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - file not found in S3',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Topic not found' })
+  async confirmVideoUpload(
+    @Request() req: any,
+    @Body() dto: ConfirmVideoUploadDto,
+  ) {
+    return await this.contentService.confirmVideoUpload(dto, req.user);
+  }
+
+  @Patch('upload-progress/:uploadId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update upload progress (called by frontend during S3 upload)',
+    description:
+      'Frontend calls this periodically to persist upload progress in DB. ' +
+      'This way, if the user refreshes or navigates away, progress is saved.',
+  })
+  @ApiResponse({ status: 200, description: 'Progress updated' })
+  async updateUploadProgress(
+    @Request() req: any,
+    @Param('uploadId') uploadId: string,
+    @Body() body: { progress: number },
+  ) {
+    return await this.contentService.updateUploadProgress(
+      uploadId,
+      body.progress,
+      req.user,
+    );
+  }
+
+  @Get('my-uploads')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get all uploads for the current user (persistent)',
+    description:
+      'Returns all recent uploads with their status. Persists across page refresh and logout/login. ' +
+      'Use topicId query param to filter by topic (e.g. when viewing a topic page).',
+  })
+  @ApiResponse({ status: 200, description: 'Uploads retrieved' })
+  async getMyUploads(
+    @Request() req: any,
+    @Query('topicId') topicId?: string,
+  ) {
+    return await this.contentService.getMyUploads(req.user, topicId);
+  }
+
+  @Post('resume-upload/:uploadId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Resume a failed or expired upload',
+    description:
+      'Generates fresh presigned URLs for a failed/expired upload. ' +
+      'The frontend can then retry the S3 upload with the same S3 key.',
+  })
+  @ApiResponse({ status: 200, description: 'Upload resumed' })
+  async resumeUpload(
+    @Request() req: any,
+    @Param('uploadId') uploadId: string,
+  ) {
+    return await this.contentService.resumeUpload(uploadId, req.user);
+  }
+
+  @Post('cancel-upload/:uploadId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cancel an upload',
+    description: 'Cancels a pending/in-progress upload and cleans up S3.',
+  })
+  @ApiResponse({ status: 200, description: 'Upload cancelled' })
+  async cancelUpload(
+    @Request() req: any,
+    @Param('uploadId') uploadId: string,
+  ) {
+    return await this.contentService.cancelUpload(uploadId, req.user);
   }
 
   // ==================== MATERIAL UPLOAD ====================

@@ -41,6 +41,11 @@ import {
   UploadMaterialDto,
   MaterialResponseDto,
 } from './dto/upload-material.dto';
+import {
+  RequestTeacherVideoUploadDto,
+  ConfirmTeacherVideoUploadDto,
+  RequestTeacherThumbnailUploadDto,
+} from './dto/request-video-upload.dto';
 import { JwtGuard } from '../../auth/guard/jwt.guard';
 import { GetUser } from '../../auth/decorator/get-user-decorator';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -250,6 +255,80 @@ export class TopicsController {
   async getTopicContent(@Param('id') id: string, @GetUser() user: any) {
     return this.topicsService.getTopicContent(id, user);
   }
+
+  // ==================== DIRECT-TO-S3 PRESIGNED UPLOAD (FAST) ====================
+
+  @Post('request-video-upload')
+  @ApiOperation({
+    summary: 'Get presigned URL for direct-to-S3 video upload (fast path)',
+    description:
+      'Returns presigned URL(s) for the client to upload directly to S3. ' +
+      'After uploading, call confirm-video-upload to save the record.',
+  })
+  @ApiResponse({ status: 200, description: 'Presigned URL(s) generated' })
+  async requestVideoUpload(
+    @Body() dto: RequestTeacherVideoUploadDto,
+    @GetUser() user: any,
+  ) {
+    return this.topicsService.requestVideoUpload(dto, user);
+  }
+
+  @Post('request-thumbnail-upload')
+  @ApiOperation({
+    summary: 'Get presigned URL for direct-to-S3 thumbnail upload',
+  })
+  @ApiResponse({ status: 200, description: 'Presigned URL generated' })
+  async requestThumbnailUpload(
+    @Body() dto: RequestTeacherThumbnailUploadDto,
+    @GetUser() user: any,
+  ) {
+    return this.topicsService.requestThumbnailUpload(dto, user);
+  }
+
+  @Post('confirm-video-upload')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Confirm a direct-to-S3 video upload',
+    description:
+      'After uploading directly to S3, call this to verify the object, save DB record, and trigger HLS.',
+  })
+  @ApiResponse({ status: 201, description: 'Video confirmed and saved' })
+  async confirmVideoUpload(
+    @Body() dto: ConfirmTeacherVideoUploadDto,
+    @GetUser() user: any,
+  ) {
+    return this.topicsService.confirmVideoUpload(dto, user);
+  }
+
+  @Patch('upload-progress/:uploadId')
+  @ApiOperation({ summary: 'Update upload progress' })
+  async updateUploadProgress(
+    @Param('uploadId') uploadId: string,
+    @Body() body: { progress: number },
+    @GetUser() user: any,
+  ) {
+    return this.topicsService.updateUploadProgress(uploadId, body.progress, user);
+  }
+
+  @Get('my-uploads')
+  @ApiOperation({ summary: 'Get all uploads for current user (persistent)' })
+  async getMyUploads(@GetUser() user: any, @Query('topicId') topicId?: string) {
+    return this.topicsService.getMyUploads(user, topicId);
+  }
+
+  @Post('resume-upload/:uploadId')
+  @ApiOperation({ summary: 'Resume a failed/expired upload' })
+  async resumeUpload(@Param('uploadId') uploadId: string, @GetUser() user: any) {
+    return this.topicsService.resumeUpload(uploadId, user);
+  }
+
+  @Post('cancel-upload/:uploadId')
+  @ApiOperation({ summary: 'Cancel an upload' })
+  async cancelUpload(@Param('uploadId') uploadId: string, @GetUser() user: any) {
+    return this.topicsService.cancelUpload(uploadId, user);
+  }
+
+  // ==================== LEGACY VIDEO UPLOAD (THROUGH SERVER) ====================
 
   @Post('upload-video')
   @UseInterceptors(

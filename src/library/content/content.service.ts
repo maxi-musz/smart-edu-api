@@ -17,7 +17,13 @@ import { UploadLibraryVideoDto } from './dto/upload-video.dto';
 import { UploadLibraryMaterialDto } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
 import { UpdateLibraryVideoDto } from './dto/update-video.dto';
+import {
+  RequestVideoUploadDto,
+  ConfirmVideoUploadDto,
+  RequestThumbnailUploadDto,
+} from './dto/request-video-upload.dto';
 import { HlsTranscodeStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import * as colors from 'colors';
 
 @Injectable()
@@ -30,6 +36,7 @@ export class ContentService {
     private readonly hlsTranscodeService: HlsTranscodeService,
     private readonly uploadProgressService: UploadProgressService,
     private readonly videoUploadService: VideoUploadService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -131,6 +138,561 @@ export class ContentService {
       sessionId: result.sessionId,
       progressEndpoint: `/api/v1/library/content/upload-progress/${result.sessionId}`,
     });
+  }
+
+  // ==================== PRESIGNED DIRECT UPLOAD (FAST PATH) ====================
+
+  private readonly DEFAULT_MAX_VIDEO_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
+  private readonly MULTIPART_THRESHOLD = 100 * 1024 * 1024;
+
+  private get MAX_VIDEO_SIZE(): number {
+    return (
+      Number(this.configService.get('MAX_LIBRARY_OWNER_UPLOAD_SIZE')) ||
+      this.DEFAULT_MAX_VIDEO_SIZE
+    );
+  }
+
+  /** Scale part size with file size to keep part count between 20-100 */
+  private getPartSize(fileSize: number): number {
+    if (fileSize <= 500 * 1024 * 1024) return 10 * 1024 * 1024;  // ≤500MB → 10MB parts
+    if (fileSize <= 2 * 1024 * 1024 * 1024) return 25 * 1024 * 1024; // ≤2GB → 25MB parts
+    return 50 * 1024 * 1024; // ≤5GB → 50MB parts
+  }
+
+  /** Longer expiry for larger files so slow connections can finish */
+  private getPresignedExpiry(fileSize: number): number {
+    if (fileSize <= 500 * 1024 * 1024) return 3600;    // 1 hour
+    if (fileSize <= 2 * 1024 * 1024 * 1024) return 7200; // 2 hours
+    return 14400; // 4 hours for files > 2GB
+  }
+
+  /**
+   * Step 1: Generate presigned URL(s) for direct client-to-S3 video upload.
+   * Creates a persistent DirectUpload record so uploads survive page refresh/logout.
+   */
+  async requestVideoUpload(dto: RequestVideoUploadDto, user: any) {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Requesting presigned upload for: "${dto.title}"`,
+      ),
+    );
+
+    if (dto.fileSize > this.MAX_VIDEO_SIZE) {
+      throw new BadRequestException(
+        `Video file size exceeds ${Math.round(this.MAX_VIDEO_SIZE / 1024 / 1024)}MB limit`,
+      );
+    }
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: { platformId: true },
+    });
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    const topic = await this.prisma.libraryTopic.findFirst({
+      where: {
+        id: dto.topicId,
+        subjectId: dto.subjectId,
+        platformId: libraryUser.platformId,
+      },
+      select: { id: true },
+    });
+    if (!topic) {
+      throw new NotFoundException(
+        'Topic not found or does not belong to your platform',
+      );
+    }
+
+    const safeTitle = dto.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    const s3Key = `library/videos/platforms/${libraryUser.platformId}/subjects/${dto.subjectId}/topics/${dto.topicId}/${safeTitle}_${Date.now()}.mp4`;
+    const expiry = this.getPresignedExpiry(dto.fileSize);
+    const expiresAt = new Date(Date.now() + expiry * 1000);
+
+    let uploadType: 'single' | 'multipart' = 'single';
+    let presignedUrl: string | undefined;
+    let uploadId: string | undefined;
+    let parts: { partNumber: number; presignedUrl: string }[] | undefined;
+    let partSize: number | undefined;
+
+    if (dto.fileSize > this.MULTIPART_THRESHOLD) {
+      uploadType = 'multipart';
+      partSize = this.getPartSize(dto.fileSize);
+      const multipart = await this.s3Service.createMultipartPresignedUpload(
+        s3Key,
+        dto.contentType || 'video/mp4',
+        dto.fileSize,
+        partSize,
+        expiry,
+      );
+      uploadId = multipart.uploadId;
+      parts = multipart.parts;
+    } else {
+      const result = await this.s3Service.generateUploadPresignedUrl(
+        s3Key,
+        dto.contentType || 'video/mp4',
+        expiry,
+      );
+      presignedUrl = result.presignedUrl;
+    }
+
+    // Persist upload session in DB
+    const directUpload = await this.prisma.directUpload.create({
+      data: {
+        userId: user.sub,
+        userType: 'library_user',
+        platformId: libraryUser.platformId,
+        subjectId: dto.subjectId,
+        topicId: dto.topicId,
+        title: dto.title,
+        description: dto.description ?? null,
+        fileName: dto.fileName,
+        contentType: dto.contentType || 'video/mp4',
+        fileSize: dto.fileSize,
+        s3Key,
+        uploadType,
+        multipartUploadId: uploadId ?? null,
+        status: 'pending',
+        expiresAt,
+      },
+    });
+
+    this.logger.log(
+      colors.green(
+        `✅ DirectUpload record created: ${directUpload.id} (type=${uploadType})`,
+      ),
+    );
+
+    return new ApiResponse(true, 'Upload initiated', {
+      uploadId: directUpload.id,
+      uploadType,
+      s3Key,
+      presignedUrl,
+      multipartUploadId: uploadId,
+      parts,
+      partSize,
+      fileUrl: this.s3Service.getFileUrl(s3Key),
+      expiresAt,
+    });
+  }
+
+  /**
+   * Generate a presigned URL for direct thumbnail upload.
+   */
+  async requestThumbnailUpload(dto: RequestThumbnailUploadDto, user: any) {
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: { platformId: true },
+    });
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    const ext = dto.fileName.split('.').pop() || 'jpg';
+    const safeTitle = dto.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    const thumbnailKey = `library/video-thumbnails/platforms/${libraryUser.platformId}/subjects/${dto.subjectId}/topics/${dto.topicId}/${safeTitle}_thumbnail_${Date.now()}.${ext}`;
+
+    const { presignedUrl } = await this.s3Service.generateUploadPresignedUrl(
+      thumbnailKey,
+      dto.contentType || 'image/jpeg',
+      3600,
+    );
+
+    return new ApiResponse(true, 'Thumbnail presigned URL generated', {
+      s3Key: thumbnailKey,
+      presignedUrl,
+      fileUrl: this.s3Service.getFileUrl(thumbnailKey),
+    });
+  }
+
+  /**
+   * Frontend calls this to report its upload progress so it persists in DB.
+   */
+  async updateUploadProgress(uploadId: string, progress: number, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({
+      where: { id: uploadId, userId: user.sub },
+    });
+    if (!upload) {
+      throw new NotFoundException('Upload not found');
+    }
+
+    await this.prisma.directUpload.update({
+      where: { id: uploadId },
+      data: {
+        status: progress >= 100 ? 'uploaded' : 'uploading',
+        progress: Math.min(100, Math.max(0, progress)),
+      },
+    });
+
+    return new ApiResponse(true, 'Progress updated');
+  }
+
+  /**
+   * Step 2: Confirm the upload after client has PUT the file directly to S3.
+   * Verifies the S3 object, saves DB record, and triggers HLS transcoding.
+   */
+  async confirmVideoUpload(dto: ConfirmVideoUploadDto, user: any) {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Confirming presigned upload: "${dto.title}"`,
+      ),
+    );
+
+    // Look up the DirectUpload record
+    const directUpload = dto.directUploadId
+      ? await this.prisma.directUpload.findFirst({
+          where: { id: dto.directUploadId, userId: user.sub },
+        })
+      : null;
+
+    if (directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { status: 'uploaded', progress: 100 },
+      });
+    }
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: { platformId: true },
+    });
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    const topic = await this.prisma.libraryTopic.findFirst({
+      where: {
+        id: dto.topicId,
+        subjectId: dto.subjectId,
+        platformId: libraryUser.platformId,
+      },
+      select: { id: true },
+    });
+    if (!topic) {
+      throw new NotFoundException(
+        'Topic not found or does not belong to your platform',
+      );
+    }
+
+    // If multipart upload, complete it first
+    if (dto.uploadId && dto.parts?.length) {
+      await this.s3Service.completeMultipartUpload(
+        dto.s3Key,
+        dto.uploadId,
+        dto.parts,
+      );
+    }
+
+    // Verify the object exists in S3
+    let objectMeta: { contentLength: number; contentType?: string };
+    try {
+      objectMeta = await this.s3Service.headObject(dto.s3Key);
+    } catch {
+      if (directUpload) {
+        await this.prisma.directUpload.update({
+          where: { id: directUpload.id },
+          data: { status: 'failed', error: 'Video file not found in S3' },
+        });
+      }
+      throw new BadRequestException(
+        'Video file not found in S3. Upload may have failed or the s3Key is incorrect.',
+      );
+    }
+
+    if (objectMeta.contentLength === 0) {
+      throw new BadRequestException('Uploaded file is empty');
+    }
+
+    if (objectMeta.contentLength > this.MAX_VIDEO_SIZE) {
+      try { await this.s3Service.deleteFile(dto.s3Key); } catch { /* best effort */ }
+      if (directUpload) {
+        await this.prisma.directUpload.update({
+          where: { id: directUpload.id },
+          data: { status: 'failed', error: 'Video exceeds size limit' },
+        });
+      }
+      throw new BadRequestException(
+        `Video file exceeds ${Math.round(this.MAX_VIDEO_SIZE / 1024 / 1024)}MB limit`,
+      );
+    }
+
+    // Update thumbnail on the DirectUpload record
+    if (dto.thumbnailS3Key && directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { thumbnailS3Key: dto.thumbnailS3Key },
+      });
+    }
+
+    // Verify thumbnail if provided
+    let thumbnailUrl: string | null = null;
+    if (dto.thumbnailS3Key) {
+      try {
+        await this.s3Service.headObject(dto.thumbnailS3Key);
+        thumbnailUrl = this.s3Service.getFileUrl(dto.thumbnailS3Key);
+      } catch {
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Thumbnail not found in S3, proceeding without thumbnail`,
+          ),
+        );
+      }
+    }
+
+    const videoUrl = this.s3Service.getFileUrl(dto.s3Key);
+
+    const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
+      where: { topicId: dto.topicId, platformId: libraryUser.platformId },
+      orderBy: { order: 'desc' },
+      select: { order: true },
+    });
+    const nextOrder = (lastVideo?.order ?? 0) + 1;
+
+    // Mark as processing before creating video record
+    if (directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { status: 'processing' },
+      });
+    }
+
+    const videoLesson = await this.prisma.$transaction(
+      async (tx) =>
+        tx.libraryVideoLesson.create({
+          data: {
+            platformId: libraryUser.platformId,
+            subjectId: dto.subjectId,
+            topicId: dto.topicId,
+            uploadedById: user.sub,
+            title: dto.title,
+            description: dto.description ?? null,
+            videoUrl,
+            videoS3Key: dto.s3Key,
+            thumbnailUrl,
+            thumbnailS3Key: dto.thumbnailS3Key ?? null,
+            sizeBytes: objectMeta.contentLength,
+            durationSeconds: null,
+            order: nextOrder,
+            status: 'published',
+            hlsStatus: HlsTranscodeStatus.pending,
+          },
+          select: { id: true, title: true, videoUrl: true, sizeBytes: true },
+        }),
+      { maxWait: 5000, timeout: 15000 },
+    );
+
+    // Mark DirectUpload as completed with the video ID
+    if (directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { status: 'completed', videoId: videoLesson.id },
+      });
+    }
+
+    this.logger.log(
+      colors.green(
+        `✅ Video confirmed & saved: ${videoLesson.id} (${(objectMeta.contentLength / 1024 / 1024).toFixed(2)} MB)`,
+      ),
+    );
+
+    // Trigger HLS transcoding in background
+    this.hlsTranscodeService
+      .transcodeLibraryVideo(videoLesson.id)
+      .then(() =>
+        this.logger.log(
+          colors.green(`✅ HLS transcode completed for: ${videoLesson.id}`),
+        ),
+      )
+      .catch((err) =>
+        this.logger.error(
+          colors.red(
+            `❌ HLS transcode failed for ${videoLesson.id}: ${err?.message ?? String(err)}`,
+          ),
+        ),
+      );
+
+    return new ApiResponse(true, 'Video upload confirmed and saved', {
+      id: videoLesson.id,
+      title: videoLesson.title,
+      videoUrl: videoLesson.videoUrl,
+      sizeBytes: videoLesson.sizeBytes,
+      thumbnailUrl,
+    });
+  }
+
+  /**
+   * Get all uploads for the current user (persistent across sessions).
+   * Frontend polls this to show upload status after page refresh or logout/login.
+   */
+  async getMyUploads(user: any, topicId?: string) {
+    const uploads = await this.prisma.directUpload.findMany({
+      where: {
+        userId: user.sub,
+        userType: 'library_user',
+        ...(topicId ? { topicId } : {}),
+        // Don't show uploads older than 24 hours that are completed
+        NOT: {
+          AND: [
+            { status: 'completed' },
+            { updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+          ],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        fileName: true,
+        fileSize: true,
+        s3Key: true,
+        uploadType: true,
+        status: true,
+        progress: true,
+        error: true,
+        videoId: true,
+        topicId: true,
+        subjectId: true,
+        thumbnailS3Key: true,
+        createdAt: true,
+        updatedAt: true,
+        expiresAt: true,
+      },
+    });
+
+    // Mark expired presigned URLs
+    const now = new Date();
+    for (const upload of uploads) {
+      if (
+        (upload.status === 'pending' || upload.status === 'uploading') &&
+        upload.expiresAt < now
+      ) {
+        await this.prisma.directUpload.update({
+          where: { id: upload.id },
+          data: { status: 'expired', error: 'Presigned URL expired' },
+        });
+        (upload as any).status = 'expired';
+        (upload as any).error = 'Presigned URL expired';
+      }
+    }
+
+    return new ApiResponse(true, 'Uploads retrieved', uploads);
+  }
+
+  /**
+   * Resume a failed or expired upload by generating fresh presigned URLs.
+   * Reuses the same S3 key, so partially uploaded multipart parts may still be valid.
+   */
+  async resumeUpload(uploadId: string, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({
+      where: {
+        id: uploadId,
+        userId: user.sub,
+        status: { in: ['failed', 'expired', 'pending'] },
+      },
+    });
+    if (!upload) {
+      throw new NotFoundException(
+        'Upload not found or cannot be resumed (only failed/expired uploads can be resumed)',
+      );
+    }
+
+    const fileSize = Number(upload.fileSize);
+    const expiry = this.getPresignedExpiry(fileSize);
+    const expiresAt = new Date(Date.now() + expiry * 1000);
+
+    let presignedUrl: string | undefined;
+    let multipartUploadId: string | undefined;
+    let parts: { partNumber: number; presignedUrl: string }[] | undefined;
+    let partSize: number | undefined;
+
+    if (upload.uploadType === 'multipart') {
+      if (upload.multipartUploadId) {
+        try {
+          await this.s3Service.abortMultipartUpload(upload.s3Key, upload.multipartUploadId);
+        } catch { /* old one may already be gone */ }
+      }
+
+      partSize = this.getPartSize(fileSize);
+      const multipart = await this.s3Service.createMultipartPresignedUpload(
+        upload.s3Key,
+        upload.contentType,
+        fileSize,
+        partSize,
+        expiry,
+      );
+      multipartUploadId = multipart.uploadId;
+      parts = multipart.parts;
+    } else {
+      const result = await this.s3Service.generateUploadPresignedUrl(
+        upload.s3Key,
+        upload.contentType,
+        expiry,
+      );
+      presignedUrl = result.presignedUrl;
+    }
+
+    await this.prisma.directUpload.update({
+      where: { id: upload.id },
+      data: {
+        status: 'pending',
+        progress: 0,
+        error: null,
+        multipartUploadId: multipartUploadId ?? upload.multipartUploadId,
+        expiresAt,
+      },
+    });
+
+    return new ApiResponse(true, 'Upload resumed with fresh presigned URLs', {
+      uploadId: upload.id,
+      uploadType: upload.uploadType,
+      s3Key: upload.s3Key,
+      presignedUrl,
+      multipartUploadId,
+      parts,
+      partSize,
+      fileUrl: this.s3Service.getFileUrl(upload.s3Key),
+      expiresAt,
+    });
+  }
+
+  /**
+   * Cancel an in-progress or pending upload.
+   */
+  async cancelUpload(uploadId: string, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({
+      where: { id: uploadId, userId: user.sub },
+    });
+    if (!upload) {
+      throw new NotFoundException('Upload not found');
+    }
+
+    if (upload.status === 'completed') {
+      throw new BadRequestException('Cannot cancel a completed upload');
+    }
+
+    // Abort multipart if applicable
+    if (upload.multipartUploadId) {
+      try {
+        await this.s3Service.abortMultipartUpload(
+          upload.s3Key,
+          upload.multipartUploadId,
+        );
+      } catch { /* best effort */ }
+    }
+
+    // Try to delete the S3 object if it was uploaded
+    if (upload.status === 'uploaded' || upload.status === 'uploading') {
+      try { await this.s3Service.deleteFile(upload.s3Key); } catch { /* best effort */ }
+    }
+
+    await this.prisma.directUpload.update({
+      where: { id: upload.id },
+      data: { status: 'cancelled' },
+    });
+
+    return new ApiResponse(true, 'Upload cancelled');
   }
 
   /**

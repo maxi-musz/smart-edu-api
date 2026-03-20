@@ -2,7 +2,11 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 import * as colors from 'colors';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
 import { HlsTranscodeService } from './shared/services/hls-transcode.service';
 import { S3Service } from './shared/services/s3.service';
@@ -10,8 +14,23 @@ import { CloudFrontService } from './shared/services/cloudfront.service';
 import { MediaConvertTranscodeProvider } from './shared/services/transcode-providers/mediaconvert.provider';
 import { PrismaService } from './prisma/prisma.service';
 
+// Prisma returns BigInt for large integer columns. JSON.stringify cannot
+// serialize BigInt natively, so we teach it to emit a regular number.
+// Safe for file sizes up to Number.MAX_SAFE_INTEGER (~9 PB).
+(BigInt.prototype as any).toJSON = function () {
+  return Number(this);
+};
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Ensure temp upload directory exists for diskStorage
+  const uploadTmpDir = path.join(os.tmpdir(), 'smart-edu-uploads');
+  if (!fs.existsSync(uploadTmpDir)) {
+    fs.mkdirSync(uploadTmpDir, { recursive: true });
+  }
+
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: true,
+  });
 
   const configService = app.get(ConfigService);
 
@@ -35,6 +54,10 @@ async function bootstrap() {
     preflightContinue: false, // Let Nest handle preflight (sends CORS headers on OPTIONS)
     optionsSuccessStatus: 204, // Some clients expect 204 for OPTIONS
   });
+
+  // Increase JSON/URL-encoded body limits for non-file payloads
+  app.use(express.json({ limit: '5mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
   app.setGlobalPrefix('api/v1', {
     exclude: ['health', ''],
@@ -104,7 +127,12 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  await app.listen(process.env.PORT ?? 3000);
+  const server = await app.listen(process.env.PORT ?? 3000);
+
+  // Allow long-running upload requests (15 minutes) for the legacy multipart endpoints
+  server.setTimeout(15 * 60 * 1000);
+  server.keepAliveTimeout = 65 * 1000;
+  server.headersTimeout = 66 * 1000;
 
   console.log(colors.green('🚀 Server successfully started!'));
   console.log(

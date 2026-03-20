@@ -15,7 +15,9 @@ import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import { MulterModule } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { diskStorage } from 'multer';
+import * as os from 'os';
+import * as path from 'path';
 import { UserModule } from './user/user.module';
 import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
@@ -38,7 +40,16 @@ import { AssessmentModule } from './assessment/assessment.module';
       validationSchema: envValidationSchema,
     }),
     MulterModule.register({
-      storage: memoryStorage(),
+      storage: diskStorage({
+        destination: path.join(os.tmpdir(), 'smart-edu-uploads'),
+        filename: (_req, file, cb) => {
+          const uniqueSuffix = `${Date.now()}_${Math.round(Math.random() * 1e9)}`;
+          cb(null, `${uniqueSuffix}_${file.originalname}`);
+        },
+      }),
+      limits: {
+        fileSize: 600 * 1024 * 1024, // 600MB hard limit
+      },
     }),
     HelloModule,
     AdminModule,

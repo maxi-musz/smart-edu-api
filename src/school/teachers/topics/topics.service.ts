@@ -15,6 +15,11 @@ import {
   VideoLessonResponseDto,
   UploadProgressDto,
 } from './dto/upload-video-lesson.dto';
+import {
+  RequestTeacherVideoUploadDto,
+  ConfirmTeacherVideoUploadDto,
+  RequestTeacherThumbnailUploadDto,
+} from './dto/request-video-upload.dto';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 
 import { S3Service } from '../../../shared/services/s3.service';
@@ -24,6 +29,7 @@ import { VideoUploadService } from '../../../video-upload/video-upload.service';
 import type { IVideoUploadHandler } from '../../../video-upload/interfaces/video-upload-handler.interface';
 import { DocumentProcessingService } from '../../ai-chat/services';
 import { HlsTranscodeStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { formatDate } from 'src/shared/helper-functions/formatter';
@@ -48,6 +54,7 @@ export class TopicsService {
     private readonly uploadProgressService: UploadProgressService,
     private readonly videoUploadService: VideoUploadService,
     private readonly documentProcessingService: DocumentProcessingService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createTopic(createTopicRequestDto: CreateTopicRequestDto, user: any) {
@@ -1935,6 +1942,227 @@ export class TopicsService {
       data: finalProgress,
       statusCode: 200,
     };
+  }
+
+  // ==================== PRESIGNED DIRECT UPLOAD (FAST PATH) ====================
+
+  private readonly DEFAULT_MAX_VIDEO_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
+  private readonly MULTIPART_THRESHOLD = 100 * 1024 * 1024;
+
+  private get MAX_VIDEO_SIZE(): number {
+    return (
+      Number(this.configService.get('MAX_TEACHER_UPLOAD_SIZE')) ||
+      this.DEFAULT_MAX_VIDEO_SIZE
+    );
+  }
+
+  private getPartSize(fileSize: number): number {
+    if (fileSize <= 500 * 1024 * 1024) return 10 * 1024 * 1024;
+    if (fileSize <= 2 * 1024 * 1024 * 1024) return 25 * 1024 * 1024;
+    return 50 * 1024 * 1024;
+  }
+
+  private getPresignedExpiry(fileSize: number): number {
+    if (fileSize <= 500 * 1024 * 1024) return 3600;
+    if (fileSize <= 2 * 1024 * 1024 * 1024) return 7200;
+    return 14400;
+  }
+
+  async requestVideoUpload(dto: RequestTeacherVideoUploadDto, user: any) {
+    if (dto.fileSize > this.MAX_VIDEO_SIZE) {
+      throw new BadRequestException(
+        `Video file size exceeds ${Math.round(this.MAX_VIDEO_SIZE / 1024 / 1024)}MB limit`,
+      );
+    }
+
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { id: true, school_id: true },
+    });
+    if (!dbUser) throw new NotFoundException('User not found');
+    const schoolId = dbUser.school_id;
+
+    const subject = await this.prisma.subject.findFirst({
+      where: { id: dto.subject_id, schoolId },
+    });
+    if (!subject) throw new NotFoundException('Subject not found');
+
+    const topic = await this.prisma.topic.findFirst({
+      where: { id: dto.topic_id, subject_id: dto.subject_id, school_id: schoolId, is_active: true },
+    });
+    if (!topic) throw new NotFoundException('Topic not found');
+
+    const safeTitle = dto.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    const s3Key = `lecture-videos/schools/${schoolId}/subjects/${dto.subject_id}/topics/${dto.topic_id}/${safeTitle}_${Date.now()}.mp4`;
+    const expiry = this.getPresignedExpiry(dto.fileSize);
+    const expiresAt = new Date(Date.now() + expiry * 1000);
+
+    let uploadType: 'single' | 'multipart' = 'single';
+    let presignedUrl: string | undefined;
+    let s3UploadId: string | undefined;
+    let parts: { partNumber: number; presignedUrl: string }[] | undefined;
+    let partSize: number | undefined;
+
+    if (dto.fileSize > this.MULTIPART_THRESHOLD) {
+      uploadType = 'multipart';
+      partSize = this.getPartSize(dto.fileSize);
+      const mp = await this.s3Service.createMultipartPresignedUpload(s3Key, dto.contentType || 'video/mp4', dto.fileSize, partSize, expiry);
+      s3UploadId = mp.uploadId;
+      parts = mp.parts;
+    } else {
+      presignedUrl = (await this.s3Service.generateUploadPresignedUrl(s3Key, dto.contentType || 'video/mp4', expiry)).presignedUrl;
+    }
+
+    const directUpload = await this.prisma.directUpload.create({
+      data: {
+        userId: user.sub,
+        userType: 'school_user',
+        schoolId,
+        subjectId: dto.subject_id,
+        topicId: dto.topic_id,
+        title: dto.title,
+        description: dto.description ?? null,
+        fileName: dto.fileName,
+        contentType: dto.contentType || 'video/mp4',
+        fileSize: dto.fileSize,
+        s3Key,
+        uploadType,
+        multipartUploadId: s3UploadId ?? null,
+        status: 'pending',
+        expiresAt,
+      },
+    });
+
+    return { success: true, message: 'Upload initiated', data: { uploadId: directUpload.id, uploadType, s3Key, presignedUrl, multipartUploadId: s3UploadId, parts, partSize, fileUrl: this.s3Service.getFileUrl(s3Key), expiresAt }, statusCode: 200 };
+  }
+
+  async requestThumbnailUpload(dto: RequestTeacherThumbnailUploadDto, user: any) {
+    const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { school_id: true } });
+    if (!dbUser) throw new NotFoundException('User not found');
+    const ext = dto.fileName.split('.').pop() || 'jpg';
+    const safeTitle = dto.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    const thumbnailKey = `thumbnails/schools/${dbUser.school_id}/subjects/${dto.subject_id}/topics/${dto.topic_id}/${safeTitle}_thumbnail_${Date.now()}.${ext}`;
+    const { presignedUrl } = await this.s3Service.generateUploadPresignedUrl(thumbnailKey, dto.contentType || 'image/jpeg', 3600);
+    return { success: true, message: 'Thumbnail presigned URL generated', data: { s3Key: thumbnailKey, presignedUrl, fileUrl: this.s3Service.getFileUrl(thumbnailKey) }, statusCode: 200 };
+  }
+
+  async updateUploadProgress(uploadId: string, progress: number, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({ where: { id: uploadId, userId: user.sub } });
+    if (!upload) throw new NotFoundException('Upload not found');
+    await this.prisma.directUpload.update({ where: { id: uploadId }, data: { status: progress >= 100 ? 'uploaded' : 'uploading', progress: Math.min(100, Math.max(0, progress)) } });
+    return { success: true, message: 'Progress updated' };
+  }
+
+  async confirmVideoUpload(dto: ConfirmTeacherVideoUploadDto, user: any) {
+    const directUpload = dto.directUploadId
+      ? await this.prisma.directUpload.findFirst({ where: { id: dto.directUploadId, userId: user.sub } })
+      : null;
+
+    if (directUpload) {
+      await this.prisma.directUpload.update({ where: { id: directUpload.id }, data: { status: 'uploaded', progress: 100 } });
+    }
+
+    const dbUser = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { id: true, school_id: true } });
+    if (!dbUser) throw new NotFoundException('User not found');
+    const schoolId = dbUser.school_id;
+    const userId = dbUser.id;
+
+    const subject = await this.prisma.subject.findFirst({ where: { id: dto.subject_id, schoolId } });
+    if (!subject) throw new NotFoundException('Subject not found');
+    const topic = await this.prisma.topic.findFirst({ where: { id: dto.topic_id, subject_id: dto.subject_id, school_id: schoolId, is_active: true } });
+    if (!topic) throw new NotFoundException('Topic not found');
+
+    if (dto.uploadId && dto.parts?.length) {
+      await this.s3Service.completeMultipartUpload(dto.s3Key, dto.uploadId, dto.parts);
+    }
+
+    let objectMeta: { contentLength: number; contentType?: string };
+    try { objectMeta = await this.s3Service.headObject(dto.s3Key); } catch {
+      if (directUpload) await this.prisma.directUpload.update({ where: { id: directUpload.id }, data: { status: 'failed', error: 'File not found in S3' } });
+      throw new BadRequestException('Video file not found in S3');
+    }
+    if (objectMeta.contentLength === 0) throw new BadRequestException('Uploaded file is empty');
+
+    let thumbnailData: { secure_url: string; public_id: string } | undefined;
+    if (dto.thumbnailS3Key) {
+      try { await this.s3Service.headObject(dto.thumbnailS3Key); thumbnailData = { secure_url: this.s3Service.getFileUrl(dto.thumbnailS3Key), public_id: dto.thumbnailS3Key }; } catch { /* no thumb */ }
+    }
+
+    if (directUpload) await this.prisma.directUpload.update({ where: { id: directUpload.id }, data: { status: 'processing', thumbnailS3Key: dto.thumbnailS3Key ?? directUpload.thumbnailS3Key } });
+
+    const videoUrl = this.s3Service.getFileUrl(dto.s3Key);
+    const sizeStr = `${(objectMeta.contentLength / 1024 / 1024).toFixed(2)} MB`;
+
+    const s3Platform = await this.prisma.organisation.upsert({ where: { name: 'AWS S3' }, update: {}, create: { name: 'AWS S3', email: 's3@smart-edu.com' } });
+    const lastVideo = await this.prisma.videoContent.findFirst({ where: { topic_id: dto.topic_id, schoolId }, orderBy: { order: 'desc' }, select: { order: true } });
+    const nextOrder = (lastVideo?.order ?? 0) + 1;
+
+    const videoContent = await this.prisma.$transaction(async (tx) => tx.videoContent.create({
+      data: { title: dto.title.toLowerCase(), description: (dto.description ?? '').toLowerCase(), topic_id: dto.topic_id, schoolId, platformId: s3Platform.id, uploadedById: userId, order: nextOrder, url: videoUrl, videoS3Key: dto.s3Key, duration: '00:00:00', size: sizeStr, thumbnail: thumbnailData, status: 'published', views: 0, hlsStatus: HlsTranscodeStatus.pending },
+      select: { id: true, title: true, url: true, size: true },
+    }), { maxWait: 5000, timeout: 15000 });
+
+    if (directUpload) await this.prisma.directUpload.update({ where: { id: directUpload.id }, data: { status: 'completed', videoId: videoContent.id } });
+
+    this.hlsTranscodeService.transcodeSchoolVideo(videoContent.id)
+      .then(() => this.logger.log(colors.green(`✅ HLS transcode completed for: ${videoContent.id}`)))
+      .catch((err) => this.logger.error(colors.red(`❌ HLS transcode failed for ${videoContent.id}: ${err?.message ?? String(err)}`)));
+
+    return { success: true, message: 'Video upload confirmed and saved', data: videoContent, statusCode: 201 };
+  }
+
+  async getMyUploads(user: any, topicId?: string) {
+    const uploads = await this.prisma.directUpload.findMany({
+      where: { userId: user.sub, userType: 'school_user', ...(topicId ? { topicId } : {}), NOT: { AND: [{ status: 'completed' }, { updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] } },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true, title: true, fileName: true, fileSize: true, s3Key: true, uploadType: true, status: true, progress: true, error: true, videoId: true, topicId: true, subjectId: true, thumbnailS3Key: true, createdAt: true, updatedAt: true, expiresAt: true },
+    });
+    const now = new Date();
+    for (const u of uploads) {
+      if ((u.status === 'pending' || u.status === 'uploading') && u.expiresAt < now) {
+        await this.prisma.directUpload.update({ where: { id: u.id }, data: { status: 'expired', error: 'Presigned URL expired' } });
+        (u as any).status = 'expired';
+        (u as any).error = 'Presigned URL expired';
+      }
+    }
+    return { success: true, message: 'Uploads retrieved', data: uploads };
+  }
+
+  async resumeUpload(uploadId: string, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({ where: { id: uploadId, userId: user.sub, status: { in: ['failed', 'expired', 'pending'] } } });
+    if (!upload) throw new NotFoundException('Upload not found or cannot be resumed');
+    const fileSize = Number(upload.fileSize);
+    const expiry = this.getPresignedExpiry(fileSize);
+    const expiresAt = new Date(Date.now() + expiry * 1000);
+
+    let presignedUrl: string | undefined;
+    let multipartUploadId: string | undefined;
+    let parts: { partNumber: number; presignedUrl: string }[] | undefined;
+    let partSize: number | undefined;
+
+    if (upload.uploadType === 'multipart') {
+      if (upload.multipartUploadId) { try { await this.s3Service.abortMultipartUpload(upload.s3Key, upload.multipartUploadId); } catch { /* ok */ } }
+      partSize = this.getPartSize(fileSize);
+      const mp = await this.s3Service.createMultipartPresignedUpload(upload.s3Key, upload.contentType, fileSize, partSize, expiry);
+      multipartUploadId = mp.uploadId;
+      parts = mp.parts;
+    } else {
+      presignedUrl = (await this.s3Service.generateUploadPresignedUrl(upload.s3Key, upload.contentType, expiry)).presignedUrl;
+    }
+
+    await this.prisma.directUpload.update({ where: { id: upload.id }, data: { status: 'pending', progress: 0, error: null, multipartUploadId: multipartUploadId ?? upload.multipartUploadId, expiresAt } });
+    return { success: true, message: 'Upload resumed', data: { uploadId: upload.id, uploadType: upload.uploadType, s3Key: upload.s3Key, presignedUrl, multipartUploadId, parts, partSize, fileUrl: this.s3Service.getFileUrl(upload.s3Key), expiresAt } };
+  }
+
+  async cancelUpload(uploadId: string, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({ where: { id: uploadId, userId: user.sub } });
+    if (!upload) throw new NotFoundException('Upload not found');
+    if (upload.status === 'completed') throw new BadRequestException('Cannot cancel a completed upload');
+    if (upload.multipartUploadId) { try { await this.s3Service.abortMultipartUpload(upload.s3Key, upload.multipartUploadId); } catch { /* ok */ } }
+    if (upload.status === 'uploaded' || upload.status === 'uploading') { try { await this.s3Service.deleteFile(upload.s3Key); } catch { /* ok */ } }
+    await this.prisma.directUpload.update({ where: { id: upload.id }, data: { status: 'cancelled' } });
+    return { success: true, message: 'Upload cancelled' };
   }
 
   /**

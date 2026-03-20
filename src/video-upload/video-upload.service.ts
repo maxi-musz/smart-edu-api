@@ -336,28 +336,39 @@ export class VideoUploadService {
   ): Promise<number | null> {
     return new Promise((resolve) => {
       try {
-        const tempDir = os.tmpdir();
-        const tempFilePath = path.join(
-          tempDir,
-          `temp_video_${Date.now()}_${videoFile.originalname}`,
-        );
-        const buffer = videoFile.buffer ?? (videoFile as any).buffer;
-        if (!buffer) {
-          this.logger.warn(
-            colors.yellow(`⚠️ No buffer available for duration extraction`),
-          );
-          return resolve(null);
-        }
-        fs.writeFileSync(tempFilePath, buffer);
-        ffmpeg.ffprobe(tempFilePath, (err, metadata) => {
-          try {
-            if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-          } catch (cleanupErr) {
+        // Prefer disk path (diskStorage) to avoid writing buffer to temp file
+        let filePath = videoFile.path && fs.existsSync(videoFile.path)
+          ? videoFile.path
+          : null;
+
+        let tempCreated = false;
+        if (!filePath) {
+          const buffer = videoFile.buffer ?? (videoFile as any).buffer;
+          if (!buffer) {
             this.logger.warn(
-              colors.yellow(
-                `⚠️ Failed to clean up temp file: ${cleanupErr.message}`,
-              ),
+              colors.yellow(`⚠️ No buffer or path available for duration extraction`),
             );
+            return resolve(null);
+          }
+          filePath = path.join(
+            os.tmpdir(),
+            `temp_video_${Date.now()}_${videoFile.originalname}`,
+          );
+          fs.writeFileSync(filePath, buffer);
+          tempCreated = true;
+        }
+
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+          if (tempCreated) {
+            try {
+              if (fs.existsSync(filePath!)) fs.unlinkSync(filePath!);
+            } catch (cleanupErr) {
+              this.logger.warn(
+                colors.yellow(
+                  `⚠️ Failed to clean up temp file: ${cleanupErr.message}`,
+                ),
+              );
+            }
           }
           if (err) {
             this.logger.warn(

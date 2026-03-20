@@ -758,11 +758,11 @@ export class TopicService {
         0,
       );
       const totalVideoSize = videos.reduce(
-        (sum, video) => sum + ((video.sizeBytes as number) || 0),
+        (sum, video) => sum + Number(video.sizeBytes ?? 0),
         0,
       );
       const totalMaterialSize = materials.reduce(
-        (sum, material) => sum + ((material.sizeBytes as number) || 0),
+        (sum, material) => sum + Number(material.sizeBytes ?? 0),
         0,
       );
 
