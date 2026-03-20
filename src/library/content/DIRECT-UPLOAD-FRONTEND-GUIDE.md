@@ -1109,6 +1109,47 @@ The system supports files up to **5GB**. The backend automatically scales for la
 
 ---
 
+## Per-User Upload Limit
+
+The backend enforces a **maximum of 5 active uploads per user**. An upload is "active" if its status is `pending`, `uploading`, `uploaded`, or `processing`. Once 5 are in progress, the next `POST /request-video-upload` call returns **400 Bad Request** with a message like:
+
+```json
+{
+  "success": false,
+  "message": "You already have 5 active upload(s). Please wait for at least one to finish before starting another (limit: 5)."
+}
+```
+
+### What the frontend should do
+
+Handle this in `startUpload` so the user sees a clear message instead of a generic error:
+
+```typescript
+// Inside UploadManager.startUpload(), after the fetch call:
+const json = await res.json();
+if (!json.success) {
+  // Surface the backend message directly — it already explains the limit
+  throw new Error(json.message || 'Failed to initiate upload');
+}
+```
+
+The existing `startUpload` code already does this, so **no code change is required** — the error propagates to the `.catch()` handler and the floating upload bar shows the message. If you want a richer experience, you can check the active task count *before* calling the backend:
+
+```typescript
+// Optional: client-side pre-check to avoid a round-trip
+const activeTasks = uploadManager.getAll().filter(
+  (t) => ['pending', 'uploading', 'uploaded', 'confirming', 'processing'].includes(t.status),
+);
+if (activeTasks.length >= 5) {
+  alert('You have 5 uploads in progress. Please wait for one to finish.');
+  return;
+}
+```
+
+This is a nice-to-have UX improvement but not required — the backend enforces the limit regardless.
+
+---
+
 ## Summary of What Makes This Professional
 
 | Feature | How it works |
@@ -1124,3 +1165,4 @@ The system supports files up to **5GB**. The backend automatically scales for la
 | **HLS processing status** | Backend sets `processing` → `completed`; frontend polls via `my-uploads` |
 | **Speed & ETA display** | Calculated from bytes transferred over time |
 | **Files up to 5GB** | Dynamic part sizing, scaled presigned expiry, BigInt DB columns |
+| **Per-user upload limit** | Max 5 active uploads; backend returns 400 if exceeded |

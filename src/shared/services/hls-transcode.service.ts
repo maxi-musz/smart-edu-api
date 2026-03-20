@@ -28,12 +28,23 @@ interface RetryConfig {
  * Set HLS_TRANSCODE_PROVIDER env var to switch providers:
  * - 'ffmpeg' (default): Local FFmpeg transcoding (free, uses server CPU)
  * - 'mediaconvert': AWS MediaConvert (paid ~$0.015/min, fast, managed)
+ *
+ * Concurrency is capped by MAX_CONCURRENT_TRANSCODES (default 2) so that
+ * a burst of uploads doesn't overwhelm the server. Excess jobs wait in line.
  */
 @Injectable()
 export class HlsTranscodeService {
   private readonly logger = new Logger(HlsTranscodeService.name);
   private readonly provider: TranscodeProvider;
   private readonly providerName: string;
+
+  private readonly maxConcurrentTranscodes: number;
+  private activeTranscodes = 0;
+  private readonly transcodeQueue: Array<{
+    run: () => Promise<TranscodeResult>;
+    resolve: (v: TranscodeResult) => void;
+    reject: (e: any) => void;
+  }> = [];
 
   // Retry configuration
   private readonly retryConfig: RetryConfig = {
@@ -57,6 +68,53 @@ export class HlsTranscodeService {
       this.provider = this.mediaConvertProvider;
     } else {
       this.provider = this.ffmpegProvider;
+    }
+
+    this.maxConcurrentTranscodes =
+      Number(this.configService.get('MAX_CONCURRENT_TRANSCODES')) || 2;
+  }
+
+  /**
+   * Enqueue a transcode job. If we're below the concurrency cap it runs
+   * immediately; otherwise it waits until a slot opens up.
+   */
+  private enqueueTranscode(
+    run: () => Promise<TranscodeResult>,
+  ): Promise<TranscodeResult> {
+    if (this.activeTranscodes < this.maxConcurrentTranscodes) {
+      return this.runTranscodeSlot(run);
+    }
+
+    this.logger.log(
+      colors.yellow(
+        `⏳ Transcode queued (${this.transcodeQueue.length + 1} waiting, ${this.activeTranscodes} active)`,
+      ),
+    );
+
+    return new Promise<TranscodeResult>((resolve, reject) => {
+      this.transcodeQueue.push({ run, resolve, reject });
+    });
+  }
+
+  private async runTranscodeSlot(
+    run: () => Promise<TranscodeResult>,
+  ): Promise<TranscodeResult> {
+    this.activeTranscodes++;
+    try {
+      return await run();
+    } finally {
+      this.activeTranscodes--;
+      this.drainQueue();
+    }
+  }
+
+  private drainQueue(): void {
+    if (
+      this.transcodeQueue.length > 0 &&
+      this.activeTranscodes < this.maxConcurrentTranscodes
+    ) {
+      const next = this.transcodeQueue.shift()!;
+      this.runTranscodeSlot(next.run).then(next.resolve, next.reject);
     }
   }
 
@@ -100,6 +158,15 @@ export class HlsTranscodeService {
    * When set, skips downloading from S3 and uses the local file instead.
    */
   async transcodeLibraryVideo(
+    videoId: string,
+    options?: { localFilePath: string },
+  ): Promise<TranscodeResult> {
+    return this.enqueueTranscode(() =>
+      this.doTranscodeLibraryVideo(videoId, options),
+    );
+  }
+
+  private async doTranscodeLibraryVideo(
     videoId: string,
     options?: { localFilePath: string },
   ): Promise<TranscodeResult> {
@@ -230,6 +297,15 @@ export class HlsTranscodeService {
    * Pass options.localFilePath when the file is already on disk (e.g. right after upload) to skip S3 download.
    */
   async transcodeSchoolVideo(
+    videoId: string,
+    options?: { localFilePath: string },
+  ): Promise<TranscodeResult> {
+    return this.enqueueTranscode(() =>
+      this.doTranscodeSchoolVideo(videoId, options),
+    );
+  }
+
+  private async doTranscodeSchoolVideo(
     videoId: string,
     options?: { localFilePath: string },
   ): Promise<TranscodeResult> {

@@ -29,6 +29,7 @@ import * as colors from 'colors';
 @Injectable()
 export class ContentService {
   private readonly logger = new Logger(ContentService.name);
+  private readonly maxActiveUploadsPerUser: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -37,7 +38,25 @@ export class ContentService {
     private readonly uploadProgressService: UploadProgressService,
     private readonly videoUploadService: VideoUploadService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    this.maxActiveUploadsPerUser =
+      Number(this.configService.get('MAX_ACTIVE_UPLOADS_PER_USER')) || 5;
+  }
+
+  private async enforceUploadLimit(userId: string): Promise<void> {
+    const activeCount = await this.prisma.directUpload.count({
+      where: {
+        userId,
+        userType: 'library_user',
+        status: { in: ['pending', 'uploading', 'uploaded', 'processing'] },
+      },
+    });
+    if (activeCount >= this.maxActiveUploadsPerUser) {
+      throw new BadRequestException(
+        `You already have ${activeCount} active upload(s). Please wait for at least one to finish before starting another (limit: ${this.maxActiveUploadsPerUser}).`,
+      );
+    }
+  }
 
   /**
    * Start video upload session (delegates to central VideoUploadService with library handler).
@@ -79,18 +98,18 @@ export class ContentService {
       getThumbnailS3Key: (originalName: string) =>
         `library/video-thumbnails/platforms/${libraryUserRef.platformId}/subjects/${uploadDto.subjectId}/topics/${uploadDto.topicId}/${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${originalName.split('.').pop()}`,
       persistVideo: async (params) => {
-        const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
-          where: {
-            topicId: uploadDto.topicId,
-            platformId: libraryUserRef.platformId,
-          },
-          orderBy: { order: 'desc' },
-          select: { order: true },
-        });
-        const nextOrder = (lastVideo?.order ?? 0) + 1;
         const videoLesson = await this.prisma.$transaction(
-          async (tx) =>
-            tx.libraryVideoLesson.create({
+          async (tx) => {
+            const lastVideo = await tx.libraryVideoLesson.findFirst({
+              where: {
+                topicId: uploadDto.topicId,
+                platformId: libraryUserRef.platformId,
+              },
+              orderBy: { order: 'desc' },
+              select: { order: true },
+            });
+            const nextOrder = (lastVideo?.order ?? 0) + 1;
+            return tx.libraryVideoLesson.create({
               data: {
                 platformId: libraryUserRef.platformId,
                 subjectId: uploadDto.subjectId,
@@ -109,7 +128,8 @@ export class ContentService {
                 hlsStatus: HlsTranscodeStatus.pending,
               },
               select: { id: true },
-            }),
+            });
+          },
           { maxWait: 5000, timeout: 15000 },
         );
         return { id: videoLesson.id };
@@ -176,6 +196,8 @@ export class ContentService {
         `[LIBRARY CONTENT] Requesting presigned upload for: "${dto.title}"`,
       ),
     );
+
+    await this.enforceUploadLimit(user.sub);
 
     if (dto.fileSize > this.MAX_VIDEO_SIZE) {
       throw new BadRequestException(
@@ -442,13 +464,6 @@ export class ContentService {
 
     const videoUrl = this.s3Service.getFileUrl(dto.s3Key);
 
-    const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
-      where: { topicId: dto.topicId, platformId: libraryUser.platformId },
-      orderBy: { order: 'desc' },
-      select: { order: true },
-    });
-    const nextOrder = (lastVideo?.order ?? 0) + 1;
-
     // Mark as processing before creating video record
     if (directUpload) {
       await this.prisma.directUpload.update({
@@ -458,8 +473,14 @@ export class ContentService {
     }
 
     const videoLesson = await this.prisma.$transaction(
-      async (tx) =>
-        tx.libraryVideoLesson.create({
+      async (tx) => {
+        const lastVideo = await tx.libraryVideoLesson.findFirst({
+          where: { topicId: dto.topicId, platformId: libraryUser.platformId },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        const nextOrder = (lastVideo?.order ?? 0) + 1;
+        return tx.libraryVideoLesson.create({
           data: {
             platformId: libraryUser.platformId,
             subjectId: dto.subjectId,
@@ -478,7 +499,8 @@ export class ContentService {
             hlsStatus: HlsTranscodeStatus.pending,
           },
           select: { id: true, title: true, videoUrl: true, sizeBytes: true },
-        }),
+        });
+      },
       { maxWait: 5000, timeout: 15000 },
     );
 

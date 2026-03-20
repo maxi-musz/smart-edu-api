@@ -45,6 +45,7 @@ const exec = util.promisify(child_process.exec);
 @Injectable()
 export class TopicsService {
   private readonly logger = new Logger(TopicsService.name);
+  private readonly maxActiveUploadsPerUser: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -55,7 +56,25 @@ export class TopicsService {
     private readonly videoUploadService: VideoUploadService,
     private readonly documentProcessingService: DocumentProcessingService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    this.maxActiveUploadsPerUser =
+      Number(this.configService.get('MAX_ACTIVE_UPLOADS_PER_USER')) || 5;
+  }
+
+  private async enforceUploadLimit(userId: string): Promise<void> {
+    const activeCount = await this.prisma.directUpload.count({
+      where: {
+        userId,
+        userType: 'school_user',
+        status: { in: ['pending', 'uploading', 'uploaded', 'processing'] },
+      },
+    });
+    if (activeCount >= this.maxActiveUploadsPerUser) {
+      throw new BadRequestException(
+        `You already have ${activeCount} active upload(s). Please wait for at least one to finish before starting another (limit: ${this.maxActiveUploadsPerUser}).`,
+      );
+    }
+  }
 
   async createTopic(createTopicRequestDto: CreateTopicRequestDto, user: any) {
     // Fetch user from database to get school_id
@@ -1969,6 +1988,8 @@ export class TopicsService {
   }
 
   async requestVideoUpload(dto: RequestTeacherVideoUploadDto, user: any) {
+    await this.enforceUploadLimit(user.sub);
+
     if (dto.fileSize > this.MAX_VIDEO_SIZE) {
       throw new BadRequestException(
         `Video file size exceeds ${Math.round(this.MAX_VIDEO_SIZE / 1024 / 1024)}MB limit`,
@@ -2094,13 +2115,15 @@ export class TopicsService {
     const sizeStr = `${(objectMeta.contentLength / 1024 / 1024).toFixed(2)} MB`;
 
     const s3Platform = await this.prisma.organisation.upsert({ where: { name: 'AWS S3' }, update: {}, create: { name: 'AWS S3', email: 's3@smart-edu.com' } });
-    const lastVideo = await this.prisma.videoContent.findFirst({ where: { topic_id: dto.topic_id, schoolId }, orderBy: { order: 'desc' }, select: { order: true } });
-    const nextOrder = (lastVideo?.order ?? 0) + 1;
 
-    const videoContent = await this.prisma.$transaction(async (tx) => tx.videoContent.create({
-      data: { title: dto.title.toLowerCase(), description: (dto.description ?? '').toLowerCase(), topic_id: dto.topic_id, schoolId, platformId: s3Platform.id, uploadedById: userId, order: nextOrder, url: videoUrl, videoS3Key: dto.s3Key, duration: '00:00:00', size: sizeStr, thumbnail: thumbnailData, status: 'published', views: 0, hlsStatus: HlsTranscodeStatus.pending },
-      select: { id: true, title: true, url: true, size: true },
-    }), { maxWait: 5000, timeout: 15000 });
+    const videoContent = await this.prisma.$transaction(async (tx) => {
+      const lastVideo = await tx.videoContent.findFirst({ where: { topic_id: dto.topic_id, schoolId }, orderBy: { order: 'desc' }, select: { order: true } });
+      const nextOrder = (lastVideo?.order ?? 0) + 1;
+      return tx.videoContent.create({
+        data: { title: dto.title.toLowerCase(), description: (dto.description ?? '').toLowerCase(), topic_id: dto.topic_id, schoolId, platformId: s3Platform.id, uploadedById: userId, order: nextOrder, url: videoUrl, videoS3Key: dto.s3Key, duration: '00:00:00', size: sizeStr, thumbnail: thumbnailData, status: 'published', views: 0, hlsStatus: HlsTranscodeStatus.pending },
+        select: { id: true, title: true, url: true, size: true },
+      });
+    }, { maxWait: 5000, timeout: 15000 });
 
     if (directUpload) await this.prisma.directUpload.update({ where: { id: directUpload.id }, data: { status: 'completed', videoId: videoContent.id } });
 
