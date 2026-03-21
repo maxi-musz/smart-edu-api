@@ -1,5 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+
+// Prisma may return JavaScript bigint for some Int columns; JSON.stringify throws otherwise.
+const bigIntProto = BigInt.prototype as unknown as { toJSON?: () => string | number };
+if (bigIntProto.toJSON === undefined) {
+  bigIntProto.toJSON = function toJSON(this: bigint) {
+    const n = Number(this);
+    return Number.isSafeInteger(n) ? n : this.toString();
+  };
+}
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as colors from 'colors';

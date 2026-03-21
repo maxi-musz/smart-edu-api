@@ -165,6 +165,22 @@ export class ContentController {
     return await this.contentService.getUploadProgress(sessionId);
   }
 
+  @Get('my-uploads')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List my uploaded videos and materials',
+    description:
+      'Returns library videos and materials uploaded by the authenticated user (same items as profile `myUploads`, without full profile payload).',
+  })
+  @ApiResponse({ status: 200, description: 'OK' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Library user not found' })
+  async getMyUploads(@Request() req: any) {
+    return await this.contentService.getMyUploads(req.user);
+  }
+
   // ==================== VIDEO PLAYBACK ====================
 
   @Get('video/:videoId/play')

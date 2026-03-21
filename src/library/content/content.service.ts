@@ -426,6 +426,64 @@ export class ContentService {
   }
 
   /**
+   * Videos and materials uploaded by the current library user (topic content).
+   */
+  async getMyUploads(user: any): Promise<ApiResponse<{ videos: unknown[]; materials: unknown[] }>> {
+    this.logger.log(colors.cyan(`[LIBRARY CONTENT] My uploads for: ${user.email}`));
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: {
+        uploadedVideos: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            videoUrl: true,
+            thumbnailUrl: true,
+            durationSeconds: true,
+            sizeBytes: true,
+            status: true,
+            order: true,
+            subjectId: true,
+            topicId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        uploadedMaterials: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            materialType: true,
+            url: true,
+            sizeBytes: true,
+            pageCount: true,
+            status: true,
+            order: true,
+            subjectId: true,
+            topicId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    return new ApiResponse(true, 'My uploads retrieved successfully', {
+      videos: libraryUser.uploadedVideos,
+      materials: libraryUser.uploadedMaterials,
+    });
+  }
+
+  /**
    * Get video for playback (tracks unique views like YouTube)
    */
   async getVideoForPlayback(user: any, videoId: string): Promise<ApiResponse<any>> {

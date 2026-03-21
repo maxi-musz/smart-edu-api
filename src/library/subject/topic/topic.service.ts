@@ -665,11 +665,11 @@ export class TopicService {
         }) as any,
       ]);
 
-      // Build detailed statistics/analysis
-      const totalVideoViews = videos.reduce((sum, video) => sum + ((video.views as number) || 0), 0);
-      const totalVideoDuration = videos.reduce((sum, video) => sum + ((video.durationSeconds as number) || 0), 0);
-      const totalVideoSize = videos.reduce((sum, video) => sum + ((video.sizeBytes as number) || 0), 0);
-      const totalMaterialSize = materials.reduce((sum, material) => sum + ((material.sizeBytes as number) || 0), 0);
+      // Build detailed statistics/analysis (Prisma may return bigint for Int columns — never mix with number in +)
+      const totalVideoViews = videos.reduce((sum, video) => sum + this.prismaNumeric(video.views), 0);
+      const totalVideoDuration = videos.reduce((sum, video) => sum + this.prismaNumeric(video.durationSeconds), 0);
+      const totalVideoSize = videos.reduce((sum, video) => sum + this.prismaNumeric(video.sizeBytes), 0);
+      const totalMaterialSize = materials.reduce((sum, material) => sum + this.prismaNumeric(material.sizeBytes), 0);
       
       // Material type breakdown
       const materialTypeBreakdown = materials.reduce((acc, material) => {
@@ -731,8 +731,8 @@ export class TopicService {
         editedComments: comments.filter(c => c.isEdited).length,
         
         // CBT analysis
-        totalCbtQuestions: cbts.reduce((sum, cbt) => sum + (cbt._count?.questions || 0), 0),
-        totalCbtAttempts: cbts.reduce((sum, cbt) => sum + (cbt._count?.attempts || 0), 0),
+        totalCbtQuestions: cbts.reduce((sum, cbt) => sum + this.prismaNumeric(cbt._count?.questions), 0),
+        totalCbtAttempts: cbts.reduce((sum, cbt) => sum + this.prismaNumeric(cbt._count?.attempts), 0),
         publishedCbts: cbts.filter(cbt => cbt.isPublished).length,
         
         // Total size
@@ -926,6 +926,15 @@ export class TopicService {
       this.logger.error(colors.red(`Error fetching topics: ${error.message}`), error.stack);
       throw new InternalServerErrorException('Failed to retrieve topics');
     }
+  }
+
+  /** Prisma may return JS bigint for some DB integers; coerce for JSON-safe math. */
+  private prismaNumeric(value: unknown): number {
+    if (value == null) return 0;
+    if (typeof value === 'bigint') return Number(value);
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
   }
 
   /**

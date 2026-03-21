@@ -16,12 +16,14 @@ import { LibraryExamBodyModule } from './exam-body/exam-body.module';
 import { LibraryExamBodySubjectModule } from './exam-body-subject/exam-body-subject.module';
 import { LibraryExamBodyYearModule } from './exam-body-year/exam-body-year.module';
 import { LibraryUsersModule } from './library-users/library-users.module';
+import { LibraryClassesModule } from './library-classes/library-classes.module';
 
 @Module({
   imports: [
     PrismaModule,
     LibraryAuthModule,
     LibraryUsersModule,
+    LibraryClassesModule,
     ProfileModule,
     SchoolsModule,
     ResourcesModule,
