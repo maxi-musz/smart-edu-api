@@ -28,7 +28,7 @@ async function bootstrap() {
       'Origin',
       'Accept-Language',
       'Content-Language',
-      'school_id', // Custom header for school context (teachers, directors, students)
+      'school_id', // Custom headerdone for school context (teachers, directors, students)
     ],
     exposedHeaders: ['Content-Disposition'],
     credentials: true,
