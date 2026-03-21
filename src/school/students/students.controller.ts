@@ -1,11 +1,7 @@
 import {
   Controller,
   Get,
-  Post,
-  Body,
-  Patch,
   Param,
-  Delete,
   UseGuards,
   Query,
   HttpCode,
@@ -18,13 +14,11 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiQuery,
-  ApiBody,
 } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { JwtGuard } from '../auth/guard/jwt.guard';
 import { GetUser } from '../auth/decorator/get-user-decorator';
 import { StudentAttendanceExtendedResponseDto } from '../teachers/attendance-teacher/dto/student-attendance.dto';
-import { StudentsDocs } from './docs/students.docs';
 
 @ApiTags('Students')
 @ApiBearerAuth()
@@ -169,138 +163,6 @@ export class StudentsController {
   @ApiResponse({ status: 404, description: 'Student not found' })
   getSchedulesTab(@GetUser() user: any) {
     return this.studentsService.fetchSchedulesTabForStudent(user);
-  }
-
-  /**
-   * Get all assessments for currently signed in student
-   * GET /api/v1/students/assessments
-   */
-  @Get('assessments')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get all assessments for student' })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    type: String,
-    description: 'Search in assessment title or description',
-  })
-  @ApiQuery({
-    name: 'assessmentType',
-    required: false,
-    type: String,
-    description: 'Filter by assessment type',
-  })
-  @ApiQuery({
-    name: 'status',
-    required: false,
-    type: String,
-    description: 'Filter by assessment status',
-  })
-  @ApiQuery({
-    name: 'subject_id',
-    required: false,
-    type: String,
-    description: 'Filter by subject ID',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Assessments retrieved successfully',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Student not found' })
-  getAssessments(
-    @GetUser() user: any,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-    @Query('search') search?: string,
-    @Query('assessmentType') assessmentType?: string,
-    @Query('status') status?: string,
-    @Query('subject_id') subjectId?: string,
-  ) {
-    const pageNum = page ? parseInt(page.toString(), 10) : 1;
-    const limitNum = limit ? parseInt(limit.toString(), 10) : 10;
-    return this.studentsService.fetchAssessmentsForStudent(
-      user,
-      pageNum,
-      limitNum,
-      search,
-      assessmentType,
-      status,
-      subjectId,
-    );
-  }
-
-  /**
-   * Get assessment questions for student to work on
-   * GET /api/v1/students/assessments/:id/questions
-   */
-  @Get('assessments/:id/questions')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get assessment questions for student to work on' })
-  @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Assessment questions retrieved successfully',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Assessment not found' })
-  @ApiResponse({
-    status: 403,
-    description: 'Access denied or maximum attempts reached',
-  })
-  getAssessmentQuestions(
-    @Param('id') assessmentId: string,
-    @GetUser() user: any,
-  ) {
-    return this.studentsService.getAssessmentQuestions(user, assessmentId);
-  }
-
-  /**
-   * Submit assessment answers
-   * POST /api/v1/students/assessments/:id/submit
-   */
-  @Post('assessments/:id/submit')
-  @HttpCode(HttpStatus.OK)
-  @StudentsDocs.submitAssessment.operation
-  @StudentsDocs.submitAssessment.param
-  @StudentsDocs.submitAssessment.body
-  @StudentsDocs.submitAssessment.response200
-  @StudentsDocs.submitAssessment.response401
-  @StudentsDocs.submitAssessment.response404
-  @StudentsDocs.submitAssessment.response403
-  submitAssessment(
-    @Param('id') assessmentId: string,
-    @Body() submissionData: any,
-    @GetUser() user: any,
-  ) {
-    return this.studentsService.submitAssessment(
-      user,
-      assessmentId,
-      submissionData,
-    );
-  }
-
-  /**
-   * Get assessment questions with user's previous answers
-   * GET /api/v1/students/assessments/:id/answers
-   */
-  @Get('assessments/:id/answers')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get assessment questions with user answers' })
-  @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Assessment with answers retrieved successfully',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Assessment not found' })
-  getAssessmentWithAnswers(
-    @Param('id') assessmentId: string,
-    @GetUser() user: any,
-  ) {
-    return this.studentsService.getAssessmentWithAnswers(user, assessmentId);
   }
 
   /**

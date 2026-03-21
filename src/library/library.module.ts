@@ -11,6 +11,7 @@ import { TopicModule } from './subject/topic/topic.module';
 import { ContentModule } from './content/content.module';
 import { GeneralMaterialsModule } from './general-materials/general-materials.module';
 import { AssessmentModule } from './assessment/assessment.module';
+import { LibraryAssessmentModule } from './library-assessment/library-assessment.module';
 import { LibraryExamBodyAssessmentModule } from './exam-body-assessment/exam-body-assessment.module';
 import { LibraryExamBodyModule } from './exam-body/exam-body.module';
 import { LibraryExamBodySubjectModule } from './exam-body-subject/exam-body-subject.module';
@@ -30,6 +31,7 @@ import { LibraryUsersModule } from './library-users/library-users.module';
     ContentModule,
     GeneralMaterialsModule,
     AssessmentModule,
+    LibraryAssessmentModule,
     LibraryExamBodyAssessmentModule,
     LibraryExamBodyModule,
     LibraryExamBodySubjectModule,

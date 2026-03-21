@@ -12,8 +12,7 @@ import { ClassesModule } from './classes/classes.module';
 import { SubjectModule } from './subject/subject.module';
 import { UserModule } from './user/user.module';
 import { ResultsModule } from './results/results.module';
-import { AssessmentsModule } from './assessments/assessments.module';
-import { DirectorAssessmentsModule } from './director-assessments/director-assessments.module';
+import { DirectorAssessmentModule } from './director-assessment/director-assessment.module';
 
 @Module({
   imports: [
@@ -30,8 +29,7 @@ import { DirectorAssessmentsModule } from './director-assessments/director-asses
     SubjectModule,
     UserModule,
     ResultsModule,
-    AssessmentsModule,
-    DirectorAssessmentsModule,
+    DirectorAssessmentModule,
   ],
 })
 export class DirectorModule {}

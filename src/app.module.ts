@@ -29,8 +29,6 @@ import { SchoolAccessControlModule } from './school-access-control/school-access
 import { ResultModule } from './result/result.module';
 import { CloudFrontModule } from './shared/services/cloudfront.module';
 import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
-import { AssessmentModule } from './assessment/assessment.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -70,7 +68,6 @@ import { AssessmentModule } from './assessment/assessment.module';
     LibraryAccessControlModule,
     SchoolAccessControlModule,
     ResultModule,
-    AssessmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
