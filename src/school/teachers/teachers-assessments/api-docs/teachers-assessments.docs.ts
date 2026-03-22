@@ -1,4 +1,4 @@
-import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 /**
  * Swagger decorators for TeachersAssessmentsController (kept in one file for reuse).
@@ -51,6 +51,57 @@ export const TeachersAssessmentsDocs = {
       status: 403,
       description: 'Forbidden — not assigned to this subject',
     }),
+    response404: ApiResponse({ status: 404, description: 'Assessment not found' }),
+  },
+
+  downloadBulkQuestionsTemplate: {
+    operation: ApiOperation({
+      summary: 'Download Excel template for bulk question import',
+      description:
+        'Returns a structured `.xlsx`: **Questions** sheet with human-readable column titles, locked header row (no password), dropdown for **Question type** only, validation on **Points** and **Correct answer date**; imported questions are stored with difficulty **EASY** (no difficulty/explanation columns). **How_to_use** (read-only); hidden `_Lists` for question-type list. Assessment must be editable and the teacher must teach its subject.',
+    }),
+    response200: ApiResponse({
+      status: 200,
+      description: 'Excel file (.xlsx) attachment',
+    }),
+    response401: ApiResponse({ status: 401, description: 'Unauthorized' }),
+    response403: ApiResponse({
+      status: 403,
+      description: 'Forbidden — subject not in teacher’s assignments',
+    }),
+    response404: ApiResponse({ status: 404, description: 'Assessment not found' }),
+  },
+
+  bulkUploadQuestions: {
+    operation: ApiOperation({
+      summary: 'Bulk upload questions from Excel',
+      description:
+        'Multipart field `excel_file`: `.xlsx` / `.xls` using the downloaded template. All rows are validated before any DB write; on validation failure, `data.errors` lists Excel row numbers and messages. Persist uses a single database transaction (all questions commit together or none). Same persistence rules as `POST /:id/questions` (status and access).',
+    }),
+    body: ApiBody({
+      required: true,
+      schema: {
+        type: 'object',
+        properties: {
+          excel_file: {
+            type: 'string',
+            format: 'binary',
+            description: 'Excel file (.xlsx or .xls)',
+          },
+        },
+        required: ['excel_file'],
+      },
+    }),
+    response201: ApiResponse({
+      status: 201,
+      description: 'Questions imported; body matches add-questions response plus bulk row counts',
+    }),
+    response400: ApiResponse({
+      status: 400,
+      description:
+        'Invalid file, workbook, or row validation errors (see response payload `data.errors`)',
+    }),
+    response403: ApiResponse({ status: 403, description: 'Forbidden' }),
     response404: ApiResponse({ status: 404, description: 'Assessment not found' }),
   },
 

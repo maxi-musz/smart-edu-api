@@ -9,10 +9,13 @@ import {
   Post,
   Patch,
   Query,
+  Res,
   UploadedFiles,
   UseInterceptors,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiConsumes,
@@ -94,6 +97,61 @@ export class TeachersAssessmentsController {
   ) {
     return this.teachersAssessmentsService.getTeacherAssessmentQuestionsForPreview(
       id,
+      user,
+    );
+  }
+
+  @Get(':id/bulk-questions/template')
+  @TeachersAssessmentsDocs.downloadBulkQuestionsTemplate.operation
+  @TeachersAssessmentsDocs.downloadBulkQuestionsTemplate.response200
+  @TeachersAssessmentsDocs.downloadBulkQuestionsTemplate.response401
+  @TeachersAssessmentsDocs.downloadBulkQuestionsTemplate.response403
+  @TeachersAssessmentsDocs.downloadBulkQuestionsTemplate.response404
+  async downloadBulkQuestionsTemplate(
+    @Param('id') id: string,
+    @GetUser() user: any,
+    @Res() res: Response,
+  ) {
+    await this.teachersAssessmentsService.verifyTeacherCanBulkImportQuestions(
+      id,
+      user,
+    );
+
+    const templateBuffer =
+      await this.teachersAssessmentsService.getBulkQuestionsTemplateXlsxBuffer();
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition':
+        'attachment; filename="teacher-assessment-bulk-questions-template.xlsx"',
+      'Content-Length': templateBuffer.length,
+    });
+
+    res.send(templateBuffer);
+  }
+
+  @Post(':id/bulk-questions/upload')
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'excel_file', maxCount: 1 }]))
+  @ApiConsumes('multipart/form-data')
+  @TeachersAssessmentsDocs.bulkUploadQuestions.body
+  @TeachersAssessmentsDocs.bulkUploadQuestions.operation
+  @TeachersAssessmentsDocs.bulkUploadQuestions.response201
+  @TeachersAssessmentsDocs.bulkUploadQuestions.response400
+  @TeachersAssessmentsDocs.bulkUploadQuestions.response403
+  @TeachersAssessmentsDocs.bulkUploadQuestions.response404
+  async bulkUploadAssessmentQuestions(
+    @Param('id') id: string,
+    @UploadedFiles() files: { excel_file?: Express.Multer.File[] },
+    @GetUser() user: any,
+  ) {
+    const file = files?.excel_file?.[0];
+    if (!file) {
+      throw new BadRequestException('excel_file is required');
+    }
+    return this.teachersAssessmentsService.bulkUploadAssessmentQuestionsFromExcel(
+      id,
+      file,
       user,
     );
   }

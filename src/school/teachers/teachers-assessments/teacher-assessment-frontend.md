@@ -52,13 +52,16 @@ Always handle `success === false`.
 9. [Update Question (With Images)](#9-update-question-with-images)
 10. [Delete Question](#10-delete-question)
 11. [Update Assessment (Metadata)](#11-update-assessment-metadata)
+12. [Bulk question import (Excel)](#12-bulk-question-import-excel)
+    - [12a — Download Excel template](#12a-download-template) — `GET /teachers-assessments/:id/bulk-questions/template`
+    - [12b — Upload workbook](#12b-upload-filled-workbook) — `POST /teachers-assessments/:id/bulk-questions/upload`
 
 ---
 ## Access Rules (Applies to All Endpoints)
 
 - You must be authenticated as a teacher (`JwtGuard`).
 - The teacher can only access or **create** assessments for the subject(s) they are assigned to teach (`teacher.subjectsTeaching`). Creating with a `subject_id` outside that list returns **`403`**.
-- Some endpoints (like modifying assessment/questions) are restricted by assessment status; adding/updating/deleting questions is blocked when the assessment is `PUBLISHED` or `ACTIVE` (and other statuses depending on the specific operation).
+- Some endpoints (like modifying assessment/questions) are restricted by assessment status; adding/updating/deleting questions is blocked when the assessment is `PUBLISHED` or `ACTIVE` (and other statuses depending on the specific operation). **Bulk Excel import** uses the same rules as **Add Questions**: only when the assessment is editable (not `PUBLISHED` / `ACTIVE` for adding questions).
 
 ---
 ## Enums Used in Query Params / Payload
@@ -196,6 +199,10 @@ Used by **`POST /teachers-assessments`**. Required: **`title`**, **`subject_id`*
   ]
 }
 ```
+
+### Bulk import (Excel)
+
+There is **no JSON body** for upload: use **multipart** field `excel_file`. The **Questions** sheet uses **human-readable** column titles (e.g. **Question text**, **Question type**); the server normalizes them to internal field names. **Difficulty** is not collected — every imported question is saved as **EASY**. **Explanation** is not in the template. Details: [section 12](#12-bulk-question-import-excel) and **How_to_use** in the workbook.
 
 ### Update Assessment: `UpdateAssessmentDto`
 
@@ -1249,3 +1256,190 @@ Error Responses:
 - `403` forbidden
 - `404` not found
 
+---
+## 12. Bulk question import (Excel)
+
+**Bulk question import** allows teachers to add **many questions at once** from a spreadsheet instead of entering each question manually in the UI (or calling the JSON batch API for every row).
+
+### Atomicity (all pass or all fail — no partial imports)
+
+The backend never applies “30 saved, 20 failed.” Behaviour is **all-or-nothing** in two layers:
+
+1. **Sheet validation (before any database write)**  
+   Every non-empty row is checked. If **any** row is invalid, the API returns **`400`** with `data.errors` and **zero** questions are inserted.
+
+2. **Database (single transaction)**  
+   If validation passes, all questions (plus their options, correct-answer rows, and the assessment **`total_points`** update) are written inside **one** Prisma transaction. If anything fails during that write (constraint, unexpected error, etc.), the transaction **rolls back** — the assessment is left as if the bulk upload never ran (no half-imported batch).
+
+Same **single-transaction** behaviour applies to **`POST /teachers-assessments/:id/questions`** (JSON batch add) when adding multiple questions in one request.
+
+There are **two** endpoints (with global prefix **`/api/v1`**):
+
+| Step | Method | Path |
+|------|--------|------|
+| Download template | `GET` | `/api/v1/teachers-assessments/:id/bulk-questions/template` |
+| Upload filled file | `POST` | `/api/v1/teachers-assessments/:id/bulk-questions/upload` |
+
+### When to show this in the UI
+
+- Show an **“Import from Excel”** (or **“Bulk upload”**) entry on the **assessment questions** screen when:
+  - the teacher can edit that assessment, and
+  - **`status` is not `PUBLISHED` or `ACTIVE`** (same gate as section 6 — if “Add question” is disabled, hide or disable bulk import too).
+- Optional copy: explain that **images are not supported** in the spreadsheet (teachers can add images later via section 7 / 9).
+
+### 12a. Download template
+
+**Endpoint:** `GET /teachers-assessments/:id/bulk-questions/template`
+
+**Path param:** `id` — assessment id (used for **access control**; the file content is generic).
+
+**Headers:**
+```json
+{
+  "Authorization": "Bearer <token>"
+}
+```
+
+**Response:** binary Excel (not JSON).
+
+| Item | Value |
+|------|--------|
+| Content-Type | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| Content-Disposition | `attachment; filename="teacher-assessment-bulk-questions-template.xlsx"` (browsers usually use this as the default save name) |
+
+**Workbook behaviour (for UI copy / support docs):**
+
+| Sheet | Purpose |
+|-------|---------|
+| **Questions** | Row 1 uses **plain-English** column titles (see § “Column reference”). Headers are **locked** (worksheet protected, **no password**). Rows **2–5000** are for data. **Frozen** header. **Dropdown:** **Question type** only. **Validation:** **Points** (whole number 0–1000 or blank); **Correct answer date** (date or blank). **Up to four** options (**Option 1**–**Option 4**). **No difficulty or explanation columns** — backend stores **EASY** for every bulk-imported question. |
+| **How_to_use** | Read-only instructions (protected). Teachers can select/copy text; they should not need to unprotect. |
+| **\_Lists** | **Very hidden** — holds allowed values for dropdowns. Teachers do not see this tab; warn support **not to delete** it or dropdowns break. |
+
+**Compatibility note:** Microsoft Excel applies protection and validation as intended. **Google Sheets**, **Numbers**, or “Save as CSV” may drop protection/dropdowns — recommend **Excel** or **Excel-compatible** editors for the canonical template.
+
+**UI behaviour:**
+- Trigger download with `fetch`/`axios` **`responseType: 'blob'`** (or open in a new window only if your auth layer supports it — prefer blob + programmatic save for Bearer tokens).
+- Suggested button label: **“Download Excel template”**.
+
+**Error responses:** `400` (invalid auth context), `403` (subject not taught), `404` (assessment not found), `401` if unauthenticated.
+
+---
+
+### 12b. Upload filled workbook
+
+**Endpoint:** `POST /teachers-assessments/:id/bulk-questions/upload`
+
+**Path param:** `id` — assessment id.
+
+**Headers:**
+- `Authorization: Bearer <token>`
+- Do **not** set `Content-Type` manually when using `FormData` — the client must send **`multipart/form-data`** with a boundary.
+
+**Body:** `multipart/form-data` with one part:
+| Field | Type | Required |
+|-------|------|----------|
+| `excel_file` | file (`.xlsx` or `.xls`) | yes |
+
+**Constraints (for UI hints):**
+- Max file size **15 MB**.
+- Allowed types: standard Excel MIME types (`.xlsx` / `.xls`).
+
+**UI behaviour:**
+- File picker: `accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"` (adjust for your platform).
+- Show **progress / loading** while uploading; large files may take several seconds.
+- On success, **refresh** the questions list (same data as after section 6 — new questions appear in order).
+
+**Success response:** Same wrapper as other endpoints (`success`, `message`, `data`, `statusCode`). `data` matches **section 6** success (`assessment_id`, `questions_added`, `total_questions`, `questions`) **plus**:
+```json
+{
+  "bulk_rows_parsed": 120,
+  "bulk_rows_skipped_empty": 3
+}
+```
+- **`bulk_rows_parsed`**: number of non-empty question rows that were imported in this request.
+- **`bulk_rows_skipped_empty`**: rows skipped because **Question text** was empty (e.g. blank rows at the bottom of the sheet).
+
+**Error responses:**
+- `400` — bad file type, unreadable workbook, no data sheet, or **validation failed** (see below).
+- `403` / `404` — same as section 6.
+
+**Validation failure (`400`) — important for UI**
+
+When row validation fails, the API returns a structured payload (shape may be nested depending on your HTTP client and global exception filter). Handle **`data.errors`**: an array of:
+
+```json
+{
+  "row": 14,
+  "message": "MULTIPLE_CHOICE_SINGLE requires exactly one correct option index."
+}
+```
+
+- **`row`** is the **Excel row number** (row `2` = first data row under the header).
+- Show a **table or list** of row + message so the user can fix the sheet and re-upload.
+
+Example body fragment:
+
+```json
+{
+  "success": false,
+  "message": "Bulk upload validation failed. Fix the listed rows and try again.",
+  "data": {
+    "errors": [
+      { "row": 5, "message": "Need at least two options for this question type." },
+      { "row": 14, "message": "correct_answer_text is required for this question type." }
+    ],
+    "rows_skipped_empty": 2
+  },
+  "statusCode": 400
+}
+```
+
+---
+
+### Workbook structure
+
+| Sheet | Purpose |
+|-------|---------|
+| **Questions** | Header row + data rows (preferred name; if renamed, the server uses the **first sheet**). |
+| **How_to_use** | Human-readable column guide (safe to hide from users; do not delete on the template). |
+
+Keep the **downloaded** header row wording when possible. The API accepts the template titles and also **legacy** snake_case headers (`question_text`, etc.) if someone merges old sheets.
+
+### Column reference (`Questions` sheet)
+
+| Excel column title | Required | Description |
+|--------------------|----------|-------------|
+| **Question text** | Yes | Question stem (plain text). |
+| **Question type** | Yes | Dropdown / one of bulk-supported `QuestionType` values (e.g. `MULTIPLE_CHOICE_SINGLE`). |
+| **Points** | No | Defaults to **1** if empty. |
+| **Option 1** … **Option 4** | For MCQ / TRUE_FALSE | Up to four answers, left to right; unused cells blank. More than four options: use the app or JSON. |
+| **Correct option indices** | For MCQ / TRUE_FALSE | **1-based** (1–4), e.g. `2` or `1,3`. **`A`–`D`** = options 1–4. **TRUE_FALSE** with blank options: **`TRUE`** / **`FALSE`** or `1` / `2`. |
+| **Correct answer text** | For text types | `SHORT_ANSWER`, `LONG_ANSWER`, `FILL_IN_BLANK`. |
+| **Correct answer number** | For `NUMERIC` | Numeric correct value. |
+| **Correct answer date** | For `DATE` | Date (validated in Excel when using the template). |
+
+**Not in the template:** difficulty and explanation. **All** bulk-imported questions are stored with **`difficulty_level`: EASY**. Add explanations later in the app if needed.
+
+### Supported `question_type` values in bulk import
+
+| Supported | Notes |
+|-----------|--------|
+| `MULTIPLE_CHOICE_SINGLE` | Exactly **one** correct index. |
+| `MULTIPLE_CHOICE_MULTIPLE` | At least one correct index. |
+| `TRUE_FALSE` | Use **Option 1** / **Option 2**, or leave all four option cells blank — server uses **True** / **False**. |
+| `SHORT_ANSWER`, `LONG_ANSWER`, `FILL_IN_BLANK` | Use `correct_answer_text`. |
+| `NUMERIC` | Use `correct_answer_number`. |
+| `DATE` | Use `correct_answer_date`. |
+
+**Not supported** in bulk (row error if used): `MATCHING`, `ORDERING`, `FILE_UPLOAD`, `RATING_SCALE`.
+
+### Frontend implementation checklist
+
+1. **Gating:** Hide or disable import when assessment status blocks edits (`PUBLISHED` / `ACTIVE` for question add).
+2. **Template:** `GET` template with auth → save blob as `.xlsx`.
+3. **Upload:** `FormData` + `append('excel_file', file)` → `POST` upload URL.
+4. **Success:** Toast + invalidate/refetch `GET .../questions` (section 4); optionally show counts from `bulk_rows_parsed` / `questions_added`.
+5. **Validation errors:** Render `data.errors` with **Excel row** numbers; link to help text (“Row numbers match Excel”).
+6. **Empty template row:** Teachers can delete sample rows or overwrite them; trailing blank rows are ignored.
+
+---

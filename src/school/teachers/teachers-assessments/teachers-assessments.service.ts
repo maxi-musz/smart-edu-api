@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as fs from 'fs';
+import * as XLSX from 'xlsx';
 import { GetAssessmentsQueryDto } from './dto/get-assessments-query.dto';
 import { DuplicateAssessmentDto } from './dto/duplicate-assessment.dto';
-import { AddQuestionsDto } from './dto/add-questions.dto';
+import { AddQuestionsDto, QuestionDto } from './dto/add-questions.dto';
 import { StorageService } from '../../../shared/services/providers/storage.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
@@ -18,6 +20,7 @@ import {
   QuestionType,
 } from '@prisma/client';
 import { CreateNewAssessmentDto } from './dto/create-new-assessment.dto';
+import { buildBulkQuestionsTemplateExcelBuffer } from './bulk-questions-template.builder';
 
 type StatusAnalytics = {
   all: number;
@@ -27,6 +30,21 @@ type StatusAnalytics = {
   closed: number;
   archived: number;
 };
+
+const BULK_OPTION_COLUMN_COUNT = 4;
+
+const BULK_QUESTION_TYPES_WITH_OPTIONS: QuestionType[] = [
+  'MULTIPLE_CHOICE_SINGLE',
+  'MULTIPLE_CHOICE_MULTIPLE',
+  'TRUE_FALSE',
+];
+
+const BULK_UNSUPPORTED_TYPES: QuestionType[] = [
+  'MATCHING',
+  'ORDERING',
+  'FILE_UPLOAD',
+  'RATING_SCALE',
+];
 
 @Injectable()
 export class TeachersAssessmentsService {
@@ -1318,6 +1336,10 @@ export class TeachersAssessmentsService {
   /**
    * Add questions to an existing assessment (teacher module).
    * Mirrors `SchoolAssessmentService.addSchoolAssessmentQuestions(...)`.
+   *
+   * All questions (and related options, correct answers, and `total_points` update)
+   * run inside **one** interactive Prisma transaction: either every row commits or
+   * none do (used by JSON batch and Excel bulk upload).
    */
   async addTeacherAssessmentQuestions(
     assessmentId: string,
@@ -1388,7 +1410,17 @@ export class TeachersAssessmentsService {
     });
     let nextOrder = (lastQuestion?.order ?? 0) + 1;
 
-    const createdQuestions = await this.prisma.$transaction(async (tx) => {
+    const batchSize = addQuestionsDto.questions.length;
+    // Default interactive tx timeout is 5s — too low for many questions + round-trips.
+    const transactionTimeoutMs = Math.min(
+      300_000,
+      Math.max(15_000, 8_000 + batchSize * 2_500),
+    );
+
+    // Single atomic transaction: any failure rolls back all questions/options/answers
+    // and leaves `total_points` unchanged from before this call.
+    const createdQuestions = await this.prisma.$transaction(
+      async (tx) => {
       const results: any[] = [];
 
       for (const questionDto of addQuestionsDto.questions) {
@@ -1491,7 +1523,12 @@ export class TeachersAssessmentsService {
       });
 
       return results;
-    });
+    },
+      {
+        maxWait: 20_000,
+        timeout: transactionTimeoutMs,
+      },
+    );
 
     return ResponseHelper.success('Questions added successfully', {
       assessment_id: assessmentId,
@@ -1499,6 +1536,415 @@ export class TeachersAssessmentsService {
       total_questions: assessment._count.questions + createdQuestions.length,
       questions: createdQuestions,
     });
+  }
+
+  // ========================================
+  // BULK QUESTIONS (EXCEL)
+  // ========================================
+
+  /**
+   * `.xlsx` template for bulk import (ExcelJS): human-readable headers, locked
+   * row 1, dropdown for question type only, points & date validation, veryHidden
+   * `_Lists` sheet, protected **How_to_use**. Imported rows always get difficulty **EASY**.
+   */
+  public async getBulkQuestionsTemplateXlsxBuffer(): Promise<Buffer> {
+    return buildBulkQuestionsTemplateExcelBuffer();
+  }
+
+  /**
+   * Ensures the teacher may add questions to this assessment (same rules as
+   * `POST /:id/questions`).
+   */
+  public async verifyTeacherCanBulkImportQuestions(
+    assessmentId: string,
+    user: any,
+  ): Promise<void> {
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    const assessment = await this.prisma.assessment.findFirst({
+      where: {
+        id: assessmentId,
+        school_id: schoolId,
+      },
+      select: { id: true, status: true, subject_id: true },
+    });
+
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
+
+    if (['PUBLISHED', 'ACTIVE'].includes(assessment.status)) {
+      throw new BadRequestException(
+        `Cannot add questions to a ${assessment.status} assessment. Change the status to DRAFT or CLOSED first.`,
+      );
+    }
+
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: { select: { subjectId: true } },
+      },
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map(
+      (st: any) => st.subjectId,
+    );
+    if (!teacherSubjectIds.includes(assessment.subject_id)) {
+      throw new ForbiddenException(
+        'You do not have access to modify this assessment',
+      );
+    }
+  }
+
+  /**
+   * Excel bulk import: **all-or-nothing** at two stages:
+   * 1. Parse/validate every sheet row first — any error aborts with **no** DB writes.
+   * 2. Persist via `addTeacherAssessmentQuestions`, which uses **one** `$transaction`
+   *    so either all questions (and options/answers + `total_points`) commit or the
+   *    DB is unchanged (no partial batches like 30 of 50 saved).
+   */
+  public async bulkUploadAssessmentQuestionsFromExcel(
+    assessmentId: string,
+    file: Express.Multer.File,
+    user: any,
+  ) {
+    await this.verifyTeacherCanBulkImportQuestions(assessmentId, user);
+
+    if (!file?.originalname) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const allowedMime = new Set([
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ]);
+    if (!allowedMime.has(file.mimetype)) {
+      throw new BadRequestException(
+        'Invalid file type. Upload an .xlsx or .xls Excel file.',
+      );
+    }
+
+    const maxBytes = 15 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException(
+        `File is too large. Maximum size is ${maxBytes / (1024 * 1024)}MB.`,
+      );
+    }
+
+    const buf = this.readUploadedFileBuffer(file);
+    let workbook: XLSX.WorkBook;
+    try {
+      workbook = XLSX.read(buf, { type: 'buffer' });
+    } catch {
+      throw new BadRequestException('Could not read Excel file. Is it a valid .xlsx / .xls?');
+    }
+
+    const sheetName =
+      workbook.SheetNames.find((n) => n.toLowerCase() === 'questions') ??
+      workbook.SheetNames[0];
+    if (!sheetName) {
+      throw new BadRequestException('Workbook has no sheets.');
+    }
+
+    const worksheet = workbook.Sheets[sheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+      defval: '',
+      raw: false,
+    });
+
+    if (rawRows.length < 1) {
+      throw new BadRequestException(
+        'No data rows found. Use the downloaded template and fill the Questions sheet.',
+      );
+    }
+
+    const { questions, errors, skippedEmpty } =
+      this.parseBulkQuestionRowsFromObjects(rawRows);
+
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Bulk upload validation failed. Fix the listed rows and try again.',
+        data: { errors, rows_skipped_empty: skippedEmpty },
+        statusCode: 400,
+      });
+    }
+
+    if (questions.length === 0) {
+      throw new BadRequestException(
+        'No valid question rows found (all rows were empty).',
+      );
+    }
+
+    const addDto: AddQuestionsDto = { questions };
+    const result = await this.addTeacherAssessmentQuestions(
+      assessmentId,
+      addDto,
+      user,
+    );
+
+    return {
+      ...result,
+      data: {
+        ...result.data,
+        bulk_rows_parsed: questions.length,
+        bulk_rows_skipped_empty: skippedEmpty,
+      },
+    };
+  }
+
+  private readUploadedFileBuffer(file: Express.Multer.File): Buffer {
+    if (file.buffer?.length) {
+      return file.buffer;
+    }
+    const path = (file as Express.Multer.File & { path?: string }).path;
+    if (path && fs.existsSync(path)) {
+      return fs.readFileSync(path);
+    }
+    throw new BadRequestException('Could not read uploaded file buffer.');
+  }
+
+  private parseBulkQuestionRowsFromObjects(rawRows: Record<string, unknown>[]) {
+    const questions: QuestionDto[] = [];
+    const errors: Array<{ row: number; message: string }> = [];
+    let skippedEmpty = 0;
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const excelRowNumber = i + 2;
+      const row = this.normalizeBulkRowKeys(rawRows[i]);
+
+      const qText = this.bulkCellStr(row['question_text']);
+      if (!qText) {
+        skippedEmpty++;
+        continue;
+      }
+
+      try {
+        questions.push(this.buildQuestionDtoFromBulkRow(row));
+      } catch (e: any) {
+        errors.push({
+          row: excelRowNumber,
+          message: e?.message || 'Invalid row',
+        });
+      }
+    }
+
+    return { questions, errors, skippedEmpty };
+  }
+
+  /**
+   * Maps spreadsheet column titles (human-readable or legacy snake_case) to
+   * internal keys: `Question text` → `question_text`, `Option 1` → `option_1`,
+   * `Correct answer (text)` → `correct_answer_text`, etc.
+   */
+  private normalizeBulkImportColumnKey(header: string): string {
+    return String(header)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+  }
+
+  private normalizeBulkRowKeys(
+    row: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      const nk = this.normalizeBulkImportColumnKey(k);
+      if (!nk) continue;
+      out[nk] = v;
+    }
+    return out;
+  }
+
+  private bulkCellStr(v: unknown): string {
+    if (v === undefined || v === null) return '';
+    if (typeof v === 'number' && !Number.isNaN(v)) {
+      return String(v).trim();
+    }
+    return String(v).trim();
+  }
+
+  private bulkCellNumber(v: unknown): number | undefined {
+    if (v === undefined || v === null || v === '') return undefined;
+    if (typeof v === 'number' && !Number.isNaN(v)) return v;
+    const n = parseFloat(String(v).trim().replace(/,/g, ''));
+    return Number.isNaN(n) ? undefined : n;
+  }
+
+  private buildQuestionDtoFromBulkRow(
+    row: Record<string, unknown>,
+  ): QuestionDto {
+    const question_text = this.bulkCellStr(row['question_text']);
+    const rawType = this.bulkCellStr(row['question_type']).toUpperCase().replace(/\s+/g, '_');
+    if (!rawType) {
+      throw new Error('Question type is required.');
+    }
+
+    const question_type = rawType as QuestionType;
+    const allTypes = Object.values(QuestionType) as string[];
+    if (!allTypes.includes(question_type)) {
+      throw new Error(`Unknown question_type "${rawType}".`);
+    }
+
+    if (BULK_UNSUPPORTED_TYPES.includes(question_type)) {
+      throw new Error(
+        `Question type ${question_type} is not supported for Excel bulk upload.`,
+      );
+    }
+
+    const points = this.bulkCellNumber(row['points']);
+
+    const dto: QuestionDto = {
+      question_text,
+      question_type,
+      difficulty_level: 'EASY',
+      ...(points !== undefined ? { points } : {}),
+    };
+
+    if (BULK_QUESTION_TYPES_WITH_OPTIONS.includes(question_type)) {
+      const options: { option_text: string; order: number; is_correct: boolean }[] =
+        [];
+
+      for (let o = 1; o <= BULK_OPTION_COLUMN_COUNT; o++) {
+        const t = this.bulkCellStr(row[`option_${o}`]);
+        if (t) {
+          options.push({
+            option_text: t,
+            order: options.length + 1,
+            is_correct: false,
+          });
+        }
+      }
+
+      if (question_type === 'TRUE_FALSE' && options.length === 0) {
+        options.push(
+          { option_text: 'True', order: 1, is_correct: false },
+          { option_text: 'False', order: 2, is_correct: false },
+        );
+      }
+
+      if (options.length < 2) {
+        throw new Error('Need at least two options for this question type.');
+      }
+
+      const correctRaw = this.bulkCellStr(row['correct_option_indices']);
+      if (!correctRaw) {
+        throw new Error('correct_option_indices is required for this question type.');
+      }
+
+      const correctIdxs = this.parseBulkCorrectOptionIndices(
+        correctRaw,
+        question_type,
+        options.length,
+      );
+
+      if (question_type === 'MULTIPLE_CHOICE_SINGLE' && correctIdxs.length !== 1) {
+        throw new Error(
+          'MULTIPLE_CHOICE_SINGLE requires exactly one correct option index.',
+        );
+      }
+      if (
+        question_type === 'MULTIPLE_CHOICE_MULTIPLE' &&
+        correctIdxs.length < 1
+      ) {
+        throw new Error(
+          'MULTIPLE_CHOICE_MULTIPLE requires at least one correct option index.',
+        );
+      }
+      if (question_type === 'TRUE_FALSE' && correctIdxs.length !== 1) {
+        throw new Error('TRUE_FALSE requires exactly one correct option.');
+      }
+
+      for (const idx of correctIdxs) {
+        if (idx < 1 || idx > options.length) {
+          throw new Error(
+            `correct_option_indices out of range (1–${options.length}).`,
+          );
+        }
+        options[idx - 1].is_correct = true;
+      }
+
+      dto.options = options;
+      return dto;
+    }
+
+    if (question_type === 'NUMERIC') {
+      const n = this.bulkCellNumber(row['correct_answer_number']);
+      if (n === undefined) {
+        throw new Error('correct_answer_number is required for NUMERIC questions.');
+      }
+      dto.correct_answers = [{ answer_number: n }];
+      return dto;
+    }
+
+    if (question_type === 'DATE') {
+      const d = this.bulkCellStr(row['correct_answer_date']);
+      if (!d) {
+        throw new Error('correct_answer_date is required for DATE questions.');
+      }
+      dto.correct_answers = [{ answer_date: d }];
+      return dto;
+    }
+
+    if (
+      question_type === 'SHORT_ANSWER' ||
+      question_type === 'LONG_ANSWER' ||
+      question_type === 'FILL_IN_BLANK'
+    ) {
+      const t = this.bulkCellStr(row['correct_answer_text']);
+      if (!t) {
+        throw new Error(
+          'correct_answer_text is required for this question type.',
+        );
+      }
+      dto.correct_answers = [{ answer_text: t }];
+      return dto;
+    }
+
+    throw new Error(`Question type ${question_type} is not supported for bulk upload.`);
+  }
+
+  private parseBulkCorrectOptionIndices(
+    raw: string,
+    questionType: QuestionType,
+    optionCount: number,
+  ): number[] {
+    const s = raw.trim();
+    if (!s) return [];
+
+    if (questionType === 'TRUE_FALSE' && optionCount === 2) {
+      const up = s.toUpperCase();
+      if (['TRUE', 'T', 'YES', 'Y', '1'].includes(up)) return [1];
+      if (['FALSE', 'F', 'NO', 'N', '2'].includes(up)) return [2];
+    }
+
+    const parts = s.split(/[,;|]/).map((p) => p.trim()).filter(Boolean);
+    const out: number[] = [];
+    for (const p of parts) {
+      const n = parseInt(p, 10);
+      if (!Number.isNaN(n)) {
+        out.push(n);
+        continue;
+      }
+      const letter = p.toUpperCase();
+      if (/^[A-D]$/i.test(letter)) {
+        out.push(letter.toUpperCase().charCodeAt(0) - 'A'.charCodeAt(0) + 1);
+      }
+    }
+    return [...new Set(out)];
   }
 
   /**
