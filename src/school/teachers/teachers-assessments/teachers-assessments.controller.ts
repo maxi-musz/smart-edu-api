@@ -25,7 +25,7 @@ import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { DuplicateAssessmentDto } from './dto/duplicate-assessment.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { TeachersAssessmentsService } from './teachers-assessments.service';
-import { TeachersAssessmentsDocs } from './docs/teachers-assessments.docs';
+import { TeachersAssessmentsDocs } from './api-docs/teachers-assessments.docs';
 
 @ApiTags('Teachers - Assessments (Teacher-specific)')
 @ApiBearerAuth()
