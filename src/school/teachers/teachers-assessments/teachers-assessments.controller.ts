@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Patch,
@@ -24,6 +26,7 @@ import { AddQuestionsDto } from './dto/add-questions.dto';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { DuplicateAssessmentDto } from './dto/duplicate-assessment.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { CreateNewAssessmentDto } from './dto/create-new-assessment.dto';
 import { TeachersAssessmentsService } from './teachers-assessments.service';
 import { TeachersAssessmentsDocs } from './api-docs/teachers-assessments.docs';
 
@@ -55,6 +58,23 @@ export class TeachersAssessmentsController {
   ) {
     return this.teachersAssessmentsService.getAllAssessmentsForTeacher(
       query,
+      user,
+    );
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @TeachersAssessmentsDocs.create.operation
+  @TeachersAssessmentsDocs.create.response201
+  @TeachersAssessmentsDocs.create.response400
+  @TeachersAssessmentsDocs.create.response403
+  @TeachersAssessmentsDocs.create.response404
+  async createTeacherAssessment(
+    @Body() createDto: CreateNewAssessmentDto,
+    @GetUser() user: any,
+  ) {
+    return this.teachersAssessmentsService.createTeacherAssessment(
+      createDto,
       user,
     );
   }

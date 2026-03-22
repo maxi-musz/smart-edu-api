@@ -19,6 +19,27 @@ export const TeachersAssessmentsDocs = {
     response404: ApiResponse({ status: 404, description: 'Not found' }),
   },
 
+  create: {
+    operation: ApiOperation({
+      summary: 'Create a new assessment (teacher)',
+      description:
+        'Creates a DRAFT assessment for a subject the teacher teaches. `subject_id` must be in the teacher’s assignments. Optional `academic_session_id` defaults to the school’s current session. Optional `topic_id` must match subject, school, and that session.',
+    }),
+    response201: ApiResponse({ status: 201, description: 'Created' }),
+    response400: ApiResponse({
+      status: 400,
+      description: 'Bad request (session, type limits, invalid assessment_type)',
+    }),
+    response403: ApiResponse({
+      status: 403,
+      description: 'Forbidden — subject not in teacher’s teaching assignments',
+    }),
+    response404: ApiResponse({
+      status: 404,
+      description: 'Teacher, subject, or topic not found',
+    }),
+  },
+
   getQuestionsPreview: {
     operation: ApiOperation({
       summary: 'Preview assessment questions (teacher)',

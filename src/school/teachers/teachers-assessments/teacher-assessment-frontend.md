@@ -4,7 +4,7 @@ Base URL: **`/teachers-assessments`**
 Server global prefix: **`/api/v1`** (so full path is typically **`/api/v1/teachers-assessments`**)  
 Authentication: **Bearer JWT** required on all endpoints.
 
-Audience: Teachers can list, preview, and manage (create/update/duplicate) assessments they are allowed to teach, including managing questions and media.
+Audience: Teachers can **create** assessments (`POST /teachers-assessments`), list, preview, and manage (update/duplicate) assessments for subjects they are assigned to teach, including managing questions and media.
 
 ---
 ## IMPORTANT: Response Structure (Success)
@@ -19,6 +19,8 @@ All endpoints return a wrapper object on success:
   "statusCode": 200
 }
 ```
+
+**Create assessment** (`POST /teachers-assessments`) uses HTTP **`201 Created`**. The JSON body may still show `statusCode: 200` inside `ResponseHelper.success` — treat HTTP status and `success` as authoritative.
 
 ---
 ## IMPORTANT: Response Structure (Error)
@@ -40,21 +42,22 @@ Always handle `success === false`.
 ## Table of Contents
 
 1. [Get All Teacher Assessments](#1-get-all-teacher-assessments)
-2. [Get Assessment by ID (Teacher View)](#2-get-assessment-by-id-teacher-view)
-3. [Get Assessment Questions (Teacher Preview)](#3-get-assessment-questions-teacher-preview)
-4. [Duplicate Assessment](#4-duplicate-assessment)
-5. [Add Questions (No Images)](#5-add-questions-no-images)
-6. [Add Question (With Images)](#6-add-question-with-images)
-7. [Update Question (JSON)](#7-update-question-json)
-8. [Update Question (With Images)](#8-update-question-with-images)
-9. [Delete Question](#9-delete-question)
-10. [Update Assessment (Metadata)](#10-update-assessment-metadata)
+2. [Create Assessment](#2-create-assessment)
+3. [Get Assessment by ID (Teacher View)](#3-get-assessment-by-id-teacher-view)
+4. [Get Assessment Questions (Teacher Preview)](#4-get-assessment-questions-teacher-preview)
+5. [Duplicate Assessment](#5-duplicate-assessment)
+6. [Add Questions (No Images)](#6-add-questions-no-images)
+7. [Add Question (With Images)](#7-add-question-with-images)
+8. [Update Question (JSON)](#8-update-question-json)
+9. [Update Question (With Images)](#9-update-question-with-images)
+10. [Delete Question](#10-delete-question)
+11. [Update Assessment (Metadata)](#11-update-assessment-metadata)
 
 ---
 ## Access Rules (Applies to All Endpoints)
 
 - You must be authenticated as a teacher (`JwtGuard`).
-- The teacher can only access assessments for the subject(s) they are assigned to teach.
+- The teacher can only access or **create** assessments for the subject(s) they are assigned to teach (`teacher.subjectsTeaching`). Creating with a `subject_id` outside that list returns **`403`**.
 - Some endpoints (like modifying assessment/questions) are restricted by assessment status; adding/updating/deleting questions is blocked when the assessment is `PUBLISHED` or `ACTIVE` (and other statuses depending on the specific operation).
 
 ---
@@ -180,6 +183,10 @@ Always handle `success === false`.
 }
 ```
 
+### Create Assessment: `CreateNewAssessmentDto`
+
+Used by **`POST /teachers-assessments`**. Required: **`title`**, **`subject_id`** (must be a subject you teach). Optional: **`academic_session_id`** (defaults to school current session), **`topic_id`** (must match subject + school + that session), timing/flags, **`assessment_type`**, etc. — see `create-new-assessment.dto.ts` in the repo for the full list.
+
 ### Add Questions Payload: `AddQuestionsDto`
 
 ```json
@@ -256,7 +263,7 @@ Use the field list in the section below (Update Assessment).
 
 - `assessmentId`: assessment UUID/id string
 - `questionId`: question UUID/id string
-- `subject_id`, `topic_id`: subject/topic UUID/id strings
+- `subject_id`, `topic_id`, `academic_session_id`: UUID strings where applicable
 
 ---
 ## 1. Get All Teacher Assessments
@@ -403,7 +410,47 @@ Example Error:
 ```
 
 ---
-## 2. Get Assessment by ID (Teacher View)
+## 2. Create Assessment
+
+Creates a **`DRAFT`**, unpublished assessment. **`school_id`** and **`created_by`** are set from the JWT.
+
+Endpoint: **`POST /teachers-assessments`**  
+HTTP status: **`201 Created`**
+
+Headers:
+```json
+{
+  "Authorization": "Bearer <token>",
+  "Content-Type": "application/json"
+}
+```
+
+Body: **`CreateNewAssessmentDto`**
+
+| Field | Required | Notes |
+|---|---|---|
+| `title` | Yes | |
+| `subject_id` | Yes | Must belong to the school **and** appear in the teacher’s **`subjectsTeaching`** |
+| `academic_session_id` | No | Must belong to the same school; if omitted, the school’s **current** session is used |
+| `topic_id` | No | If set, must match **subject**, **school**, and the **resolved academic session** |
+| `assessment_type` | No | Prisma `AssessmentType`; default **`CBT`**. Invalid value → **`400`** |
+| Other metadata | No | Same as director create (`duration`, `grading_type`, `tags`, dates, booleans, etc.) |
+
+**Rules (same family as director/school create)**
+
+- Per **subject** + **academic session**: at most **2** × **`CBT`** and **1** × **`EXAM`**.
+- If **`end_date`** is omitted, server sets a default (**now + 2 days**).
+
+Success (**201**): `data.assessment` with `subject`, `topic`, `createdBy`, `_count` (questions/attempts).
+
+Errors:
+
+- **`400`** — bad auth context, session missing/invalid, invalid `assessment_type`, or CBT/EXAM cap
+- **`403`** — `subject_id` not in the teacher’s teaching assignments
+- **`404`** — teacher record, subject in school, or topic not found
+
+---
+## 3. Get Assessment by ID (Teacher View)
 
 Endpoint: `GET /teachers-assessments/:id`
 
@@ -584,7 +631,7 @@ Error Responses:
 - `404` not found (teacher/assessment not found)
 
 ---
-## 3. Get Assessment Questions (Teacher Preview)
+## 4. Get Assessment Questions (Teacher Preview)
 
 Endpoint: `GET /teachers-assessments/:id/questions`
 
@@ -673,7 +720,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 4. Duplicate Assessment
+## 5. Duplicate Assessment
 
 Duplicates an assessment for the authenticated teacher and creates the new one in `DRAFT` status.
 
@@ -766,7 +813,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 5. Add Questions (No Images)
+## 6. Add Questions (No Images)
 
 Adds a batch of questions to an assessment (no media upload in this endpoint).
 
@@ -900,7 +947,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 6. Add Question (With Images)
+## 7. Add Question (With Images)
 
 Creates a single question with optional question image and up to 10 option images.
 
@@ -924,7 +971,7 @@ Important mapping rule:
 - The server matches: `questionData.options.find(opt => opt.imageIndex === i)` where `i` is the index of the uploaded `optionImages` array.
 
 Success Response (201):
-Same shape as `Add Questions (No Images)` (see section 5). The `questions[]` returned are the newly created full question objects.
+Same shape as `Add Questions (No Images)` (see section 6). The `questions[]` returned are the newly created full question objects.
 
 Error Responses:
 - `400` invalid JSON/image constraints
@@ -932,7 +979,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 7. Update Question (JSON)
+## 8. Update Question (JSON)
 
 Updates a single question using JSON (smart merge behavior for options/correct answers).
 
@@ -1022,7 +1069,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 8. Update Question (With Images)
+## 9. Update Question (With Images)
 
 Updates a single question and/or its image media using multipart upload.
 
@@ -1049,7 +1096,7 @@ Update rules:
 - The server updates `options[].image_url` and `options[].image_s3_key` on the parsed `questionData` (creating an option entry in DTO if not already present).
 
 Success Response (200):
-Same shape as section 7 (`question` object inside `data`).
+Same shape as section 8 (`question` object inside `data`).
 
 Error Responses:
 - `400` invalid/mismatched JSON/files or assessment status restrictions
@@ -1057,7 +1104,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 9. Delete Question
+## 10. Delete Question
 
 Permanently removes a question from an assessment, including associated media and related option/correct answer data.
 
@@ -1094,7 +1141,7 @@ Error Responses:
 - `404` not found
 
 ---
-## 10. Update Assessment (Metadata)
+## 11. Update Assessment (Metadata)
 
 Updates assessment metadata (PATCH semantics). You can change fields like dates, status, grading settings, etc.
 

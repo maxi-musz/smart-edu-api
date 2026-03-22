@@ -4,7 +4,7 @@ Base URL: **`/director-assessment`**
 Server global prefix: **`/api/v1`** (so full path is typically **`/api/v1/director-assessment`**)  
 Authentication: **Bearer JWT** (school JWT) required on all endpoints.
 
-Audience: School directors/owners can view **all assessments in their school** (no subject restriction), manage metadata (update, duplicate), manage questions and media, and inspect student attempts/submissions. **Assessments are created by teachers** — there is no “create assessment” route on this controller.
+Audience: School directors/owners can view **all assessments in their school** (no subject restriction), **create** new assessments (`POST /director-assessment`), manage metadata (update, duplicate), manage questions and media, and inspect student attempts/submissions.
 
 ---
 ## IMPORTANT: Response Structure (Success)
@@ -48,25 +48,26 @@ Always handle `success === false` when using helpers that return this shape.
 ## Table of Contents
 
 1. [Dashboard Analytics](#1-dashboard-analytics)
-2. [List All Assessments](#2-list-all-assessments)
-3. [Get Assessment by ID (Details + Submission Summary)](#3-get-assessment-by-id-details--submission-summary)
-4. [Update Assessment (Metadata)](#4-update-assessment-metadata)
-5. [Get Assessment Questions (Director Preview)](#5-get-assessment-questions-director-preview)
-6. [Duplicate Assessment](#6-duplicate-assessment)
-7. [Add Questions (No Images)](#7-add-questions-no-images)
-8. [Add Question (With Images)](#8-add-question-with-images)
-9. [Update Question (JSON)](#9-update-question-json)
-10. [Update Question (With Images)](#10-update-question-with-images)
-11. [Delete Question](#11-delete-question)
-12. [List Student Attempts](#12-list-student-attempts)
-13. [View Student Submission](#13-view-student-submission)
+2. [Create Assessment](#2-create-assessment)
+3. [List All Assessments](#3-list-all-assessments)
+4. [Get Assessment by ID (Details + Submission Summary)](#4-get-assessment-by-id-details--submission-summary)
+5. [Update Assessment (Metadata)](#5-update-assessment-metadata)
+6. [Get Assessment Questions (Director Preview)](#6-get-assessment-questions-director-preview)
+7. [Duplicate Assessment](#7-duplicate-assessment)
+8. [Add Questions (No Images)](#8-add-questions-no-images)
+9. [Add Question (With Images)](#9-add-question-with-images)
+10. [Update Question (JSON)](#10-update-question-json)
+11. [Update Question (With Images)](#11-update-question-with-images)
+12. [Delete Question](#12-delete-question)
+13. [List Student Attempts](#13-list-student-attempts)
+14. [View Student Submission](#14-view-student-submission)
 
 ---
 ## Access Rules (Applies to All Endpoints)
 
 - You must be authenticated with **`school_director`** role (`JwtGuard`). Requests without this role receive **`403`** (`Access denied. Director role required.`).
 - Directors can access **any assessment belonging to their `school_id`** — there is **no** “must teach this subject” restriction (unlike the teacher module).
-- **Cannot create** new assessments via this module (creation is done by teachers elsewhere).
+- Can **create** assessments via **`POST /director-assessment`** (see [Create Assessment](#2-create-assessment)).
 - Can **update**, **duplicate**, **add / update / delete** questions.
 - **Cannot** add, update, or delete questions when the assessment status is **`PUBLISHED`** or **`ACTIVE`** (change status to **`DRAFT`** / allowed demotion first).
 - **Updating assessment metadata** while status is **`PUBLISHED`** or **`ACTIVE`** is restricted: only a **status-only** change that **demotes** to **`DRAFT`**, **`CLOSED`**, or **`ARCHIVED`** is allowed until the assessment is editable again; otherwise you get a **`400`** explaining that you must move to **`DRAFT`** first.
@@ -219,7 +220,8 @@ Extends **`PartialType(CreateAssessmentDto)`** plus director-only fields. All fi
 | `description` | string | |
 | `instructions` | string | |
 | `subject_id` | string | Must exist in **this school** (director is not limited to a subset of subjects) |
-| `topic_id` | string | Must belong to the effective subject |
+| `academic_session_id` | string | Optional on create; must belong to **this school**. If omitted, the school’s **current** session is used |
+| `topic_id` | string | Must belong to the subject **and** the same **school** and **academic session** as the assessment |
 | `duration` | number | 1–300 (minutes) |
 | `max_attempts` | number | 1–10 |
 | `passing_score` | number | 0–100 |
@@ -463,7 +465,39 @@ Example `ResponseHelper.error` (500):
 ```
 
 ---
-## 2. List All Assessments
+## 2. Create Assessment
+
+Endpoint: **`POST /director-assessment`**  
+HTTP status: **`201 Created`**
+
+Body: **`CreateAssessmentDto`** (JSON)
+
+| Field | Required | Notes |
+|---|---|---|
+| `title` | Yes | |
+| `subject_id` | Yes | Subject must belong to the director’s **school** |
+| `academic_session_id` | No | Must belong to the **same school**; if omitted, the school’s **current** session is used |
+| `topic_id` | No | If set, topic must match **subject**, **school**, and the **resolved academic session** (topics are session-scoped in the schema) |
+| `assessment_type` | No | Prisma `AssessmentType`; default **`CBT`**. Invalid values → **`400`** |
+| `description`, `instructions`, timing, flags, `tags`, etc. | No | Same shape as teacher/school create flows; see `CreateAssessmentDto` in code |
+
+**Server-side rules**
+
+- New row is **`DRAFT`**, **`is_published: false`**, **`created_by`** = director.
+- **`school_id`** is taken from the JWT (not from the body).
+- Per **subject** + **academic session**: at most **2** assessments of type **`CBT`** and **1** of type **`EXAM`** (other types are not capped).
+- If **`end_date`** is omitted, a default end date (**now + 2 days**) is set so the row satisfies any internal expectations.
+
+Success (**201**): `ResponseHelper.success` with `data.assessment` including `subject`, `topic`, `createdBy` (same include shape as other director endpoints).
+
+Error responses:
+
+- **`400`** — invalid director context, session not found / not in school, invalid `assessment_type`, or CBT/EXAM cap exceeded
+- **`403`** — not a director
+- **`404`** — subject not in school, or topic not found for subject + school + session
+
+---
+## 3. List All Assessments
 
 Endpoint: **`GET /director-assessment`**
 
@@ -578,7 +612,7 @@ Error Responses:
 - **`403`** — Not a director
 
 ---
-## 3. Get Assessment by ID (Details + Submission Summary)
+## 4. Get Assessment by ID (Details + Submission Summary)
 
 Endpoint: **`GET /director-assessment/:id`**
 
@@ -663,7 +697,7 @@ Error Responses:
 - **`404`** — Assessment not found for this school
 
 ---
-## 4. Update Assessment (Metadata)
+## 5. Update Assessment (Metadata)
 
 Endpoint: **`PATCH /director-assessment/:id`**
 
@@ -738,7 +772,7 @@ Error Responses:
 - **`404`** — Assessment or subject/topic not found
 
 ---
-## 5. Get Assessment Questions (Director Preview)
+## 6. Get Assessment Questions (Director Preview)
 
 Endpoint: **`GET /director-assessment/:id/questions`**
 
@@ -811,7 +845,7 @@ Error Responses:
 - **`404`** — Assessment not found / no access
 
 ---
-## 6. Duplicate Assessment
+## 7. Duplicate Assessment
 
 Endpoint: **`POST /director-assessment/:id/duplicate`**
 
@@ -851,7 +885,7 @@ Error Responses:
 - **`404`** — Assessment not found
 
 ---
-## 7. Add Questions (No Images)
+## 8. Add Questions (No Images)
 
 Endpoint: **`POST /director-assessment/:id/questions`**
 
@@ -892,7 +926,7 @@ Error Responses:
 - **`404`** — Assessment not found
 
 ---
-## 8. Add Question (With Images)
+## 9. Add Question (With Images)
 
 Endpoint: **`POST /director-assessment/:id/questions/with-image`**
 
@@ -916,7 +950,7 @@ Error Responses:
 - **`403`** / **`404`** — As above
 
 ---
-## 9. Update Question (JSON)
+## 10. Update Question (JSON)
 
 Endpoint: **`PATCH /director-assessment/:id/questions/:questionId`**
 
@@ -950,7 +984,7 @@ Error Responses:
 - **`404`** — Assessment or question not found
 
 ---
-## 10. Update Question (With Images)
+## 11. Update Question (With Images)
 
 Endpoint: **`PATCH /director-assessment/:id/questions/:questionId/with-image`**
 
@@ -970,7 +1004,7 @@ Rules:
 Success Response (200): Same as **section 9**.
 
 ---
-## 11. Delete Question
+## 12. Delete Question
 
 Endpoint: **`DELETE /director-assessment/:id/questions/:questionId`**
 
@@ -996,7 +1030,7 @@ Error Responses:
 - **`404`** — Not found
 
 ---
-## 12. List Student Attempts
+## 13. List Student Attempts
 
 Endpoint: **`GET /director-assessment/:id/attempts`**
 
@@ -1094,7 +1128,7 @@ Example `ResponseHelper.error` for missing assessment:
 ```
 
 ---
-## 13. View Student Submission
+## 14. View Student Submission
 
 Endpoint: **`GET /director-assessment/:id/students/:studentId/submission`**
 
@@ -1224,5 +1258,5 @@ Error Responses:
 | Topic | Teacher module | Director module |
 |---|---|---|
 | Scope | Assessments for subjects the teacher teaches | **All assessments in the school** (`school_id`) |
-| Create assessment | Yes (teacher flow) | **No** on this controller |
+| Create assessment | Yes (teacher flow) | **Yes** — `POST /director-assessment` |
 | JWT | Teacher context | **School director** context (`school_director`) |

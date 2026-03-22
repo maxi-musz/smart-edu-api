@@ -12,7 +12,12 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
 import { Logger } from '@nestjs/common';
-import { DifficultyLevel, QuestionType } from '@prisma/client';
+import {
+  AssessmentType,
+  DifficultyLevel,
+  QuestionType,
+} from '@prisma/client';
+import { CreateNewAssessmentDto } from './dto/create-new-assessment.dto';
 
 type StatusAnalytics = {
   all: number;
@@ -246,6 +251,176 @@ export class TeachersAssessmentsService {
       'Assessments fetched successfully',
       responseData,
     );
+  }
+
+  /**
+   * Create a new DRAFT assessment for a subject the teacher is assigned to teach.
+   * Aligns with director/school rules: session resolution, topic session scope, CBT/EXAM caps per subject per session.
+   */
+  async createTeacherAssessment(createDto: CreateNewAssessmentDto, user: any) {
+    const userId = user?.sub || user?.id;
+    const schoolId = user?.school_id;
+
+    if (!userId || !schoolId) {
+      throw new BadRequestException('Invalid teacher authentication data');
+    }
+
+    const teacher = await this.prisma.teacher.findFirst({
+      where: { user_id: userId },
+      include: {
+        subjectsTeaching: { select: { subjectId: true } },
+      },
+    });
+
+    if (!teacher) {
+      throw new NotFoundException('Teacher not found');
+    }
+
+    const teacherSubjectIds = teacher.subjectsTeaching.map((st) => st.subjectId);
+    if (!teacherSubjectIds.includes(createDto.subject_id)) {
+      throw new ForbiddenException(
+        'You can only create assessments for subjects you are assigned to teach',
+      );
+    }
+
+    const subject = await this.prisma.subject.findFirst({
+      where: { id: createDto.subject_id, schoolId },
+    });
+
+    if (!subject) {
+      throw new NotFoundException('Subject not found in this school');
+    }
+
+    let academicSessionId: string;
+    if (createDto.academic_session_id) {
+      const session = await this.prisma.academicSession.findFirst({
+        where: { id: createDto.academic_session_id, school_id: schoolId },
+      });
+      if (!session) {
+        throw new BadRequestException(
+          'Academic session not found or does not belong to this school',
+        );
+      }
+      academicSessionId = session.id;
+    } else {
+      const currentSession = await this.prisma.academicSession.findFirst({
+        where: { school_id: schoolId, is_current: true },
+      });
+      if (!currentSession) {
+        throw new BadRequestException('No current academic session found');
+      }
+      academicSessionId = currentSession.id;
+    }
+
+    if (createDto.topic_id) {
+      const topic = await this.prisma.topic.findFirst({
+        where: {
+          id: createDto.topic_id,
+          subject_id: createDto.subject_id,
+          school_id: schoolId,
+          academic_session_id: academicSessionId,
+        },
+      });
+
+      if (!topic) {
+        throw new NotFoundException(
+          'Topic not found for this subject, school, and academic session',
+        );
+      }
+    }
+
+    let assessmentType: AssessmentType = AssessmentType.CBT;
+    if (createDto.assessment_type) {
+      if (
+        !Object.values(AssessmentType).includes(
+          createDto.assessment_type as AssessmentType,
+        )
+      ) {
+        throw new BadRequestException('Invalid assessment_type');
+      }
+      assessmentType = createDto.assessment_type as AssessmentType;
+    }
+
+    const typeLimits: Partial<Record<AssessmentType, number>> = {
+      [AssessmentType.CBT]: 2,
+      [AssessmentType.EXAM]: 1,
+    };
+    const maxAllowed = typeLimits[assessmentType];
+    if (maxAllowed !== undefined) {
+      const existingCount = await this.prisma.assessment.count({
+        where: {
+          subject_id: createDto.subject_id,
+          academic_session_id: academicSessionId,
+          assessment_type: assessmentType,
+        },
+      });
+      if (existingCount >= maxAllowed) {
+        const typeLabel =
+          assessmentType === AssessmentType.EXAM ? 'exam' : 'CBT';
+        throw new BadRequestException(
+          `Maximum of ${maxAllowed} ${typeLabel} assessment(s) allowed per subject per term for this session.`,
+        );
+      }
+    }
+
+    const assessment = await this.prisma.assessment.create({
+      data: {
+        school_id: schoolId,
+        academic_session_id: academicSessionId,
+        subject_id: createDto.subject_id,
+        topic_id: createDto.topic_id ?? null,
+        created_by: userId,
+        title: createDto.title,
+        description: createDto.description ?? null,
+        instructions: createDto.instructions ?? null,
+        assessment_type: assessmentType,
+        grading_type: createDto.grading_type ?? 'AUTOMATIC',
+        duration: createDto.duration ?? null,
+        max_attempts: createDto.max_attempts ?? 1,
+        passing_score: createDto.passing_score ?? 50,
+        total_points: createDto.total_points ?? 100,
+        shuffle_questions: createDto.shuffle_questions ?? false,
+        shuffle_options: createDto.shuffle_options ?? false,
+        show_correct_answers: createDto.show_correct_answers ?? false,
+        show_feedback: createDto.show_feedback !== false,
+        allow_review: createDto.allow_review !== false,
+        time_limit: createDto.time_limit ?? null,
+        auto_submit: createDto.auto_submit ?? false,
+        tags: createDto.tags ?? [],
+        start_date: createDto.start_date
+          ? new Date(createDto.start_date)
+          : null,
+        end_date: createDto.end_date
+          ? new Date(createDto.end_date)
+          : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        status: 'DRAFT',
+        is_published: false,
+      },
+      include: {
+        subject: {
+          select: { id: true, name: true, code: true },
+        },
+        topic: {
+          select: { id: true, title: true },
+        },
+        createdBy: {
+          select: { id: true, first_name: true, last_name: true },
+        },
+        _count: {
+          select: { questions: true, attempts: true },
+        },
+      },
+    });
+
+    this.logger.log(
+      colors.green(
+        `[TEACHER] Created assessment ${assessment.id} for subject ${createDto.subject_id}`,
+      ),
+    );
+
+    return ResponseHelper.success('Assessment created successfully', {
+      assessment,
+    });
   }
 
   /**

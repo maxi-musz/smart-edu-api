@@ -8,11 +8,16 @@ import {
 import { GetAssessmentsQueryDto } from './dto/get-assessments-query.dto';
 import { DuplicateAssessmentDto } from './dto/duplicate-assessment.dto';
 import { AddQuestionsDto } from './dto/add-questions.dto';
+import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { StorageService } from '../../../shared/services/providers/storage.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
-import { DifficultyLevel, QuestionType } from '@prisma/client';
+import {
+  AssessmentType,
+  DifficultyLevel,
+  QuestionType,
+} from '@prisma/client';
 
 type StatusAnalytics = {
   all: number;
@@ -2874,28 +2879,56 @@ export class DirectorAssessmentService {
   }
 
   // ================================================================
-  // CREATE ASSESSMENT (for completeness)
+  // CREATE ASSESSMENT
   // ================================================================
 
-  async createDirectorAssessment(createDto: any, user: any) {
+  async createDirectorAssessment(createDto: CreateAssessmentDto, user: any) {
+    
     const userId = user?.sub || user?.id;
     const schoolId = user?.school_id;
 
     if (!userId || !schoolId) {
+      this.logger.error(colors.red('Invalid director authentication data'));
       throw new BadRequestException('Invalid director authentication data');
     }
 
-    await this.verifyDirector(userId);
+    this.logger.log(colors.cyan(`Director creating a new assessment`));
+
+    // await this.verifyDirector(userId);
 
     const subject = await this.prisma.subject.findFirst({
       where: {
         id: createDto.subject_id,
-        schoolId: schoolId,
+        schoolId,
       },
     });
 
     if (!subject) {
+      this.logger.error(colors.red(`Subject not found in this school`));
       throw new NotFoundException('Subject not found in this school');
+    }
+
+    let academicSessionId: string;
+    if (createDto.academic_session_id) {
+      const session = await this.prisma.academicSession.findFirst({
+        where: { id: createDto.academic_session_id, school_id: schoolId },
+      });
+      if (!session) {
+        this.logger.error(colors.red(`Academic session not found or does not belong to this school`));
+        throw new BadRequestException(
+          'Academic session not found or does not belong to this school',
+        );
+      }
+      academicSessionId = session.id;
+    } else {
+      const currentSession = await this.prisma.academicSession.findFirst({
+        where: { school_id: schoolId, is_current: true },
+      });
+      if (!currentSession) {
+        this.logger.error(colors.red(`No current academic session found`));
+        throw new BadRequestException('No current academic session found');
+      }
+      academicSessionId = currentSession.id;
     }
 
     if (createDto.topic_id) {
@@ -2903,38 +2936,66 @@ export class DirectorAssessmentService {
         where: {
           id: createDto.topic_id,
           subject_id: createDto.subject_id,
+          school_id: schoolId,
+          academic_session_id: academicSessionId,
         },
       });
 
       if (!topic) {
+        this.logger.error(colors.red(`Topic not found for this subject, school, and academic session`));
         throw new NotFoundException(
-          'Topic not found or does not belong to the specified subject',
+          'Topic not found for this subject, school, and academic session',
         );
       }
     }
 
-    const currentSession = await this.prisma.academicSession.findFirst({
-      where: {
-        school_id: schoolId,
-        is_current: true,
-      },
-    });
+    let assessmentType: AssessmentType = AssessmentType.CBT;
+    if (createDto.assessment_type) {
+      if (
+        !Object.values(AssessmentType).includes(
+          createDto.assessment_type as AssessmentType,
+        )
+      ) {
+        this.logger.error(colors.red(`Invalid assessment_type`));
+        throw new BadRequestException('Invalid assessment_type');
+      }
+      assessmentType = createDto.assessment_type as AssessmentType;
+    }
 
-    if (!currentSession) {
-      throw new BadRequestException('No current academic session found');
+    const typeLimits: Partial<Record<AssessmentType, number>> = {
+      [AssessmentType.CBT]: 2,
+      [AssessmentType.EXAM]: 1,
+    };
+    const maxAllowed = typeLimits[assessmentType];
+    if (maxAllowed !== undefined) {
+      const existingCount = await this.prisma.assessment.count({
+        where: {
+          subject_id: createDto.subject_id,
+          academic_session_id: academicSessionId,
+          assessment_type: assessmentType,
+        },
+      });
+      if (existingCount >= maxAllowed) {
+        const typeLabel =
+          assessmentType === AssessmentType.EXAM ? 'exam' : 'CBT';
+        this.logger.error(colors.red(`Maximum of ${maxAllowed} ${typeLabel} assessment(s) allowed per subject per term for this session.`));
+        throw new BadRequestException(
+          `Maximum of ${maxAllowed} ${typeLabel} assessment(s) allowed per subject per term for this session.`,
+        );
+      }
     }
 
     const assessment = await this.prisma.assessment.create({
       data: {
         school_id: schoolId,
-        academic_session_id: currentSession.id,
+        academic_session_id: academicSessionId,
         subject_id: createDto.subject_id,
         topic_id: createDto.topic_id ?? null,
         created_by: userId,
         title: createDto.title,
         description: createDto.description ?? null,
         instructions: createDto.instructions ?? null,
-        assessment_type: createDto.assessment_type ?? 'CBT',
+        assessment_type: assessmentType,
         grading_type: createDto.grading_type ?? 'AUTOMATIC',
         duration: createDto.duration ?? null,
         max_attempts: createDto.max_attempts ?? 1,
@@ -2943,15 +3004,17 @@ export class DirectorAssessmentService {
         shuffle_questions: createDto.shuffle_questions ?? false,
         shuffle_options: createDto.shuffle_options ?? false,
         show_correct_answers: createDto.show_correct_answers ?? false,
-        show_feedback: createDto.show_feedback ?? true,
-        allow_review: createDto.allow_review ?? true,
+        show_feedback: createDto.show_feedback !== false,
+        allow_review: createDto.allow_review !== false,
         time_limit: createDto.time_limit ?? null,
         auto_submit: createDto.auto_submit ?? false,
         tags: createDto.tags ?? [],
         start_date: createDto.start_date
           ? new Date(createDto.start_date)
           : null,
-        end_date: createDto.end_date ? new Date(createDto.end_date) : null,
+        end_date: createDto.end_date
+          ? new Date(createDto.end_date)
+          : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
         status: 'DRAFT',
         is_published: false,
       },
@@ -2967,6 +3030,12 @@ export class DirectorAssessmentService {
         },
       },
     });
+
+    this.logger.log(
+      colors.green(
+        `[DIRECTOR-ASSESSMENT] Director successfully new assessment`,
+      ),
+    );
 
     return ResponseHelper.success('Assessment created successfully', {
       assessment,

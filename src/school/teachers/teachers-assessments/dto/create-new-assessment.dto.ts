@@ -57,6 +57,15 @@ export class CreateNewAssessmentDto {
 
   @ApiPropertyOptional({
     description:
+      'Academic session ID. Defaults to the school’s current session when omitted.',
+    example: 'clxxxxxxxx',
+  })
+  @IsString()
+  @IsOptional()
+  academic_session_id?: string;
+
+  @ApiPropertyOptional({
+    description:
       'Topic ID for topic-specific quiz (optional for subject-wide quizzes)',
     example: 'topic_123',
   })

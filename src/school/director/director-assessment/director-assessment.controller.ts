@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Patch,
@@ -28,6 +30,7 @@ import { AddQuestionsDto } from './dto/add-questions.dto';
 import { UpdateAssessmentDto } from './dto/update-assessment.dto';
 import { DuplicateAssessmentDto } from './dto/duplicate-assessment.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { CreateAssessmentDto } from './dto/create-assessment.dto';
 import { DirectorAssessmentService } from './director-assessment.service';
 
 @ApiTags('Director - Assessments (Director-specific)')
@@ -97,6 +100,31 @@ export class DirectorAssessmentController {
   ) {
     return this.directorAssessmentService.getAllAssessmentsForDirector(
       query,
+      user,
+    );
+  }
+
+  // ========================================
+  // CREATE ASSESSMENT (must be before :id routes)
+  // ========================================
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create a new assessment',
+    description:
+      'Creates a DRAFT assessment for the director’s school. Requires `subject_id` (must belong to the school). Optional `topic_id` must belong to that subject, school, and the same academic session (resolved from `academic_session_id` or the school’s current session). Uses current academic session unless `academic_session_id` is provided.',
+  })
+  @ApiResponse({ status: 201, description: 'Assessment created' })
+  @ApiResponse({ status: 400, description: 'Bad request or session/type limits' })
+  @ApiResponse({ status: 403, description: 'Forbidden — director role required' })
+  @ApiResponse({ status: 404, description: 'Subject or topic not found' })
+  async createDirectorAssessment(
+    @Body() createDto: CreateAssessmentDto,
+    @GetUser() user: any,
+  ) {
+    return this.directorAssessmentService.createDirectorAssessment(
+      createDto,
       user,
     );
   }
