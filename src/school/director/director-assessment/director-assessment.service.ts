@@ -31,6 +31,29 @@ export class DirectorAssessmentService {
     private readonly storageService: StorageService,
   ) {}
 
+  /**
+   * Log full error server-side; never forward Prisma paths, SQL, or DB hostnames to the client.
+   */
+  private clientSafeFetchErrorMessage(error: unknown, logLabel: string): string {
+    const msg = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    this.logger.error(`${logLabel}: ${msg}`, stack);
+
+    const lower = msg.toLowerCase();
+    if (
+      msg.includes("Can't reach database") ||
+      msg.includes('P1001') ||
+      lower.includes('econnrefused') ||
+      lower.includes('etimedout') ||
+      lower.includes('enotfound') ||
+      lower.includes('server has closed the connection')
+    ) {
+      return 'We could not reach the database. Check your internet connection, confirm the database is running, and try again.';
+    }
+
+    return 'Something went wrong while loading this data. Please try again.';
+  }
+
   // ================================================================
   // HELPER: verify director role and return user record
   // ================================================================
@@ -404,11 +427,11 @@ export class DirectorAssessmentService {
       );
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
-      this.logger.error(
-        colors.red(`Error getting assessment dashboard: ${error.message}`),
-      );
       return ResponseHelper.error(
-        `Failed to retrieve dashboard: ${error.message}`,
+        this.clientSafeFetchErrorMessage(
+          error,
+          'Director assessment dashboard',
+        ),
         null,
         500,
       );
@@ -2553,11 +2576,11 @@ export class DirectorAssessmentService {
       );
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
-      this.logger.error(
-        colors.red(`Error getting assessment attempts: ${error.message}`),
-      );
       return ResponseHelper.error(
-        `Failed to retrieve assessment attempts: ${error.message}`,
+        this.clientSafeFetchErrorMessage(
+          error,
+          'Director assessment attempts',
+        ),
         null,
         500,
       );
@@ -2839,11 +2862,11 @@ export class DirectorAssessmentService {
       );
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;
-      this.logger.error(
-        colors.red(`Error getting student submission: ${error.message}`),
-      );
       return ResponseHelper.error(
-        `Failed to retrieve student submission: ${error.message}`,
+        this.clientSafeFetchErrorMessage(
+          error,
+          'Director student submission',
+        ),
         null,
         500,
       );
