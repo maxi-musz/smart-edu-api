@@ -6,7 +6,8 @@ export class ExamBodyDocs {
     return applyDecorators(
       ApiOperation({
         summary: 'Create a new examination body',
-        description: 'Creates a new Nigerian examination body (WAEC, JAMB, NECO, etc.) with icon upload',
+        description:
+          'Creates a new Nigerian examination body (WAEC, JAMB, NECO, etc.) with icon upload',
       }),
       ApiBody({
         description: 'Exam body data with icon file',
@@ -14,41 +15,42 @@ export class ExamBodyDocs {
           type: 'object',
           required: ['name', 'fullName', 'code', 'icon'],
           properties: {
-            name: { 
-              type: 'string', 
+            name: {
+              type: 'string',
               description: 'Short name of the exam body',
               example: 'WAEC',
             },
-            fullName: { 
-              type: 'string', 
+            fullName: {
+              type: 'string',
               description: 'Full official name',
               example: 'West African Examinations Council',
             },
-            code: { 
-              type: 'string', 
+            code: {
+              type: 'string',
               description: 'Unique code',
               example: 'WAEC',
             },
-            description: { 
-              type: 'string', 
+            description: {
+              type: 'string',
               description: 'Description of the exam body (optional)',
               example: 'Conducts standardized examinations in West Africa',
             },
-            websiteUrl: { 
-              type: 'string', 
+            websiteUrl: {
+              type: 'string',
               description: 'Official website URL (optional)',
               example: 'https://www.waecgh.org',
             },
-            status: { 
-              type: 'string', 
+            status: {
+              type: 'string',
               enum: ['active', 'inactive', 'archived'],
               description: 'Status of the exam body (optional)',
               default: 'active',
             },
-            icon: { 
-              type: 'string', 
-              format: 'binary', 
-              description: 'Icon file (JPEG, PNG, GIF, WEBP, SVG - max 2MB) **REQUIRED**',
+            icon: {
+              type: 'string',
+              format: 'binary',
+              description:
+                'Icon file (JPEG, PNG, GIF, WEBP, SVG - max 2MB) **REQUIRED**',
             },
           },
         },
@@ -66,7 +68,8 @@ export class ExamBodyDocs {
               fullName: 'West African Examinations Council',
               code: 'WAEC',
               description: 'Conducts standardized examinations in West Africa',
-              logoUrl: 'https://s3.amazonaws.com/exam-bodies/icons/WAEC_1234567890_icon.png',
+              logoUrl:
+                'https://s3.amazonaws.com/exam-bodies/icons/WAEC_1234567890_icon.png',
               websiteUrl: 'https://www.waecgh.org',
               status: 'active',
               createdAt: '2026-01-14T10:00:00.000Z',
@@ -125,7 +128,8 @@ export class ExamBodyDocs {
     return applyDecorators(
       ApiOperation({
         summary: 'Update an examination body',
-        description: 'Updates details of an existing examination body. Icon file is optional.',
+        description:
+          'Updates details of an existing examination body. Icon file is optional.',
       }),
       ApiParam({
         name: 'id',
@@ -137,40 +141,41 @@ export class ExamBodyDocs {
         schema: {
           type: 'object',
           properties: {
-            name: { 
-              type: 'string', 
+            name: {
+              type: 'string',
               description: 'Short name of the exam body',
               example: 'WAEC Nigeria',
             },
-            fullName: { 
-              type: 'string', 
+            fullName: {
+              type: 'string',
               description: 'Full official name',
               example: 'West African Examinations Council - Nigeria',
             },
-            code: { 
-              type: 'string', 
+            code: {
+              type: 'string',
               description: 'Unique code',
               example: 'WAEC-NG',
             },
-            description: { 
-              type: 'string', 
+            description: {
+              type: 'string',
               description: 'Description of the exam body',
               example: 'Updated description',
             },
-            websiteUrl: { 
-              type: 'string', 
+            websiteUrl: {
+              type: 'string',
               description: 'Official website URL',
               example: 'https://www.waecnigeria.org',
             },
-            status: { 
-              type: 'string', 
+            status: {
+              type: 'string',
               enum: ['active', 'inactive', 'archived'],
               description: 'Status of the exam body',
             },
-            icon: { 
-              type: 'string', 
-              format: 'binary', 
-              description: 'New icon file (JPEG, PNG, GIF, WEBP, SVG - max 2MB) - Optional',
+            icon: {
+              type: 'string',
+              format: 'binary',
+              description:
+                'New icon file (JPEG, PNG, GIF, WEBP, SVG - max 2MB) - Optional',
             },
           },
         },
@@ -216,4 +221,3 @@ export class ExamBodyDocs {
     );
   }
 }
-

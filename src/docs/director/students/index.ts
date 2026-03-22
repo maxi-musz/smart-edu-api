@@ -1,2 +1,2 @@
 // Export director students documentation
-export * from './students.docs'; 
+export * from './students.docs';

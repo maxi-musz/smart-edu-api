@@ -8,6 +8,6 @@ import { AcademicSessionModule } from '../../../academic-session/academic-sessio
   imports: [PrismaModule, AcademicSessionModule],
   controllers: [SubjectsController],
   providers: [SubjectsService],
-  exports: [SubjectsService]
+  exports: [SubjectsService],
 })
 export class SubjectsModule {}

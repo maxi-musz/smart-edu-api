@@ -10,7 +10,11 @@ export class ProfileService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getUserProfile(user: any): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY PROFILE] Fetching profile for library user: ${user.email}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY PROFILE] Fetching profile for library user: ${user.email}`,
+      ),
+    );
 
     const libraryUser = await this.prisma.libraryResourceUser.findUnique({
       where: { id: user.sub },
@@ -173,9 +177,14 @@ export class ProfileService {
       },
     };
 
-    this.logger.log(colors.green('Library user profile retrieved successfully'));
+    this.logger.log(
+      colors.green('Library user profile retrieved successfully'),
+    );
 
-    return new ApiResponse(true, 'Library user profile retrieved successfully', responseData);
+    return new ApiResponse(
+      true,
+      'Library user profile retrieved successfully',
+      responseData,
+    );
   }
 }
-

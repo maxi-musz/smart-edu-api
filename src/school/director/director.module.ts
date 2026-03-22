@@ -12,10 +12,24 @@ import { ClassesModule } from './classes/classes.module';
 import { SubjectModule } from './subject/subject.module';
 import { UserModule } from './user/user.module';
 import { ResultsModule } from './results/results.module';
-import { AssessmentsModule } from './assessments/assessments.module';
-import { DirectorAssessmentsModule } from './director-assessments/director-assessments.module';
+import { DirectorAssessmentModule } from './director-assessment/director-assessment.module';
 
 @Module({
-  imports: [DashboardModule, TeachersModule, StudentsModule, FinanceModule, CoursesModule, SchedulesModule, NotificationsModule, SettingsModule, ProfilesModule, ClassesModule, SubjectModule, UserModule, ResultsModule, AssessmentsModule, DirectorAssessmentsModule]
+  imports: [
+    DashboardModule,
+    TeachersModule,
+    StudentsModule,
+    FinanceModule,
+    CoursesModule,
+    SchedulesModule,
+    NotificationsModule,
+    SettingsModule,
+    ProfilesModule,
+    ClassesModule,
+    SubjectModule,
+    UserModule,
+    ResultsModule,
+    DirectorAssessmentModule,
+  ],
 })
 export class DirectorModule {}

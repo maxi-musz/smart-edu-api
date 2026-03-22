@@ -2819,7 +2819,7 @@ Accepts both school JWT (`jwt1`) and library JWT (`library-jwt`) tokens.
       "order": 1,
       "is_required": true,
       "time_limit": 30,
-      "difficulty_level": "MEDIUM",
+      "difficulty_level": "EASY",
       "explanation": "Paris is the capital and largest city of France.",
       "image_url": "https://example.com/question-image.png",
       "image_s3_key": "assessment-images/schools/xxx/assessments/yyy/question_123.png",

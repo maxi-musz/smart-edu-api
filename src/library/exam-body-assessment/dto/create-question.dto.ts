@@ -1,5 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, IsEnum, IsArray, ValidateNested, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { QuestionType } from '@prisma/client';
 
@@ -20,7 +30,8 @@ export class CreateLibraryExamBodyQuestionOptionDto {
   isCorrect?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Index into the optionImages[] array when uploading option images (0-based)',
+    description:
+      'Index into the optionImages[] array when uploading option images (0-based)',
     example: 0,
   })
   @IsNumber()
@@ -28,7 +39,8 @@ export class CreateLibraryExamBodyQuestionOptionDto {
   imageIndex?: number;
 
   @ApiPropertyOptional({
-    description: 'Direct image URL for this option (used when images are already hosted)',
+    description:
+      'Direct image URL for this option (used when images are already hosted)',
     example: 'https://cdn.example.com/images/option-a.png',
   })
   @IsString()
@@ -42,7 +54,10 @@ export class CreateLibraryExamBodyQuestionDto {
   @IsNotEmpty()
   questionText: string;
 
-  @ApiProperty({ enum: QuestionType, example: QuestionType.MULTIPLE_CHOICE_SINGLE })
+  @ApiProperty({
+    enum: QuestionType,
+    example: QuestionType.MULTIPLE_CHOICE_SINGLE,
+  })
   @IsEnum(QuestionType)
   questionType: QuestionType;
 

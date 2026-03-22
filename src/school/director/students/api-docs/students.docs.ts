@@ -9,7 +9,8 @@ export class StudentsDocs {
   static get operation() {
     return ApiOperation({
       summary: 'Get students dashboard',
-      description: 'Fetch students dashboard with pagination, filtering, and search capabilities'
+      description:
+        'Fetch students dashboard with pagination, filtering, and search capabilities',
     });
   }
 
@@ -21,7 +22,10 @@ export class StudentsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Students dashboard data fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Students dashboard data fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -30,8 +34,8 @@ export class StudentsDocs {
                 properties: {
                   totalStudents: { type: 'number', example: 150 },
                   activeStudents: { type: 'number', example: 145 },
-                  totalClasses: { type: 'number', example: 8 }
-                }
+                  totalClasses: { type: 'number', example: 8 },
+                },
               },
               pagination: {
                 type: 'object',
@@ -39,8 +43,8 @@ export class StudentsDocs {
                   total_pages: { type: 'number', example: 15 },
                   current_page: { type: 'number', example: 1 },
                   total_results: { type: 'number', example: 150 },
-                  results_per_page: { type: 'number', example: 10 }
-                }
+                  results_per_page: { type: 'number', example: 10 },
+                },
               },
               available_classes: {
                 type: 'array',
@@ -54,12 +58,15 @@ export class StudentsDocs {
                       properties: {
                         id: { type: 'string', example: 'teacher-uuid' },
                         name: { type: 'string', example: 'John Smith' },
-                        email: { type: 'string', example: 'john.smith@school.com' }
-                      }
+                        email: {
+                          type: 'string',
+                          example: 'john.smith@school.com',
+                        },
+                      },
                     },
-                    student_count: { type: 'number', example: 25 }
-                  }
-                }
+                    student_count: { type: 'number', example: 25 },
+                  },
+                },
               },
               students: {
                 type: 'array',
@@ -77,7 +84,10 @@ export class StudentsDocs {
                     current_class: { type: 'string', example: 'Class 10A' },
                     next_class: { type: 'string', example: 'Mathematics' },
                     next_class_time: { type: 'string', example: '08:30' },
-                    next_class_teacher: { type: 'string', example: 'John Smith' },
+                    next_class_teacher: {
+                      type: 'string',
+                      example: 'John Smith',
+                    },
                     performance: {
                       type: 'object',
                       properties: {
@@ -85,24 +95,24 @@ export class StudentsDocs {
                         term_average: { type: 'number', example: 85.5 },
                         improvement_rate: { type: 'number', example: 2.3 },
                         attendance_rate: { type: 'number', example: 95.0 },
-                        position: { type: 'number', example: 5 }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+                        position: { type: 'number', example: 5 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 
   static get response401() {
     return ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
+      description: 'Unauthorized - Invalid or missing JWT token',
     });
   }
 
@@ -110,7 +120,8 @@ export class StudentsDocs {
   static get enrollStudentOperation() {
     return ApiOperation({
       summary: 'Enroll student to class',
-      description: 'Enroll a student to a class that the authenticated director manages'
+      description:
+        'Enroll a student to a class that the authenticated director manages',
     });
   }
 
@@ -122,7 +133,11 @@ export class StudentsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Student John Doe enrolled to class Class 10A successfully' },
+          message: {
+            type: 'string',
+            example:
+              'Student John Doe enrolled to class Class 10A successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -131,15 +146,15 @@ export class StudentsDocs {
                 properties: {
                   id: { type: 'string', example: 'student-uuid' },
                   name: { type: 'string', example: 'John Doe' },
-                  email: { type: 'string', example: 'john@school.com' }
-                }
+                  email: { type: 'string', example: 'john@school.com' },
+                },
               },
               class: {
                 type: 'object',
                 properties: {
                   id: { type: 'string', example: 'class-uuid' },
-                  name: { type: 'string', example: 'Class 10A' }
-                }
+                  name: { type: 'string', example: 'Class 10A' },
+                },
               },
               enrolled_classes: {
                 type: 'array',
@@ -147,36 +162,36 @@ export class StudentsDocs {
                   type: 'object',
                   properties: {
                     id: { type: 'string', example: 'class-uuid' },
-                    name: { type: 'string', example: 'Class 10A' }
-                  }
-                }
-              }
-            }
+                    name: { type: 'string', example: 'Class 10A' },
+                  },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 201 }
-        }
-      }
+          statusCode: { type: 'number', example: 201 },
+        },
+      },
     });
   }
 
   static get enrollStudentResponse400() {
     return ApiResponse({
       status: 400,
-      description: 'Bad Request - Student already enrolled or invalid data'
+      description: 'Bad Request - Student already enrolled or invalid data',
     });
   }
 
   static get enrollStudentResponse403() {
     return ApiResponse({
       status: 403,
-      description: 'Forbidden - Director does not manage the specified class'
+      description: 'Forbidden - Director does not manage the specified class',
     });
   }
 
   static get enrollStudentResponse404() {
     return ApiResponse({
       status: 404,
-      description: 'Not Found - Student or class not found'
+      description: 'Not Found - Student or class not found',
     });
   }
 
@@ -184,7 +199,8 @@ export class StudentsDocs {
   static get availableClassesOperation() {
     return ApiOperation({
       summary: 'Get available classes',
-      description: 'Fetch all available classes in the school with their class teachers'
+      description:
+        'Fetch all available classes in the school with their class teachers',
     });
   }
 
@@ -196,7 +212,10 @@ export class StudentsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Available classes fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Available classes fetched successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -212,28 +231,34 @@ export class StudentsDocs {
                       properties: {
                         id: { type: 'string', example: 'teacher-uuid' },
                         name: { type: 'string', example: 'John Smith' },
-                        email: { type: 'string', example: 'john.smith@school.com' },
-                        display_picture: { type: 'string', example: 'https://example.com/profile.jpg' }
-                      }
+                        email: {
+                          type: 'string',
+                          example: 'john.smith@school.com',
+                        },
+                        display_picture: {
+                          type: 'string',
+                          example: 'https://example.com/profile.jpg',
+                        },
+                      },
                     },
                     student_count: { type: 'number', example: 25 },
-                    subject_count: { type: 'number', example: 8 }
-                  }
-                }
+                    subject_count: { type: 'number', example: 8 },
+                  },
+                },
               },
               summary: {
                 type: 'object',
                 properties: {
                   total_classes: { type: 'number', example: 5 },
                   classes_with_teachers: { type: 'number', example: 4 },
-                  classes_without_teachers: { type: 'number', example: 1 }
-                }
-              }
-            }
+                  classes_without_teachers: { type: 'number', example: 1 },
+                },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     });
   }
 }

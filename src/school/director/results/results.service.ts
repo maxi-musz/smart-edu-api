@@ -12,15 +12,20 @@ export class ResultsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly pushNotificationsService: PushNotificationsService
+    private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
   /**
    * Release results for all students in the current academic session (WHOLE SCHOOL)
    * This collates all CA and Exam scores and creates Result records
    */
-  async releaseResults(schoolId: string, userId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🎓 Starting result release process for school: ${schoolId}`));
+  async releaseResults(
+    schoolId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`🎓 Starting result release process for school: ${schoolId}`),
+    );
 
     try {
       // Get current academic session
@@ -28,27 +33,39 @@ export class ResultsService {
         where: {
           school_id: schoolId,
           is_current: true,
-          status: 'active'
-        }
+          status: 'active',
+        },
       });
 
       if (!currentSession) {
         this.logger.error(colors.red(`❌ No current academic session found`));
-        return ResponseHelper.error(colors.red(`❌ No current academic session found`), null, 400);
+        return ResponseHelper.error(
+          colors.red(`❌ No current academic session found`),
+          null,
+          400,
+        );
       }
 
-      this.logger.log(colors.green(`✅ Using session: ${currentSession.academic_year} - ${currentSession.term}`));
+      this.logger.log(
+        colors.green(
+          `✅ Using session: ${currentSession.academic_year} - ${currentSession.term}`,
+        ),
+      );
 
       // Check if results already exist for this session
-      const existingResults = await this.prisma.result.findFirst({  
+      const existingResults = await this.prisma.result.findFirst({
         where: {
           school_id: schoolId,
-          academic_session_id: currentSession.id
-        }
+          academic_session_id: currentSession.id,
+        },
       });
 
       if (existingResults) {
-        this.logger.warn(colors.yellow(`⚠️ Results already exist for this session. Recalculating and updating existing results...`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Results already exist for this session. Recalculating and updating existing results...`,
+          ),
+        );
       }
 
       // Get all active students in the school for this session
@@ -56,21 +73,29 @@ export class ResultsService {
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true
-        }
+          current_class_id: true,
+        },
       });
 
       if (allStudents.length === 0) {
-        this.logger.error(colors.red(`❌ No active students found for this session`));
-        return new ApiResponse(false, 'No active students found for this session', null);
+        this.logger.error(
+          colors.red(`❌ No active students found for this session`),
+        );
+        return new ApiResponse(
+          false,
+          'No active students found for this session',
+          null,
+        );
       }
 
-      this.logger.log(colors.blue(`📊 Found ${allStudents.length} students to process`));
+      this.logger.log(
+        colors.blue(`📊 Found ${allStudents.length} students to process`),
+      );
 
       // Get all released assessments for this session (EXAM and CBT types only)
       const releasedAssessments = await this.prisma.assessment.findMany({
@@ -79,30 +104,42 @@ export class ResultsService {
           academic_session_id: currentSession.id,
           is_result_released: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
           },
           // Only include EXAM and CBT assessment types
           assessment_type: {
-            in: ['EXAM', 'CBT']
-          }
+            in: ['EXAM', 'CBT'],
+          },
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
-          }
-        }
+              code: true,
+            },
+          },
+        },
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found for this session`));
-        return new ApiResponse(false, 'No released assessments found for this session', null);
+        this.logger.error(
+          colors.red(
+            `[Director Results Service] ❌ No released assessments found for this session`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'No released assessments found for this session',
+          null,
+        );
       }
 
-      this.logger.log(colors.blue(`[Director Results Service] 📚 Found ${releasedAssessments.length} released assessments`));
+      this.logger.log(
+        colors.blue(
+          `[Director Results Service] 📚 Found ${releasedAssessments.length} released assessments`,
+        ),
+      );
 
       // Process students in batches to avoid overwhelming the system
       const totalBatches = Math.ceil(allStudents.length / this.BATCH_SIZE);
@@ -113,24 +150,37 @@ export class ResultsService {
         const batch = allStudents.slice(i, i + this.BATCH_SIZE);
         const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
 
-        this.logger.log(colors.cyan(`[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+        this.logger.log(
+          colors.cyan(
+            `[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`,
+          ),
+        );
 
         // Process batch in parallel
-        const batchPromises = batch.map(student => 
-          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
-            .catch(error => {
-              this.logger.error(colors.red(`[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
-              errorCount++;
-              return null;
-            })
+        const batchPromises = batch.map((student) =>
+          this.processStudentResults(
+            student,
+            releasedAssessments,
+            currentSession.id,
+            schoolId,
+            userId,
+          ).catch((error) => {
+            this.logger.error(
+              colors.red(
+                `[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`,
+              ),
+            );
+            errorCount++;
+            return null;
+          }),
         );
 
         const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter(r => r !== null).length;
+        processedCount += batchResults.filter((r) => r !== null).length;
 
         // Small delay between batches to prevent overwhelming the database
         if (i + this.BATCH_SIZE < allStudents.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -138,17 +188,21 @@ export class ResultsService {
       await this.calculateClassPositions(schoolId, currentSession.id);
 
       // Send push notifications to all students
-      const studentUserIds = allStudents.map(s => s.user_id);
+      const studentUserIds = allStudents.map((s) => s.user_id);
       await this.sendResultReleaseNotifications(
         schoolId,
         studentUserIds,
         currentSession.academic_year,
         currentSession.term,
-        'released'
+        'released',
       );
 
       this.logger.log(colors.green(`✅ Result release completed!`));
-      this.logger.log(colors.green(`   - Processed: ${processedCount}/${allStudents.length} students`));
+      this.logger.log(
+        colors.green(
+          `   - Processed: ${processedCount}/${allStudents.length} students`,
+        ),
+      );
       this.logger.log(colors.green(`   - Errors: ${errorCount}`));
 
       return new ApiResponse(
@@ -161,14 +215,19 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error releasing results: ${error.message}`));
-      return new ApiResponse(false, `Failed to release results: ${error.message}`, null);
+      this.logger.error(
+        colors.red(`❌ Error releasing results: ${error.message}`),
+      );
+      return new ApiResponse(
+        false,
+        `Failed to release results: ${error.message}`,
+        null,
+      );
     }
   }
 
@@ -179,9 +238,11 @@ export class ResultsService {
     schoolId: string,
     userId: string,
     studentId: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🎓 Releasing results for student: ${studentId}`));
+    this.logger.log(
+      colors.cyan(`🎓 Releasing results for student: ${studentId}`),
+    );
 
     try {
       // Get academic session (use provided or current)
@@ -190,16 +251,16 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
@@ -214,13 +275,13 @@ export class ResultsService {
           id: studentId,
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true
-        }
+          current_class_id: true,
+        },
       });
 
       if (!student) {
@@ -235,30 +296,44 @@ export class ResultsService {
           academic_session_id: currentSession.id,
           is_result_released: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
           },
           assessment_type: {
-            in: ['EXAM', 'CBT']
-          }
+            in: ['EXAM', 'CBT'],
+          },
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
-          }
-        }
+              code: true,
+            },
+          },
+        },
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found`));
-        return ResponseHelper.error('No released assessments found for this session', null, 400);
+        this.logger.error(
+          colors.red(
+            `[Director Results Service] ❌ No released assessments found`,
+          ),
+        );
+        return ResponseHelper.error(
+          'No released assessments found for this session',
+          null,
+          400,
+        );
       }
 
       // Process student results
-      await this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId);
+      await this.processStudentResults(
+        student,
+        releasedAssessments,
+        currentSession.id,
+        schoolId,
+        userId,
+      );
 
       // Recalculate class positions
       await this.calculateClassPositions(schoolId, currentSession.id);
@@ -269,10 +344,12 @@ export class ResultsService {
         [student.user_id],
         currentSession.academic_year,
         currentSession.term,
-        'released'
+        'released',
       );
 
-      this.logger.log(colors.green(`✅ Results released successfully for student`));
+      this.logger.log(
+        colors.green(`✅ Results released successfully for student`),
+      );
 
       return ResponseHelper.success(
         'Results released successfully for student',
@@ -281,14 +358,19 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error releasing results for student: ${error.message}`));
-      return ResponseHelper.error(`Failed to release results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(`❌ Error releasing results for student: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to release results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -299,7 +381,7 @@ export class ResultsService {
     schoolId: string,
     userId: string,
     classId: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`🎓 Releasing results for class: ${classId}`));
 
@@ -310,16 +392,16 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
@@ -334,18 +416,22 @@ export class ResultsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           current_class_id: classId,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true
-        }
+          current_class_id: true,
+        },
       });
 
       if (classStudents.length === 0) {
         this.logger.error(colors.red(`❌ No students found in this class`));
-        return ResponseHelper.error('No students found in this class', null, 404);
+        return ResponseHelper.error(
+          'No students found in this class',
+          null,
+          404,
+        );
       }
 
       // Get all released assessments for this session
@@ -355,29 +441,41 @@ export class ResultsService {
           academic_session_id: currentSession.id,
           is_result_released: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
           },
           assessment_type: {
-            in: ['EXAM', 'CBT']
-          }
+            in: ['EXAM', 'CBT'],
+          },
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
-          }
-        }
+              code: true,
+            },
+          },
+        },
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found`));
-        return ResponseHelper.error('No released assessments found for this session', null, 400);
+        this.logger.error(
+          colors.red(
+            `[Director Results Service] ❌ No released assessments found`,
+          ),
+        );
+        return ResponseHelper.error(
+          'No released assessments found for this session',
+          null,
+          400,
+        );
       }
 
-      this.logger.log(colors.blue(`[Director Results Service] 📊 Processing ${classStudents.length} students in class`));
+      this.logger.log(
+        colors.blue(
+          `[Director Results Service] 📊 Processing ${classStudents.length} students in class`,
+        ),
+      );
 
       // Process students in batches
       const totalBatches = Math.ceil(classStudents.length / this.BATCH_SIZE);
@@ -388,22 +486,35 @@ export class ResultsService {
         const batch = classStudents.slice(i, i + this.BATCH_SIZE);
         const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
 
-        this.logger.log(colors.cyan(`[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+        this.logger.log(
+          colors.cyan(
+            `[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`,
+          ),
+        );
 
-        const batchPromises = batch.map(student =>
-          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
-            .catch(error => {
-              this.logger.error(colors.red(`[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
-              errorCount++;
-              return null;
-            })
+        const batchPromises = batch.map((student) =>
+          this.processStudentResults(
+            student,
+            releasedAssessments,
+            currentSession.id,
+            schoolId,
+            userId,
+          ).catch((error) => {
+            this.logger.error(
+              colors.red(
+                `[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`,
+              ),
+            );
+            errorCount++;
+            return null;
+          }),
         );
 
         const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter(r => r !== null).length;
+        processedCount += batchResults.filter((r) => r !== null).length;
 
         if (i + this.BATCH_SIZE < classStudents.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -411,17 +522,23 @@ export class ResultsService {
       await this.calculateClassPositions(schoolId, currentSession.id);
 
       // Send push notifications to all students in class
-      const studentUserIds = classStudents.map(s => s.user_id);
+      const studentUserIds = classStudents.map((s) => s.user_id);
       await this.sendResultReleaseNotifications(
         schoolId,
         studentUserIds,
         currentSession.academic_year,
         currentSession.term,
-        'released'
+        'released',
       );
 
-      this.logger.log(colors.green(`✅ Results released successfully for class`));
-      this.logger.log(colors.green(`   - Processed: ${processedCount}/${classStudents.length} students`));
+      this.logger.log(
+        colors.green(`✅ Results released successfully for class`),
+      );
+      this.logger.log(
+        colors.green(
+          `   - Processed: ${processedCount}/${classStudents.length} students`,
+        ),
+      );
       this.logger.log(colors.green(`   - Errors: ${errorCount}`));
 
       return ResponseHelper.success(
@@ -434,14 +551,19 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error releasing results for class: ${error.message}`));
-      return ResponseHelper.error(`Failed to release results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(`❌ Error releasing results for class: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to release results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -452,9 +574,11 @@ export class ResultsService {
     schoolId: string,
     userId: string,
     studentIds: string[],
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🎓 Releasing results for ${studentIds.length} students`));
+    this.logger.log(
+      colors.cyan(`🎓 Releasing results for ${studentIds.length} students`),
+    );
 
     try {
       // Get academic session (use provided or current)
@@ -463,16 +587,16 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
@@ -485,29 +609,39 @@ export class ResultsService {
       const students = await this.prisma.student.findMany({
         where: {
           id: {
-            in: studentIds
+            in: studentIds,
           },
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true
-        }
+          current_class_id: true,
+        },
       });
 
       if (students.length === 0) {
         this.logger.error(colors.red(`❌ No students found`));
-        return ResponseHelper.error('No students found with the provided IDs', null, 404);
+        return ResponseHelper.error(
+          'No students found with the provided IDs',
+          null,
+          404,
+        );
       }
 
       // Check if some student IDs were not found
-      const foundStudentIds = students.map(s => s.id);
-      const notFoundIds = studentIds.filter(id => !foundStudentIds.includes(id));
+      const foundStudentIds = students.map((s) => s.id);
+      const notFoundIds = studentIds.filter(
+        (id) => !foundStudentIds.includes(id),
+      );
       if (notFoundIds.length > 0) {
-        this.logger.warn(colors.yellow(`⚠️  Some student IDs not found: ${notFoundIds.join(', ')}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️  Some student IDs not found: ${notFoundIds.join(', ')}`,
+          ),
+        );
       }
 
       // Get all released assessments for this session
@@ -517,29 +651,41 @@ export class ResultsService {
           academic_session_id: currentSession.id,
           is_result_released: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
           },
           assessment_type: {
-            in: ['EXAM', 'CBT']
-          }
+            in: ['EXAM', 'CBT'],
+          },
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
-          }
-        }
+              code: true,
+            },
+          },
+        },
       });
 
       if (releasedAssessments.length === 0) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No released assessments found`));
-        return ResponseHelper.error('No released assessments found for this session', null, 400);
+        this.logger.error(
+          colors.red(
+            `[Director Results Service] ❌ No released assessments found`,
+          ),
+        );
+        return ResponseHelper.error(
+          'No released assessments found for this session',
+          null,
+          400,
+        );
       }
 
-      this.logger.log(colors.blue(`[Director Results Service] 📊 Processing ${students.length} students`));
+      this.logger.log(
+        colors.blue(
+          `[Director Results Service] 📊 Processing ${students.length} students`,
+        ),
+      );
 
       // Process students in batches
       const totalBatches = Math.ceil(students.length / this.BATCH_SIZE);
@@ -550,27 +696,42 @@ export class ResultsService {
         const batch = students.slice(i, i + this.BATCH_SIZE);
         const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
 
-        this.logger.log(colors.cyan(`[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`));
+        this.logger.log(
+          colors.cyan(
+            `[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`,
+          ),
+        );
 
-        const batchPromises = batch.map(student =>
-          this.processStudentResults(student, releasedAssessments, currentSession.id, schoolId, userId)
-            .catch(error => {
-              this.logger.error(colors.red(`[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`));
-              errorCount++;
-              return null;
-            })
+        const batchPromises = batch.map((student) =>
+          this.processStudentResults(
+            student,
+            releasedAssessments,
+            currentSession.id,
+            schoolId,
+            userId,
+          ).catch((error) => {
+            this.logger.error(
+              colors.red(
+                `[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`,
+              ),
+            );
+            errorCount++;
+            return null;
+          }),
         );
 
         const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter(r => r !== null).length;
+        processedCount += batchResults.filter((r) => r !== null).length;
 
         if (i + this.BATCH_SIZE < students.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
       // Recalculate class positions for affected classes
-      const affectedClasses = [...new Set(students.map(s => s.current_class_id).filter(Boolean))];
+      const affectedClasses = [
+        ...new Set(students.map((s) => s.current_class_id).filter(Boolean)),
+      ];
       for (const classId of affectedClasses) {
         if (classId) {
           await this.calculateClassPositions(schoolId, currentSession.id);
@@ -579,20 +740,28 @@ export class ResultsService {
       }
 
       // Send push notifications to all students
-      const studentUserIds = students.map(s => s.user_id);
+      const studentUserIds = students.map((s) => s.user_id);
       await this.sendResultReleaseNotifications(
         schoolId,
         studentUserIds,
         currentSession.academic_year,
         currentSession.term,
-        'released'
+        'released',
       );
 
-      this.logger.log(colors.green(`✅ Results released successfully for students`));
-      this.logger.log(colors.green(`   - Processed: ${processedCount}/${students.length} students`));
+      this.logger.log(
+        colors.green(`✅ Results released successfully for students`),
+      );
+      this.logger.log(
+        colors.green(
+          `   - Processed: ${processedCount}/${students.length} students`,
+        ),
+      );
       this.logger.log(colors.green(`   - Errors: ${errorCount}`));
       if (notFoundIds.length > 0) {
-        this.logger.log(colors.yellow(`   - Not found: ${notFoundIds.length} student IDs`));
+        this.logger.log(
+          colors.yellow(`   - Not found: ${notFoundIds.length} student IDs`),
+        );
       }
 
       return ResponseHelper.success(
@@ -606,14 +775,19 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error releasing results for students: ${error.message}`));
-      return ResponseHelper.error(`Failed to release results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(`❌ Error releasing results for students: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to release results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -624,9 +798,11 @@ export class ResultsService {
     schoolId: string,
     userId: string,
     studentId: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🔒 Unreleasing results for student: ${studentId}`));
+    this.logger.log(
+      colors.cyan(`🔒 Unreleasing results for student: ${studentId}`),
+    );
 
     try {
       // Get academic session (use provided or current)
@@ -635,21 +811,23 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
       if (!currentSession) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ No academic session found`));
+        this.logger.error(
+          colors.red(`[Director Results Service] ❌ No academic session found`),
+        );
         return ResponseHelper.error('No academic session found', null, 400);
       }
 
@@ -658,20 +836,28 @@ export class ResultsService {
         where: {
           academic_session_id_student_id: {
             academic_session_id: currentSession.id,
-            student_id: studentId
-          }
-        }
+            student_id: studentId,
+          },
+        },
       });
 
       if (!result) {
-        this.logger.error(colors.red(`[Director Results Service] ❌ Result not found for this student`));
-        return ResponseHelper.error('Result not found for this student', null, 404);
+        this.logger.error(
+          colors.red(
+            `[Director Results Service] ❌ Result not found for this student`,
+          ),
+        );
+        return ResponseHelper.error(
+          'Result not found for this student',
+          null,
+          404,
+        );
       }
 
       // Get student user_id for notification
       const student = await this.prisma.student.findUnique({
         where: { id: studentId },
-        select: { user_id: true }
+        select: { user_id: true },
       });
 
       // Update the flag to false
@@ -679,12 +865,12 @@ export class ResultsService {
         where: {
           academic_session_id_student_id: {
             academic_session_id: currentSession.id,
-            student_id: studentId
-          }
+            student_id: studentId,
+          },
         },
         data: {
-          released_by_school_admin: false
-        }
+          released_by_school_admin: false,
+        },
       });
 
       // Send push notification to student
@@ -694,11 +880,13 @@ export class ResultsService {
           [student.user_id],
           currentSession.academic_year,
           currentSession.term,
-          'unreleased'
+          'unreleased',
         );
       }
 
-      this.logger.log(colors.green(`✅ Results unreleased successfully for student`));
+      this.logger.log(
+        colors.green(`✅ Results unreleased successfully for student`),
+      );
 
       return ResponseHelper.success(
         'Results unreleased successfully for student',
@@ -707,14 +895,21 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error unreleasing results for student: ${error.message}`));
-      return ResponseHelper.error(`Failed to unrelease results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(
+          `❌ Error unreleasing results for student: ${error.message}`,
+        ),
+      );
+      return ResponseHelper.error(
+        `Failed to unrelease results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -725,9 +920,11 @@ export class ResultsService {
     schoolId: string,
     userId: string,
     studentIds: string[],
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🔒 Unreleasing results for ${studentIds.length} students`));
+    this.logger.log(
+      colors.cyan(`🔒 Unreleasing results for ${studentIds.length} students`),
+    );
 
     try {
       // Get academic session (use provided or current)
@@ -736,16 +933,16 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
@@ -758,9 +955,9 @@ export class ResultsService {
       const students = await this.prisma.student.findMany({
         where: {
           id: { in: studentIds },
-          school_id: schoolId
+          school_id: schoolId,
         },
-        select: { user_id: true }
+        select: { user_id: true },
       });
 
       // Update all results for these students
@@ -769,27 +966,31 @@ export class ResultsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           student_id: {
-            in: studentIds
-          }
+            in: studentIds,
+          },
         },
         data: {
-          released_by_school_admin: false
-        }
+          released_by_school_admin: false,
+        },
       });
 
       // Send push notifications to all students
       if (students.length > 0) {
-        const studentUserIds = students.map(s => s.user_id);
+        const studentUserIds = students.map((s) => s.user_id);
         await this.sendResultReleaseNotifications(
           schoolId,
           studentUserIds,
           currentSession.academic_year,
           currentSession.term,
-          'unreleased'
+          'unreleased',
         );
       }
 
-      this.logger.log(colors.green(`✅ Results unreleased successfully for ${updateResult.count} students`));
+      this.logger.log(
+        colors.green(
+          `✅ Results unreleased successfully for ${updateResult.count} students`,
+        ),
+      );
 
       return ResponseHelper.success(
         `Results unreleased successfully for ${updateResult.count} students`,
@@ -799,14 +1000,21 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error unreleasing results for students: ${error.message}`));
-      return ResponseHelper.error(`Failed to unrelease results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(
+          `❌ Error unreleasing results for students: ${error.message}`,
+        ),
+      );
+      return ResponseHelper.error(
+        `Failed to unrelease results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -817,9 +1025,11 @@ export class ResultsService {
     schoolId: string,
     userId: string,
     classId: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🔒 Unreleasing results for class: ${classId}`));
+    this.logger.log(
+      colors.cyan(`🔒 Unreleasing results for class: ${classId}`),
+    );
 
     try {
       // Get academic session (use provided or current)
@@ -828,16 +1038,16 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
@@ -852,21 +1062,25 @@ export class ResultsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           current_class_id: classId,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
-          user_id: true
-        }
+          user_id: true,
+        },
       });
 
       if (classStudents.length === 0) {
         this.logger.error(colors.red(`❌ No students found in this class`));
-        return ResponseHelper.error('No students found in this class', null, 404);
+        return ResponseHelper.error(
+          'No students found in this class',
+          null,
+          404,
+        );
       }
 
-      const studentIds = classStudents.map(s => s.id);
-      const studentUserIds = classStudents.map(s => s.user_id);
+      const studentIds = classStudents.map((s) => s.id);
+      const studentUserIds = classStudents.map((s) => s.user_id);
 
       // Update all results for students in this class
       const updateResult = await this.prisma.result.updateMany({
@@ -874,12 +1088,12 @@ export class ResultsService {
           school_id: schoolId,
           academic_session_id: currentSession.id,
           student_id: {
-            in: studentIds
-          }
+            in: studentIds,
+          },
         },
         data: {
-          released_by_school_admin: false
-        }
+          released_by_school_admin: false,
+        },
       });
 
       // Send push notifications to all students in class
@@ -888,11 +1102,17 @@ export class ResultsService {
         studentUserIds,
         currentSession.academic_year,
         currentSession.term,
-        'unreleased'
+        'unreleased',
       );
 
-      this.logger.log(colors.green(`✅ Results unreleased successfully for class`));
-      this.logger.log(colors.green(`   - Updated: ${updateResult.count}/${classStudents.length} students`));
+      this.logger.log(
+        colors.green(`✅ Results unreleased successfully for class`),
+      );
+      this.logger.log(
+        colors.green(
+          `   - Updated: ${updateResult.count}/${classStudents.length} students`,
+        ),
+      );
 
       return ResponseHelper.success(
         `Results unreleased successfully for ${updateResult.count} students in class`,
@@ -903,14 +1123,19 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error unreleasing results for class: ${error.message}`));
-      return ResponseHelper.error(`Failed to unrelease results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(`❌ Error unreleasing results for class: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to unrelease results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -920,7 +1145,7 @@ export class ResultsService {
   async unreleaseResults(
     schoolId: string,
     userId: string,
-    sessionId?: string
+    sessionId?: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`🔒 Unreleasing results for whole school`));
 
@@ -931,16 +1156,16 @@ export class ResultsService {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: schoolId
-          }
+            school_id: schoolId,
+          },
         });
       } else {
         currentSession = await this.prisma.academicSession.findFirst({
           where: {
             school_id: schoolId,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
       }
 
@@ -953,48 +1178,52 @@ export class ResultsService {
       const results = await this.prisma.result.findMany({
         where: {
           school_id: schoolId,
-          academic_session_id: currentSession.id
+          academic_session_id: currentSession.id,
         },
         select: {
-          student_id: true
-        }
+          student_id: true,
+        },
       });
 
       // Get student user_ids
-      const studentIds = [...new Set(results.map(r => r.student_id))];
+      const studentIds = [...new Set(results.map((r) => r.student_id))];
       const students = await this.prisma.student.findMany({
         where: {
           id: { in: studentIds },
-          school_id: schoolId
+          school_id: schoolId,
         },
-        select: { user_id: true }
+        select: { user_id: true },
       });
 
       // Update all results for this session
       const updateResult = await this.prisma.result.updateMany({
         where: {
           school_id: schoolId,
-          academic_session_id: currentSession.id
+          academic_session_id: currentSession.id,
         },
         data: {
-          released_by_school_admin: false
-        }
+          released_by_school_admin: false,
+        },
       });
 
       // Send push notifications to all students
       if (students.length > 0) {
-        const studentUserIds = students.map(s => s.user_id);
+        const studentUserIds = students.map((s) => s.user_id);
         await this.sendResultReleaseNotifications(
           schoolId,
           studentUserIds,
           currentSession.academic_year,
           currentSession.term,
-          'unreleased'
+          'unreleased',
         );
       }
 
-      this.logger.log(colors.green(`✅ Results unreleased successfully for whole school`));
-      this.logger.log(colors.green(`   - Updated: ${updateResult.count} results`));
+      this.logger.log(
+        colors.green(`✅ Results unreleased successfully for whole school`),
+      );
+      this.logger.log(
+        colors.green(`   - Updated: ${updateResult.count} results`),
+      );
 
       return ResponseHelper.success(
         `Results unreleased successfully for ${updateResult.count} students`,
@@ -1003,14 +1232,19 @@ export class ResultsService {
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
-        }
+            term: currentSession.term,
+          },
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error unreleasing results: ${error.message}`));
-      return ResponseHelper.error(`Failed to unrelease results: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(`❌ Error unreleasing results: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to unrelease results: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 
@@ -1022,7 +1256,7 @@ export class ResultsService {
     releasedAssessments: any[],
     sessionId: string,
     schoolId: string,
-    releasedBy: string
+    releasedBy: string,
   ): Promise<any> {
     // Get final result (best attempt) for each released assessment
     const assessmentResults = await Promise.all(
@@ -1032,24 +1266,23 @@ export class ResultsService {
             assessment_id: assessment.id,
             student_id: student.user_id,
             status: {
-              in: ['SUBMITTED', 'GRADED'] // Include both submitted and graded attempts
-            }
+              in: ['SUBMITTED', 'GRADED'], // Include both submitted and graded attempts
+            },
           },
-          orderBy: [
-            { total_score: 'desc' },
-            { submitted_at: 'desc' }
-          ]
+          orderBy: [{ total_score: 'desc' }, { submitted_at: 'desc' }],
         });
 
         return {
           assessment,
-          result: studentResult
+          result: studentResult,
         };
-      })
+      }),
     );
 
     // Filter out assessments where student has no result
-    const validResults = assessmentResults.filter(item => item.result !== null);
+    const validResults = assessmentResults.filter(
+      (item) => item.result !== null,
+    );
 
     if (validResults.length === 0) {
       // Upsert empty result record
@@ -1057,14 +1290,14 @@ export class ResultsService {
         where: {
           academic_session_id_student_id: {
             academic_session_id: sessionId,
-            student_id: student.id
-          }
+            student_id: student.id,
+          },
         },
         update: {
           class_id: student.current_class_id,
           subject_results: [],
           released_by: releasedBy,
-          released_by_school_admin: true // Set to true when released by director
+          released_by_school_admin: true, // Set to true when released by director
         },
         create: {
           school_id: schoolId,
@@ -1073,23 +1306,26 @@ export class ResultsService {
           class_id: student.current_class_id,
           subject_results: [],
           released_by: releasedBy,
-          released_by_school_admin: true // Set to true when released by director
-        }
+          released_by_school_admin: true, // Set to true when released by director
+        },
       });
     }
 
     // Group results by subject
-    const subjectMap = new Map<string, {
-      subject_id: string;
-      subject_code: string;
-      subject_name: string;
-      ca_score: number;
-      exam_score: number;
-      ca_max_score: number;
-      exam_max_score: number;
-      total_score: number;
-      total_max_score: number;
-    }>();
+    const subjectMap = new Map<
+      string,
+      {
+        subject_id: string;
+        subject_code: string;
+        subject_name: string;
+        ca_score: number;
+        exam_score: number;
+        ca_max_score: number;
+        exam_max_score: number;
+        total_score: number;
+        total_max_score: number;
+      }
+    >();
 
     for (const { assessment, result } of validResults) {
       if (!result || !assessment.subject) continue;
@@ -1107,7 +1343,7 @@ export class ResultsService {
           ca_max_score: 0,
           exam_max_score: 0,
           total_score: 0,
-          total_max_score: 0
+          total_max_score: 0,
         });
       }
 
@@ -1126,31 +1362,47 @@ export class ResultsService {
     }
 
     // Calculate grades and prepare subject results
-    const subjectResults = Array.from(subjectMap.values()).map(subjectData => {
-      const percentage = subjectData.total_max_score > 0
-        ? (subjectData.total_score / subjectData.total_max_score) * 100
-        : 0;
-      const grade = this.calculateGrade(percentage);
+    const subjectResults = Array.from(subjectMap.values()).map(
+      (subjectData) => {
+        const percentage =
+          subjectData.total_max_score > 0
+            ? (subjectData.total_score / subjectData.total_max_score) * 100
+            : 0;
+        const grade = this.calculateGrade(percentage);
 
-      return {
-        subject_id: subjectData.subject_id,
-        subject_code: subjectData.subject_code,
-        subject_name: subjectData.subject_name,
-        ca_score: subjectData.ca_score || null,
-        exam_score: subjectData.exam_score || null,
-        total_score: subjectData.total_score,
-        total_max_score: subjectData.total_max_score,
-        percentage: Math.round(percentage * 100) / 100,
-        grade: grade
-      };
-    });
+        return {
+          subject_id: subjectData.subject_id,
+          subject_code: subjectData.subject_code,
+          subject_name: subjectData.subject_name,
+          ca_score: subjectData.ca_score || null,
+          exam_score: subjectData.exam_score || null,
+          total_score: subjectData.total_score,
+          total_max_score: subjectData.total_max_score,
+          percentage: Math.round(percentage * 100) / 100,
+          grade: grade,
+        };
+      },
+    );
 
     // Calculate overall statistics
-    const totalCaScore = subjectResults.reduce((sum, s) => sum + (s.ca_score || 0), 0);
-    const totalExamScore = subjectResults.reduce((sum, s) => sum + (s.exam_score || 0), 0);
-    const totalScore = subjectResults.reduce((sum, s) => sum + s.total_score, 0);
-    const totalMaxScore = subjectResults.reduce((sum, s) => sum + s.total_max_score, 0);
-    const overallPercentage = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100 : 0;
+    const totalCaScore = subjectResults.reduce(
+      (sum, s) => sum + (s.ca_score || 0),
+      0,
+    );
+    const totalExamScore = subjectResults.reduce(
+      (sum, s) => sum + (s.exam_score || 0),
+      0,
+    );
+    const totalScore = subjectResults.reduce(
+      (sum, s) => sum + s.total_score,
+      0,
+    );
+    const totalMaxScore = subjectResults.reduce(
+      (sum, s) => sum + s.total_max_score,
+      0,
+    );
+    const overallPercentage =
+      totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100 : 0;
     const overallGrade = this.calculateGrade(overallPercentage);
 
     // Upsert result record
@@ -1158,8 +1410,8 @@ export class ResultsService {
       where: {
         academic_session_id_student_id: {
           academic_session_id: sessionId,
-          student_id: student.id
-        }
+          student_id: student.id,
+        },
       },
       update: {
         class_id: student.current_class_id,
@@ -1171,7 +1423,7 @@ export class ResultsService {
         overall_percentage: Math.round(overallPercentage * 100) / 100,
         overall_grade: overallGrade,
         released_by: releasedBy,
-        released_by_school_admin: true // Set to true when released by director
+        released_by_school_admin: true, // Set to true when released by director
       },
       create: {
         school_id: schoolId,
@@ -1186,8 +1438,8 @@ export class ResultsService {
         overall_percentage: Math.round(overallPercentage * 100) / 100,
         overall_grade: overallGrade,
         released_by: releasedBy,
-        released_by_school_admin: true // Set to true when released by director
-      }
+        released_by_school_admin: true, // Set to true when released by director
+      },
     });
   }
 
@@ -1199,22 +1451,26 @@ export class ResultsService {
     studentUserIds: string[],
     academicYear: string,
     term: string,
-    action: 'released' | 'unreleased'
+    action: 'released' | 'unreleased',
   ): Promise<void> {
     try {
       if (studentUserIds.length === 0) {
         return;
       }
 
-      const title = action === 'released' 
-        ? '📊 Results Released' 
-        : '🔒 Results Unreleased';
-      
-      const body = action === 'released'
-        ? `Your ${term} results for ${academicYear} have been released. Check your results now!`
-        : `Your ${term} results for ${academicYear} are no longer available.`;
+      const title =
+        action === 'released' ? '📊 Results Released' : '🔒 Results Unreleased';
 
-      this.logger.log(colors.cyan(`📱 Sending ${action} notifications to ${studentUserIds.length} students`));
+      const body =
+        action === 'released'
+          ? `Your ${term} results for ${academicYear} have been released. Check your results now!`
+          : `Your ${term} results for ${academicYear} are no longer available.`;
+
+      this.logger.log(
+        colors.cyan(
+          `📱 Sending ${action} notifications to ${studentUserIds.length} students`,
+        ),
+      );
 
       await this.pushNotificationsService.sendNotificationByType({
         title,
@@ -1226,32 +1482,37 @@ export class ResultsService {
           action: action,
           academicYear,
           term,
-          screen: 'Results'
-        }
+          screen: 'Results',
+        },
       });
 
       this.logger.log(colors.green(`✅ Notifications sent successfully`));
     } catch (error) {
       // Don't fail the main operation if notifications fail
-      this.logger.error(colors.red(`❌ Error sending notifications: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error sending notifications: ${error.message}`),
+      );
     }
   }
 
   /**
    * Calculate class positions for all students
    */
-  private async calculateClassPositions(schoolId: string, sessionId: string): Promise<void> {
+  private async calculateClassPositions(
+    schoolId: string,
+    sessionId: string,
+  ): Promise<void> {
     this.logger.log(colors.cyan(`📊 Calculating class positions...`));
 
     // Get all classes
     const classes = await this.prisma.class.findMany({
       where: {
         schoolId: schoolId,
-        academic_session_id: sessionId
+        academic_session_id: sessionId,
       },
       select: {
-        id: true
-      }
+        id: true,
+      },
     });
 
     // Calculate positions for each class
@@ -1262,18 +1523,18 @@ export class ResultsService {
           school_id: schoolId,
           academic_session_id: sessionId,
           current_class_id: classItem.id,
-          status: 'active'
-        }
+          status: 'active',
+        },
       });
 
       const classResults = await this.prisma.result.findMany({
         where: {
           class_id: classItem.id,
-          academic_session_id: sessionId
+          academic_session_id: sessionId,
         },
         orderBy: {
-          overall_percentage: 'desc'
-        }
+          overall_percentage: 'desc',
+        },
       });
 
       // Update positions
@@ -1282,8 +1543,8 @@ export class ResultsService {
           where: { id: classResults[i].id },
           data: {
             class_position: i + 1,
-            total_students: totalStudentsInClass // Use actual class enrollment count
-          }
+            total_students: totalStudentsInClass, // Use actual class enrollment count
+          },
         });
       }
     }
@@ -1316,28 +1577,28 @@ export class ResultsService {
       subjectId?: string;
       page?: number;
       limit?: number;
-    } = {}
+    } = {},
   ) {
     try {
-      this.logger.log(colors.cyan(`📊 Getting results dashboard for director: ${userId}`));
+      this.logger.log(
+        colors.cyan(`📊 Getting results dashboard for director: ${userId}`),
+      );
 
       // Get director/school info
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!user || user.role !== 'school_director') {
-        return ResponseHelper.error('Access denied. Director role required.', null, 403);
+        return ResponseHelper.error(
+          'Access denied. Director role required.',
+          null,
+          403,
+        );
       }
 
-      const {
-        sessionId,
-        classId,
-        subjectId,
-        page = 1,
-        limit = 10
-      } = filters;
+      const { sessionId, classId, subjectId, page = 1, limit = 10 } = filters;
 
       const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
       const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
@@ -1346,7 +1607,7 @@ export class ResultsService {
       // 1. Get all academic sessions and terms (active session/term at top)
       const allSessions = await this.prisma.academicSession.findMany({
         where: {
-          school_id: user.school_id
+          school_id: user.school_id,
         },
         select: {
           id: true,
@@ -1358,25 +1619,27 @@ export class ResultsService {
           is_current: true,
           _count: {
             select: {
-              results: true
-            }
-          }
+              results: true,
+            },
+          },
         },
         orderBy: [
           { is_current: 'desc' },
           { start_year: 'desc' },
-          { term: 'desc' }
-        ]
+          { term: 'desc' },
+        ],
       });
 
       // Get current active session
-      const currentSession = allSessions.find(s => s.is_current && s.status === 'active') || allSessions[0];
+      const currentSession =
+        allSessions.find((s) => s.is_current && s.status === 'active') ||
+        allSessions[0];
 
       // 2. Get all classes
       const classes = await this.prisma.class.findMany({
         where: {
           schoolId: user.school_id,
-          ...(currentSession ? { academic_session_id: currentSession.id } : {})
+          ...(currentSession ? { academic_session_id: currentSession.id } : {}),
         },
         include: {
           classTeacher: {
@@ -1384,42 +1647,43 @@ export class ResultsService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           _count: {
             select: {
               students: true,
-              subjects: true
-            }
-          }
+              subjects: true,
+            },
+          },
         },
         orderBy: {
-          name: 'asc'
-        }
+          name: 'asc',
+        },
       });
 
       // 3. Get all subjects
       const subjects = await this.prisma.subject.findMany({
         where: {
           schoolId: user.school_id,
-          ...(currentSession ? { academic_session_id: currentSession.id } : {})
+          ...(currentSession ? { academic_session_id: currentSession.id } : {}),
         },
         select: {
           id: true,
           name: true,
           code: true,
           color: true,
-          description: true
+          description: true,
         },
         orderBy: {
-          name: 'asc'
-        }
+          name: 'asc',
+        },
       });
 
       // Determine which session and class to use (NO default subject selection)
-      const selectedSessionId = sessionId || (currentSession?.id);
-      const selectedClassId = classId || (classes.length > 0 ? classes[0].id : null);
+      const selectedSessionId = sessionId || currentSession?.id;
+      const selectedClassId =
+        classId || (classes.length > 0 ? classes[0].id : null);
 
       // 4. Get results table data for selected filters
       let results: any[] = [];
@@ -1436,7 +1700,7 @@ export class ResultsService {
             school_id: user.school_id,
             academic_session_id: selectedSessionId,
             current_class_id: selectedClassId,
-            status: 'active'
+            status: 'active',
           },
           include: {
             user: {
@@ -1445,15 +1709,15 @@ export class ResultsService {
                 first_name: true,
                 last_name: true,
                 email: true,
-                display_picture: true
-              }
-            }
+                display_picture: true,
+              },
+            },
           },
           orderBy: {
             user: {
-              last_name: 'asc'
-            }
-          }
+              last_name: 'asc',
+            },
+          },
         });
 
         totalStudentsInClass = allStudentsInClass.length;
@@ -1466,57 +1730,64 @@ export class ResultsService {
             where: {
               schoolId: user.school_id,
               academic_session_id: selectedSessionId,
-              classId: selectedClassId
+              classId: selectedClassId,
             },
             select: {
               id: true,
               name: true,
               code: true,
               color: true,
-              description: true
+              description: true,
             },
             orderBy: {
-              name: 'asc'
-            }
+              name: 'asc',
+            },
           });
 
-          this.logger.log(colors.cyan(`📊 Class subjects: ${classSubjects.length}`));
+          this.logger.log(
+            colors.cyan(`📊 Class subjects: ${classSubjects.length}`),
+          );
 
           if (classSubjects.length === 0) {
             resultMessage = 'No subjects found for this class';
           } else {
-            const studentUserIds = allStudentsInClass.map(s => s.user_id);
+            const studentUserIds = allStudentsInClass.map((s) => s.user_id);
 
             // Get all released assessments (status CLOSED) for all subjects in this class
-            const allReleasedAssessments = await this.prisma.assessment.findMany({
-              where: {
-                school_id: user.school_id,
-                academic_session_id: selectedSessionId,
-                subject_id: {
-                  in: classSubjects.map(s => s.id)
+            const allReleasedAssessments =
+              await this.prisma.assessment.findMany({
+                where: {
+                  school_id: user.school_id,
+                  academic_session_id: selectedSessionId,
+                  subject_id: {
+                    in: classSubjects.map((s) => s.id),
+                  },
+                  assessment_type: {
+                    in: ['CBT', 'EXAM'],
+                  },
+                  status: 'CLOSED',
+                  is_result_released: true,
                 },
-                assessment_type: {
-                  in: ['CBT', 'EXAM']
+                select: {
+                  id: true,
+                  title: true,
+                  assessment_type: true,
+                  total_points: true,
+                  subject_id: true,
+                  createdAt: true,
                 },
-                status: 'CLOSED',
-                is_result_released: true
-              },
-              select: {
-                id: true,
-                title: true,
-                assessment_type: true,
-                total_points: true,
-                subject_id: true,
-                createdAt: true
-              },
-              orderBy: [
-                { subject_id: 'asc' },
-                { assessment_type: 'asc' },
-                { createdAt: 'asc' }
-              ]
-            });
+                orderBy: [
+                  { subject_id: 'asc' },
+                  { assessment_type: 'asc' },
+                  { createdAt: 'asc' },
+                ],
+              });
 
-            this.logger.log(colors.cyan(`📊 Released assessments: ${allReleasedAssessments.length}`));
+            this.logger.log(
+              colors.cyan(
+                `📊 Released assessments: ${allReleasedAssessments.length}`,
+              ),
+            );
 
             // Check which students have results released by admin for this session
             const releasedResults = await this.prisma.result.findMany({
@@ -1524,17 +1795,19 @@ export class ResultsService {
                 school_id: user.school_id,
                 academic_session_id: selectedSessionId,
                 student_id: {
-                  in: allStudentsInClass.map(s => s.id)
+                  in: allStudentsInClass.map((s) => s.id),
                 },
-                released_by_school_admin: true
+                released_by_school_admin: true,
               },
               select: {
-                student_id: true
-              }
+                student_id: true,
+              },
             });
 
             // Create a map of student IDs that have released results
-            const releasedStudentIds = new Set(releasedResults.map(r => r.student_id));
+            const releasedStudentIds = new Set(
+              releasedResults.map((r) => r.student_id),
+            );
 
             // Get all assessment attempts for these assessments
             const allAttempts = await this.prisma.assessmentAttempt.findMany({
@@ -1542,14 +1815,14 @@ export class ResultsService {
                 school_id: user.school_id,
                 academic_session_id: selectedSessionId,
                 assessment_id: {
-                  in: allReleasedAssessments.map(a => a.id)
+                  in: allReleasedAssessments.map((a) => a.id),
                 },
                 student_id: {
-                  in: studentUserIds
+                  in: studentUserIds,
                 },
                 status: {
-                  in: ['SUBMITTED', 'GRADED']
-                }
+                  in: ['SUBMITTED', 'GRADED'],
+                },
               },
               select: {
                 id: true,
@@ -1561,33 +1834,36 @@ export class ResultsService {
                 submitted_at: true,
                 assessment: {
                   select: {
-                    subject_id: true
-                  }
-                }
+                    subject_id: true,
+                  },
+                },
               },
-              orderBy: [
-                { total_score: 'desc' },
-                { submitted_at: 'desc' }
-              ]
+              orderBy: [{ total_score: 'desc' }, { submitted_at: 'desc' }],
             });
 
             // Create a map: student_id -> subject_id -> assessment_id -> best attempt
-            const attemptsMap = new Map<string, Map<string, Map<string, any>>>();
-            allAttempts.forEach(attempt => {
+            const attemptsMap = new Map<
+              string,
+              Map<string, Map<string, any>>
+            >();
+            allAttempts.forEach((attempt) => {
               if (!attemptsMap.has(attempt.student_id)) {
                 attemptsMap.set(attempt.student_id, new Map());
               }
               const studentAttempts = attemptsMap.get(attempt.student_id)!;
               const subjectId = attempt.assessment.subject_id;
-              
+
               if (!studentAttempts.has(subjectId)) {
                 studentAttempts.set(subjectId, new Map());
               }
               const subjectAttempts = studentAttempts.get(subjectId)!;
-              
+
               // Keep only the best attempt for each assessment
-              if (!subjectAttempts.has(attempt.assessment_id) || 
-                  subjectAttempts.get(attempt.assessment_id)!.total_score < attempt.total_score) {
+              if (
+                !subjectAttempts.has(attempt.assessment_id) ||
+                subjectAttempts.get(attempt.assessment_id)!.total_score <
+                  attempt.total_score
+              ) {
                 subjectAttempts.set(attempt.assessment_id, attempt);
               }
             });
@@ -1604,19 +1880,27 @@ export class ResultsService {
 
             // Build results table - calculate score for each subject
             const studentResults = allStudentsInClass.map((student) => {
-              const studentAttempts = attemptsMap.get(student.user_id) || new Map();
+              const studentAttempts =
+                attemptsMap.get(student.user_id) || new Map();
               const subjectScores: any = {};
               let totalObtained = 0;
               let totalObtainable = 0;
 
               // Calculate score for each subject
-              classSubjects.forEach(subject => {
-                const subjectAttempts = studentAttempts.get(subject.id) || new Map();
-                
+              classSubjects.forEach((subject) => {
+                const subjectAttempts =
+                  studentAttempts.get(subject.id) || new Map();
+
                 // Get all assessments for this subject
-                const subjectAssessments = allReleasedAssessments.filter(a => a.subject_id === subject.id);
-                const cbtAssessments = subjectAssessments.filter(a => a.assessment_type === 'CBT');
-                const examAssessments = subjectAssessments.filter(a => a.assessment_type === 'EXAM');
+                const subjectAssessments = allReleasedAssessments.filter(
+                  (a) => a.subject_id === subject.id,
+                );
+                const cbtAssessments = subjectAssessments.filter(
+                  (a) => a.assessment_type === 'CBT',
+                );
+                const examAssessments = subjectAssessments.filter(
+                  (a) => a.assessment_type === 'EXAM',
+                );
 
                 // Check if any assessments exist for this subject
                 const hasAssessments = subjectAssessments.length > 0;
@@ -1624,7 +1908,7 @@ export class ResultsService {
                 // Calculate CBT total
                 let cbtObtained = 0;
                 let cbtObtainable = 0;
-                cbtAssessments.forEach(cbt => {
+                cbtAssessments.forEach((cbt) => {
                   const attempt = subjectAttempts.get(cbt.id);
                   cbtObtained += attempt ? attempt.total_score : 0;
                   cbtObtainable += cbt.total_points;
@@ -1642,10 +1926,13 @@ export class ResultsService {
 
                 const subjectObtained = cbtObtained + examObtained;
                 const subjectObtainable = cbtObtainable + examObtainable;
-                
+
                 // If no assessments exist for this subject, mark as not available
                 const isAvailable = hasAssessments;
-                const subjectPercentage = subjectObtainable > 0 ? (subjectObtained / subjectObtainable) * 100 : 0;
+                const subjectPercentage =
+                  subjectObtainable > 0
+                    ? (subjectObtained / subjectObtainable) * 100
+                    : 0;
 
                 subjectScores[subject.id] = {
                   subjectId: subject.id,
@@ -1655,7 +1942,7 @@ export class ResultsService {
                   obtainable: isAvailable ? subjectObtainable : null,
                   percentage: isAvailable ? subjectPercentage : null,
                   grade: isAvailable ? calculateGrade(subjectPercentage) : null,
-                  isAvailable: isAvailable // Flag to indicate if assessments exist
+                  isAvailable: isAvailable, // Flag to indicate if assessments exist
                 };
 
                 // Only add to totals if assessments exist for this subject
@@ -1665,7 +1952,10 @@ export class ResultsService {
                 }
               });
 
-              const overallPercentage = totalObtainable > 0 ? (totalObtained / totalObtainable) * 100 : 0;
+              const overallPercentage =
+                totalObtainable > 0
+                  ? (totalObtained / totalObtainable) * 100
+                  : 0;
 
               // Check if results are released for this student
               const isReleased = releasedStudentIds.has(student.id);
@@ -1678,7 +1968,7 @@ export class ResultsService {
                   firstName: student.user.first_name,
                   lastName: student.user.last_name,
                   email: student.user.email,
-                  displayPicture: student.user.display_picture
+                  displayPicture: student.user.display_picture,
                 },
                 subjectScores: subjectScores,
                 totalObtained: totalObtained,
@@ -1686,7 +1976,7 @@ export class ResultsService {
                 percentage: overallPercentage,
                 grade: calculateGrade(overallPercentage),
                 position: 0, // Will be calculated after sorting
-                isReleased: isReleased // Indicates if results are released by admin for this term
+                isReleased: isReleased, // Indicates if results are released by admin for this term
               };
             });
 
@@ -1700,7 +1990,10 @@ export class ResultsService {
 
             // Apply pagination
             totalResults = studentResults.length;
-            const paginatedResults = studentResults.slice(skip, skip + limitNum);
+            const paginatedResults = studentResults.slice(
+              skip,
+              skip + limitNum,
+            );
 
             results = paginatedResults;
             hasResults = true;
@@ -1719,69 +2012,109 @@ export class ResultsService {
       // Prepare response data
       const responseData = {
         academic_sessions: allSessions,
-        current_session: currentSession ? {
-          id: currentSession.id,
-          academic_year: currentSession.academic_year,
-          term: currentSession.term,
-          status: currentSession.status,
-          is_current: currentSession.is_current
-        } : null,
-        classes: classes.map(cls => ({
+        current_session: currentSession
+          ? {
+              id: currentSession.id,
+              academic_year: currentSession.academic_year,
+              term: currentSession.term,
+              status: currentSession.status,
+              is_current: currentSession.is_current,
+            }
+          : null,
+        classes: classes.map((cls) => ({
           id: cls.id,
           name: cls.name,
-          classTeacher: cls.classTeacher ? {
-            id: cls.classTeacher.id,
-            first_name: cls.classTeacher.first_name,
-            last_name: cls.classTeacher.last_name,
-            email: cls.classTeacher.email
-          } : null,
+          classTeacher: cls.classTeacher
+            ? {
+                id: cls.classTeacher.id,
+                first_name: cls.classTeacher.first_name,
+                last_name: cls.classTeacher.last_name,
+                email: cls.classTeacher.email,
+              }
+            : null,
           student_count: cls._count.students,
-          subject_count: cls._count.subjects
+          subject_count: cls._count.subjects,
         })),
         subjects: classSubjects.length > 0 ? classSubjects : subjects,
         selected_filters: {
           sessionId: selectedSessionId,
           classId: selectedClassId,
-          subjectId: null // No default subject selection
+          subjectId: null, // No default subject selection
         },
         total_students_in_class: totalStudentsInClass,
         results: hasResults ? results : null,
         result_message: resultMessage,
-        pagination: hasResults ? {
-          page: pageNum,
-          limit: limitNum,
-          total: totalResults,
-          totalPages,
-          hasNext: pageNum < totalPages,
-          hasPrev: pageNum > 1
-        } : null
+        pagination: hasResults
+          ? {
+              page: pageNum,
+              limit: limitNum,
+              total: totalResults,
+              totalPages,
+              hasNext: pageNum < totalPages,
+              hasPrev: pageNum > 1,
+            }
+          : null,
       };
 
       // Log what's being sent to frontend
       this.logger.log(colors.cyan(`📤 Sending to frontend:`));
-      this.logger.log(colors.cyan(`   - Class subjects: ${classSubjects.length}`));
-      this.logger.log(colors.cyan(`   - Total students in class: ${totalStudentsInClass}`));
-      this.logger.log(colors.cyan(`   - Results count: ${results ? results.length : 0}`));
+      this.logger.log(
+        colors.cyan(`   - Class subjects: ${classSubjects.length}`),
+      );
+      this.logger.log(
+        colors.cyan(`   - Total students in class: ${totalStudentsInClass}`),
+      );
+      this.logger.log(
+        colors.cyan(`   - Results count: ${results ? results.length : 0}`),
+      );
       if (results && results.length > 0) {
-        this.logger.log(colors.cyan(`   - First result student: ${results[0].student.firstName} ${results[0].student.lastName}`));
-        this.logger.log(colors.cyan(`   - First result subjects with scores: ${Object.keys(results[0].subjectScores || {}).length}`));
-        this.logger.log(colors.cyan(`   - First result total obtained: ${results[0].totalObtained}`));
-        this.logger.log(colors.cyan(`   - First result total obtainable: ${results[0].totalObtainable}`));
-        this.logger.log(colors.cyan(`   - First result grade: ${results[0].grade}`));
-        this.logger.log(colors.cyan(`   - First result position: ${results[0].position}`));
+        this.logger.log(
+          colors.cyan(
+            `   - First result student: ${results[0].student.firstName} ${results[0].student.lastName}`,
+          ),
+        );
+        this.logger.log(
+          colors.cyan(
+            `   - First result subjects with scores: ${Object.keys(results[0].subjectScores || {}).length}`,
+          ),
+        );
+        this.logger.log(
+          colors.cyan(
+            `   - First result total obtained: ${results[0].totalObtained}`,
+          ),
+        );
+        this.logger.log(
+          colors.cyan(
+            `   - First result total obtainable: ${results[0].totalObtainable}`,
+          ),
+        );
+        this.logger.log(
+          colors.cyan(`   - First result grade: ${results[0].grade}`),
+        );
+        this.logger.log(
+          colors.cyan(`   - First result position: ${results[0].position}`),
+        );
       }
-      this.logger.log(colors.cyan(`   - Result message: ${resultMessage || 'None'}`));
-      this.logger.log(colors.green(`✅ Results dashboard retrieved successfully`));
+      this.logger.log(
+        colors.cyan(`   - Result message: ${resultMessage || 'None'}`),
+      );
+      this.logger.log(
+        colors.green(`✅ Results dashboard retrieved successfully`),
+      );
 
       return ResponseHelper.success(
         'Results dashboard retrieved successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting results dashboard: ${error.message}`));
-      return ResponseHelper.error(`Failed to retrieve results dashboard: ${error.message}`, null, 500);
+      this.logger.error(
+        colors.red(`❌ Error getting results dashboard: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to retrieve results dashboard: ${error.message}`,
+        null,
+        500,
+      );
     }
   }
 }
-

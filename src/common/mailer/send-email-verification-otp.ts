@@ -13,7 +13,7 @@ export const sendEmailVerificationOTP = async ({
   otp,
 }: EmailVerificationOTPParams) => {
   const subject = '🔐 Verify Your Email Address - Smart Edu Hub';
-  
+
   const htmlContent = emailVerificationOTPTemplate({
     email,
     firstName,

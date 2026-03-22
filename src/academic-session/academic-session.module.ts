@@ -7,6 +7,6 @@ import { PrismaModule } from '../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [AcademicSessionController],
   providers: [AcademicSessionService],
-  exports: [AcademicSessionService]
+  exports: [AcademicSessionService],
 })
 export class AcademicSessionModule {}

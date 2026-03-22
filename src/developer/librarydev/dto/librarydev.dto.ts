@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 export class CreateLibraryDevDto {
   @ApiProperty({
@@ -19,7 +25,8 @@ export class CreateLibraryDevDto {
   slug: string;
 
   @ApiProperty({
-    description: 'Email for the primary library owner account (must be unique across the platform)',
+    description:
+      'Email for the primary library owner account (must be unique across the platform)',
     example: 'owner@access-study.com',
   })
   @IsEmail()
@@ -36,7 +43,8 @@ export class CreateLibraryDevDto {
   password: string;
 
   @ApiPropertyOptional({
-    description: 'Optional description of what this library contains or who owns it',
+    description:
+      'Optional description of what this library contains or who owns it',
     example: 'Official Smart Edu public content library for West Africa.',
   })
   @IsString()
@@ -70,7 +78,6 @@ export class UpdateLibraryDevDto {
   description?: string;
 }
 
-
 export class AddLibraryOwnerDto {
   @ApiProperty({
     description: 'ID of the library platform to attach this owner/user to',
@@ -81,7 +88,8 @@ export class AddLibraryOwnerDto {
   libraryId: string;
 
   @ApiProperty({
-    description: 'Email for the library owner/manager account (must be unique across the platform)',
+    description:
+      'Email for the library owner/manager account (must be unique across the platform)',
     example: 'owner@access-study.com',
   })
   @IsEmail()
@@ -122,11 +130,11 @@ export class AddLibraryOwnerDto {
   phoneNumber?: string;
 
   @ApiPropertyOptional({
-    description: 'Role for this user inside the library platform (admin is treated as library owner)',
+    description:
+      'Role for this user inside the library platform (admin is treated as library owner)',
     example: 'admin',
   })
   @IsString()
   @IsOptional()
   role?: string;
 }
-

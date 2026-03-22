@@ -1,6 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+} from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as colors from 'colors';
@@ -32,7 +42,9 @@ export class S3Service {
     const bucketName = this.getBucketNameForEnvironment(nodeEnv);
 
     if (!bucketName || !region || !accessKeyId || !secretAccessKey) {
-      throw new Error('Missing required AWS S3 configuration. Please check your .env file.');
+      throw new Error(
+        'Missing required AWS S3 configuration. Please check your .env file.',
+      );
     }
 
     this.bucketName = bucketName;
@@ -40,7 +52,7 @@ export class S3Service {
 
     // Get optional endpoint override (useful for custom S3-compatible services or specific regions)
     const endpoint = this.config.get('AWS_S3_ENDPOINT');
-    
+
     const s3ClientConfig: Record<string, any> = {
       region: this.region,
       credentials: {
@@ -56,7 +68,8 @@ export class S3Service {
     }
 
     // Force path-style addressing if needed (some buckets require this)
-    const forcePathStyle = this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
+    const forcePathStyle =
+      this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
     if (forcePathStyle) {
       s3ClientConfig.forcePathStyle = true;
       this.logger.log(colors.cyan(`   - Using path-style addressing`));
@@ -69,7 +82,11 @@ export class S3Service {
    * Log S3 service status (called from main.ts after startup)
    */
   logStatus(): void {
-    this.logger.log(colors.green(`✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`));
+    this.logger.log(
+      colors.green(
+        `✅ S3 Service initialized for bucket: ${this.bucketName} in region: ${this.region}`,
+      ),
+    );
   }
 
   /**
@@ -93,23 +110,37 @@ export class S3Service {
     switch (nodeEnv.toLowerCase()) {
       case 'production':
       case 'prod':
-        return this.config.get('AWS_S3_BUCKET_PROD') || this.config.get('AWS_S3_BUCKET') || '';
-      
+        return (
+          this.config.get('AWS_S3_BUCKET_PROD') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          ''
+        );
+
       case 'staging':
-        return this.config.get('AWS_S3_BUCKET_STAGING') || this.config.get('AWS_S3_BUCKET') || '';
-      
+        return (
+          this.config.get('AWS_S3_BUCKET_STAGING') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          ''
+        );
+
       case 'development':
       case 'dev':
       case 'local':
-        return this.config.get('AWS_S3_BUCKET_DEV') || this.config.get('AWS_S3_BUCKET') || '';
-      
+        return (
+          this.config.get('AWS_S3_BUCKET_DEV') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          ''
+        );
+
       default:
         // Fallback to default bucket or environment-specific if available
-        return this.config.get('AWS_S3_BUCKET_DEV') || 
-               this.config.get('AWS_S3_BUCKET') || 
-               this.config.get('AWS_S3_BUCKET_STAGING') || 
-               this.config.get('AWS_S3_BUCKET_PROD') || 
-               '';
+        return (
+          this.config.get('AWS_S3_BUCKET_DEV') ||
+          this.config.get('AWS_S3_BUCKET') ||
+          this.config.get('AWS_S3_BUCKET_STAGING') ||
+          this.config.get('AWS_S3_BUCKET_PROD') ||
+          ''
+        );
     }
   }
 
@@ -120,34 +151,40 @@ export class S3Service {
     file: Express.Multer.File,
     folder: string,
     fileName?: string,
-    onProgress?: (loadedBytes: number, totalBytes?: number) => void
+    onProgress?: (loadedBytes: number, totalBytes?: number) => void,
   ): Promise<S3UploadResult> {
     const key = fileName || `${folder}/${Date.now()}_${file.originalname}`;
     const resolvedContentType = this.resolveContentType(file);
-    
-    this.logger.log(colors.cyan(`🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`));
-    
+
+    this.logger.log(
+      colors.cyan(
+        `🚀 Starting S3 upload: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`,
+      ),
+    );
+
     try {
+      // Use file stream from disk when available (diskStorage), fall back to buffer (memoryStorage)
+      const body: any =
+        file.path && fs.existsSync(file.path)
+          ? fs.createReadStream(file.path)
+          : file.buffer;
+
       const upload = new Upload({
         client: this.s3Client,
         params: {
           Bucket: this.bucketName,
           Key: key,
-          Body: file.buffer,
+          Body: body,
           ContentType: resolvedContentType,
           ContentDisposition: 'inline',
-          // ACL removed - bucket uses "Bucket owner enforced" which disables ACLs
-          // Use bucket policies for public access instead
           Metadata: {
-            // Encode originalName to handle special characters (spaces, unicode, etc.)
-            // HTTP headers cannot contain certain characters
             originalName: encodeURIComponent(file.originalname),
             size: file.size.toString(),
             uploadedAt: new Date().toISOString(),
           },
         },
         queueSize: 4,
-        partSize: 5 * 1024 * 1024,
+        partSize: 10 * 1024 * 1024, // 10MB parts for better large-file performance
         leavePartsOnError: false,
       });
 
@@ -160,14 +197,20 @@ export class S3Service {
       }
 
       const result: any = await upload.done();
-      
+
       // Generate URL based on endpoint configuration
       const url = this.getFileUrl(key);
-      
-      this.logger.log(colors.green(`✅ S3 upload successful: ${file.originalname}`));
+
+      this.logger.log(
+        colors.green(`✅ S3 upload successful: ${file.originalname}`),
+      );
       this.logger.log(colors.blue(`   - URL: ${url}`));
-      this.logger.log(colors.blue(`   - ETag: ${result.ETag || result.ETag?.toString?.() || ''}`));
-      
+      this.logger.log(
+        colors.blue(
+          `   - ETag: ${result.ETag || result.ETag?.toString?.() || ''}`,
+        ),
+      );
+
       return {
         url,
         key,
@@ -176,13 +219,31 @@ export class S3Service {
       };
     } catch (error: any) {
       // Enhanced error handling for region/endpoint issues
-      if (error.message?.includes('must be addressed using the specified endpoint')) {
-        this.logger.error(colors.red(`❌ S3 region/endpoint mismatch detected`));
-        this.logger.error(colors.yellow(`   - Configured region: ${this.region}`));
+      if (
+        error.message?.includes(
+          'must be addressed using the specified endpoint',
+        )
+      ) {
+        this.logger.error(
+          colors.red(`❌ S3 region/endpoint mismatch detected`),
+        );
+        this.logger.error(
+          colors.yellow(`   - Configured region: ${this.region}`),
+        );
         this.logger.error(colors.yellow(`   - Bucket: ${this.bucketName}`));
-        this.logger.error(colors.yellow(`   - Tip: Check if AWS_REGION matches the bucket's actual region`));
-        this.logger.error(colors.yellow(`   - Tip: Or set AWS_S3_ENDPOINT in .env if using custom endpoint`));
-        throw new Error(`S3 upload failed: Region/endpoint mismatch. Please verify AWS_REGION matches the bucket's region. Original error: ${error.message}`);
+        this.logger.error(
+          colors.yellow(
+            `   - Tip: Check if AWS_REGION matches the bucket's actual region`,
+          ),
+        );
+        this.logger.error(
+          colors.yellow(
+            `   - Tip: Or set AWS_S3_ENDPOINT in .env if using custom endpoint`,
+          ),
+        );
+        throw new Error(
+          `S3 upload failed: Region/endpoint mismatch. Please verify AWS_REGION matches the bucket's region. Original error: ${error.message}`,
+        );
       }
       this.logger.error(colors.red(`❌ S3 upload failed: ${error.message}`));
       throw new Error(`S3 upload failed: ${error.message}`);
@@ -205,11 +266,19 @@ export class S3Service {
   /**
    * Download an S3 object to a temporary file and return its path and contentType
    */
-  async downloadToTempFile(key: string): Promise<{ filePath: string; contentType?: string }> {
+  async downloadToTempFile(
+    key: string,
+  ): Promise<{ filePath: string; contentType?: string }> {
     try {
-      const command = new GetObjectCommand({ Bucket: this.bucketName, Key: key });
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
       const res: any = await this.s3Client.send(command);
-      const tmpPath = path.join(os.tmpdir(), `s3_${Date.now()}_${path.basename(key)}`);
+      const tmpPath = path.join(
+        os.tmpdir(),
+        `s3_${Date.now()}_${path.basename(key)}`,
+      );
       await new Promise<void>((resolve, reject) => {
         const write = fs.createWriteStream(tmpPath);
         res.Body.pipe(write);
@@ -219,7 +288,9 @@ export class S3Service {
       });
       return { filePath: tmpPath, contentType: res.ContentType };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to download S3 object ${key}: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to download S3 object ${key}: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -231,7 +302,7 @@ export class S3Service {
     localFilePath: string,
     folder: string,
     fileName: string,
-    contentType: string
+    contentType: string,
   ): Promise<S3UploadResult> {
     const key = `${folder}/${fileName}`;
     try {
@@ -254,7 +325,11 @@ export class S3Service {
       const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
       return { url, key, bucket: this.bucketName, etag: result.ETag || '' };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to upload local file ${localFilePath}: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Failed to upload local file ${localFilePath}: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
@@ -285,7 +360,7 @@ export class S3Service {
   async generatePresignedUrl(
     key: string,
     contentType: string,
-    expiresIn: number = 3600
+    expiresIn: number = 3600,
   ): Promise<string> {
     try {
       const command = new PutObjectCommand({
@@ -294,12 +369,16 @@ export class S3Service {
         ContentType: contentType,
       });
 
-      const presignedUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
-      
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
       this.logger.log(colors.blue(`🔗 Generated presigned URL for: ${key}`));
       return presignedUrl;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to generate presigned URL: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to generate presigned URL: ${error.message}`),
+      );
       throw new Error(`Failed to generate presigned URL: ${error.message}`);
     }
   }
@@ -317,7 +396,9 @@ export class S3Service {
       await this.s3Client.send(command);
       this.logger.log(colors.green(`🗑️ File deleted from S3: ${key}`));
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to delete file from S3: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to delete file from S3: ${error.message}`),
+      );
       throw new Error(`Failed to delete file from S3: ${error.message}`);
     }
   }
@@ -328,8 +409,9 @@ export class S3Service {
    */
   getFileUrl(key: string): string {
     const endpoint = this.config.get('AWS_S3_ENDPOINT');
-    const forcePathStyle = this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
-    
+    const forcePathStyle =
+      this.config.get('AWS_S3_FORCE_PATH_STYLE') === 'true';
+
     // If custom endpoint is set, use it
     if (endpoint) {
       if (forcePathStyle) {
@@ -341,7 +423,7 @@ export class S3Service {
         return `${endpoint}/${key}`;
       }
     }
-    
+
     // Default AWS S3 URL format
     // Handle special cases for certain regions
     if (this.region === 'us-east-1') {
@@ -356,20 +438,227 @@ export class S3Service {
   /**
    * Generate presigned URL for reading files (expires in 1 hour by default)
    */
-  async generateReadPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
+  async generateReadPresignedUrl(
+    key: string,
+    expiresIn: number = 3600,
+  ): Promise<string> {
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
       });
 
-      const presignedUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
-      
-      this.logger.log(colors.blue(`🔗 Generated read presigned URL for: ${key}`));
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
+      this.logger.log(
+        colors.blue(`🔗 Generated read presigned URL for: ${key}`),
+      );
       return presignedUrl;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to generate read presigned URL: ${error.message}`));
-      throw new Error(`Failed to generate read presigned URL: ${error.message}`);
+      this.logger.error(
+        colors.red(
+          `❌ Failed to generate read presigned URL: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to generate read presigned URL: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Verify an uploaded object exists in S3 and return its metadata.
+   */
+  async headObject(
+    key: string,
+  ): Promise<{ contentLength: number; contentType?: string; etag?: string }> {
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      const res = await this.s3Client.send(command);
+      return {
+        contentLength: res.ContentLength ?? 0,
+        contentType: res.ContentType,
+        etag: res.ETag,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(`❌ HeadObject failed for key ${key}: ${error.message}`),
+      );
+      throw new Error(`S3 HeadObject failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate a presigned URL for direct client-to-S3 PUT upload.
+   * For files up to 5GB. The client PUTs the file body directly to this URL.
+   */
+  async generateUploadPresignedUrl(
+    key: string,
+    contentType: string,
+    expiresIn: number = 3600,
+  ): Promise<{ presignedUrl: string; key: string; bucket: string }> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ContentType: contentType,
+      });
+
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
+      this.logger.log(
+        colors.blue(`🔗 Generated upload presigned URL for: ${key}`),
+      );
+      return { presignedUrl, key, bucket: this.bucketName };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to generate upload presigned URL: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to generate upload presigned URL: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Initiate a multipart upload and return presigned URLs for each part.
+   * Useful for files >100MB where a single PUT may be unreliable.
+   */
+  async createMultipartPresignedUpload(
+    key: string,
+    contentType: string,
+    fileSizeBytes: number,
+    partSizeBytes: number = 10 * 1024 * 1024, // 10MB per part
+    expiresIn: number = 3600,
+  ): Promise<{
+    uploadId: string;
+    key: string;
+    bucket: string;
+    parts: { partNumber: number; presignedUrl: string }[];
+  }> {
+    try {
+      const createCommand = new CreateMultipartUploadCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ContentType: contentType,
+      });
+      const { UploadId } = await this.s3Client.send(createCommand);
+      if (!UploadId) {
+        throw new Error('Failed to obtain UploadId from S3');
+      }
+
+      const partCount = Math.ceil(fileSizeBytes / partSizeBytes);
+      const parts: { partNumber: number; presignedUrl: string }[] = [];
+
+      for (let i = 1; i <= partCount; i++) {
+        const uploadPartCommand = new UploadPartCommand({
+          Bucket: this.bucketName,
+          Key: key,
+          UploadId,
+          PartNumber: i,
+        });
+        const url = await getSignedUrl(this.s3Client, uploadPartCommand, {
+          expiresIn,
+        });
+        parts.push({ partNumber: i, presignedUrl: url });
+      }
+
+      this.logger.log(
+        colors.blue(
+          `🔗 Created multipart upload for ${key}: ${partCount} parts, uploadId=${UploadId}`,
+        ),
+      );
+
+      return {
+        uploadId: UploadId,
+        key,
+        bucket: this.bucketName,
+        parts,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to create multipart presigned upload: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to create multipart presigned upload: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Complete a multipart upload after the client has uploaded all parts.
+   */
+  async completeMultipartUpload(
+    key: string,
+    uploadId: string,
+    parts: { partNumber: number; etag: string }[],
+  ): Promise<{ url: string; key: string; bucket: string }> {
+    try {
+      // S3 requires parts in strictly ascending PartNumber order (parallel client uploads often finish out of order).
+      const sortedParts = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+
+      const command = new CompleteMultipartUploadCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: sortedParts.map((p) => ({
+            PartNumber: p.partNumber,
+            ETag: p.etag,
+          })),
+        },
+      });
+
+      await this.s3Client.send(command);
+      const url = this.getFileUrl(key);
+
+      this.logger.log(
+        colors.green(`✅ Multipart upload completed for: ${key}`),
+      );
+      return { url, key, bucket: this.bucketName };
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to complete multipart upload: ${error.message}`,
+        ),
+      );
+      throw new Error(
+        `Failed to complete multipart upload: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Abort a multipart upload (cleanup on client failure).
+   */
+  async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+    try {
+      const command = new AbortMultipartUploadCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        UploadId: uploadId,
+      });
+      await this.s3Client.send(command);
+      this.logger.log(
+        colors.yellow(`🗑️ Aborted multipart upload for: ${key}`),
+      );
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `❌ Failed to abort multipart upload: ${error.message}`,
+        ),
+      );
     }
   }
 
@@ -383,7 +672,7 @@ export class S3Service {
         Bucket: this.bucketName,
         Key: 'test-connection',
       });
-      
+
       // This will fail but confirms S3 client is working
       await this.s3Client.send(command);
       return true;
@@ -392,7 +681,9 @@ export class S3Service {
         // This is expected - means S3 client is working
         return true;
       }
-      this.logger.error(colors.red(`❌ S3 connection test failed: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ S3 connection test failed: ${error.message}`),
+      );
       return false;
     }
   }

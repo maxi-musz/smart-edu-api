@@ -38,22 +38,30 @@ export class SubjectService {
     private readonly auditService: AuditService,
   ) {}
 
-   ////////////////////////////////////////////////////////////////////////// FETCH ALL SUBJECT
+  ////////////////////////////////////////////////////////////////////////// FETCH ALL SUBJECT
   // GET -  /API/v1/director/subjects/fetch-all-subjects
   async fetchAllSubjects(
-    user: User, 
+    user: User,
     options: {
       page?: number;
       limit?: number;
       search?: string;
       classId?: string;
       groupByClass?: boolean;
-    } = {}
+    } = {},
   ) {
-    const { page = 1, limit = 10, search, classId, groupByClass = false } = options;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      classId,
+      groupByClass = false,
+    } = options;
     const skip = (page - 1) * limit;
 
-    this.logger.log(colors.cyan(`Fetching subjects for school: ${user.school_id}`));
+    this.logger.log(
+      colors.cyan(`Fetching subjects for school: ${user.school_id}`),
+    );
 
     // Build where clause
     const where: any = {
@@ -86,17 +94,17 @@ export class SubjectService {
             id: true,
             first_name: true,
             last_name: true,
-            email: true
-          }
+            email: true,
+          },
         },
         _count: {
           select: {
             students: true,
-            subjects: true
-          }
-        }
+            subjects: true,
+          },
+        },
       },
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
     });
 
     // If grouping by class, get all classes first
@@ -121,58 +129,59 @@ export class SubjectService {
                       id: true,
                       first_name: true,
                       last_name: true,
-                      email: true
-                    }
-                  }
-                }
-              }
+                      email: true,
+                    },
+                  },
+                },
+              },
             },
-            orderBy: { name: 'asc' }
-          }
+            orderBy: { name: 'asc' },
+          },
         },
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
       });
 
       // Format response grouped by class
-      const groupedSubjects = classes.map(cls => ({
+      const groupedSubjects = classes.map((cls) => ({
         classId: cls.id,
         className: cls.name,
         subjectsCount: cls.subjects.length,
-        subjects: cls.subjects.map(subject => ({
+        subjects: cls.subjects.map((subject) => ({
           id: subject.id,
           name: subject.name,
           code: subject.code,
           color: subject.color,
           description: subject.description,
-          teachers: subject.teacherSubjects.map(ts => ({
+          teachers: subject.teacherSubjects.map((ts) => ({
             id: ts.teacher.id,
             name: `${ts.teacher.first_name} ${ts.teacher.last_name}`,
-            email: ts.teacher.email
-          }))
-        }))
+            email: ts.teacher.email,
+          })),
+        })),
       }));
 
-      return new ApiResponse(
-        true,
-        `Found subjects grouped by class`,
-        {
-          groupedByClass: true,
-          classes: groupedSubjects,
-          totalClasses: classes.length,
-          totalSubjects: classes.reduce((sum, cls) => sum + cls.subjects.length, 0),
-          availableClasses: availableClasses.map(cls => ({
-            id: cls.id,
-            name: cls.name,
-            class_teacher: cls.classTeacher ? {
-              id: cls.classTeacher.id,
-              name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
-              email: cls.classTeacher.email
-            } : null,
-            student_count: cls._count.students,
-            subject_count: cls._count.subjects
-          }))
-        }
-      );
+      return new ApiResponse(true, `Found subjects grouped by class`, {
+        groupedByClass: true,
+        classes: groupedSubjects,
+        totalClasses: classes.length,
+        totalSubjects: classes.reduce(
+          (sum, cls) => sum + cls.subjects.length,
+          0,
+        ),
+        availableClasses: availableClasses.map((cls) => ({
+          id: cls.id,
+          name: cls.name,
+          class_teacher: cls.classTeacher
+            ? {
+                id: cls.classTeacher.id,
+                name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
+                email: cls.classTeacher.email,
+              }
+            : null,
+          student_count: cls._count.students,
+          subject_count: cls._count.subjects,
+        })),
+      });
     }
 
     // Regular paginated response
@@ -188,8 +197,8 @@ export class SubjectService {
           classId: true,
           Class: {
             select: {
-              name: true
-            }
+              name: true,
+            },
           },
           teacherSubjects: {
             select: {
@@ -198,11 +207,11 @@ export class SubjectService {
                   id: true,
                   first_name: true,
                   last_name: true,
-                  email: true
-                }
-              }
-            }
-          }
+                  email: true,
+                },
+              },
+            },
+          },
         },
         skip,
         take: limit,
@@ -210,61 +219,65 @@ export class SubjectService {
           name: 'asc',
         },
       }),
-      this.prisma.subject.count({ where })
+      this.prisma.subject.count({ where }),
     ]);
 
-    const formattedSubjects = subjects.map(subject => ({
+    const formattedSubjects = subjects.map((subject) => ({
       id: subject.id,
       name: subject.name,
       code: subject.code,
       color: subject.color,
       description: subject.description,
-      class: subject.Class ? {
-        id: subject.classId,
-        name: subject.Class.name
-      } : null,
-      teachers: subject.teacherSubjects.map(ts => ({
+      class: subject.Class
+        ? {
+            id: subject.classId,
+            name: subject.Class.name,
+          }
+        : null,
+      teachers: subject.teacherSubjects.map((ts) => ({
         id: ts.teacher.id,
         name: `${ts.teacher.first_name} ${ts.teacher.last_name}`,
-        email: ts.teacher.email
-      }))
+        email: ts.teacher.email,
+      })),
     }));
 
-    return new ApiResponse(
-      true,
-      `Found ${subjects.length} subjects`,
-      {
-        pagination: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-          hasNext: page < Math.ceil(total / limit),
-          hasPrev: page > 1
-        },
-        filters: {
-          search: search || null,
-          classId: classId || null
-        },
-        subjects: formattedSubjects,
-        availableClasses: availableClasses.map(cls => ({
-          id: cls.id,
-          name: cls.name,
-          class_teacher: cls.classTeacher ? {
-            id: cls.classTeacher.id,
-            name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
-            email: cls.classTeacher.email
-          } : null,
-          student_count: cls._count.students,
-          subject_count: cls._count.subjects
-        }))
-      }
-    );
+    return new ApiResponse(true, `Found ${subjects.length} subjects`, {
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+      filters: {
+        search: search || null,
+        classId: classId || null,
+      },
+      subjects: formattedSubjects,
+      availableClasses: availableClasses.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        class_teacher: cls.classTeacher
+          ? {
+              id: cls.classTeacher.id,
+              name: `${cls.classTeacher.first_name} ${cls.classTeacher.last_name}`,
+              email: cls.classTeacher.email,
+            }
+          : null,
+        student_count: cls._count.students,
+        subject_count: cls._count.subjects,
+      })),
+    });
   }
 
-   ////////////////////////////////////////////////////////////////////////// CREATE SUBJECT
+  ////////////////////////////////////////////////////////////////////////// CREATE SUBJECT
   // PUT -  /API/v1/
-  async createSubject(user: User | null, dto: CreateSubjectDto, options?: CreateSubjectOptions) {
+  async createSubject(
+    user: User | null,
+    dto: CreateSubjectDto,
+    options?: CreateSubjectOptions,
+  ) {
     this.logger.log(colors.cyan(`Creating new subject: ${dto.subject_name}`));
 
     const subjectName = dto.subject_name.toLowerCase();
@@ -277,11 +290,7 @@ export class SubjectService {
 
     if (!existingSchool) {
       this.logger.error('School not found');
-      return new ApiResponse(
-        false,
-        'School does not exist',
-        null,
-      );
+      return new ApiResponse(false, 'School does not exist', null);
     }
 
     // Check if subject with same code already exists in the school
@@ -294,17 +303,19 @@ export class SubjectService {
       });
 
       if (existingSubject) {
-        this.logger.error(`A subject with the code ${dto.code} already exists in this school`);
+        this.logger.error(
+          `A subject with the code ${dto.code} already exists in this school`,
+        );
         return new ApiResponse(
           false,
           `Subject with code ${dto.code} already exists in this school`,
-          null
+          null,
         );
       }
     }
 
     // If class is specified, verify it exists
-    console.log("class: ", dto.class_taking_it);
+    console.log('class: ', dto.class_taking_it);
     if (dto.class_taking_it) {
       const classExists = await this.prisma.class.findFirst({
         where: {
@@ -314,12 +325,10 @@ export class SubjectService {
       });
 
       if (!classExists) {
-        this.logger.error(`The specified class does not exist or does not belong to this school`);
-        return new ApiResponse(
-          false,
-          'Specified class not found',
-          null
+        this.logger.error(
+          `The specified class does not exist or does not belong to this school`,
         );
+        return new ApiResponse(false, 'Specified class not found', null);
       }
     }
 
@@ -334,22 +343,25 @@ export class SubjectService {
       });
 
       if (!teacherExists) {
-        this.logger.error(`The specified teacher does not exist or does not belong to this school`);
+        this.logger.error(
+          `The specified teacher does not exist or does not belong to this school`,
+        );
         return new ApiResponse(
           false,
           'Specified teacher not found or is not a teacher',
-          null
+          null,
         );
       }
     }
 
     // Get current academic session for the school
-    const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+    const currentSessionResponse =
+      await this.academicSessionService.getCurrentSession(existingSchool.id);
     if (!currentSessionResponse.success) {
       return new ApiResponse(
         false,
         'No current academic session found for the school',
-        null
+        null,
       );
     }
 
@@ -367,7 +379,9 @@ export class SubjectService {
 
     // If teacher is specified, create the teacher-subject relationship
     if (dto.teacher_taking_it) {
-      this.logger.log(`Creating teacher-subject relationship: ${dto.teacher_taking_it} for subject: ${subject.id}`);
+      this.logger.log(
+        `Creating teacher-subject relationship: ${dto.teacher_taking_it} for subject: ${subject.id}`,
+      );
       await this.prisma.teacherSubject.create({
         data: {
           teacherId: dto.teacher_taking_it,
@@ -383,8 +397,8 @@ export class SubjectService {
           select: {
             first_name: true,
             last_name: true,
-            email: true
-          }
+            email: true,
+          },
         });
 
         if (teacher) {
@@ -393,13 +407,21 @@ export class SubjectService {
             teacherEmail: teacher.email,
             schoolName: existingSchool.school_name,
             subjects: [subjectName],
-            assignedBy: 'School Administrator'
+            assignedBy: 'School Administrator',
           });
 
-          this.logger.log(colors.green(`✅ Subject assignment email sent to teacher: ${teacher.email}`));
+          this.logger.log(
+            colors.green(
+              `✅ Subject assignment email sent to teacher: ${teacher.email}`,
+            ),
+          );
         }
       } catch (emailError) {
-        this.logger.error(colors.red(`❌ Failed to send subject assignment email: ${emailError.message}`));
+        this.logger.error(
+          colors.red(
+            `❌ Failed to send subject assignment email: ${emailError.message}`,
+          ),
+        );
         // Don't fail the entire operation if email fails
       }
     }
@@ -409,7 +431,10 @@ export class SubjectService {
         auditForType: AuditForType.create_subject,
         targetId: existingSchool.id,
         performedById: options.performedBy.id,
-        performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+        performedByType:
+          options.performedBy.type === 'library_user'
+            ? AuditPerformedByType.library_user
+            : AuditPerformedByType.school_user,
         metadata: { subjectId: subject.id },
       });
     }
@@ -417,13 +442,18 @@ export class SubjectService {
     return new ApiResponse(
       true,
       `Subject ${subjectName} created successfully`,
-      subject
+      subject,
     );
   }
 
   ////////////////////////////////////////////////////////////////////////// EDIT SUBJECT
   // PATCH - /api/v1/director/subjects/:id
-  async editSubject(user: User | null, subjectId: string, dto: EditSubjectDto, options?: EditSubjectOptions) {
+  async editSubject(
+    user: User | null,
+    subjectId: string,
+    dto: EditSubjectDto,
+    options?: EditSubjectOptions,
+  ) {
     this.logger.log(colors.cyan(`Editing subject: ${subjectId}`));
 
     const schoolId = options?.schoolId || user?.school_id;
@@ -433,11 +463,7 @@ export class SubjectService {
 
     if (!existingSchool) {
       this.logger.error('School not found');
-      return new ApiResponse(
-        false,
-        'School does not exist',
-        null,
-      );
+      return new ApiResponse(false, 'School does not exist', null);
     }
 
     // Check if subject exists and belongs to the school
@@ -450,11 +476,7 @@ export class SubjectService {
 
     if (!existingSubject) {
       this.logger.error(colors.red('Subject not found'));
-      return new ApiResponse(
-        false,
-        'Subject not found',
-        null
-      );
+      return new ApiResponse(false, 'Subject not found', null);
     }
 
     // Build update data object - only include fields that are provided
@@ -486,7 +508,7 @@ export class SubjectService {
           return new ApiResponse(
             false,
             `Subject with code ${dto.code} already exists in this school`,
-            null
+            null,
           );
         }
       }
@@ -509,17 +531,15 @@ export class SubjectService {
       });
 
       if (!classExists) {
-        return new ApiResponse(
-          false,
-          'Specified class not found',
-          null
-        );
+        return new ApiResponse(false, 'Specified class not found', null);
       }
       updateData.classId = dto.class_taking_it;
     }
 
     // Update the subject
-    this.logger.log(colors.blue(`Updating subject with data: ${JSON.stringify(updateData)}`));
+    this.logger.log(
+      colors.blue(`Updating subject with data: ${JSON.stringify(updateData)}`),
+    );
     const updatedSubject = await this.prisma.subject.update({
       where: { id: subjectId },
       data: updateData,
@@ -538,14 +558,24 @@ export class SubjectService {
         },
       },
     });
-    this.logger.log(colors.green(`Subject updated successfully: ${updatedSubject.name}`));
+    this.logger.log(
+      colors.green(`Subject updated successfully: ${updatedSubject.name}`),
+    );
 
     // Handle teacher assignments if provided
     if (dto.teachers_taking_it !== undefined) {
-      this.logger.log(colors.blue(`Handling teacher assignments: ${JSON.stringify(dto.teachers_taking_it)}`));
+      this.logger.log(
+        colors.blue(
+          `Handling teacher assignments: ${JSON.stringify(dto.teachers_taking_it)}`,
+        ),
+      );
       // Verify all teachers exist and are teachers
       if (dto.teachers_taking_it.length > 0) {
-        this.logger.log(colors.blue(`Validating teachers: ${dto.teachers_taking_it.join(', ')}`));
+        this.logger.log(
+          colors.blue(
+            `Validating teachers: ${dto.teachers_taking_it.join(', ')}`,
+          ),
+        );
         const teachers = await this.prisma.teacher.findMany({
           where: {
             id: { in: dto.teachers_taking_it },
@@ -558,26 +588,32 @@ export class SubjectService {
             last_name: true,
           },
         });
-        this.logger.log(colors.green(`Found ${teachers.length} valid teachers`));
+        this.logger.log(
+          colors.green(`Found ${teachers.length} valid teachers`),
+        );
 
         if (teachers.length !== dto.teachers_taking_it.length) {
           return new ApiResponse(
             false,
             'One or more specified teachers not found or are not teachers in this school',
-            null
+            null,
           );
         }
 
         // Remove existing teacher-subject relationships
-        this.logger.log(colors.blue(`Removing existing teacher-subject relationships`));
+        this.logger.log(
+          colors.blue(`Removing existing teacher-subject relationships`),
+        );
         await this.prisma.teacherSubject.deleteMany({
           where: { subjectId },
         });
         this.logger.log(colors.green(`Removed existing relationships`));
 
         // Create new teacher-subject relationships
-        this.logger.log(colors.blue(`Creating new teacher-subject relationships`));
-        const teacherSubjectData = dto.teachers_taking_it.map(teacherId => ({
+        this.logger.log(
+          colors.blue(`Creating new teacher-subject relationships`),
+        );
+        const teacherSubjectData = dto.teachers_taking_it.map((teacherId) => ({
           teacherId,
           subjectId,
         }));
@@ -585,7 +621,11 @@ export class SubjectService {
         await this.prisma.teacherSubject.createMany({
           data: teacherSubjectData,
         });
-        this.logger.log(colors.green(`Created ${teacherSubjectData.length} new relationships`));
+        this.logger.log(
+          colors.green(
+            `Created ${teacherSubjectData.length} new relationships`,
+          ),
+        );
       } else {
         // If empty array, remove all teacher assignments
         await this.prisma.teacherSubject.deleteMany({
@@ -625,28 +665,29 @@ export class SubjectService {
       },
     });
 
-    this.logger.log(colors.green(`Subject ${existingSubject.name} updated successfully`));
+    this.logger.log(
+      colors.green(`Subject ${existingSubject.name} updated successfully`),
+    );
 
     if (options?.performedBy) {
       await this.auditService.log({
         auditForType: AuditForType.update_subject,
         targetId: existingSchool.id,
         performedById: options.performedBy.id,
-        performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
+        performedByType:
+          options.performedBy.type === 'library_user'
+            ? AuditPerformedByType.library_user
+            : AuditPerformedByType.school_user,
         metadata: { subjectId },
       });
     }
 
-    const response = new ApiResponse(
-      true,
-      `Subject updated successfully`,
-      {
-        subject: finalSubject,
-        updatedFields: Object.keys(updateData),
-        teachersAssigned: finalSubject?.teacherSubjects?.length || 0,
-      }
-    );
-    
+    const response = new ApiResponse(true, `Subject updated successfully`, {
+      subject: finalSubject,
+      updatedFields: Object.keys(updateData),
+      teachersAssigned: finalSubject?.teacherSubjects?.length || 0,
+    });
+
     this.logger.log(colors.green(`Returning response for subject edit`));
     return response;
   }
@@ -654,32 +695,33 @@ export class SubjectService {
   ////////////////////////////////////////////////////////////////////////// FETCH AVAILABLE TEACHERS AND CLASSES
   // GET - /api/v1/director/subjects/available-teachers-classes
   async fetchAvailableTeachersAndClasses(user: User) {
-    this.logger.log(colors.cyan(`Fetching available teachers and classes for school: ${user.school_id}`));
+    this.logger.log(
+      colors.cyan(
+        `Fetching available teachers and classes for school: ${user.school_id}`,
+      ),
+    );
 
     try {
       // Get available teachers
       const availableTeachers = await this.prisma.teacher.findMany({
         where: {
           school_id: user.school_id,
-          status: 'active'
+          status: 'active',
         },
         select: {
           id: true,
           first_name: true,
           last_name: true,
           display_picture: true,
-          email: true
+          email: true,
         },
-        orderBy: [
-          { first_name: 'asc' },
-          { last_name: 'asc' }
-        ]
+        orderBy: [{ first_name: 'asc' }, { last_name: 'asc' }],
       });
 
       // Get available classes
       const availableClasses = await this.prisma.class.findMany({
         where: {
-          schoolId: user.school_id
+          schoolId: user.school_id,
         },
         select: {
           id: true,
@@ -690,43 +732,50 @@ export class SubjectService {
               id: true,
               first_name: true,
               last_name: true,
-              email: true
-            }
+              email: true,
+            },
           },
           _count: {
             select: {
               students: true,
-              subjects: true
-            }
-          }
+              subjects: true,
+            },
+          },
         },
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
       });
 
-      this.logger.log(colors.green(`Successfully fetched ${availableTeachers.length} teachers and ${availableClasses.length} classes`));
+      this.logger.log(
+        colors.green(
+          `Successfully fetched ${availableTeachers.length} teachers and ${availableClasses.length} classes`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Available teachers and classes fetched successfully',
         {
-          teachers: availableTeachers.map(teacher => ({
+          teachers: availableTeachers.map((teacher) => ({
             id: teacher.id,
             name: `${teacher.first_name} ${teacher.last_name}`,
-            display_picture: teacher.display_picture
+            display_picture: teacher.display_picture,
           })),
-          classes: availableClasses.map(cls => ({
+          classes: availableClasses.map((cls) => ({
             id: cls.id,
-            name: cls.name
-          }))
-        }
+            name: cls.name,
+          })),
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching available teachers and classes: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `Error fetching available teachers and classes: ${error.message}`,
+        ),
+      );
       return new ApiResponse(
         false,
         'Failed to fetch available teachers and classes',
-        null
+        null,
       );
     }
   }

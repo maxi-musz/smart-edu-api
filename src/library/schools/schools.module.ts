@@ -29,4 +29,3 @@ import { LibrarySchoolResultsService } from './results/library-school-results.se
   exports: [SchoolsService],
 })
 export class SchoolsModule {}
-

@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsBoolean, IsArray, ArrayMinSize } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  MaxLength,
+  IsBoolean,
+  IsArray,
+  ArrayMinSize,
+} from 'class-validator';
 
 export class CreateGeneralMaterialDto {
   @ApiProperty({
@@ -48,7 +56,8 @@ export class CreateGeneralMaterialDto {
   publisher?: string;
 
   @ApiPropertyOptional({
-    description: 'Array of library class IDs to link this material to (one PDF can be linked to multiple classes)',
+    description:
+      'Array of library class IDs to link this material to (one PDF can be linked to multiple classes)',
     example: ['class_123', 'class_456'],
     type: [String],
   })

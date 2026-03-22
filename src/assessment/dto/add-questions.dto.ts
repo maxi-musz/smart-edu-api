@@ -54,14 +54,16 @@ export class QuestionOptionDto {
   image_url?: string;
 
   @ApiPropertyOptional({
-    description: 'S3 key for the option image (auto-populated by with-image endpoint)',
+    description:
+      'S3 key for the option image (auto-populated by with-image endpoint)',
   })
   @IsOptional()
   @IsString()
   image_s3_key?: string;
 
   @ApiPropertyOptional({
-    description: 'Index into the optionImages array (used with POST /questions/with-image endpoint to match uploaded images to options)',
+    description:
+      'Index into the optionImages array (used with POST /questions/with-image endpoint to match uploaded images to options)',
     example: 0,
   })
   @IsOptional()
@@ -130,9 +132,18 @@ export class QuestionDto {
     description: 'The type of question',
     example: 'MULTIPLE_CHOICE_SINGLE',
     enum: [
-      'MULTIPLE_CHOICE_SINGLE', 'MULTIPLE_CHOICE_MULTIPLE', 'SHORT_ANSWER',
-      'LONG_ANSWER', 'TRUE_FALSE', 'FILL_IN_BLANK', 'MATCHING', 'ORDERING',
-      'FILE_UPLOAD', 'NUMERIC', 'DATE', 'RATING_SCALE',
+      'MULTIPLE_CHOICE_SINGLE',
+      'MULTIPLE_CHOICE_MULTIPLE',
+      'SHORT_ANSWER',
+      'LONG_ANSWER',
+      'TRUE_FALSE',
+      'FILL_IN_BLANK',
+      'MATCHING',
+      'ORDERING',
+      'FILE_UPLOAD',
+      'NUMERIC',
+      'DATE',
+      'RATING_SCALE',
     ],
   })
   @IsString()
@@ -140,7 +151,8 @@ export class QuestionDto {
   question_type: string;
 
   @ApiPropertyOptional({
-    description: 'Display order of the question (auto-assigned if not provided)',
+    description:
+      'Display order of the question (auto-assigned if not provided)',
     example: 1,
   })
   @IsOptional()
@@ -301,7 +313,8 @@ export class QuestionDto {
   // ========================================
 
   @ApiPropertyOptional({
-    description: 'Correct answers for non-MCQ question types (fill-in-blank, numeric, date, etc.)',
+    description:
+      'Correct answers for non-MCQ question types (fill-in-blank, numeric, date, etc.)',
     type: [CorrectAnswerDto],
   })
   @IsOptional()
@@ -313,7 +326,7 @@ export class QuestionDto {
 
 /**
  * DTO for adding questions to an assessment
- * 
+ *
  * Supports adding one or multiple questions at once.
  * Each question can include its options and correct answers.
  */

@@ -1937,6 +1937,77 @@ enum HlsTranscodeStatus {
   failed
 }
 
+/// Persistent upload session for direct-to-S3 presigned uploads.
+/// Survives server restarts, page refreshes, and logout/login.
+/// Enables background uploads, progress tracking, and resume-on-failure.
+model DirectUpload {
+  id String @id @default(cuid())
+
+  // Who
+  userId   String
+  userType DirectUploadUserType // library_user or school_user
+
+  // Where (context)
+  platformId String? // library platform ID (for library users)
+  schoolId   String? // school ID (for school/teacher users)
+  subjectId  String
+  topicId    String
+
+  // Video metadata
+  title       String
+  description String?
+  fileName    String
+  contentType String  @default("video/mp4")
+  fileSize    BigInt  // expected file size in bytes (BigInt for files > 2GB)
+
+  // S3 state
+  s3Key             String
+  uploadType        DirectUploadType @default(single)
+  multipartUploadId String? // S3 multipart upload ID (for multipart uploads)
+
+  // Thumbnail
+  thumbnailS3Key String?
+
+  // Status tracking
+  status   DirectUploadStatus @default(pending)
+  progress Int                @default(0) // 0-100
+  error    String?
+
+  // Result: the ID of the created video record after confirmation
+  videoId String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // when the presigned URL(s) expire
+
+  @@index([userId, status])
+  @@index([userId, userType, createdAt])
+  @@index([platformId, status])
+  @@index([schoolId, status])
+}
+
+enum DirectUploadUserType {
+  library_user
+  school_user
+}
+
+enum DirectUploadType {
+  single
+  multipart
+}
+
+enum DirectUploadStatus {
+  pending // presigned URL generated, waiting for client to start uploading
+  uploading // client reported upload in progress
+  uploaded // client finished S3 upload, awaiting confirm call
+  processing // confirmed, HLS transcoding in progress
+  completed // fully done - video record created and HLS done or queued
+  failed // something went wrong (error field has details)
+  expired // presigned URL expired without upload
+  cancelled // user cancelled
+}
+
 enum ChapterStatus {
   active
   deleted
@@ -2453,8 +2524,8 @@ model LibraryVideoLesson {
   hlsStatus      HlsTranscodeStatus? // Transcode status: pending, processing, completed, failed
 
   durationSeconds Int?
-  sizeBytes       Int?
-  views           Int  @default(0)
+  sizeBytes       BigInt? // BigInt for files > 2GB
+  views           Int     @default(0)
 
   status LibraryContentStatus @default(published)
   order  Int                  @default(1)

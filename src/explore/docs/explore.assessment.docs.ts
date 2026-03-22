@@ -119,7 +119,7 @@ export class ExploreAssessmentDocs {
       }),
       ApiResponse({
         status: 403,
-        description: 'Forbidden - Cannot view other users\' attempts',
+        description: "Forbidden - Cannot view other users' attempts",
       }),
       ApiResponse({
         status: 404,
@@ -128,4 +128,3 @@ export class ExploreAssessmentDocs {
     );
   }
 }
-

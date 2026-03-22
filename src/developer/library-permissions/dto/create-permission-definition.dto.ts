@@ -3,7 +3,8 @@ import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 
 export class CreatePermissionDefinitionDto {
   @ApiProperty({
-    description: 'Unique permission code (e.g. upload_video, manage_library_users, view_analytics)',
+    description:
+      'Unique permission code (e.g. upload_video, manage_library_users, view_analytics)',
     example: 'manage_library_users',
   })
   @IsString()

@@ -15,4 +15,3 @@ import { ExamBodyModule } from './exam-body/exam-body.module';
   ],
 })
 export class DeveloperModule {}
-

@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExamBodyYearDto, UpdateExamBodyYearDto } from './dto';
 import { ResponseHelper } from '../../shared/helper-functions/response.helpers';
@@ -11,9 +16,15 @@ export class ExamBodyYearService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(examBodyId: string, createDto: CreateExamBodyYearDto) {
-    this.logger.log(colors.cyan(`📝 Creating year: ${createDto.year} for exam body: ${examBodyId}`));
+    this.logger.log(
+      colors.cyan(
+        `📝 Creating year: ${createDto.year} for exam body: ${examBodyId}`,
+      ),
+    );
 
-    const examBody = await this.prisma.examBody.findUnique({ where: { id: examBodyId } });
+    const examBody = await this.prisma.examBody.findUnique({
+      where: { id: examBodyId },
+    });
     if (!examBody) {
       throw new NotFoundException('Exam body not found');
     }
@@ -23,7 +34,9 @@ export class ExamBodyYearService {
     });
 
     if (existing) {
-      throw new ConflictException(`Year "${createDto.year}" already exists for this exam body`);
+      throw new ConflictException(
+        `Year "${createDto.year}" already exists for this exam body`,
+      );
     }
 
     // Auto-calculate order if not provided
@@ -52,7 +65,9 @@ export class ExamBodyYearService {
   }
 
   async findAll(examBodyId: string) {
-    this.logger.log(colors.cyan(`📚 Fetching years for exam body: ${examBodyId}`));
+    this.logger.log(
+      colors.cyan(`📚 Fetching years for exam body: ${examBodyId}`),
+    );
 
     const years = await this.prisma.examBodyYear.findMany({
       where: { examBodyId },
@@ -86,14 +101,20 @@ export class ExamBodyYearService {
   async update(id: string, updateDto: UpdateExamBodyYearDto) {
     this.logger.log(colors.cyan(`📝 Updating year: ${id}`));
 
-    const existing = await this.prisma.examBodyYear.findUnique({ where: { id } });
+    const existing = await this.prisma.examBodyYear.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Year not found');
     }
 
     if (updateDto.year) {
       const conflict = await this.prisma.examBodyYear.findFirst({
-        where: { examBodyId: existing.examBodyId, year: updateDto.year, id: { not: id } },
+        where: {
+          examBodyId: existing.examBodyId,
+          year: updateDto.year,
+          id: { not: id },
+        },
       });
       if (conflict) {
         throw new ConflictException(`Year "${updateDto.year}" already exists`);
@@ -104,7 +125,9 @@ export class ExamBodyYearService {
       where: { id },
       data: {
         ...updateDto,
-        startDate: updateDto.startDate ? new Date(updateDto.startDate) : undefined,
+        startDate: updateDto.startDate
+          ? new Date(updateDto.startDate)
+          : undefined,
         endDate: updateDto.endDate ? new Date(updateDto.endDate) : undefined,
       },
       include: { examBody: true },
@@ -126,4 +149,3 @@ export class ExamBodyYearService {
     return ResponseHelper.success('Year deleted successfully', { id });
   }
 }
-

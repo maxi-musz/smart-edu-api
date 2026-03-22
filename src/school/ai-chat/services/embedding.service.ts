@@ -36,12 +36,14 @@ export class EmbeddingService {
    */
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
     const startTime = Date.now();
-    this.logger.log(colors.blue(`🧠 Generating embedding for text (${text.length} chars)...`));
+    this.logger.log(
+      colors.blue(`🧠 Generating embedding for text (${text.length} chars)...`),
+    );
 
     try {
       // Truncate text if too long
       const truncatedText = this.truncateText(text);
-      
+
       const response = await this.openai.embeddings.create({
         model: this.embeddingModel,
         input: truncatedText,
@@ -62,7 +64,9 @@ export class EmbeddingService {
         processingTime,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error generating embedding: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error generating embedding: ${error.message}`),
+      );
       throw new Error(`Failed to generate embedding: ${error.message}`);
     }
   }
@@ -70,9 +74,15 @@ export class EmbeddingService {
   /**
    * Generate embeddings for multiple text chunks in batches
    */
-  async generateBatchEmbeddings(texts: string[]): Promise<BatchEmbeddingResult> {
+  async generateBatchEmbeddings(
+    texts: string[],
+  ): Promise<BatchEmbeddingResult> {
     const startTime = Date.now();
-    this.logger.log(colors.blue(`🧠 Generating batch embeddings for ${texts.length} texts...`));
+    this.logger.log(
+      colors.blue(
+        `🧠 Generating batch embeddings for ${texts.length} texts...`,
+      ),
+    );
 
     const results: EmbeddingResult[] = [];
     let totalTokens = 0;
@@ -83,7 +93,11 @@ export class EmbeddingService {
       // Process texts in batches
       for (let i = 0; i < texts.length; i += this.batchSize) {
         const batch = texts.slice(i, i + this.batchSize);
-        this.logger.log(colors.blue(`   Processing batch ${Math.floor(i / this.batchSize) + 1}/${Math.ceil(texts.length / this.batchSize)}`));
+        this.logger.log(
+          colors.blue(
+            `   Processing batch ${Math.floor(i / this.batchSize) + 1}/${Math.ceil(texts.length / this.batchSize)}`,
+          ),
+        );
 
         try {
           const batchResults = await this.processBatch(batch);
@@ -92,7 +106,9 @@ export class EmbeddingService {
           successCount += batchResults.successCount;
           failureCount += batchResults.failureCount;
         } catch (error) {
-          this.logger.error(colors.red(`❌ Error processing batch: ${error.message}`));
+          this.logger.error(
+            colors.red(`❌ Error processing batch: ${error.message}`),
+          );
           failureCount += batch.length;
         }
       }
@@ -113,7 +129,9 @@ export class EmbeddingService {
         failureCount,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error in batch embedding generation: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error in batch embedding generation: ${error.message}`),
+      );
       throw new Error(`Failed to generate batch embeddings: ${error.message}`);
     }
   }
@@ -130,8 +148,8 @@ export class EmbeddingService {
 
     try {
       // Truncate texts and prepare for batch processing
-      const truncatedTexts = texts.map(text => this.truncateText(text));
-      
+      const truncatedTexts = texts.map((text) => this.truncateText(text));
+
       const response = await this.openai.embeddings.create({
         model: this.embeddingModel,
         input: truncatedTexts,
@@ -151,11 +169,13 @@ export class EmbeddingService {
             model: this.embeddingModel,
             processingTime: processingTime / texts.length, // Approximate per-text processing time
           };
-          
+
           embeddings.push(embedding);
           successCount++;
         } catch (error) {
-          this.logger.error(colors.red(`❌ Error processing embedding ${i}: ${error.message}`));
+          this.logger.error(
+            colors.red(`❌ Error processing embedding ${i}: ${error.message}`),
+          );
           failureCount++;
         }
       }
@@ -168,7 +188,9 @@ export class EmbeddingService {
         failureCount,
       };
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error in batch processing: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error in batch processing: ${error.message}`),
+      );
       failureCount = texts.length;
       throw error;
     }
@@ -179,14 +201,14 @@ export class EmbeddingService {
    */
   private truncateText(text: string): string {
     if (!text) return '';
-    
+
     // Rough estimation: 1 token ≈ 4 characters
     const maxChars = this.maxTokensPerRequest * 4;
-    
+
     if (text.length <= maxChars) {
       return text;
     }
-    
+
     // Truncate and add ellipsis
     return text.substring(0, maxChars - 3) + '...';
   }
@@ -210,7 +232,7 @@ export class EmbeddingService {
     }
 
     const magnitude = Math.sqrt(norm1) * Math.sqrt(norm2);
-    
+
     if (magnitude === 0) {
       return 0;
     }
@@ -224,9 +246,9 @@ export class EmbeddingService {
   findSimilarChunks(
     queryEmbedding: number[],
     chunkEmbeddings: { id: string; embedding: number[] }[],
-    topK: number = 5
+    topK: number = 5,
   ): { id: string; similarity: number }[] {
-    const similarities = chunkEmbeddings.map(chunk => ({
+    const similarities = chunkEmbeddings.map((chunk) => ({
       id: chunk.id,
       similarity: this.calculateSimilarity(queryEmbedding, chunk.embedding),
     }));
@@ -240,25 +262,29 @@ export class EmbeddingService {
   /**
    * Validate embedding quality
    */
-  validateEmbedding(embedding: number[]): { isValid: boolean; issues: string[] } {
+  validateEmbedding(embedding: number[]): {
+    isValid: boolean;
+    issues: string[];
+  } {
     const issues: string[] = [];
 
     if (!embedding || embedding.length === 0) {
       issues.push('Embedding is empty or null');
     }
 
-    if (embedding.length !== 1536) { // text-embedding-3-small dimension
+    if (embedding.length !== 1536) {
+      // text-embedding-3-small dimension
       issues.push(`Expected embedding dimension 1536, got ${embedding.length}`);
     }
 
     // Check for NaN or infinite values
-    const hasInvalidValues = embedding.some(value => !isFinite(value));
+    const hasInvalidValues = embedding.some((value) => !isFinite(value));
     if (hasInvalidValues) {
       issues.push('Embedding contains NaN or infinite values');
     }
 
     // Check if all values are zero (might indicate an error)
-    const allZero = embedding.every(value => value === 0);
+    const allZero = embedding.every((value) => value === 0);
     if (allZero) {
       issues.push('Embedding contains only zeros');
     }
@@ -267,7 +293,9 @@ export class EmbeddingService {
 
     if (!isValid) {
       this.logger.warn(colors.yellow(`⚠️ Embedding validation issues:`));
-      issues.forEach(issue => this.logger.warn(colors.yellow(`   - ${issue}`)));
+      issues.forEach((issue) =>
+        this.logger.warn(colors.yellow(`   - ${issue}`)),
+      );
     }
 
     return { isValid, issues };

@@ -1,6 +1,23 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Logger, ValidationPipe, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Logger,
+  ValidationPipe,
+  Patch,
+} from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
-import { CreateTimetableDTO, getTimeTableDTO, TimeSlotDTO, UpdateTimeSlotDTO } from 'src/shared/dto/schedules.dto';
+import {
+  CreateTimetableDTO,
+  getTimeTableDTO,
+  TimeSlotDTO,
+  UpdateTimeSlotDTO,
+} from 'src/shared/dto/schedules.dto';
 import { User } from '@prisma/client';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
@@ -33,7 +50,7 @@ export class SchedulesController {
   @CreateTimeSlotDocs.response401
   async createTimeSlot(
     @GetUser() user: User,
-    @Body(ValidationPipe) dto: TimeSlotDTO
+    @Body(ValidationPipe) dto: TimeSlotDTO,
   ) {
     return this.schedulesService.createTimeSlot(user, dto);
   }
@@ -67,7 +84,7 @@ export class SchedulesController {
   async updateTimeSlot(
     @GetUser() user: User,
     @Param('id') id: string,
-    @Body(ValidationPipe) dto: UpdateTimeSlotDTO
+    @Body(ValidationPipe) dto: UpdateTimeSlotDTO,
   ) {
     return this.schedulesService.updateTimeSlot(user, id, dto);
   }
@@ -79,10 +96,7 @@ export class SchedulesController {
   @DeleteTimeSlotDocs.response200
   @DeleteTimeSlotDocs.response401
   @DeleteTimeSlotDocs.response404
-  async deleteTimeSlot(
-    @GetUser() user: User,
-    @Param('id') id: string
-  ) {
+  async deleteTimeSlot(@GetUser() user: User, @Param('id') id: string) {
     return this.schedulesService.deleteTimeSlot(user, id);
   }
 
@@ -91,19 +105,22 @@ export class SchedulesController {
   @GetTimetableSchedulesDocs.operation
   @GetTimetableSchedulesDocs.response200
   @GetTimetableSchedulesDocs.response400
-  async getTimetableSchedules(@GetUser() user: User, @Body(ValidationPipe) dto: getTimeTableDTO) {
+  async getTimetableSchedules(
+    @GetUser() user: User,
+    @Body(ValidationPipe) dto: getTimeTableDTO,
+  ) {
     return this.schedulesService.getTimetable(dto, user);
   }
 
-  @Post("create-timetable")
+  @Post('create-timetable')
   @ApiBearerAuth('JWT-auth')
   @CreateTimetableDocs.operation
   @CreateTimetableDocs.response201
   @CreateTimetableDocs.response400
   @CreateTimetableDocs.response401
   async addScheduleToTimetable(
-    @GetUser() user: User, 
-    @Body(ValidationPipe) dto: CreateTimetableDTO
+    @GetUser() user: User,
+    @Body(ValidationPipe) dto: CreateTimetableDTO,
   ) {
     return this.schedulesService.addScheduleToTimetable(dto, user);
   }

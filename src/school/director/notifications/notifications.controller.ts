@@ -1,5 +1,18 @@
-import { Controller, UseGuards, Post, Body, Req, Get, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  UseGuards,
+  Post,
+  Body,
+  Req,
+  Get,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { JwtGuard } from 'src/school/auth/guard/jwt.guard';
 import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
@@ -13,9 +26,7 @@ import { User } from '@prisma/client';
 @UseGuards(JwtGuard)
 @Controller('director/notifications')
 export class NotificationsController {
-  constructor(
-    private readonly notificationsService: NotificationsService
-  ) {}
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   // Create notification
   @Post()
@@ -24,7 +35,7 @@ export class NotificationsController {
   @ApiResponse(NotificationsDocs.createNotificationResponse400)
   async createNotification(
     @Body() dto: CreateNotificationDto,
-    @Req() req: { user: User }
+    @Req() req: { user: User },
   ) {
     return this.notificationsService.createNotification(req.user, dto);
   }
@@ -35,7 +46,7 @@ export class NotificationsController {
   @ApiResponse(NotificationsDocs.getAllNotificationsResponse200)
   async getAllNotifications(
     @Query() query: QueryNotificationsDto,
-    @Req() req: { user: User }
+    @Req() req: { user: User },
   ) {
     return this.notificationsService.getAllNotifications(req.user, query);
   }

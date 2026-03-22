@@ -1,27 +1,34 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNumber, IsEnum, IsOptional, IsPositive, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsEnum,
+  IsOptional,
+  IsPositive,
+  IsObject,
+} from 'class-validator';
 
 export enum PaymentType {
   FULL = 'full',
-  PARTIAL = 'partial'
+  PARTIAL = 'partial',
 }
 
 export enum TransactionType {
   CREDIT = 'credit',
-  DEBIT = 'debit'
+  DEBIT = 'debit',
 }
 
 export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Student ID',
-    example: 'student-uuid-123'
+    example: 'student-uuid-123',
   })
   @IsString()
   student_id: string;
 
   @ApiProperty({
     description: 'Class ID',
-    example: 'class-uuid-456'
+    example: 'class-uuid-456',
   })
   @IsString()
   class_id: string;
@@ -29,7 +36,7 @@ export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Payment amount in Naira',
     example: 50000,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsPositive()
@@ -38,7 +45,7 @@ export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Purpose of payment',
     example: 'Tuition Fee',
-    enum: ['Tuition Fee', 'Exam Fee', 'Library Fee', 'Transport Fee', 'Other']
+    enum: ['Tuition Fee', 'Exam Fee', 'Library Fee', 'Transport Fee', 'Other'],
   })
   @IsString()
   payment_for: string;
@@ -46,7 +53,7 @@ export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Type of payment',
     example: 'full',
-    enum: PaymentType
+    enum: PaymentType,
   })
   @IsEnum(PaymentType)
   payment_type: PaymentType;
@@ -54,7 +61,7 @@ export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Transaction type',
     example: 'credit',
-    enum: TransactionType
+    enum: TransactionType,
   })
   @IsEnum(TransactionType)
   transaction_type: TransactionType;
@@ -62,7 +69,7 @@ export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Payment reference (optional)',
     example: 'PAY-2024-001',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsString()
@@ -71,7 +78,7 @@ export class ProcessPaymentDto {
   @ApiProperty({
     description: 'Additional payment metadata',
     example: { term: 'first', academic_year: '2024/2025' },
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsObject()
@@ -81,7 +88,7 @@ export class ProcessPaymentDto {
 export class PaymentHistoryDto {
   @ApiProperty({
     description: 'Student ID',
-    example: 'student-uuid-123'
+    example: 'student-uuid-123',
   })
   @IsString()
   student_id: string;
@@ -89,7 +96,7 @@ export class PaymentHistoryDto {
   @ApiProperty({
     description: 'Number of records to return',
     example: 10,
-    default: 10
+    default: 10,
   })
   @IsOptional()
   @IsNumber()
@@ -98,7 +105,7 @@ export class PaymentHistoryDto {
   @ApiProperty({
     description: 'Number of records to skip',
     example: 0,
-    default: 0
+    default: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -108,7 +115,7 @@ export class PaymentHistoryDto {
 export class WalletHistoryDto {
   @ApiProperty({
     description: 'School ID',
-    example: 'school-uuid-123'
+    example: 'school-uuid-123',
   })
   @IsString()
   school_id: string;
@@ -116,7 +123,7 @@ export class WalletHistoryDto {
   @ApiProperty({
     description: 'Number of records to return',
     example: 10,
-    default: 10
+    default: 10,
   })
   @IsOptional()
   @IsNumber()
@@ -125,7 +132,7 @@ export class WalletHistoryDto {
   @ApiProperty({
     description: 'Number of records to skip',
     example: 0,
-    default: 0
+    default: 0,
   })
   @IsOptional()
   @IsNumber()
@@ -135,13 +142,13 @@ export class WalletHistoryDto {
 export class PaymentResponseDto {
   @ApiProperty({
     description: 'Success status',
-    example: true
+    example: true,
   })
   success: boolean;
 
   @ApiProperty({
     description: 'Response message',
-    example: 'Payment processed successfully'
+    example: 'Payment processed successfully',
   })
   message: string;
 
@@ -152,20 +159,20 @@ export class PaymentResponseDto {
         id: 'payment-uuid',
         amount: 50000,
         payment_for: 'Tuition Fee',
-        status: 'completed'
+        status: 'completed',
       },
       walletTransaction: {
         id: 'transaction-uuid',
         amount: 50000,
         transaction_type: 'FEE_PAYMENT',
-        status: 'COMPLETED'
+        status: 'COMPLETED',
       },
       walletBalance: 150000,
       financeSummary: {
         total_revenue: 150000,
-        outstanding_fee: 0
-      }
-    }
+        outstanding_fee: 0,
+      },
+    },
   })
   data: {
     payment: any;
@@ -178,7 +185,7 @@ export class PaymentResponseDto {
 export class PaymentHistoryResponseDto {
   @ApiProperty({
     description: 'Success status',
-    example: true
+    example: true,
   })
   success: boolean;
 
@@ -190,16 +197,16 @@ export class PaymentHistoryResponseDto {
           id: 'payment-uuid',
           amount: 50000,
           payment_for: 'Tuition Fee',
-          payment_date: '2024-01-15T10:30:00Z'
-        }
+          payment_date: '2024-01-15T10:30:00Z',
+        },
       ],
       pagination: {
         total: 25,
         limit: 10,
         offset: 0,
-        hasMore: true
-      }
-    }
+        hasMore: true,
+      },
+    },
   })
   data: {
     payments: any[];
@@ -215,7 +222,7 @@ export class PaymentHistoryResponseDto {
 export class WalletHistoryResponseDto {
   @ApiProperty({
     description: 'Success status',
-    example: true
+    example: true,
   })
   success: boolean;
 
@@ -225,7 +232,7 @@ export class WalletHistoryResponseDto {
       wallet: {
         id: 'wallet-uuid',
         balance: 150000,
-        currency: 'NGN'
+        currency: 'NGN',
       },
       transactions: [
         {
@@ -233,16 +240,16 @@ export class WalletHistoryResponseDto {
           amount: 50000,
           transaction_type: 'FEE_PAYMENT',
           description: 'Tuition Fee - John Doe',
-          status: 'COMPLETED'
-        }
+          status: 'COMPLETED',
+        },
       ],
       pagination: {
         total: 50,
         limit: 10,
         offset: 0,
-        hasMore: true
-      }
-    }
+        hasMore: true,
+      },
+    },
   })
   data: {
     wallet: any;
@@ -259,7 +266,7 @@ export class WalletHistoryResponseDto {
 export class FinancialSummaryResponseDto {
   @ApiProperty({
     description: 'Success status',
-    example: true
+    example: true,
   })
   success: boolean;
 
@@ -269,28 +276,28 @@ export class FinancialSummaryResponseDto {
       wallet: {
         id: 'wallet-uuid',
         balance: 150000,
-        currency: 'NGN'
+        currency: 'NGN',
       },
       finance: {
         total_revenue: 150000,
         outstanding_fee: 0,
-        amount_withdrawn: 0
+        amount_withdrawn: 0,
       },
       recentTransactions: [
         {
           id: 'transaction-uuid',
           amount: 50000,
           transaction_type: 'FEE_PAYMENT',
-          description: 'Tuition Fee - John Doe'
-        }
+          description: 'Tuition Fee - John Doe',
+        },
       ],
       summary: {
         currentBalance: 150000,
         totalRevenue: 150000,
         outstandingFees: 0,
-        totalTransactions: 5
-      }
-    }
+        totalTransactions: 5,
+      },
+    },
   })
   data: {
     wallet: any;
@@ -303,4 +310,4 @@ export class FinancialSummaryResponseDto {
       totalTransactions: number;
     };
   };
-} 
+}

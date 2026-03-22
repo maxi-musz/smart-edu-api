@@ -1,10 +1,10 @@
-import { IEmailProvider } from "./email-provider.interface";
-import { GmailProvider } from "./gmail.provider";
-import { ResendProvider } from "./resend.provider";
-import { SendGridProvider } from "./sendgrid.provider";
-import * as colors from "colors";
+import { IEmailProvider } from './email-provider.interface';
+import { GmailProvider } from './gmail.provider';
+import { ResendProvider } from './resend.provider';
+import { SendGridProvider } from './sendgrid.provider';
+import * as colors from 'colors';
 
-export type EmailProviderType = "gmail" | "resend" | "sendgrid";
+export type EmailProviderType = 'gmail' | 'resend' | 'sendgrid';
 
 export class EmailProviderFactory {
   private static instance: IEmailProvider | null = null;
@@ -15,18 +15,20 @@ export class EmailProviderFactory {
       return this.instance;
     }
 
-    const providerType = (process.env.EMAIL_PROVIDER || "gmail").toLowerCase() as EmailProviderType;
+    const providerType = (
+      process.env.EMAIL_PROVIDER || 'gmail'
+    ).toLowerCase() as EmailProviderType;
 
     console.log(colors.cyan(`📧 Using email provider: ${providerType}`));
 
     switch (providerType) {
-      case "resend":
+      case 'resend':
         this.instance = new ResendProvider();
         break;
-      case "sendgrid":
+      case 'sendgrid':
         this.instance = new SendGridProvider();
         break;
-      case "gmail":
+      case 'gmail':
       default:
         this.instance = new GmailProvider();
         break;
@@ -40,4 +42,3 @@ export class EmailProviderFactory {
     this.instance = null;
   }
 }
-

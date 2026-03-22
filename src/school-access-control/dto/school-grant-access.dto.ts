@@ -1,7 +1,18 @@
-import { IsString, IsOptional, IsEnum, IsDateString, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { LibraryResourceType, AccessLevel } from '../../library-access-control/dto';
+import {
+  LibraryResourceType,
+  AccessLevel,
+} from '../../library-access-control/dto';
 
 /**
  * DTO for school owners to grant users/roles/classes access to library resources
@@ -24,7 +35,14 @@ export class SchoolGrantAccessDto {
 
   @ApiPropertyOptional({
     description: 'Role type to grant access to all users with this role',
-    enum: ['student', 'teacher', 'school_director', 'school_admin', 'parent', 'ict_staff'],
+    enum: [
+      'student',
+      'teacher',
+      'school_director',
+      'school_admin',
+      'parent',
+      'ict_staff',
+    ],
     example: 'student',
   })
   @IsOptional()

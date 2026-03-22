@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ProfilesService } from './profiles.service';
 import { JwtGuard } from 'src/school/auth/guard';
@@ -39,23 +47,24 @@ export class ProfilesController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'display_picture', maxCount: 1 },
-      { name: 'school_logo', maxCount: 1 }
+      { name: 'school_logo', maxCount: 1 },
     ]),
-    FileValidationInterceptor
+    FileValidationInterceptor,
   )
   async updateSchoolOwnerProfile(
     @GetUser() user: User,
     @Body() dto: UpdateSchoolOwnerProfileDto,
-    @UploadedFiles() files: {
-      display_picture?: Express.Multer.File[],
-      school_logo?: Express.Multer.File[]
-    }
+    @UploadedFiles()
+    files: {
+      display_picture?: Express.Multer.File[];
+      school_logo?: Express.Multer.File[];
+    },
   ) {
     return this.profilesService.updateSchoolOwnerProfile(
       user,
       dto,
       files.display_picture?.[0],
-      files.school_logo?.[0]
+      files.school_logo?.[0],
     );
   }
 }

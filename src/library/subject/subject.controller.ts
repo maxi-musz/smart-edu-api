@@ -1,9 +1,28 @@
-import { Controller, Post, Body, UseGuards, Request, HttpCode, HttpStatus, UseInterceptors, UploadedFile, Patch, Param, BadRequestException, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  Patch,
+  Param,
+  BadRequestException,
+  Delete,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SubjectService } from './subject.service';
 import { CreateSubjectDto, UpdateSubjectDto } from './dto/subject.dto';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
-import { CreateSubjectDocs, UpdateSubjectDocs, UpdateSubjectThumbnailDocs, DeleteSubjectDocs } from './docs/subject.docs';
+import {
+  CreateSubjectDocs,
+  UpdateSubjectDocs,
+  UpdateSubjectThumbnailDocs,
+  DeleteSubjectDocs,
+} from './docs/subject.docs';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 
 @ApiTags('Library Subject')
@@ -30,7 +49,11 @@ export class SubjectController {
     @Body() payload: CreateSubjectDto,
     @UploadedFile() thumbnail?: Express.Multer.File,
   ) {
-    return await this.subjectService.createSubject(req.user, payload, thumbnail);
+    return await this.subjectService.createSubject(
+      req.user,
+      payload,
+      thumbnail,
+    );
   }
 
   @Patch('updatesubject/:subjectId')
@@ -49,7 +72,11 @@ export class SubjectController {
     @Param('subjectId') subjectId: string,
     @Body() payload: UpdateSubjectDto,
   ) {
-    return await this.subjectService.updateSubject(req.user, subjectId, payload);
+    return await this.subjectService.updateSubject(
+      req.user,
+      subjectId,
+      payload,
+    );
   }
 
   @Patch('updatesubjectthumbnail/:subjectId')
@@ -74,7 +101,11 @@ export class SubjectController {
     if (!thumbnail) {
       throw new BadRequestException('Thumbnail file is required');
     }
-    return await this.subjectService.updateSubjectThumbnail(req.user, subjectId, thumbnail);
+    return await this.subjectService.updateSubjectThumbnail(
+      req.user,
+      subjectId,
+      thumbnail,
+    );
   }
 
   @Delete('deletesubject/:subjectId')
@@ -94,4 +125,3 @@ export class SubjectController {
     return await this.subjectService.deleteSubject(req.user, subjectId);
   }
 }
-

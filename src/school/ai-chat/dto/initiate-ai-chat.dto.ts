@@ -7,14 +7,14 @@ export enum UserRole {
   SCHOOL_DIRECTOR = 'school_director',
   SCHOOL_ADMIN = 'school_admin',
   PARENT = 'parent',
-  ICT_STAFF = 'ict_staff'
+  ICT_STAFF = 'ict_staff',
 }
 
 export class InitiateAiChatDto {
   @ApiProperty({
     description: 'User role to determine AI chat capabilities',
     enum: UserRole,
-    example: 'teacher'
+    example: 'teacher',
   })
   @IsString()
   @IsNotEmpty()

@@ -4,7 +4,7 @@ import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 export class BaseAssessmentDto {
   @ApiProperty({
     description: 'Title of the assessment',
-    example: 'Mathematics Assessment'
+    example: 'Mathematics Assessment',
   })
   @IsString()
   @IsNotEmpty()
@@ -12,7 +12,7 @@ export class BaseAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Description of the assessment',
-    example: 'This assessment covers basic mathematical concepts'
+    example: 'This assessment covers basic mathematical concepts',
   })
   @IsString()
   @IsOptional()
@@ -20,7 +20,7 @@ export class BaseAssessmentDto {
 
   @ApiProperty({
     description: 'Topic ID where the assessment belongs',
-    example: 'topic123'
+    example: 'topic123',
   })
   @IsString()
   @IsNotEmpty()

@@ -29,5 +29,3 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
   exports: [IdentityService],
 })
 export class IdentityModule {}
-
-

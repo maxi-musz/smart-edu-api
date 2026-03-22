@@ -6,7 +6,7 @@ export class ResponseHelper {
       data,
       length: Array.isArray(data) ? data.length : undefined,
       meta: meta || undefined,
-      statusCode: 200
+      statusCode: 200,
     };
   }
 
@@ -17,11 +17,15 @@ export class ResponseHelper {
       data,
       length: Array.isArray(data) ? data.length : undefined,
       meta: meta || undefined,
-      statusCode: 201
+      statusCode: 201,
     };
   }
 
-  static error(message: string, error: any = null, statusCode = 400): { success: false; message: string; error: any; statusCode: number } {
+  static error(
+    message: string,
+    error: any = null,
+    statusCode = 400,
+  ): { success: false; message: string; error: any; statusCode: number } {
     return {
       success: false,
       message,
@@ -30,5 +34,3 @@ export class ResponseHelper {
     };
   }
 }
-
-

@@ -1,4 +1,8 @@
-import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
@@ -11,10 +15,13 @@ import * as colors from 'colors';
  * Library tokens have: sub, email, platform_id
  */
 @Injectable()
-export class UniversalJwtStrategy extends PassportStrategy(Strategy, 'universal-jwt') {
+export class UniversalJwtStrategy extends PassportStrategy(
+  Strategy,
+  'universal-jwt',
+) {
   constructor(config: ConfigService) {
     const secret = config.get('JWT_SECRET');
-    
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       secretOrKey: secret,
@@ -33,8 +40,12 @@ export class UniversalJwtStrategy extends PassportStrategy(Strategy, 'universal-
     const hasPlatformId = payload.sub && payload.email && payload.platform_id;
 
     if (!hasSchoolId && !hasPlatformId) {
-      console.log(colors.red('Universal JWT Strategy - Invalid payload structure'));
-      console.log(colors.yellow(`Available fields: ${Object.keys(payload).join(', ')}`));
+      console.log(
+        colors.red('Universal JWT Strategy - Invalid payload structure'),
+      );
+      console.log(
+        colors.yellow(`Available fields: ${Object.keys(payload).join(', ')}`),
+      );
       throw new UnauthorizedException('Invalid token structure');
     }
 
@@ -58,14 +69,18 @@ export class UniversalJwtGuard extends AuthGuard('universal-jwt') {
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
-    
+
     if (!authHeader) {
-      console.log(colors.red('Universal JWT Guard - No authorization header found'));
+      console.log(
+        colors.red('Universal JWT Guard - No authorization header found'),
+      );
       return false;
     }
 
     if (!authHeader.startsWith('Bearer ')) {
-      console.log(colors.red('Universal JWT Guard - Invalid authorization header format'));
+      console.log(
+        colors.red('Universal JWT Guard - Invalid authorization header format'),
+      );
       return false;
     }
 

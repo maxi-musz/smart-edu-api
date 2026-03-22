@@ -16,9 +16,13 @@ export class CloudFrontService {
    */
   logStatus(): void {
     if (this.cloudFrontDomain) {
-      this.logger.log(colors.green(`✅ CloudFront enabled: ${this.cloudFrontDomain}`));
+      this.logger.log(
+        colors.green(`✅ CloudFront enabled: ${this.cloudFrontDomain}`),
+      );
     } else {
-      this.logger.log(colors.yellow(`⚠️ CloudFront not configured - using direct S3 URLs`));
+      this.logger.log(
+        colors.yellow(`⚠️ CloudFront not configured - using direct S3 URLs`),
+      );
     }
   }
 
@@ -39,7 +43,7 @@ export class CloudFrontService {
   /**
    * Build CloudFront URL for a resource if configured
    * Falls back to the original URL if CloudFront is not configured or s3Key is missing
-   * 
+   *
    * @param s3Key - The S3 object key (path within bucket)
    * @param fallbackUrl - The original URL to use if CloudFront is not available
    * @returns The CloudFront URL or fallback URL
@@ -58,7 +62,10 @@ export class CloudFrontService {
    * Build CloudFront URL for video playback
    * Logs when CloudFront is being used for easier debugging
    */
-  getVideoUrl(videoS3Key: string | null | undefined, fallbackVideoUrl: string): string {
+  getVideoUrl(
+    videoS3Key: string | null | undefined,
+    fallbackVideoUrl: string,
+  ): string {
     if (this.cloudFrontDomain && videoS3Key) {
       this.logger.log(colors.blue(`🌐 Using CloudFront for video delivery`));
       return `https://${this.cloudFrontDomain}/${videoS3Key}`;
@@ -73,8 +80,12 @@ export class CloudFrontService {
    * If the stored URL points to master.m3u8 but we use MediaConvert, return main.m3u8 so existing DB records work.
    */
   getHlsPlaybackUrl(storedHlsUrl: string): string {
-    const provider = this.configService.get<string>('HLS_TRANSCODE_PROVIDER') || 'ffmpeg';
-    if (provider.toLowerCase() === 'mediaconvert' && storedHlsUrl.endsWith('/master.m3u8')) {
+    const provider =
+      this.configService.get<string>('HLS_TRANSCODE_PROVIDER') || 'ffmpeg';
+    if (
+      provider.toLowerCase() === 'mediaconvert' &&
+      storedHlsUrl.endsWith('/master.m3u8')
+    ) {
       return storedHlsUrl.replace(/\/master\.m3u8$/, '/main.m3u8');
     }
     return storedHlsUrl;

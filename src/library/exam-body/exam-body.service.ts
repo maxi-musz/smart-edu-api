@@ -27,11 +27,17 @@ export class LibraryExamBodyService {
       orderBy: { name: 'asc' },
     });
 
-    return new ApiResponse(true, 'Exam bodies retrieved successfully', examBodies);
+    return new ApiResponse(
+      true,
+      'Exam bodies retrieved successfully',
+      examBodies,
+    );
   }
 
   async findOne(id: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY EXAM BODY] Fetching exam body: ${id}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY EXAM BODY] Fetching exam body: ${id}`),
+    );
 
     const examBody = await this.prisma.examBody.findUnique({
       where: { id },

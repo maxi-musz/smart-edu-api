@@ -11,7 +11,13 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+} from '@nestjs/swagger';
 import { TeacherAccessControlService } from './teacher-access-control.service';
 import {
   TeacherGrantAccessDto,
@@ -30,30 +36,55 @@ import { JwtGuard } from '../../school/auth/guard/jwt.guard';
 @UseGuards(JwtGuard)
 @Controller('school-access-control/teacher')
 export class TeacherAccessControlController {
-  constructor(private readonly teacherAccessService: TeacherAccessControlService) {}
+  constructor(
+    private readonly teacherAccessService: TeacherAccessControlService,
+  ) {}
 
   @Get('available-resources')
   @ApiOperation({
     summary: 'Get resources available to teacher',
     description: 'View all resources that the school has granted to teachers',
   })
-  @ApiResponse({ status: 200, description: 'Available resources retrieved successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
-  async getAvailableResources(@GetUser() user: any, @Query() query: QueryTeacherAvailableResourcesDto) {
+  @ApiResponse({
+    status: 200,
+    description: 'Available resources retrieved successfully',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not a teacher',
+  })
+  async getAvailableResources(
+    @GetUser() user: any,
+    @Query() query: QueryTeacherAvailableResourcesDto,
+  ) {
     return this.teacherAccessService.getAvailableResources(user, query);
   }
 
   @Post('exclude')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Exclude (turn off) a topic/video/material/assessment for students or class',
-    description: 'Teachers can exclude resources so selected students or class do not see them in explore.',
+    summary:
+      'Exclude (turn off) a topic/video/material/assessment for students or class',
+    description:
+      'Teachers can exclude resources so selected students or class do not see them in explore.',
   })
   @ApiResponse({ status: 201, description: 'Resource excluded successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - missing resource ID or classId/studentId' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
-  @ApiResponse({ status: 404, description: 'Subject, student, or class not found' })
-  async excludeResource(@GetUser() user: any, @Body() dto: TeacherExcludeResourceDto) {
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - missing resource ID or classId/studentId',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not a teacher',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Subject, student, or class not found',
+  })
+  async excludeResource(
+    @GetUser() user: any,
+    @Body() dto: TeacherExcludeResourceDto,
+  ) {
     return this.teacherAccessService.excludeResource(user, dto);
   }
 
@@ -61,11 +92,18 @@ export class TeacherAccessControlController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Include (turn on) a previously excluded resource',
-    description: 'Remove the teacher-level exclusion so the resource is visible again to students/class.',
+    description:
+      'Remove the teacher-level exclusion so the resource is visible again to students/class.',
   })
   @ApiResponse({ status: 200, description: 'Resource included successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
-  async includeResource(@GetUser() user: any, @Body() dto: TeacherExcludeResourceDto) {
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not a teacher',
+  })
+  async includeResource(
+    @GetUser() user: any,
+    @Body() dto: TeacherExcludeResourceDto,
+  ) {
     return this.teacherAccessService.includeResource(user, dto);
   }
 
@@ -73,11 +111,15 @@ export class TeacherAccessControlController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Grant students/classes access to resources',
-    description: 'Teachers can control which students or classes can access specific library resources',
+    description:
+      'Teachers can control which students or classes can access specific library resources',
   })
   @ApiResponse({ status: 201, description: 'Access granted successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not a teacher',
+  })
   @ApiResponse({ status: 404, description: 'Resource not found' })
   async grantAccess(@GetUser() user: any, @Body() dto: TeacherGrantAccessDto) {
     return this.teacherAccessService.grantAccess(user, dto);
@@ -87,11 +129,18 @@ export class TeacherAccessControlController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Bulk grant access to multiple students or classes',
-    description: 'Grant the same resource access to multiple students or classes at once',
+    description:
+      'Grant the same resource access to multiple students or classes at once',
   })
   @ApiResponse({ status: 201, description: 'Bulk access granted' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
-  async grantBulkAccess(@GetUser() user: any, @Body() dto: TeacherGrantBulkAccessDto) {
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not a teacher',
+  })
+  async grantBulkAccess(
+    @GetUser() user: any,
+    @Body() dto: TeacherGrantBulkAccessDto,
+  ) {
     return this.teacherAccessService.grantBulkAccess(user, dto);
   }
 
@@ -116,7 +165,7 @@ export class TeacherAccessControlController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Revoke access',
-    description: 'Revoke a student\'s or class\'s access to a resource',
+    description: "Revoke a student's or class's access to a resource",
   })
   @ApiParam({ name: 'id', description: 'Teacher access grant ID' })
   @ApiResponse({ status: 200, description: 'Access revoked successfully' })
@@ -136,14 +185,24 @@ export class TeacherAccessControlController {
     description: 'View all library resources a specific student can access',
   })
   @ApiParam({ name: 'studentId', description: 'Student user ID' })
-  @ApiResponse({ status: 200, description: 'Student resources retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Student resources retrieved successfully',
+  })
   @ApiResponse({ status: 404, description: 'Student not found' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user is not a teacher' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not a teacher',
+  })
   async getStudentResources(
     @GetUser() user: any,
     @Param('studentId') studentId: string,
     @Query() query: QueryStudentResourcesDto,
   ) {
-    return this.teacherAccessService.getStudentResources(user, studentId, query);
+    return this.teacherAccessService.getStudentResources(
+      user,
+      studentId,
+      query,
+    );
   }
 }

@@ -84,50 +84,70 @@ REMEMBER:
    * Language parameter will be used for OpenAI integration to return responses in the specified language
    * AI integration and DB persistence will be added later
    */
-  async sendMessage(user: any, sendMessageDto: SendMessageDto): Promise<ApiResponse<any>> {
-      this.logger.log(
-        colors.cyan(
-          `[EXPLORE CHAT] Sending message from user: ${user.email || user.sub} for chapter: ${sendMessageDto.materialId}, language: ${sendMessageDto.language || 'en'}`,
-        ),
-      );
+  async sendMessage(
+    user: any,
+    sendMessageDto: SendMessageDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[EXPLORE CHAT] Sending message from user: ${user.email || user.sub} for chapter: ${sendMessageDto.materialId}, language: ${sendMessageDto.language || 'en'}`,
+      ),
+    );
 
     try {
       const userId = user.sub || user.id;
       const { message, materialId, language } = sendMessageDto;
-      
+
       // Default language to 'en' if not provided
       const responseLanguage = language || 'en';
 
       // Validate chapter exists (materialId is actually chapterId)
-      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
-        where: {
-          id: materialId,
-          isAiEnabled: true, // Only allow AI-enabled chapters
-        },
-        select: {
-          id: true,
-          title: true,
-          materialId: true,
-          material: {
-            select: {
-              id: true,
-              title: true,
-              isAvailable: true,
-              status: true,
+      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst(
+        {
+          where: {
+            id: materialId,
+            isAiEnabled: true, // Only allow AI-enabled chapters
+          },
+          select: {
+            id: true,
+            title: true,
+            materialId: true,
+            material: {
+              select: {
+                id: true,
+                title: true,
+                isAvailable: true,
+                status: true,
+              },
             },
           },
         },
-      });
+      );
 
       if (!chapter) {
-        this.logger.error(colors.red(`❌ Chapter not found or not AI-enabled: ${materialId}`));
-        return new ApiResponse(false, 'Chapter not found or AI chat not enabled for this chapter', null);
+        this.logger.error(
+          colors.red(`❌ Chapter not found or not AI-enabled: ${materialId}`),
+        );
+        return new ApiResponse(
+          false,
+          'Chapter not found or AI chat not enabled for this chapter',
+          null,
+        );
       }
 
       // Check if parent material is available and published
-      if (!chapter.material.isAvailable || chapter.material.status !== 'published') {
-        this.logger.error(colors.red(`❌ Parent material not available: ${chapter.materialId}`));
-        return new ApiResponse(false, 'Parent material not available or not published', null);
+      if (
+        !chapter.material.isAvailable ||
+        chapter.material.status !== 'published'
+      ) {
+        this.logger.error(
+          colors.red(`❌ Parent material not available: ${chapter.materialId}`),
+        );
+        return new ApiResponse(
+          false,
+          'Parent material not available or not published',
+          null,
+        );
       }
 
       // Find PDFMaterial for Pinecone search
@@ -135,7 +155,11 @@ REMEMBER:
       // 1. chapter.id (when created via "create chapter with file" endpoint)
       // 2. chapterFile.id (when created via "upload file to existing chapter" endpoint)
       // Chunks are stored in Pinecone with material_id = PDFMaterial.id
-      this.logger.log(colors.cyan(`🔍 Searching for PDFMaterial with materialId: ${materialId} (chapter ID)...`));
+      this.logger.log(
+        colors.cyan(
+          `🔍 Searching for PDFMaterial with materialId: ${materialId} (chapter ID)...`,
+        ),
+      );
       let pdfMaterial = await this.prisma.pDFMaterial.findFirst({
         where: { materialId: materialId }, // Try chapter ID first (most common case)
         select: { id: true, materialId: true },
@@ -143,64 +167,111 @@ REMEMBER:
 
       // If not found, try finding via chapter file
       if (!pdfMaterial) {
-        this.logger.log(colors.yellow(`⚠️ PDFMaterial not found with chapter ID, trying chapter file...`));
-        const chapterFile = await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
-          where: { chapterId: materialId },
-          select: { id: true },
-        });
+        this.logger.log(
+          colors.yellow(
+            `⚠️ PDFMaterial not found with chapter ID, trying chapter file...`,
+          ),
+        );
+        const chapterFile =
+          await this.prisma.libraryGeneralMaterialChapterFile.findFirst({
+            where: { chapterId: materialId },
+            select: { id: true },
+          });
 
         if (chapterFile) {
-          this.logger.log(colors.cyan(`📚 Found chapter file: ${chapterFile.id}, searching for PDFMaterial...`));
+          this.logger.log(
+            colors.cyan(
+              `📚 Found chapter file: ${chapterFile.id}, searching for PDFMaterial...`,
+            ),
+          );
           pdfMaterial = await this.prisma.pDFMaterial.findFirst({
             where: { materialId: chapterFile.id }, // Try chapter file ID
             select: { id: true, materialId: true },
           });
         } else {
-          this.logger.warn(colors.yellow(`⚠️ Chapter file not found for chapter: ${materialId}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Chapter file not found for chapter: ${materialId}`,
+            ),
+          );
         }
       }
 
       // Get relevant context chunks from Pinecone using PDFMaterial.id
       let contextChunks: any[] = [];
       if (pdfMaterial) {
-        this.logger.log(colors.cyan(`📚 Found PDFMaterial: ${pdfMaterial.id} (materialId: ${pdfMaterial.materialId}), searching Pinecone...`));
-        
+        this.logger.log(
+          colors.cyan(
+            `📚 Found PDFMaterial: ${pdfMaterial.id} (materialId: ${pdfMaterial.materialId}), searching Pinecone...`,
+          ),
+        );
+
         // Check if chunks exist in database for this PDFMaterial (to verify processing happened)
         // Chunks are stored in DocumentChunk table with material_id = PDFMaterial.id
         const chunkCount = await this.prisma.documentChunk.count({
           where: { material_id: pdfMaterial.id },
         });
-        this.logger.log(colors.cyan(`📊 Found ${chunkCount} chunks in database for PDFMaterial: ${pdfMaterial.id}`));
-        
+        this.logger.log(
+          colors.cyan(
+            `📊 Found ${chunkCount} chunks in database for PDFMaterial: ${pdfMaterial.id}`,
+          ),
+        );
+
         try {
           // For summary requests, use a broader search with more chunks
-          const isSummaryRequest = /summary|summarize|overview|what is this chapter about|what does this chapter cover/i.test(message);
+          const isSummaryRequest =
+            /summary|summarize|overview|what is this chapter about|what does this chapter cover/i.test(
+              message,
+            );
           const topK = isSummaryRequest ? 10 : 5; // Get more chunks for summaries
-          
+
           // For summary requests, use chapter title as search query to get broader context
           const searchQuery = isSummaryRequest ? chapter.title : message;
-          contextChunks = await this.documentProcessingService.searchRelevantChunks(
-            pdfMaterial.id,
-            searchQuery,
-            topK,
-          );
+          contextChunks =
+            await this.documentProcessingService.searchRelevantChunks(
+              pdfMaterial.id,
+              searchQuery,
+              topK,
+            );
 
           if (contextChunks.length > 0) {
-            this.logger.log(colors.green(`✅ Found ${contextChunks.length} relevant chunks from Pinecone for PDFMaterial: ${pdfMaterial.id}`));
+            this.logger.log(
+              colors.green(
+                `✅ Found ${contextChunks.length} relevant chunks from Pinecone for PDFMaterial: ${pdfMaterial.id}`,
+              ),
+            );
             // Log chunk previews for debugging
             contextChunks.slice(0, 2).forEach((chunk, idx) => {
-              this.logger.log(colors.blue(`   Chunk ${idx + 1} preview: ${chunk.content.substring(0, 100)}...`));
+              this.logger.log(
+                colors.blue(
+                  `   Chunk ${idx + 1} preview: ${chunk.content.substring(0, 100)}...`,
+                ),
+              );
             });
           } else {
-            this.logger.warn(colors.yellow(`⚠️ No chunks found in Pinecone for PDFMaterial: ${pdfMaterial.id} (but ${chunkCount} chunks exist in database - processing may not have completed or chunks may not be indexed yet)`));
-            this.logger.warn(colors.yellow(`⚠️ This may indicate: 1) Processing is still in progress, 2) Chunks failed to save to Pinecone, or 3) Search query didn't match any chunks`));
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ No chunks found in Pinecone for PDFMaterial: ${pdfMaterial.id} (but ${chunkCount} chunks exist in database - processing may not have completed or chunks may not be indexed yet)`,
+              ),
+            );
+            this.logger.warn(
+              colors.yellow(
+                `⚠️ This may indicate: 1) Processing is still in progress, 2) Chunks failed to save to Pinecone, or 3) Search query didn't match any chunks`,
+              ),
+            );
           }
         } catch (error: any) {
-          this.logger.error(colors.red(`❌ Could not search chunks: ${error.message}`));
+          this.logger.error(
+            colors.red(`❌ Could not search chunks: ${error.message}`),
+          );
           contextChunks = [];
         }
       } else {
-        this.logger.error(colors.red(`❌ PDFMaterial not found for chapter: ${materialId}. Document may not have been processed yet.`));
+        this.logger.error(
+          colors.red(
+            `❌ PDFMaterial not found for chapter: ${materialId}. Document may not have been processed yet.`,
+          ),
+        );
       }
 
       // Generate AI response using OpenAI with context chunks
@@ -235,7 +306,9 @@ REMEMBER:
 
       return new ApiResponse(true, 'Message sent successfully', responseData);
     } catch (error: any) {
-      this.logger.error(colors.red(`❌ Error sending message: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error sending message: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -258,11 +331,15 @@ REMEMBER:
   ): Promise<{ content: string; tokensUsed: number }> {
     try {
       // Build context from chunks
-      const context = contextChunks.length > 0
-        ? `\n\nRelevant document context from the chapter:\n${contextChunks.map((chunk, index) =>
-            `[Chunk ${index + 1}]: ${chunk.content.substring(0, 800)}${chunk.content.length > 800 ? '...' : ''}`
-          ).join('\n\n')}`
-        : '\n\nNote: No specific document chunks were found. However, you should still provide helpful information about the chapter topic based on the chapter title and material title.';
+      const context =
+        contextChunks.length > 0
+          ? `\n\nRelevant document context from the chapter:\n${contextChunks
+              .map(
+                (chunk, index) =>
+                  `[Chunk ${index + 1}]: ${chunk.content.substring(0, 800)}${chunk.content.length > 800 ? '...' : ''}`,
+              )
+              .join('\n\n')}`
+          : '\n\nNote: No specific document chunks were found. However, you should still provide helpful information about the chapter topic based on the chapter title and material title.';
 
       // Build system prompt with language instruction and context
       const languageInstruction = this.getLanguageInstruction(language);
@@ -273,7 +350,9 @@ REMEMBER:
         { role: 'user', content: userMessage },
       ];
 
-      this.logger.log(colors.cyan(`🤖 Sending request to OpenAI (language: ${language})...`));
+      this.logger.log(
+        colors.cyan(`🤖 Sending request to OpenAI (language: ${language})...`),
+      );
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -282,17 +361,23 @@ REMEMBER:
         temperature: 0.25, // Lower temperature for more factual, consistent responses
       });
 
-      const content = response.choices[0].message.content || 'I apologize, but I could not generate a response.';
+      const content =
+        response.choices[0].message.content ||
+        'I apologize, but I could not generate a response.';
       const tokensUsed = response.usage?.total_tokens || 0;
 
-      this.logger.log(colors.green(`✅ OpenAI response received (${tokensUsed} tokens)`));
+      this.logger.log(
+        colors.green(`✅ OpenAI response received (${tokensUsed} tokens)`),
+      );
 
       return {
         content,
         tokensUsed,
       };
     } catch (error: any) {
-      this.logger.error(colors.red(`❌ Error generating AI response: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error generating AI response: ${error.message}`),
+      );
       throw new Error(`Failed to generate AI response: ${error.message}`);
     }
   }
@@ -317,11 +402,13 @@ REMEMBER:
       hi: 'हिंदी में उत्तर दें।',
       sw: 'Jibu kwa Kiswahili.',
       yo: 'Dahun ni ede Yoruba.',
-      ig: 'Zaa n\'asụsụ Igbo.',
+      ig: "Zaa n'asụsụ Igbo.",
       ha: 'Amsa da Hausa.',
     };
 
-    const instruction = languageMap[language.toLowerCase()] || `Respond in the language with code "${language}".`;
+    const instruction =
+      languageMap[language.toLowerCase()] ||
+      `Respond in the language with code "${language}".`;
     return `LANGUAGE REQUIREMENT: ${instruction} All your responses must be in this language, formatted in professional Markdown.`;
   }
 }

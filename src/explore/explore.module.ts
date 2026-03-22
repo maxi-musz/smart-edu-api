@@ -18,7 +18,10 @@ import { SchoolAccessControlModule } from '../school-access-control/school-acces
 import { AiChatModule } from '../school/ai-chat/ai-chat.module';
 import { ExploreChatServicesModule } from './chat/explore-chat-services.module';
 import { ExploreExamBodyModule } from './exam-body/exam-body.module';
-import { UniversalJwtStrategy, UniversalJwtGuard } from '../video/guards/universal-jwt.guard';
+import {
+  UniversalJwtStrategy,
+  UniversalJwtGuard,
+} from '../video/guards/universal-jwt.guard';
 
 @Module({
   imports: [
@@ -34,7 +37,7 @@ import { UniversalJwtStrategy, UniversalJwtGuard } from '../video/guards/univers
       useFactory: async (config: ConfigService) => {
         const secret = config.get('JWT_SECRET');
         const expiresIn = config.get('JWT_EXPIRES_IN') || '7d';
-        
+
         return {
           secret,
           signOptions: {
@@ -45,7 +48,12 @@ import { UniversalJwtStrategy, UniversalJwtGuard } from '../video/guards/univers
       inject: [ConfigService],
     }),
   ],
-  controllers: [ExploreController, ExploreAssessmentController, ExploreAiBooksController, ChatTTSController],
+  controllers: [
+    ExploreController,
+    ExploreAssessmentController,
+    ExploreAiBooksController,
+    ChatTTSController,
+  ],
   providers: [
     ExploreService,
     ExploreAssessmentService,
@@ -59,4 +67,3 @@ import { UniversalJwtStrategy, UniversalJwtGuard } from '../video/guards/univers
   exports: [ExploreService, ExploreAiBooksService, ExploreChatGateway],
 })
 export class ExploreModule {}
-

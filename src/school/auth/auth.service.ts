@@ -1,23 +1,65 @@
-import { BadRequestException, HttpException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
 import * as colors from 'colors';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as argon from 'argon2';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { AuditForType, AuditPerformedByType, SchoolOwnership, SchoolType, SubscriptionPlanType, BillingCycle, SubscriptionStatus } from '@prisma/client';
+import {
+  AuditForType,
+  AuditPerformedByType,
+  SchoolOwnership,
+  SchoolType,
+  SubscriptionPlanType,
+  BillingCycle,
+  SubscriptionStatus,
+} from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
-import { OnboardDataDto, OnboardSchoolDto, RequestLoginOtpDTO, RequestPasswordResetDTO, ResetPasswordDTO, SignInDto, VerifyEmailOTPDto, VerifyresetOtp } from 'src/school/director/students/dto/auth.dto';
+import {
+  OnboardDataDto,
+  OnboardSchoolDto,
+  RequestLoginOtpDTO,
+  RequestPasswordResetDTO,
+  ResetPasswordDTO,
+  SignInDto,
+  VerifyEmailOTPDto,
+  VerifyresetOtp,
+} from 'src/school/director/students/dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from 'src/shared/services/providers/storage.service';
 import { StorageUploadResult } from 'src/shared/services/providers/storage-provider.interface';
-import { sendOnboardingMailToSchoolOwner, sendOnboardingMailToBTechAdmin, sendPasswordResetOtp, sendLoginOtpByMail } from 'src/common/mailer/send-mail';
+import {
+  sendOnboardingMailToSchoolOwner,
+  sendOnboardingMailToBTechAdmin,
+  sendPasswordResetOtp,
+  sendLoginOtpByMail,
+} from 'src/common/mailer/send-mail';
 import { sendEmailVerificationOTP } from 'src/common/mailer/send-email-verification-otp';
-import { sendTeacherOnboardEmail, sendStudentOnboardEmail, sendDirectorOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
+import {
+  sendTeacherOnboardEmail,
+  sendStudentOnboardEmail,
+  sendDirectorOnboardEmail,
+} from 'src/common/mailer/send-congratulatory-emails';
 import { Prisma } from '@prisma/client';
 import { ApiResponse } from 'src/shared/helper-functions/response';
-import { OnboardClassesDto, OnboardTeachersDto, OnboardStudentsDto, OnboardDirectorsDto } from 'src/school/director/students/dto/auth.dto';
+import {
+  OnboardClassesDto,
+  OnboardTeachersDto,
+  OnboardStudentsDto,
+  OnboardDirectorsDto,
+} from 'src/school/director/students/dto/auth.dto';
 import { generateOTP } from 'src/shared/helper-functions/otp-generator';
-import { BulkOnboardDto, BulkOnboardResponseDto } from 'src/shared/dto/bulk-onboard.dto';
+import {
+  BulkOnboardDto,
+  BulkOnboardResponseDto,
+} from 'src/shared/dto/bulk-onboard.dto';
 import { ExcelProcessorService } from 'src/shared/services/excel-processor.service';
 import { AcademicSessionService } from '../../academic-session/academic-session.service';
 import { PushNotificationsService } from 'src/push-notifications/push-notifications.service';
@@ -27,2640 +69,2965 @@ import { AuditService } from 'src/audit/audit.service';
 
 // Storage upload result mapped to match database schema
 interface DocumentUploadResult {
-    secure_url: string;
-    public_id: string;
+  secure_url: string;
+  public_id: string;
 }
 
 /** Options for onboarding methods when called by library on behalf of a school, or to record audit performer. */
 export interface OnboardOptions {
-    /** When set (library flow), resolve school by id instead of user.email */
-    schoolId?: string;
-    /** When set, an audit log entry is created with this performer. */
-    performedBy?: { type: 'school_user' | 'library_user'; id: string };
+  /** When set (library flow), resolve school by id instead of user.email */
+  schoolId?: string;
+  /** When set, an audit log entry is created with this performer. */
+  performedBy?: { type: 'school_user' | 'library_user'; id: string };
 }
 
 @Injectable()
 export class AuthService {
-    /**
-     * Returns emails that already exist in User, Teacher, School.school_email, or LibraryResourceUser.
-     * Used to skip those when onboarding (e.g. students) and report them as failed.
-     */
-    private async getEmailsAlreadyInUse(emails: string[]): Promise<string[]> {
-        if (emails.length === 0) return [];
-        const normalized = [...new Set(emails.map((e) => e.toLowerCase().trim()).filter(Boolean))];
-        const inUser = await this.prisma.user.findMany({
-            where: { email: { in: normalized } },
-            select: { email: true },
-        });
-        const inTeacher = await this.prisma.teacher.findMany({
-            where: { email: { in: normalized } },
-            select: { email: true },
-        });
-        const inSchool = await this.prisma.school.findMany({
-            where: { school_email: { in: normalized } },
-            select: { school_email: true },
-        });
-        const inLibraryUser = await this.prisma.libraryResourceUser.findMany({
-            where: { email: { in: normalized } },
-            select: { email: true },
-        });
-        const found = new Set<string>([
-            ...inUser.map((u) => u.email.toLowerCase()),
-            ...inTeacher.map((t) => t.email.toLowerCase()),
-            ...inSchool.map((s) => s.school_email.toLowerCase()),
-            ...inLibraryUser.map((u) => u.email.toLowerCase()),
-        ]);
-        return normalized.filter((e) => found.has(e));
-    }
-    private readonly logger = new Logger(AuthService.name);
+  /**
+   * Returns emails that already exist in User, Teacher, School.school_email, or LibraryResourceUser.
+   * Used to skip those when onboarding (e.g. students) and report them as failed.
+   */
+  private async getEmailsAlreadyInUse(emails: string[]): Promise<string[]> {
+    if (emails.length === 0) return [];
+    const normalized = [
+      ...new Set(emails.map((e) => e.toLowerCase().trim()).filter(Boolean)),
+    ];
+    const inUser = await this.prisma.user.findMany({
+      where: { email: { in: normalized } },
+      select: { email: true },
+    });
+    const inTeacher = await this.prisma.teacher.findMany({
+      where: { email: { in: normalized } },
+      select: { email: true },
+    });
+    const inSchool = await this.prisma.school.findMany({
+      where: { school_email: { in: normalized } },
+      select: { school_email: true },
+    });
+    const inLibraryUser = await this.prisma.libraryResourceUser.findMany({
+      where: { email: { in: normalized } },
+      select: { email: true },
+    });
+    const found = new Set<string>([
+      ...inUser.map((u) => u.email.toLowerCase()),
+      ...inTeacher.map((t) => t.email.toLowerCase()),
+      ...inSchool.map((s) => s.school_email.toLowerCase()),
+      ...inLibraryUser.map((u) => u.email.toLowerCase()),
+    ]);
+    return normalized.filter((e) => found.has(e));
+  }
+  private readonly logger = new Logger(AuthService.name);
 
-    constructor(
-        private prisma: PrismaService,
-        private jwt: JwtService,
-        private config: ConfigService,
-        private readonly storageService: StorageService,
-        private readonly excelProcessorService: ExcelProcessorService,
-        private readonly academicSessionService: AcademicSessionService,
-        private readonly pushNotificationsService: PushNotificationsService,
-        private readonly auditService: AuditService
-    ) {}
-    
-    // Onboard new school. Optional performedBy logs who did the action (e.g. library owner); when omitted, logs with no performer (public/auth flow).
-    async onboardSchool(
-        dto: OnboardSchoolDto,
-        files: Express.Multer.File[],
-        schoolIcon?: Express.Multer.File,
-        performedBy?: { type: 'school_user' | 'library_user'; id: string }
-    ) {
-        
-        console.log(colors.blue('Onboarding a new school...'));
-        console.log("email: ", dto.school_email)
-        
-        const existingSchool = await this.prisma.school.findFirst({
-            where: {
-                school_email: dto.school_email
-            }
-        })
-    
-        if(existingSchool) {
-            console.log("School already exists... ")
-            throw ResponseHelper.error(
-                "School already exists... "
-            )
-        }
+  constructor(
+    private prisma: PrismaService,
+    private jwt: JwtService,
+    private config: ConfigService,
+    private readonly storageService: StorageService,
+    private readonly excelProcessorService: ExcelProcessorService,
+    private readonly academicSessionService: AcademicSessionService,
+    private readonly pushNotificationsService: PushNotificationsService,
+    private readonly auditService: AuditService,
+  ) {}
 
-        // create new user also with email and hashed password
-        // Check if user already exists
-        const existingUser = await this.prisma.user.findUnique({
-            where: { email: dto.school_email.toLowerCase() }
-        });
+  // Onboard new school. Optional performedBy logs who did the action (e.g. library owner); when omitted, logs with no performer (public/auth flow).
+  async onboardSchool(
+    dto: OnboardSchoolDto,
+    files: Express.Multer.File[],
+    schoolIcon?: Express.Multer.File,
+    performedBy?: { type: 'school_user' | 'library_user'; id: string },
+  ) {
+    console.log(colors.blue('Onboarding a new school...'));
+    console.log('email: ', dto.school_email);
 
-        if (existingUser) {
-            this.logger.error(colors.red("A user with this email already exists. Please use a different email address."));
-            throw ResponseHelper.error(
-                "A user with this email already exists. Please use a different email address."
-            )
-        }
+    const existingSchool = await this.prisma.school.findFirst({
+      where: {
+        school_email: dto.school_email,
+      },
+    });
 
-        let uploadedFiles: DocumentUploadResult[] = [];
-        let schoolIconResult: StorageUploadResult | null = null;
-        try {
-            const defaultPassword = `${dto.school_name.slice(0, 3).toLowerCase().replace(/\s+/g, '')}/sm/${dto.school_phone.slice(-4)}`;
-    
-            // Upload files using storage provider (S3/Cloudinary based on config)
-            const documentTypes = ['cac', 'utility_bill', 'tax_clearance'];
-            const uploadPromises = files.map(async (file, index) => {
-                const documentType = documentTypes[index] || 'document';
-                const folder = `schools/${dto.school_name.toLowerCase().replace(/\s+/g, '_')}/onboarding/${documentType}`;
-                const fileName = `${documentType}_${Date.now()}.${file.originalname.split('.').pop()}`;
-                
-                const result: StorageUploadResult = await this.storageService.uploadFile(
-                    file,
-                    folder,
-                    fileName
-                );
-                
-                // Map StorageUploadResult to DocumentUploadResult (matching database schema)
-                return {
-                    secure_url: result.url,
-                    public_id: result.key
-                };
-            });
-            
-            uploadedFiles = await Promise.all(uploadPromises);
-
-            // Upload school icon if provided
-            if (schoolIcon) {
-                const folder = `schools/${dto.school_name.toLowerCase().replace(/\s+/g, '_')}/onboarding/icon`;
-                const fileName = `school_icon_${Date.now()}.${schoolIcon.originalname.split('.').pop()}`;
-                
-                schoolIconResult = await this.storageService.uploadFile(
-                    schoolIcon,
-                    folder,
-                    fileName
-                );
-                
-                this.logger.log(colors.green(`✅ School icon uploaded successfully`));
-            }
-
-            // randmon password generator used here
-            const hashedPassword = await argon.hash("SmartEduHub@123");
-            
-            // Prepare school icon object if uploaded
-            const schoolIconData = schoolIconResult ? {
-                url: schoolIconResult.url,
-                key: schoolIconResult.key,
-                ...(schoolIconResult.bucket && { bucket: schoolIconResult.bucket }),
-                ...(schoolIconResult.etag && { etag: schoolIconResult.etag }),
-                uploaded_at: new Date().toISOString()
-            } : undefined;
-
-            // Prepare display picture for director (same as school icon if provided)
-            const directorDisplayPicture = schoolIconResult ? {
-                url: schoolIconResult.url,
-                key: schoolIconResult.key,
-                ...(schoolIconResult.bucket && { bucket: schoolIconResult.bucket }),
-                ...(schoolIconResult.etag && { etag: schoolIconResult.etag }),
-                uploaded_at: new Date().toISOString()
-            } : undefined;
-
-            // create a new school in the database
-            const school = await this.prisma.school.create({
-                data: {
-                    school_name: dto.school_name.toLowerCase(),
-                    school_email: dto.school_email.toLowerCase(),
-                    school_phone: dto.school_phone,
-                    school_address: dto.school_address.toLowerCase(),
-                    school_type: dto.school_type.toLowerCase() as SchoolType,
-                    school_ownership: dto.school_ownership.toLowerCase() as SchoolOwnership,
-                    school_icon: schoolIconData,
-                    // Create and connect documents
-                    cac: uploadedFiles[0] ? {
-                        create: {
-                            secure_url: uploadedFiles[0].secure_url,
-                            public_id: uploadedFiles[0].public_id
-                        }
-                    } : undefined,
-                    utility_bill: uploadedFiles[1] ? {
-                        create: {
-                            secure_url: uploadedFiles[1].secure_url,
-                            public_id: uploadedFiles[1].public_id
-                        }
-                    } : undefined,
-                    tax_clearance: uploadedFiles[2] ? {
-                        create: {
-                            secure_url: uploadedFiles[2].secure_url,
-                            public_id: uploadedFiles[2].public_id
-                        }
-                    } : undefined,
-                    status: 'pending'
-                }
-            });
-
-            // Automatically create a Free subscription plan for the new school
-            // Find the Free template plan first, or create from template
-            const freeTemplatePlan = await this.prisma.platformSubscriptionPlan.findFirst({
-                where: {
-                    plan_type: SubscriptionPlanType.FREE,
-                    school_id: null,
-                    is_template: true,
-                    is_active: true
-                } as any
-            });
-
-            if (freeTemplatePlan) {
-                // Create plan from template
-                await this.prisma.platformSubscriptionPlan.create({
-                    data: {
-                        school_id: school.id,
-                        name: freeTemplatePlan.name,
-                        plan_type: freeTemplatePlan.plan_type,
-                        description: freeTemplatePlan.description,
-                        cost: freeTemplatePlan.cost,
-                        currency: freeTemplatePlan.currency,
-                        billing_cycle: freeTemplatePlan.billing_cycle,
-                        is_active: true,
-                        // Basic Limits
-                        max_allowed_teachers: freeTemplatePlan.max_allowed_teachers,
-                        max_allowed_students: freeTemplatePlan.max_allowed_students,
-                        max_allowed_classes: freeTemplatePlan.max_allowed_classes,
-                        max_allowed_subjects: freeTemplatePlan.max_allowed_subjects,
-                        // AI Interactions & Document Management
-                        allowed_document_types: freeTemplatePlan.allowed_document_types,
-                        max_file_size_mb: freeTemplatePlan.max_file_size_mb,
-                        max_document_uploads_per_student_per_day: freeTemplatePlan.max_document_uploads_per_student_per_day,
-                        max_document_uploads_per_teacher_per_day: freeTemplatePlan.max_document_uploads_per_teacher_per_day,
-                        max_storage_mb: freeTemplatePlan.max_storage_mb,
-                        max_files_per_month: freeTemplatePlan.max_files_per_month,
-                        // Token Usage Limits
-                        max_daily_tokens_per_user: freeTemplatePlan.max_daily_tokens_per_user,
-                        max_weekly_tokens_per_user: freeTemplatePlan.max_weekly_tokens_per_user,
-                        max_monthly_tokens_per_user: freeTemplatePlan.max_monthly_tokens_per_user,
-                        max_total_tokens_per_school: freeTemplatePlan.max_total_tokens_per_school,
-                        // Chat & Messaging Limits
-                        max_messages_per_week: freeTemplatePlan.max_messages_per_week,
-                        max_conversations_per_user: freeTemplatePlan.max_conversations_per_user,
-                        max_chat_sessions_per_user: freeTemplatePlan.max_chat_sessions_per_user,
-                        // Additional Features
-                        features: freeTemplatePlan.features as any,
-                        // Subscription Management
-                        start_date: new Date(),
-                        end_date: null,
-                        status: SubscriptionStatus.ACTIVE,
-                        auto_renew: false
-                    }
-                });
-            } else {
-                // Fallback: Create plan with default values if template doesn't exist
-                await this.prisma.platformSubscriptionPlan.create({
-                    data: {
-                        school_id: school.id,
-                        name: 'Free',
-                        plan_type: SubscriptionPlanType.FREE,
-                        description: 'Free plan with basic features and limited AI interactions',
-                        cost: 0,
-                        currency: 'USD',
-                        billing_cycle: BillingCycle.MONTHLY,
-                        is_active: true,
-                        // Basic Limits
-                        max_allowed_teachers: 30,
-                        max_allowed_students: 100,
-                        max_allowed_classes: null,
-                        max_allowed_subjects: null,
-                        // AI Interactions & Document Management
-                        allowed_document_types: ['pdf'],
-                        max_file_size_mb: 10,
-                        max_document_uploads_per_student_per_day: 3,
-                        max_document_uploads_per_teacher_per_day: 10,
-                        max_storage_mb: 500,
-                        max_files_per_month: 10,
-                        // Token Usage Limits
-                        max_daily_tokens_per_user: 50000,
-                        max_weekly_tokens_per_user: null,
-                        max_monthly_tokens_per_user: null,
-                        max_total_tokens_per_school: null,
-                        // Chat & Messaging Limits
-                        max_messages_per_week: 100,
-                        max_conversations_per_user: null,
-                        max_chat_sessions_per_user: null,
-                        // Additional Features
-                        features: {
-                            ai_chat: true,
-                            basic_analytics: true,
-                            limited_support: true,
-                        },
-                        // Subscription Management
-                        start_date: new Date(),
-                        end_date: null,
-                        status: SubscriptionStatus.ACTIVE,
-                        auto_renew: false
-                    }
-                });
-            }
-
-            console.log(colors.green(`✅ Free subscription plan created for school: ${school.school_name}`));
-
-            // Create the initial academic session for the school
-            const academicYearParts = dto.academic_year.split(/[\/\-]/);
-            const startYear = parseInt(academicYearParts[0]);
-            const endYear = academicYearParts.length > 1 ? parseInt(academicYearParts[1]) : startYear + 1;
-
-            // Calculate a default end date if not provided (3 months from start date)
-            const startDate = new Date(dto.term_start_date);
-            const defaultEndDate = new Date(startDate);
-            defaultEndDate.setMonth(defaultEndDate.getMonth() + 3); // 3 months later
-
-            await this.prisma.academicSession.create({
-                data: {
-                    school_id: school.id,
-                    academic_year: dto.academic_year,
-                    start_year: startYear,
-                    end_year: endYear,
-                    term: dto.current_term,
-                    start_date: startDate,
-                    end_date: dto.term_end_date ? new Date(dto.term_end_date) : defaultEndDate,
-                    status: 'active',
-                    is_current: true
-                }
-            });
-
-            
-
-            await this.prisma.user.create({
-                data: {
-                    email: dto.school_email.toLowerCase(),
-                    password: hashedPassword,
-                    role: "school_director", 
-                    school_id: school.id,
-                    first_name: "School",
-                    last_name: "Director",
-                    is_email_verified: true,
-                    phone_number: dto.school_phone,
-                    display_picture: directorDisplayPicture
-                }
-            });
-
-            // Try to send emails, but don't fail the whole operation if they fail
-            try {
-                // send mail to school owner
-                await sendOnboardingMailToSchoolOwner({
-                    school_name: dto.school_name,
-                    school_email: dto.school_email,
-                    school_phone: dto.school_phone,
-                    school_address: dto.school_address,
-                    school_type: dto.school_type,
-                    school_ownership: dto.school_ownership,
-                    documents: {
-                        cac: uploadedFiles[0]?.secure_url || null,
-                        utility_bill: uploadedFiles[1]?.secure_url || null,
-                        tax_clearance: uploadedFiles[2]?.secure_url || null,
-                    },
-                });
-
-                // send mail to admin
-                await sendOnboardingMailToBTechAdmin({
-                    school_name: dto.school_name,
-                    school_email: dto.school_email,
-                    school_phone: dto.school_phone,
-                    school_address: dto.school_address,
-                    school_type: dto.school_type,
-                    school_ownership: dto.school_ownership,
-                    documents: {
-                        cac: uploadedFiles[0]?.secure_url || null,
-                        utility_bill: uploadedFiles[1]?.secure_url || null,
-                        tax_clearance: uploadedFiles[2]?.secure_url || null,
-                    },
-                    defaultPassword: defaultPassword,
-                });
-            } catch (emailError) {
-                // Log the email error but don't fail the operation
-                console.log(colors.yellow("Warning: Failed to send emails: "), emailError);
-                // You might want to store this error in a log or database for later retry
-            }
-
-            const formatted_response = {
-                id: school.id,
-                school_name: school.school_name,
-                school_email: school.school_email,
-                school_address: school.school_address,
-                school_icon: schoolIconData || null,
-                documents: {
-                    cac: uploadedFiles[0]?.secure_url || null,
-                    utility_bill: uploadedFiles[1]?.secure_url || null,
-                    tax_clearance: uploadedFiles[2]?.secure_url || null,
-                },
-                created_at: formatDate(school.createdAt),
-                updated_at: formatDate(school.updatedAt),
-            };
-
-            await this.auditService.log({
-                auditForType: AuditForType.onboard_school,
-                targetId: school.id,
-                performedById: performedBy?.id,
-                performedByType:
-                    performedBy?.type === 'library_user'
-                        ? AuditPerformedByType.library_user
-                        : performedBy?.type === 'school_user'
-                          ? AuditPerformedByType.school_user
-                          : undefined,
-            });
-
-            // return the newly created school
-            console.log(colors.magenta("New school created successfully!"));
-            return ResponseHelper.created('School onboarded successfully', formatted_response);
-            
-        } catch (error) {
-            console.log(colors.red("Error creating new school: "), error);
-            
-            // Only clean up files if the error occurred during school/user creation
-            // Not during email sending
-            if ((uploadedFiles.length > 0 || schoolIconResult) && !error.message?.includes('No recipients defined')) {
-                console.log(colors.yellow("Cleaning up uploaded files due to error..."));
-                // Delete each uploaded file using the storage service
-                for (const uploadedFile of uploadedFiles) {
-                    try {
-                        await this.storageService.deleteFile(uploadedFile.public_id);
-                    } catch (deleteError) {
-                        console.log(colors.yellow(`Warning: Failed to delete file ${uploadedFile.public_id}: ${deleteError.message}`));
-                    }
-                }
-                // Delete school icon if it was uploaded
-                if (schoolIconResult) {
-                    try {
-                        await this.storageService.deleteFile(schoolIconResult.key);
-                    } catch (deleteError) {
-                        console.log(colors.yellow(`Warning: Failed to delete school icon ${schoolIconResult.key}: ${deleteError.message}`));
-                    }
-                }
-            }
-            
-            return ResponseHelper.error(
-                "Error creating new school",
-                error
-            );
-        }
+    if (existingSchool) {
+      console.log('School already exists... ');
+      throw ResponseHelper.error('School already exists... ');
     }
 
-    // Direcotr login with OTP
-    async directorRequestLoginOtp(dto: RequestLoginOtpDTO) {
+    // create new user also with email and hashed password
+    // Check if user already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: dto.school_email.toLowerCase() },
+    });
 
-        console.log(colors.cyan("Director requesting login otp..."))
-
-        try {
-            
-            // Check if user exists
-            // const user = await this.prisma.school.findUnique({
-            //     where: { school_email: dto.email },
-            // });
-    
-            // if (!user) {
-            //     console.log(colors.red("❌ Admin User not found"));
-            //     throw new NotFoundException("Admin User not found");
-            // }
-    
-            const otp = generateOTP();
-            const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins expiry
-    
-            // Update OTP for the user
-            await this.prisma.user.update({
-                where: { email: dto.email },
-                data: {
-                    otp,
-                    otp_expires_at: otpExpiresAt,
-                },
-            });
-
-            await sendLoginOtpByMail({ email: dto.email, otp })
-            console.log(colors.magenta(`Login otp: ${otp} sucessfully sent to: ${dto.email}`))
-
-            return new ApiResponse(
-                true,
-                "Otp successfully sent"
-            )
-
-        } catch (error) {
-            console.log(colors.red("Error sigining in"))
-            throw new InternalServerErrorException(
-                `Failed to process OTP request: ${error instanceof Error ? error.message : String(error)}`
-            ); 
-        }
+    if (existingUser) {
+      this.logger.error(
+        colors.red(
+          'A user with this email already exists. Please use a different email address.',
+        ),
+      );
+      throw ResponseHelper.error(
+        'A user with this email already exists. Please use a different email address.',
+      );
     }
 
-    // Verify director login OTP
-    async verifyEmailOTPAndSignIn(dto: VerifyEmailOTPDto) {
+    let uploadedFiles: DocumentUploadResult[] = [];
+    let schoolIconResult: StorageUploadResult | null = null;
+    try {
+      const defaultPassword = `${dto.school_name.slice(0, 3).toLowerCase().replace(/\s+/g, '')}/sm/${dto.school_phone.slice(-4)}`;
 
-        console.log(colors.cyan(`Verifying email: ${dto.email} with OTP: ${dto.otp}`));
-    
-        try {
-            // Find user with matching email and OTP
-            const user = await this.prisma.user.findFirst({
-                where: { email: dto.email, otp: dto.otp },
-            });
-    
-            // Check if user exists and OTP is valid
-            if (!user || !user.otp_expires_at || new Date() > new Date(user.otp_expires_at)) {
-                console.log(colors.red("Invalid or expired OTP provided"));
-                throw new BadRequestException("Invalid or expired OTP provided");
-            }
-    
-            // Update `is_email_verified` and clear OTP
-            const updatedUser = await this.prisma.user.update({
-                where: { email: dto.email },
-                data: {
-                    is_email_verified: true,
-                    otp: "",
-                    otp_expires_at: null,
-                },
-            });
-    
-            console.log(colors.magenta("Email address successfully verified"));
+      // Upload files using storage provider (S3/Cloudinary based on config)
+      const documentTypes = ['cac', 'utility_bill', 'tax_clearance'];
+      const uploadPromises = files.map(async (file, index) => {
+        const documentType = documentTypes[index] || 'document';
+        const folder = `schools/${dto.school_name.toLowerCase().replace(/\s+/g, '_')}/onboarding/${documentType}`;
+        const fileName = `${documentType}_${Date.now()}.${file.originalname.split('.').pop()}`;
 
-            const { access_token, refresh_token } = await this.signToken(updatedUser.id, updatedUser.email, updatedUser.school_id)
+        const result: StorageUploadResult =
+          await this.storageService.uploadFile(file, folder, fileName);
 
-            const formatted_response = {
-                user: {
-                    id: updatedUser.id,
-                    email: updatedUser.email,
-                    first_name: updatedUser.first_name,
-                    last_name: updatedUser.last_name,
-                    phone_number: updatedUser.phone_number,
-                    is_email_verified: updatedUser.is_email_verified,
-                    role: updatedUser.role,
-                    school_id: updatedUser.school_id,
-                    created_at: formatDate(updatedUser.createdAt),
-                    updated_at: formatDate(updatedUser.updatedAt),
-                }
-                
-            }
-
-            // Sign in the user and return tokens
-            return ResponseHelper.success(
-                "Login successful",
-                {
-                    access_token,
-                    refresh_token,
-                    ...formatted_response
-                }
-            );
-        } catch (error) {
-            
-            console.error("Error verifying email:", error);
-    
-            if (error instanceof HttpException) {
-                throw error; // Re-throw known exceptions
-            }
-    
-            throw new InternalServerErrorException("Email verification failed");
-        }
-    }
-
-    async signToken(
-        userId: string,
-        email: string,
-        schoolId: string
-    ): Promise<{access_token: string, refresh_token: string}> {
-        // console.log(colors.cyan('Signing token for:'), { userId, email, schoolId });
-        
-        const payload = {
-            sub: userId,
-            email,
-            school_id: schoolId
+        // Map StorageUploadResult to DocumentUploadResult (matching database schema)
+        return {
+          secure_url: result.url,
+          public_id: result.key,
         };
+      });
 
-        const secret = this.config.get('JWT_SECRET');
-        const accessTokenExpiresIn = this.config.get('JWT_EXPIRES_IN') || '15m'; // Shorter expiry for access token
-        const refreshTokenExpiresIn = this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d'; // Longer expiry for refresh token
-        
-        // console.log(colors.yellow('Token config:'), { secret, accessTokenExpiresIn, refreshTokenExpiresIn });
+      uploadedFiles = await Promise.all(uploadPromises);
 
-        try {
-            // Generate access token
-            const accessToken = await this.jwt.signAsync(payload, {
-                expiresIn: accessTokenExpiresIn,
-                secret: secret
-            });
+      // Upload school icon if provided
+      if (schoolIcon) {
+        const folder = `schools/${dto.school_name.toLowerCase().replace(/\s+/g, '_')}/onboarding/icon`;
+        const fileName = `school_icon_${Date.now()}.${schoolIcon.originalname.split('.').pop()}`;
 
-            // Generate refresh token
-            const refreshToken = await this.jwt.signAsync(payload, {
-                expiresIn: refreshTokenExpiresIn,
-                secret: secret
-            });
+        schoolIconResult = await this.storageService.uploadFile(
+          schoolIcon,
+          folder,
+          fileName,
+        );
 
-            // console.log(colors.green('Tokens generated successfully'));
-            
-            return {
-                access_token: accessToken,
-                refresh_token: refreshToken
-            }
-        } catch (error) {
-            console.log(colors.red('Error generating tokens:'), error);
-            throw error;
-        }
-    }
+        this.logger.log(colors.green(`✅ School icon uploaded successfully`));
+      }
 
-    async signIn(payload: SignInDto) {
-        this.logger.log(colors.cyan("Signing in user with email: " + payload.email));
+      // randmon password generator used here
+      const hashedPassword = await argon.hash('SmartEduHub@123');
 
-        try {
-            // find the user by email
-            const existing_user = await this.prisma.user.findUnique({
-                where: {
-                    email: payload.email,
-                }
-            });
+      // Prepare school icon object if uploaded
+      const schoolIconData = schoolIconResult
+        ? {
+            url: schoolIconResult.url,
+            key: schoolIconResult.key,
+            ...(schoolIconResult.bucket && { bucket: schoolIconResult.bucket }),
+            ...(schoolIconResult.etag && { etag: schoolIconResult.etag }),
+            uploaded_at: new Date().toISOString(),
+          }
+        : undefined;
 
-            // if user does not exist, then look under school table, before even goig to under library user table
-            if (!existing_user) {
-                this.logger.log(colors.yellow(`User not found in users table, checking school table for email: ${payload.email}`));
-                const email_is_attached_to_school = await this.prisma.school.findFirst({
-                    where: { school_email: payload.email.toLowerCase() },
-                });
-                if (email_is_attached_to_school) {
-                    const new_user = await this.prisma.user.create({
-                        data: {
-                            email: payload.email.toLowerCase(),
-                            password: 'SmartEdu@01.',
-                            first_name: '',
-                            last_name: '',
-                            phone_number: '',
-                            school_id: email_is_attached_to_school.id,
-                            role: 'school_director',
-                            status: 'active',
-                        }
-                    });
-                    this.logger.log(colors.cyan(`Created User record for email attached to school: ${payload.email}`));
-                    return new_user;
-                } else {
-                    console.log(colors.red("User not found: (email does not exist in users table or school table)"));
-                    throw new NotFoundException("User not found");
-                }
-            }
+      // Prepare display picture for director (same as school icon if provided)
+      const directorDisplayPicture = schoolIconResult
+        ? {
+            url: schoolIconResult.url,
+            key: schoolIconResult.key,
+            ...(schoolIconResult.bucket && { bucket: schoolIconResult.bucket }),
+            ...(schoolIconResult.etag && { etag: schoolIconResult.etag }),
+            uploaded_at: new Date().toISOString(),
+          }
+        : undefined;
 
-            // if user exists, confirm that the school is approved and if not apporved, show proper message that their school is currently undergoing approval process
-            const school = await this.prisma.school.findUnique({
-                where: { id: existing_user.school_id },
-            });
-            if (school?.status !== 'approved') {
-                this.logger.log(colors.yellow(`School is not approved: ${existing_user.school_id}`));
-                return ResponseHelper.error(
-                    "School is not approved, Contact support for more information",
-                    null,
-                    400
-                );
-            }
+      // create a new school in the database
+      const school = await this.prisma.school.create({
+        data: {
+          school_name: dto.school_name.toLowerCase(),
+          school_email: dto.school_email.toLowerCase(),
+          school_phone: dto.school_phone,
+          school_address: dto.school_address.toLowerCase(),
+          school_type: dto.school_type.toLowerCase() as SchoolType,
+          school_ownership:
+            dto.school_ownership.toLowerCase() as SchoolOwnership,
+          school_icon: schoolIconData,
+          // Create and connect documents
+          cac: uploadedFiles[0]
+            ? {
+                create: {
+                  secure_url: uploadedFiles[0].secure_url,
+                  public_id: uploadedFiles[0].public_id,
+                },
+              }
+            : undefined,
+          utility_bill: uploadedFiles[1]
+            ? {
+                create: {
+                  secure_url: uploadedFiles[1].secure_url,
+                  public_id: uploadedFiles[1].public_id,
+                },
+              }
+            : undefined,
+          tax_clearance: uploadedFiles[2]
+            ? {
+                create: {
+                  secure_url: uploadedFiles[2].secure_url,
+                  public_id: uploadedFiles[2].public_id,
+                },
+              }
+            : undefined,
+          status: 'pending',
+        },
+      });
 
-            // Stored password must be a valid Argon2 hash (starts with $). If not, it may be a placeholder
-            // (e.g. for library users who have a User record only for OTP storage).
-            const storedPassword = existing_user.password ?? '';
-            if (!storedPassword.startsWith('$')) {
-                const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-                    where: { email: existing_user.email.toLowerCase() },
-                });
-                if (libraryUser) {
-                    this.logger.log(colors.yellow(`Library user attempted sign-in via school auth: ${payload.email}`));
-                    return ResponseHelper.error(
-                        "This account uses Library sign-in. Please use the Library sign-in page.",
-                        null,
-                        400
-                    );
-                }
-                console.log(colors.red("User not found"));
-                return ResponseHelper.error("User not found", null, 404);
-            }
+      // Automatically create a Free subscription plan for the new school
+      // Find the Free template plan first, or create from template
+      const freeTemplatePlan =
+        await this.prisma.platformSubscriptionPlan.findFirst({
+          where: {
+            plan_type: SubscriptionPlanType.FREE,
+            school_id: null,
+            is_template: true,
+            is_active: true,
+          } as any,
+        });
 
-            // if user exists, compare the password with the hashed password
-            const passwordMatches = await argon.verify(existing_user.password, payload.password);
+      if (freeTemplatePlan) {
+        // Create plan from template
+        await this.prisma.platformSubscriptionPlan.create({
+          data: {
+            school_id: school.id,
+            name: freeTemplatePlan.name,
+            plan_type: freeTemplatePlan.plan_type,
+            description: freeTemplatePlan.description,
+            cost: freeTemplatePlan.cost,
+            currency: freeTemplatePlan.currency,
+            billing_cycle: freeTemplatePlan.billing_cycle,
+            is_active: true,
+            // Basic Limits
+            max_allowed_teachers: freeTemplatePlan.max_allowed_teachers,
+            max_allowed_students: freeTemplatePlan.max_allowed_students,
+            max_allowed_classes: freeTemplatePlan.max_allowed_classes,
+            max_allowed_subjects: freeTemplatePlan.max_allowed_subjects,
+            // AI Interactions & Document Management
+            allowed_document_types: freeTemplatePlan.allowed_document_types,
+            max_file_size_mb: freeTemplatePlan.max_file_size_mb,
+            max_document_uploads_per_student_per_day:
+              freeTemplatePlan.max_document_uploads_per_student_per_day,
+            max_document_uploads_per_teacher_per_day:
+              freeTemplatePlan.max_document_uploads_per_teacher_per_day,
+            max_storage_mb: freeTemplatePlan.max_storage_mb,
+            max_files_per_month: freeTemplatePlan.max_files_per_month,
+            // Token Usage Limits
+            max_daily_tokens_per_user:
+              freeTemplatePlan.max_daily_tokens_per_user,
+            max_weekly_tokens_per_user:
+              freeTemplatePlan.max_weekly_tokens_per_user,
+            max_monthly_tokens_per_user:
+              freeTemplatePlan.max_monthly_tokens_per_user,
+            max_total_tokens_per_school:
+              freeTemplatePlan.max_total_tokens_per_school,
+            // Chat & Messaging Limits
+            max_messages_per_week: freeTemplatePlan.max_messages_per_week,
+            max_conversations_per_user:
+              freeTemplatePlan.max_conversations_per_user,
+            max_chat_sessions_per_user:
+              freeTemplatePlan.max_chat_sessions_per_user,
+            // Additional Features
+            features: freeTemplatePlan.features as any,
+            // Subscription Management
+            start_date: new Date(),
+            end_date: null,
+            status: SubscriptionStatus.ACTIVE,
+            auto_renew: false,
+          },
+        });
+      } else {
+        // Fallback: Create plan with default values if template doesn't exist
+        await this.prisma.platformSubscriptionPlan.create({
+          data: {
+            school_id: school.id,
+            name: 'Free',
+            plan_type: SubscriptionPlanType.FREE,
+            description:
+              'Free plan with basic features and limited AI interactions',
+            cost: 0,
+            currency: 'USD',
+            billing_cycle: BillingCycle.MONTHLY,
+            is_active: true,
+            // Basic Limits
+            max_allowed_teachers: 30,
+            max_allowed_students: 100,
+            max_allowed_classes: null,
+            max_allowed_subjects: null,
+            // AI Interactions & Document Management
+            allowed_document_types: ['pdf'],
+            max_file_size_mb: 10,
+            max_document_uploads_per_student_per_day: 3,
+            max_document_uploads_per_teacher_per_day: 10,
+            max_storage_mb: 500,
+            max_files_per_month: 10,
+            // Token Usage Limits
+            max_daily_tokens_per_user: 50000,
+            max_weekly_tokens_per_user: null,
+            max_monthly_tokens_per_user: null,
+            max_total_tokens_per_school: null,
+            // Chat & Messaging Limits
+            max_messages_per_week: 100,
+            max_conversations_per_user: null,
+            max_chat_sessions_per_user: null,
+            // Additional Features
+            features: {
+              ai_chat: true,
+              basic_analytics: true,
+              limited_support: true,
+            },
+            // Subscription Management
+            start_date: new Date(),
+            end_date: null,
+            status: SubscriptionStatus.ACTIVE,
+            auto_renew: false,
+          },
+        });
+      }
 
-            // if password matches, return success response with user data
-            if(!passwordMatches) {
-                console.log(colors.red("User not found"));
-                return ResponseHelper.error("User not found", null, 404);
-            }
+      console.log(
+        colors.green(
+          `✅ Free subscription plan created for school: ${school.school_name}`,
+        ),
+      );
 
-            // set email to verified if it is not already
-            if(!existing_user.is_email_verified) {
-                this.logger.log(colors.yellow(`Email not verified for user: ${existing_user.email}, verifying...`));
-                await this.prisma.user.update({
-                    where: { id: existing_user.id },
-                    data: { is_email_verified: true }
-                });
-            }
+      // Create the initial academic session for the school
+      const academicYearParts = dto.academic_year.split(/[\/\-]/);
+      const startYear = parseInt(academicYearParts[0]);
+      const endYear =
+        academicYearParts.length > 1
+          ? parseInt(academicYearParts[1])
+          : startYear + 1;
 
-            const formatted_user = {
-                id: existing_user.id,
-                email: existing_user.email,
-                first_name: existing_user.first_name,
-                last_name: existing_user.last_name,
-                phone_number: existing_user.phone_number,
-                is_email_verified: existing_user.is_email_verified,
-                role: existing_user.role,
-                school_id: existing_user.school_id,
-                created_at: formatDate(existing_user.createdAt),
-                updated_at: formatDate(existing_user.updatedAt)
-            }
+      // Calculate a default end date if not provided (3 months from start date)
+      const startDate = new Date(dto.term_start_date);
+      const defaultEndDate = new Date(startDate);
+      defaultEndDate.setMonth(defaultEndDate.getMonth() + 3); // 3 months later
 
-            // if password matches and all checks pass, return success response with tokens
-            console.log(colors.green("User signed in successfully!"));
-            const { access_token, refresh_token } = await this.signToken(existing_user.id, existing_user.email, existing_user.school_id);
-            
-            // Automatically register device token if provided during login
-            if (payload.deviceToken && payload.deviceType) {
-                try {
-                    const userPayload = {
-                        id: existing_user.id,
-                        sub: existing_user.id,
-                        email: existing_user.email,
-                        school_id: existing_user.school_id
-                    } as any;
-                    
-                    await this.pushNotificationsService.registerDevice(userPayload, {
-                        token: payload.deviceToken,
-                        deviceType: payload.deviceType as DeviceType
-                    });
-                } catch (deviceError) {
-                    // Log error but don't fail the login
-                    this.logger.warn(colors.yellow(`Failed to register device during login: ${deviceError.message}`));
-                }
-            }
-            
-            return ResponseHelper.success(
-                "User signed in successfully",
-                {
-                    access_token,
-                    refresh_token,
-                    user: formatted_user
-                }
+      await this.prisma.academicSession.create({
+        data: {
+          school_id: school.id,
+          academic_year: dto.academic_year,
+          start_year: startYear,
+          end_year: endYear,
+          term: dto.current_term,
+          start_date: startDate,
+          end_date: dto.term_end_date
+            ? new Date(dto.term_end_date)
+            : defaultEndDate,
+          status: 'active',
+          is_current: true,
+        },
+      });
+
+      await this.prisma.user.create({
+        data: {
+          email: dto.school_email.toLowerCase(),
+          password: hashedPassword,
+          role: 'school_director',
+          school_id: school.id,
+          first_name: 'School',
+          last_name: 'Director',
+          is_email_verified: true,
+          phone_number: dto.school_phone,
+          display_picture: directorDisplayPicture,
+        },
+      });
+
+      // Try to send emails, but don't fail the whole operation if they fail
+      try {
+        // send mail to school owner
+        await sendOnboardingMailToSchoolOwner({
+          school_name: dto.school_name,
+          school_email: dto.school_email,
+          school_phone: dto.school_phone,
+          school_address: dto.school_address,
+          school_type: dto.school_type,
+          school_ownership: dto.school_ownership,
+          documents: {
+            cac: uploadedFiles[0]?.secure_url || null,
+            utility_bill: uploadedFiles[1]?.secure_url || null,
+            tax_clearance: uploadedFiles[2]?.secure_url || null,
+          },
+        });
+
+        // send mail to admin
+        await sendOnboardingMailToBTechAdmin({
+          school_name: dto.school_name,
+          school_email: dto.school_email,
+          school_phone: dto.school_phone,
+          school_address: dto.school_address,
+          school_type: dto.school_type,
+          school_ownership: dto.school_ownership,
+          documents: {
+            cac: uploadedFiles[0]?.secure_url || null,
+            utility_bill: uploadedFiles[1]?.secure_url || null,
+            tax_clearance: uploadedFiles[2]?.secure_url || null,
+          },
+          defaultPassword: defaultPassword,
+        });
+      } catch (emailError) {
+        // Log the email error but don't fail the operation
+        console.log(
+          colors.yellow('Warning: Failed to send emails: '),
+          emailError,
+        );
+        // You might want to store this error in a log or database for later retry
+      }
+
+      const formatted_response = {
+        id: school.id,
+        school_name: school.school_name,
+        school_email: school.school_email,
+        school_address: school.school_address,
+        school_icon: schoolIconData || null,
+        documents: {
+          cac: uploadedFiles[0]?.secure_url || null,
+          utility_bill: uploadedFiles[1]?.secure_url || null,
+          tax_clearance: uploadedFiles[2]?.secure_url || null,
+        },
+        created_at: formatDate(school.createdAt),
+        updated_at: formatDate(school.updatedAt),
+      };
+
+      await this.auditService.log({
+        auditForType: AuditForType.onboard_school,
+        targetId: school.id,
+        performedById: performedBy?.id,
+        performedByType:
+          performedBy?.type === 'library_user'
+            ? AuditPerformedByType.library_user
+            : performedBy?.type === 'school_user'
+              ? AuditPerformedByType.school_user
+              : undefined,
+      });
+
+      // return the newly created school
+      console.log(colors.magenta('New school created successfully!'));
+      return ResponseHelper.created(
+        'School onboarded successfully',
+        formatted_response,
+      );
+    } catch (error) {
+      console.log(colors.red('Error creating new school: '), error);
+
+      // Only clean up files if the error occurred during school/user creation
+      // Not during email sending
+      if (
+        (uploadedFiles.length > 0 || schoolIconResult) &&
+        !error.message?.includes('No recipients defined')
+      ) {
+        console.log(
+          colors.yellow('Cleaning up uploaded files due to error...'),
+        );
+        // Delete each uploaded file using the storage service
+        for (const uploadedFile of uploadedFiles) {
+          try {
+            await this.storageService.deleteFile(uploadedFile.public_id);
+          } catch (deleteError) {
+            console.log(
+              colors.yellow(
+                `Warning: Failed to delete file ${uploadedFile.public_id}: ${deleteError.message}`,
+              ),
             );
-            
-        } catch (error) {
-            this.logger.log(colors.red("Error signing in: "), error);
-            
-            return new ApiResponse(false, "Error signing in", error.message);
+          }
         }
-    }
-    //
-    async requestPasswordResetOTP(payload: RequestPasswordResetDTO) {
-        this.logger.log(colors.magenta("Requesting password reset otp..."))
-
-        try {
-            const emailLower = payload.email.toLowerCase();
-            
-            // Check if it's a library user first
-            const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-                where: { email: emailLower }
-            });
-
-            let existing_user;
-            let isLibraryUser = false;
-
-            if (libraryUser) {
-                // It's a library user - check if they have a User record for OTP storage
-                isLibraryUser = true;
-                existing_user = await this.prisma.user.findUnique({
-                    where: { email: emailLower }
-                });
-
-                // If no User record exists, create a minimal one just for OTP storage
-                if (!existing_user) {
-                    // Get or create a system school for library users
-                    const librarySchool = await this.prisma.school.upsert({
-                        where: { school_email: 'library-system@system.com' },
-                        update: {},
-                        create: {
-                            school_name: 'Library System',
-                            school_email: 'library-system@system.com',
-                            school_phone: '+000-000-0000',
-                            school_address: 'System Default',
-                            school_type: 'primary_and_secondary',
-                            school_ownership: 'private',
-                            status: 'approved',
-                        },
-                    });
-
-                    existing_user = await this.prisma.user.create({
-                        data: {
-                            email: emailLower,
-                            password: 'SmartEdu@01.', 
-                            first_name: libraryUser.first_name,
-                            last_name: libraryUser.last_name,
-                            phone_number: libraryUser.phone_number || '+000-000-0000',
-                            school_id: librarySchool.id,
-                            role: 'super_admin', // Library users have elevated permissions
-                            status: 'active',
-                        },
-                    });
-                    this.logger.log(colors.cyan(`Created User record for library user OTP storage: ${emailLower}`));
-                }
-            } else {
-                // Not a library user: check User table first
-                existing_user = await this.prisma.user.findFirst({
-                    where: { email: emailLower }
-                });
-                // If not in User table, check if email is a school's school_email and create User for OTP
-                if (!existing_user) {
-                    const email_is_attached_to_school = await this.prisma.school.findFirst({
-                        where: { school_email: emailLower }
-                    });
-                    if (email_is_attached_to_school) {
-                        existing_user = await this.prisma.user.create({
-                            data: {
-                                email: emailLower,
-                                password: 'SmartEdu@01.',
-                                first_name: '',
-                                last_name: '',
-                                phone_number: '',
-                                school_id: email_is_attached_to_school.id,
-                                role: 'school_director',
-                                status: 'active',
-                            }
-                        });
-                        this.logger.log(colors.cyan(`Created User record for email attached to school: ${emailLower}`));
-                    }
-                }
-            }
-
-            // if user not found
-            if(!existing_user) {
-                console.log(colors.red("User not found..."))
-                throw new NotFoundException("User not found");
-            }
-
-            const now = new Date();
-            const existingExpiry = existing_user.otp_expires_at ? new Date(existing_user.otp_expires_at) : null;
-            const hasValidOtp = existing_user.otp && existingExpiry && existingExpiry > now;
-
-            let otp: string;
-
-            if (hasValidOtp) {
-                // Resend the same OTP if it hasn't expired
-                otp = existing_user.otp as string;
-                this.logger.log(colors.cyan(`Resending existing OTP (expires ${existingExpiry.toISOString})`));
-            } else {
-                // Generate new OTP and save
-                otp = generateOTP();
-                const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
-
-                await this.prisma.user.update({
-                    where: { id: existing_user.id },
-                    data: {
-                        otp,
-                        otp_expires_at: otpExpiresAt,
-                    } as Prisma.UserUpdateInput
-                });
-            }
-
-            await sendPasswordResetOtp({
-                email: payload.email,
-                otp
-            })
-
-            const userType = isLibraryUser ? 'library user' : 'user';
-            console.log(colors.magenta(`OTP ${otp} successfully sent to ${payload.email} (${userType})`));
-            
-            return ResponseHelper.success(
-                "OTP sent successfully",
-                { email: payload.email }
+        // Delete school icon if it was uploaded
+        if (schoolIconResult) {
+          try {
+            await this.storageService.deleteFile(schoolIconResult.key);
+          } catch (deleteError) {
+            console.log(
+              colors.yellow(
+                `Warning: Failed to delete school icon ${schoolIconResult.key}: ${deleteError.message}`,
+              ),
             );
-            
-        } catch (error) {
-            console.log(colors.red("Error requesting password reset: "), error);
-            throw error;
+          }
         }
+      }
+
+      return ResponseHelper.error('Error creating new school', error);
     }
+  }
 
-    // Combined OTP verification and password reset
-    async verifyOTPAndResetPassword(dto: { email: string; otp: string; new_password: string; }) {
-        console.log(colors.cyan(`Verifying OTP and resetting password for: ${dto.email}`));
+  // Direcotr login with OTP
+  async directorRequestLoginOtp(dto: RequestLoginOtpDTO) {
+    console.log(colors.cyan('Director requesting login otp...'));
 
+    try {
+      // Check if user exists
+      // const user = await this.prisma.school.findUnique({
+      //     where: { school_email: dto.email },
+      // });
+
+      // if (!user) {
+      //     console.log(colors.red("❌ Admin User not found"));
+      //     throw new NotFoundException("Admin User not found");
+      // }
+
+      const otp = generateOTP();
+      const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins expiry
+
+      // Update OTP for the user
+      await this.prisma.user.update({
+        where: { email: dto.email },
+        data: {
+          otp,
+          otp_expires_at: otpExpiresAt,
+        },
+      });
+
+      await sendLoginOtpByMail({ email: dto.email, otp });
+      console.log(
+        colors.magenta(`Login otp: ${otp} sucessfully sent to: ${dto.email}`),
+      );
+
+      return new ApiResponse(true, 'Otp successfully sent');
+    } catch (error) {
+      console.log(colors.red('Error sigining in'));
+      throw new InternalServerErrorException(
+        `Failed to process OTP request: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  // Verify director login OTP
+  async verifyEmailOTPAndSignIn(dto: VerifyEmailOTPDto) {
+    console.log(
+      colors.cyan(`Verifying email: ${dto.email} with OTP: ${dto.otp}`),
+    );
+
+    try {
+      // Find user with matching email and OTP
+      const user = await this.prisma.user.findFirst({
+        where: { email: dto.email, otp: dto.otp },
+      });
+
+      // Check if user exists and OTP is valid
+      if (
+        !user ||
+        !user.otp_expires_at ||
+        new Date() > new Date(user.otp_expires_at)
+      ) {
+        console.log(colors.red('Invalid or expired OTP provided'));
+        throw new BadRequestException('Invalid or expired OTP provided');
+      }
+
+      // Update `is_email_verified` and clear OTP
+      const updatedUser = await this.prisma.user.update({
+        where: { email: dto.email },
+        data: {
+          is_email_verified: true,
+          otp: '',
+          otp_expires_at: null,
+        },
+      });
+
+      console.log(colors.magenta('Email address successfully verified'));
+
+      const { access_token, refresh_token } = await this.signToken(
+        updatedUser.id,
+        updatedUser.email,
+        updatedUser.school_id,
+      );
+
+      const formatted_response = {
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          first_name: updatedUser.first_name,
+          last_name: updatedUser.last_name,
+          phone_number: updatedUser.phone_number,
+          is_email_verified: updatedUser.is_email_verified,
+          role: updatedUser.role,
+          school_id: updatedUser.school_id,
+          created_at: formatDate(updatedUser.createdAt),
+          updated_at: formatDate(updatedUser.updatedAt),
+        },
+      };
+
+      // Sign in the user and return tokens
+      return ResponseHelper.success('Login successful', {
+        access_token,
+        refresh_token,
+        ...formatted_response,
+      });
+    } catch (error) {
+      console.error('Error verifying email:', error);
+
+      if (error instanceof HttpException) {
+        throw error; // Re-throw known exceptions
+      }
+
+      throw new InternalServerErrorException('Email verification failed');
+    }
+  }
+
+  async signToken(
+    userId: string,
+    email: string,
+    schoolId: string,
+  ): Promise<{ access_token: string; refresh_token: string }> {
+    // console.log(colors.cyan('Signing token for:'), { userId, email, schoolId });
+
+    const payload = {
+      sub: userId,
+      email,
+      school_id: schoolId,
+    };
+
+    const secret = this.config.get('JWT_SECRET');
+    const accessTokenExpiresIn = this.config.get('JWT_EXPIRES_IN') || '15m'; // Shorter expiry for access token
+    const refreshTokenExpiresIn =
+      this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d'; // Longer expiry for refresh token
+
+    // console.log(colors.yellow('Token config:'), { secret, accessTokenExpiresIn, refreshTokenExpiresIn });
+
+    try {
+      // Generate access token
+      const accessToken = await this.jwt.signAsync(payload, {
+        expiresIn: accessTokenExpiresIn,
+        secret: secret,
+      });
+
+      // Generate refresh token
+      const refreshToken = await this.jwt.signAsync(payload, {
+        expiresIn: refreshTokenExpiresIn,
+        secret: secret,
+      });
+
+      // console.log(colors.green('Tokens generated successfully'));
+
+      return {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      };
+    } catch (error) {
+      console.log(colors.red('Error generating tokens:'), error);
+      throw error;
+    }
+  }
+
+  async signIn(payload: SignInDto) {
+    this.logger.log(
+      colors.cyan('Signing in user with email: ' + payload.email),
+    );
+
+    try {
+      // find the user by email
+      const existing_user = await this.prisma.user.findUnique({
+        where: {
+          email: payload.email,
+        },
+      });
+
+      // if user does not exist, then look under school table, before even goig to under library user table
+      if (!existing_user) {
+        this.logger.log(
+          colors.yellow(
+            `User not found in users table, checking school table for email: ${payload.email}`,
+          ),
+        );
+        const email_is_attached_to_school = await this.prisma.school.findFirst({
+          where: { school_email: payload.email.toLowerCase() },
+        });
+        if (email_is_attached_to_school) {
+          const new_user = await this.prisma.user.create({
+            data: {
+              email: payload.email.toLowerCase(),
+              password: 'SmartEdu@01.',
+              first_name: '',
+              last_name: '',
+              phone_number: '',
+              school_id: email_is_attached_to_school.id,
+              role: 'school_director',
+              status: 'active',
+            },
+          });
+          this.logger.log(
+            colors.cyan(
+              `Created User record for email attached to school: ${payload.email}`,
+            ),
+          );
+          return new_user;
+        } else {
+          console.log(
+            colors.red(
+              'User not found: (email does not exist in users table or school table)',
+            ),
+          );
+          throw new NotFoundException('User not found');
+        }
+      }
+
+      // if user exists, confirm that the school is approved and if not apporved, show proper message that their school is currently undergoing approval process
+      const school = await this.prisma.school.findUnique({
+        where: { id: existing_user.school_id },
+      });
+      if (school?.status !== 'approved') {
+        this.logger.log(
+          colors.yellow(`School is not approved: ${existing_user.school_id}`),
+        );
+        return ResponseHelper.error(
+          'School is not approved, Contact support for more information',
+          null,
+          400,
+        );
+      }
+
+      // Stored password must be a valid Argon2 hash (starts with $). If not, it may be a placeholder
+      // (e.g. for library users who have a User record only for OTP storage).
+      const storedPassword = existing_user.password ?? '';
+      if (!storedPassword.startsWith('$')) {
+        const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+          where: { email: existing_user.email.toLowerCase() },
+        });
+        if (libraryUser) {
+          this.logger.log(
+            colors.yellow(
+              `Library user attempted sign-in via school auth: ${payload.email}`,
+            ),
+          );
+          return ResponseHelper.error(
+            'This account uses Library sign-in. Please use the Library sign-in page.',
+            null,
+            400,
+          );
+        }
+        console.log(colors.red('User not found'));
+        return ResponseHelper.error('User not found', null, 404);
+      }
+
+      // if user exists, compare the password with the hashed password
+      const passwordMatches = await argon.verify(
+        existing_user.password,
+        payload.password,
+      );
+
+      // if password matches, return success response with user data
+      if (!passwordMatches) {
+        console.log(colors.red('User not found'));
+        return ResponseHelper.error('User not found', null, 404);
+      }
+
+      // set email to verified if it is not already
+      if (!existing_user.is_email_verified) {
+        this.logger.log(
+          colors.yellow(
+            `Email not verified for user: ${existing_user.email}, verifying...`,
+          ),
+        );
+        await this.prisma.user.update({
+          where: { id: existing_user.id },
+          data: { is_email_verified: true },
+        });
+      }
+
+      const formatted_user = {
+        id: existing_user.id,
+        email: existing_user.email,
+        first_name: existing_user.first_name,
+        last_name: existing_user.last_name,
+        phone_number: existing_user.phone_number,
+        is_email_verified: existing_user.is_email_verified,
+        role: existing_user.role,
+        school_id: existing_user.school_id,
+        created_at: formatDate(existing_user.createdAt),
+        updated_at: formatDate(existing_user.updatedAt),
+      };
+
+      // if password matches and all checks pass, return success response with tokens
+      console.log(colors.green('User signed in successfully!'));
+      const { access_token, refresh_token } = await this.signToken(
+        existing_user.id,
+        existing_user.email,
+        existing_user.school_id,
+      );
+
+      // Automatically register device token if provided during login
+      if (payload.deviceToken && payload.deviceType) {
         try {
-            const emailLower = dto.email.toLowerCase();
-            
-            // Find user with matching email and OTP (OTP is stored in User table)
-            const user = await this.prisma.user.findFirst({
-                where: { email: emailLower, otp: dto.otp },
+          const userPayload = {
+            id: existing_user.id,
+            sub: existing_user.id,
+            email: existing_user.email,
+            school_id: existing_user.school_id,
+          } as any;
+
+          await this.pushNotificationsService.registerDevice(userPayload, {
+            token: payload.deviceToken,
+            deviceType: payload.deviceType as DeviceType,
+          });
+        } catch (deviceError) {
+          // Log error but don't fail the login
+          this.logger.warn(
+            colors.yellow(
+              `Failed to register device during login: ${deviceError.message}`,
+            ),
+          );
+        }
+      }
+
+      return ResponseHelper.success('User signed in successfully', {
+        access_token,
+        refresh_token,
+        user: formatted_user,
+      });
+    } catch (error) {
+      this.logger.log(colors.red('Error signing in: '), error);
+
+      return new ApiResponse(false, 'Error signing in', error.message);
+    }
+  }
+  //
+  async requestPasswordResetOTP(payload: RequestPasswordResetDTO) {
+    this.logger.log(colors.magenta('Requesting password reset otp...'));
+
+    try {
+      const emailLower = payload.email.toLowerCase();
+
+      // Check if it's a library user first
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { email: emailLower },
+      });
+
+      let existing_user;
+      let isLibraryUser = false;
+
+      if (libraryUser) {
+        // It's a library user - check if they have a User record for OTP storage
+        isLibraryUser = true;
+        existing_user = await this.prisma.user.findUnique({
+          where: { email: emailLower },
+        });
+
+        // If no User record exists, create a minimal one just for OTP storage
+        if (!existing_user) {
+          // Get or create a system school for library users
+          const librarySchool = await this.prisma.school.upsert({
+            where: { school_email: 'library-system@system.com' },
+            update: {},
+            create: {
+              school_name: 'Library System',
+              school_email: 'library-system@system.com',
+              school_phone: '+000-000-0000',
+              school_address: 'System Default',
+              school_type: 'primary_and_secondary',
+              school_ownership: 'private',
+              status: 'approved',
+            },
+          });
+
+          existing_user = await this.prisma.user.create({
+            data: {
+              email: emailLower,
+              password: 'SmartEdu@01.',
+              first_name: libraryUser.first_name,
+              last_name: libraryUser.last_name,
+              phone_number: libraryUser.phone_number || '+000-000-0000',
+              school_id: librarySchool.id,
+              role: 'super_admin', // Library users have elevated permissions
+              status: 'active',
+            },
+          });
+          this.logger.log(
+            colors.cyan(
+              `Created User record for library user OTP storage: ${emailLower}`,
+            ),
+          );
+        }
+      } else {
+        // Not a library user: check User table first
+        existing_user = await this.prisma.user.findFirst({
+          where: { email: emailLower },
+        });
+        // If not in User table, check if email is a school's school_email and create User for OTP
+        if (!existing_user) {
+          const email_is_attached_to_school =
+            await this.prisma.school.findFirst({
+              where: { school_email: emailLower },
             });
-
-            // Check if user exists and OTP is valid
-            if (!user || !user.otp_expires_at || new Date() > new Date(user.otp_expires_at)) {
-                console.log(colors.red("Invalid or expired OTP provided"));
-                
-                // Clear the OTP if user exists but OTP is invalid/expired
-                if (user) {
-                    await this.prisma.user.update({
-                        where: { id: user.id },
-                        data: {
-                            otp: "",
-                            otp_expires_at: null,
-                            is_otp_verified: false
-                        },
-                    });
-                }
-                
-                throw new BadRequestException("Invalid or expired OTP provided");
-            }
-
-            // Hash the new password
-            const hashedPassword = await argon.hash(dto.new_password);
-
-            // Check if this is a library user
-            const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-                where: { email: emailLower }
+          if (email_is_attached_to_school) {
+            existing_user = await this.prisma.user.create({
+              data: {
+                email: emailLower,
+                password: 'SmartEdu@01.',
+                first_name: '',
+                last_name: '',
+                phone_number: '',
+                school_id: email_is_attached_to_school.id,
+                role: 'school_director',
+                status: 'active',
+              },
             });
-
-            if (libraryUser) {
-                // Update LibraryResourceUser password (the one used for authentication)
-                await this.prisma.libraryResourceUser.update({
-                    where: { id: libraryUser.id },
-                    data: {
-                        password: hashedPassword,
-                    },
-                });
-
-                // Also update User table password (for consistency, even though it's not used for auth)
-                await this.prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        password: hashedPassword,
-                        is_otp_verified: false,
-                        otp: "",
-                        otp_expires_at: null,
-                    },
-                });
-
-                console.log(colors.green(`Password reset successfully for library user: ${dto.email}`));
-            } else {
-                // Regular user - update User table password
-                await this.prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        password: hashedPassword,
-                        is_otp_verified: false,
-                        otp: "",
-                        otp_expires_at: null,
-                    },
-                });
-
-                console.log(colors.green(`Password reset successfully for user: ${dto.email}`));
-            }
-
-            return ResponseHelper.success(
-                "Password reset successfully",
-                { email: dto.email }
+            this.logger.log(
+              colors.cyan(
+                `Created User record for email attached to school: ${emailLower}`,
+              ),
             );
-        } catch (error) {
-            console.error("Error verifying OTP and resetting password:", error);
-
-            if (error instanceof HttpException) {
-                throw error; 
-            }
-
-            throw new InternalServerErrorException("Password reset failed");
+          }
         }
+      }
+
+      // if user not found
+      if (!existing_user) {
+        console.log(colors.red('User not found...'));
+        throw new NotFoundException('User not found');
+      }
+
+      const now = new Date();
+      const existingExpiry = existing_user.otp_expires_at
+        ? new Date(existing_user.otp_expires_at)
+        : null;
+      const hasValidOtp =
+        existing_user.otp && existingExpiry && existingExpiry > now;
+
+      let otp: string;
+
+      if (hasValidOtp) {
+        // Resend the same OTP if it hasn't expired
+        otp = existing_user.otp as string;
+        this.logger.log(
+          colors.cyan(
+            `Resending existing OTP (expires ${existingExpiry.toISOString})`,
+          ),
+        );
+      } else {
+        // Generate new OTP and save
+        otp = generateOTP();
+        const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
+        await this.prisma.user.update({
+          where: { id: existing_user.id },
+          data: {
+            otp,
+            otp_expires_at: otpExpiresAt,
+          } as Prisma.UserUpdateInput,
+        });
+      }
+
+      await sendPasswordResetOtp({
+        email: payload.email,
+        otp,
+      });
+
+      const userType = isLibraryUser ? 'library user' : 'user';
+      console.log(
+        colors.magenta(
+          `OTP ${otp} successfully sent to ${payload.email} (${userType})`,
+        ),
+      );
+
+      return ResponseHelper.success('OTP sent successfully', {
+        email: payload.email,
+      });
+    } catch (error) {
+      console.log(colors.red('Error requesting password reset: '), error);
+      throw error;
     }
+  }
 
-    /////////////////////////////////////////////////////////// director onboarding 
-    async onboardClasses(dto: OnboardClassesDto, user: any, options?: OnboardOptions) {
-        console.log(colors.cyan("Onboarding classes..."));
+  // Combined OTP verification and password reset
+  async verifyOTPAndResetPassword(dto: {
+    email: string;
+    otp: string;
+    new_password: string;
+  }) {
+    console.log(
+      colors.cyan(`Verifying OTP and resetting password for: ${dto.email}`),
+    );
 
+    try {
+      const emailLower = dto.email.toLowerCase();
+
+      // Find user with matching email and OTP (OTP is stored in User table)
+      const user = await this.prisma.user.findFirst({
+        where: { email: emailLower, otp: dto.otp },
+      });
+
+      // Check if user exists and OTP is valid
+      if (
+        !user ||
+        !user.otp_expires_at ||
+        new Date() > new Date(user.otp_expires_at)
+      ) {
+        console.log(colors.red('Invalid or expired OTP provided'));
+
+        // Clear the OTP if user exists but OTP is invalid/expired
+        if (user) {
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              otp: '',
+              otp_expires_at: null,
+              is_otp_verified: false,
+            },
+          });
+        }
+
+        throw new BadRequestException('Invalid or expired OTP provided');
+      }
+
+      // Hash the new password
+      const hashedPassword = await argon.hash(dto.new_password);
+
+      // Check if this is a library user
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { email: emailLower },
+      });
+
+      if (libraryUser) {
+        // Update LibraryResourceUser password (the one used for authentication)
+        await this.prisma.libraryResourceUser.update({
+          where: { id: libraryUser.id },
+          data: {
+            password: hashedPassword,
+          },
+        });
+
+        // Also update User table password (for consistency, even though it's not used for auth)
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            password: hashedPassword,
+            is_otp_verified: false,
+            otp: '',
+            otp_expires_at: null,
+          },
+        });
+
+        console.log(
+          colors.green(
+            `Password reset successfully for library user: ${dto.email}`,
+          ),
+        );
+      } else {
+        // Regular user - update User table password
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            password: hashedPassword,
+            is_otp_verified: false,
+            otp: '',
+            otp_expires_at: null,
+          },
+        });
+
+        console.log(
+          colors.green(`Password reset successfully for user: ${dto.email}`),
+        );
+      }
+
+      return ResponseHelper.success('Password reset successfully', {
+        email: dto.email,
+      });
+    } catch (error) {
+      console.error('Error verifying OTP and resetting password:', error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Password reset failed');
+    }
+  }
+
+  /////////////////////////////////////////////////////////// director onboarding
+  async onboardClasses(
+    dto: OnboardClassesDto,
+    user: any,
+    options?: OnboardOptions,
+  ) {
+    console.log(colors.cyan('Onboarding classes...'));
+
+    try {
+      // Resolve school: by id when options.schoolId (library flow), else by user email (auth flow)
+      const existingSchool = options?.schoolId
+        ? await this.prisma.school.findUnique({
+            where: { id: options.schoolId },
+          })
+        : await this.prisma.school.findFirst({
+            where: { school_email: user.email },
+          });
+
+      if (!existingSchool) {
+        console.log(colors.red('School not found'));
+        throw new NotFoundException({
+          success: false,
+          message: 'School not found',
+          error: null,
+          statusCode: 404,
+        });
+      }
+
+      // Check if any of the classes already exist in the school
+      const existingClasses = await this.prisma.class.findMany({
+        where: {
+          name: {
+            in: dto.class_names,
+          },
+          schoolId: existingSchool.id,
+        },
+      });
+
+      if (existingClasses.length > 0) {
+        console.log(colors.red('Some classes already exist in this school'));
+        throw new BadRequestException({
+          success: false,
+          message: 'Some classes already exist in this school',
+          error: existingClasses.map((c) => c.name),
+          statusCode: 400,
+        });
+      }
+
+      // Get current academic session for the school
+      const currentSessionResponse =
+        await this.academicSessionService.getCurrentSession(existingSchool.id);
+      if (!currentSessionResponse.success) {
+        throw new BadRequestException({
+          success: false,
+          message: 'No current academic session found for the school',
+          error: null,
+          statusCode: 400,
+        });
+      }
+
+      // Create the classes
+      await this.prisma.class.createMany({
+        data: dto.class_names.map((className) => ({
+          name: className.toLowerCase().replace(/\s+/g, ''),
+          schoolId: existingSchool.id,
+          academic_session_id: currentSessionResponse.data.id,
+        })),
+      });
+
+      // Fetch the created classes
+      const createdClasses = await this.prisma.class.findMany({
+        where: {
+          schoolId: existingSchool.id,
+          name: {
+            in: dto.class_names.map((name) =>
+              name.toLowerCase().replace(/\s+/g, ''),
+            ),
+          },
+        },
+      });
+
+      console.log(colors.green('Classes created successfully!'));
+
+      const formatted_response = createdClasses.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        school_id: cls.schoolId,
+        class_teacher_id: cls.classTeacherId || null,
+        created_at: formatDate(cls.createdAt),
+        updated_at: formatDate(cls.updatedAt),
+      }));
+
+      if (options?.performedBy) {
+        await this.auditService.log({
+          auditForType: AuditForType.onboard_classes,
+          targetId: existingSchool.id,
+          performedById: options.performedBy.id,
+          performedByType:
+            options.performedBy.type === 'library_user'
+              ? AuditPerformedByType.library_user
+              : AuditPerformedByType.school_user,
+        });
+      }
+
+      return ResponseHelper.success(
+        'Classes created successfully',
+        formatted_response,
+      );
+    } catch (error) {
+      console.log(colors.red('Error creating class: '), error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Error creating class',
+        error: error.message,
+        statusCode: 500,
+      });
+    }
+  }
+
+  async onboardTeachers(
+    dto: OnboardTeachersDto,
+    user: any,
+    options?: OnboardOptions,
+  ) {
+    console.log(colors.cyan('Onboarding teachers...'));
+
+    try {
+      const existingSchool = options?.schoolId
+        ? await this.prisma.school.findUnique({
+            where: { id: options.schoolId },
+          })
+        : await this.prisma.school.findFirst({
+            where: { school_email: user.email },
+          });
+
+      if (!existingSchool) {
+        console.log(colors.red('School not found'));
+        throw new NotFoundException({
+          success: false,
+          message: 'School not found',
+          error: null,
+          statusCode: 404,
+        });
+      }
+
+      // Check if any of the emails already exist
+      const existingEmails = await this.prisma.user.findMany({
+        where: {
+          email: {
+            in: dto.teachers.map((teacher) => teacher.email.toLowerCase()),
+          },
+        },
+      });
+
+      if (existingEmails.length > 0) {
+        console.log(colors.red('Some emails already exist in the system'));
+        throw new BadRequestException({
+          success: false,
+          message: 'Some emails already exist in the system',
+          error: existingEmails.map((u) => u.email),
+          statusCode: 400,
+        });
+      }
+
+      // Get current academic session
+      const currentSessionResponse =
+        await this.academicSessionService.getCurrentSession(existingSchool.id);
+      if (!currentSessionResponse.success || !currentSessionResponse.data) {
+        throw new BadRequestException({
+          success: false,
+          message: 'No current academic session found for the school',
+          error: null,
+          statusCode: 400,
+        });
+      }
+      const currentSession = currentSessionResponse.data;
+
+      // Import teacher ID generator (relative path so runtime resolve works from dist/)
+      const { generateUniqueTeacherId } =
+        await import('../director/teachers/helper-functions/teacher-id-generator');
+
+      // Generate strong passwords for each teacher
+      const teachersWithPasswords = await Promise.all(
+        dto.teachers.map(async (teacher) => {
+          // const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
+          const defaultPassword = `SmartEduHub123`;
+          // const defaultPassword = `SmartEduHub123`;
+          const hashedPassword = await argon.hash(defaultPassword);
+
+          return {
+            ...teacher,
+            password: hashedPassword,
+            defaultPassword, // Store the unhashed password temporarily for email
+          };
+        }),
+      );
+
+      // Create users and teacher records (each in its own transaction for data integrity)
+      const teachers = await Promise.all(
+        teachersWithPasswords.map(async (teacherData) => {
+          return await this.prisma.$transaction(async (tx) => {
+            // Create user
+            const user = await tx.user.create({
+              data: {
+                email: teacherData.email.toLowerCase(),
+                password: teacherData.password,
+                role: 'teacher',
+                school_id: existingSchool.id,
+                first_name: teacherData.first_name.toLowerCase(),
+                last_name: teacherData.last_name.toLowerCase(),
+                phone_number: teacherData.phone_number,
+              },
+            });
+
+            // Generate unique teacher ID
+            const teacherId = await generateUniqueTeacherId(this.prisma);
+
+            // Create teacher record
+            const teacher = await tx.teacher.create({
+              data: {
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                phone_number: user.phone_number,
+                school_id: existingSchool.id,
+                academic_session_id: currentSession.id,
+                user_id: user.id,
+                teacher_id: teacherId,
+                role: 'teacher',
+                password: teacherData.password,
+                gender: 'other', // Default gender
+                hire_date: new Date(),
+                status: 'active',
+              },
+            });
+
+            console.log(
+              colors.green(
+                `✅ Created teacher record for ${user.email} with ID: ${teacher.id}`,
+              ),
+            );
+
+            return { user, teacher };
+          });
+        }),
+      );
+
+      console.log(colors.green('Teachers created successfully!'));
+
+      // Send congratulatory emails to all teachers
+      const emailPromises = teachers.map(async ({ user: teacher }) => {
         try {
-            // Resolve school: by id when options.schoolId (library flow), else by user email (auth flow)
-            const existingSchool = options?.schoolId
-                ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
-                : await this.prisma.school.findFirst({
-                    where: { school_email: user.email }
-                });
+          await sendTeacherOnboardEmail({
+            firstName: teacher.first_name,
+            lastName: teacher.last_name,
+            email: teacher.email,
+            phone: teacher.phone_number,
+            schoolName: existingSchool.school_name,
+          });
+        } catch (emailError) {
+          console.log(
+            colors.yellow(
+              `⚠️ Failed to send email to ${teacher.email}: ${emailError.message}`,
+            ),
+          );
+        }
+      });
 
-            if (!existingSchool) {
-                console.log(colors.red("School not found"));
-                throw new NotFoundException({
-                    success: false,
-                    message: "School not found",
-                    error: null,
-                    statusCode: 404
-                });
-            }
+      // Wait for all emails to be sent (but don't fail if some emails fail)
+      await Promise.allSettled(emailPromises);
 
-            // Check if any of the classes already exist in the school
-            const existingClasses = await this.prisma.class.findMany({
-                where: {
-                    name: {
-                        in: dto.class_names
-                    },
-                    schoolId: existingSchool.id
-                }
+      const formatted_response = teachers.map(({ user }) => ({
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        phone_number: user.phone_number,
+        role: user.role,
+        school_id: user.school_id,
+        created_at: formatDate(user.createdAt),
+        updated_at: formatDate(user.updatedAt),
+      }));
+
+      if (options?.performedBy) {
+        await this.auditService.log({
+          auditForType: AuditForType.onboard_teachers,
+          targetId: existingSchool.id,
+          performedById: options.performedBy.id,
+          performedByType:
+            options.performedBy.type === 'library_user'
+              ? AuditPerformedByType.library_user
+              : AuditPerformedByType.school_user,
+        });
+      }
+
+      return ResponseHelper.success(
+        'Teachers onboarded successfully',
+        formatted_response,
+      );
+    } catch (error) {
+      console.log(colors.red('Error onboarding teachers: '), error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Error onboarding teachers',
+        error: error.message,
+        statusCode: 500,
+      });
+    }
+  }
+
+  async onboardStudents(
+    dto: OnboardStudentsDto,
+    user: any,
+    options?: OnboardOptions,
+  ) {
+    console.log(colors.cyan('Onboarding students...'));
+
+    try {
+      const existingSchool = options?.schoolId
+        ? await this.prisma.school.findUnique({
+            where: { id: options.schoolId },
+          })
+        : await this.prisma.school.findFirst({
+            where: { school_email: user.email },
+          });
+
+      if (!existingSchool) {
+        console.log(colors.red('School not found'));
+        throw new NotFoundException({
+          success: false,
+          message: 'School not found',
+          error: null,
+          statusCode: 404,
+        });
+      }
+
+      // Emails already in use (User, Teacher, School.school_email, LibraryResourceUser) — skip these and report in response
+      const requestedEmails = dto.students.map((s) =>
+        s.email.toLowerCase().trim(),
+      );
+      const emailsAlreadyInUse =
+        await this.getEmailsAlreadyInUse(requestedEmails);
+      const failedEmails = [...emailsAlreadyInUse];
+
+      const studentsToOnboard = dto.students.filter(
+        (s) => !emailsAlreadyInUse.includes(s.email.toLowerCase().trim()),
+      );
+
+      if (studentsToOnboard.length === 0) {
+        return ResponseHelper.success(
+          'No new students to onboard; all emails already in use',
+          {
+            totalSuccessfullyOnboarded: 0,
+            totalFailed: failedEmails.length,
+            failedEmailsToOnboard: failedEmails,
+            onboardedUsers: [],
+          },
+        );
+      }
+
+      if (failedEmails.length > 0) {
+        console.log(
+          colors.yellow(
+            `Skipping ${failedEmails.length} email(s) already in use: ${failedEmails.join(', ')}`,
+          ),
+        );
+      }
+
+      // Get all classes for the school
+      const schoolClasses = await this.prisma.class.findMany({
+        where: { schoolId: existingSchool.id },
+      });
+
+      // Validate that all default classes exist
+      const requestedClasses = studentsToOnboard.map((student) =>
+        student.default_class.toLowerCase().replace(/\s+/g, ''),
+      );
+
+      const invalidClasses = requestedClasses.filter(
+        (className) =>
+          !schoolClasses.some(
+            (c) => c.name.toLowerCase().replace(/\s+/g, '') === className,
+          ),
+      );
+
+      if (invalidClasses.length > 0) {
+        console.log(
+          colors.red('Some selected classes do not exist in the school'),
+        );
+        throw new BadRequestException({
+          success: false,
+          message: 'Some classes do not exist in the school',
+          error: invalidClasses,
+          statusCode: 400,
+        });
+      }
+
+      // Generate default password for each student
+      const studentsWithPasswords = await Promise.all(
+        studentsToOnboard.map(async (student) => {
+          // const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
+          const defaultPassword = `SmartEduHub123`;
+          const hashedPassword = await argon.hash(defaultPassword);
+
+          return {
+            ...student,
+            password: hashedPassword,
+            defaultPassword, // Store the unhashed password temporarily for email
+          };
+        }),
+      );
+
+      // Get current academic session
+      const currentSessionResponse =
+        await this.academicSessionService.getCurrentSession(existingSchool.id);
+      if (!currentSessionResponse.success || !currentSessionResponse.data) {
+        throw new BadRequestException({
+          success: false,
+          message: 'No current academic session found for the school',
+          error: null,
+          statusCode: 400,
+        });
+      }
+      const currentSession = currentSessionResponse.data;
+
+      // Import student ID generator (relative path for runtime resolution from dist/)
+      const { generateUniqueStudentId } =
+        await import('../director/students/helper-functions/student-id-generator');
+
+      // Create all users and student records in a single transaction to avoid P2028 (transaction timeout under concurrency)
+      const students = await this.prisma.$transaction(
+        async (tx) => {
+          const results: Array<{
+            user: Awaited<ReturnType<typeof tx.user.create>>;
+            student: Awaited<ReturnType<typeof tx.student.create>>;
+          }> = [];
+          for (const studentData of studentsWithPasswords) {
+            const user = await tx.user.create({
+              data: {
+                email: studentData.email.toLowerCase(),
+                password: studentData.password,
+                role: 'student',
+                school_id: existingSchool.id,
+                first_name: studentData.first_name.toLowerCase(),
+                last_name: studentData.last_name.toLowerCase(),
+                phone_number: studentData.phone_number,
+              },
+            });
+
+            const classId = schoolClasses.find(
+              (c) =>
+                c.name.toLowerCase().replace(/\s+/g, '') ===
+                studentData.default_class.toLowerCase().replace(/\s+/g, ''),
+            )?.id;
+
+            const studentId = await generateUniqueStudentId(tx);
+
+            const student = await tx.student.create({
+              data: {
+                school_id: existingSchool.id,
+                academic_session_id: currentSession.id,
+                user_id: user.id,
+                student_id: studentId,
+                current_class_id: classId || null,
+                admission_date: new Date(),
+                status: 'active',
+              },
+            });
+
+            console.log(
+              colors.green(
+                `✅ Created student record for ${user.email} with ID: ${student.id}`,
+              ),
+            );
+            results.push({ user, student });
+          }
+          return results;
+        },
+        { timeout: 60000 },
+      );
+
+      console.log(colors.green('Students created and enrolled successfully!'));
+
+      // Send congratulatory emails one-by-one with delay to respect Resend rate limit (e.g. 2/sec)
+      const emailDelayMs = 1000; // 1 second between each email
+      for (let i = 0; i < students.length; i++) {
+        const { user: student } = students[i];
+        try {
+          const studentData = studentsToOnboard.find(
+            (s) => s.email.toLowerCase() === student.email.toLowerCase(),
+          );
+          const className = studentData?.default_class || 'Unassigned';
+          const defaultPassword = studentsWithPasswords[i]?.defaultPassword;
+          await sendStudentOnboardEmail({
+            firstName: student.first_name,
+            lastName: student.last_name,
+            email: student.email,
+            phone: student.phone_number,
+            schoolName: existingSchool.school_name,
+            className: className,
+            password: defaultPassword,
+          });
+        } catch (emailError) {
+          console.log(
+            colors.yellow(
+              `⚠️ Failed to send email to ${student.email}: ${emailError.message}`,
+            ),
+          );
+        }
+        if (i < students.length - 1) {
+          await new Promise((r) => setTimeout(r, emailDelayMs));
+        }
+      }
+
+      const formatted_response = students.map(({ user }) => ({
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        phone_number: user.phone_number,
+        role: user.role,
+        school_id: user.school_id,
+        created_at: formatDate(user.createdAt),
+        updated_at: formatDate(user.updatedAt),
+      }));
+
+      // Audit log: onboard_students with full details of each onboarded student (first name, last name, email, password as used)
+      const onboardedDetails = students.map(({ user }, idx) => ({
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        password: studentsWithPasswords[idx]?.defaultPassword ?? null,
+      }));
+      await this.auditService.log({
+        auditForType: AuditForType.onboard_students,
+        targetId: existingSchool.id,
+        performedById: options?.performedBy?.id,
+        performedByType: options?.performedBy
+          ? options.performedBy.type === 'library_user'
+            ? AuditPerformedByType.library_user
+            : AuditPerformedByType.school_user
+          : undefined,
+        metadata: {
+          totalOnboarded: students.length,
+          onboardedStudents: onboardedDetails,
+        },
+      });
+
+      const totalSuccessfullyOnboarded = students.length;
+      const totalFailed = failedEmails.length;
+
+      return ResponseHelper.success(
+        totalFailed > 0
+          ? `Students onboarded with ${totalSuccessfullyOnboarded} succeeded, ${totalFailed} skipped (email already in use).`
+          : 'Students onboarded successfully',
+        {
+          totalSuccessfullyOnboarded,
+          totalFailed,
+          failedEmailsToOnboard: failedEmails,
+          onboardedUsers: formatted_response,
+        },
+      );
+    } catch (error) {
+      console.log(colors.red('Error onboarding students: '), error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Error onboarding students',
+        error: error.message,
+        statusCode: 500,
+      });
+    }
+  }
+
+  async onboardDirectors(dto: OnboardDirectorsDto, user: any) {
+    console.log(colors.cyan('Onboarding directors...'));
+
+    try {
+      // Check if school exists
+      const existingSchool = await this.prisma.school.findFirst({
+        where: { school_email: user.email },
+      });
+
+      if (!existingSchool) {
+        console.log(colors.red('School not found'));
+        throw new NotFoundException({
+          success: false,
+          message: 'School not found',
+          error: null,
+          statusCode: 404,
+        });
+      }
+
+      // Check if any of the emails already exist
+      const existingEmails = await this.prisma.user.findMany({
+        where: {
+          email: {
+            in: dto.directors.map((director) => director.email.toLowerCase()),
+          },
+        },
+      });
+
+      if (existingEmails.length > 0) {
+        console.log(colors.red('Some emails already exist in the system'));
+        throw new BadRequestException({
+          success: false,
+          message: 'Some emails already exist in the system',
+          error: existingEmails.map((u) => u.email),
+          statusCode: 400,
+        });
+      }
+
+      // Generate default password for each director (first 3 letters of first name + last 4 digits of phone)
+      const directorsWithPasswords = await Promise.all(
+        dto.directors.map(async (director) => {
+          const defaultPassword = `SmartEduHub123`;
+          // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
+          const hashedPassword = await argon.hash(defaultPassword);
+
+          return {
+            ...director,
+            password: hashedPassword,
+            defaultPassword, // Storing the unhashed password temporarily for email
+          };
+        }),
+      );
+
+      // Create the directors
+      const createdDirectors = await this.prisma.user.createMany({
+        data: directorsWithPasswords.map((director) => ({
+          email: director.email.toLowerCase(),
+          password: director.password,
+          role: 'school_director',
+          school_id: existingSchool.id,
+          first_name: director.first_name.toLowerCase(),
+          last_name: director.last_name.toLowerCase(),
+          phone_number: director.phone_number,
+        })),
+      });
+
+      // Fetch the created directors
+      const directors = await this.prisma.user.findMany({
+        where: {
+          email: {
+            in: dto.directors.map((director) => director.email.toLowerCase()),
+          },
+        },
+      });
+
+      console.log(colors.green('Directors created successfully!'));
+
+      // Send congratulatory emails to all directors
+      const emailPromises = directors.map(async (director) => {
+        try {
+          await sendDirectorOnboardEmail({
+            firstName: director.first_name,
+            lastName: director.last_name,
+            email: director.email,
+            phone: director.phone_number,
+            schoolName: existingSchool.school_name,
+          });
+        } catch (emailError) {
+          console.log(
+            colors.yellow(
+              `⚠️ Failed to send email to ${director.email}: ${emailError.message}`,
+            ),
+          );
+        }
+      });
+
+      // Wait for all emails to be sent (but don't fail if some emails fail)
+      await Promise.allSettled(emailPromises);
+
+      const formatted_response = directors.map((director) => ({
+        id: director.id,
+        first_name: director.first_name,
+        last_name: director.last_name,
+        email: director.email,
+        phone_number: director.phone_number,
+        role: director.role,
+        school_id: director.school_id,
+        created_at: formatDate(director.createdAt),
+        updated_at: formatDate(director.updatedAt),
+      }));
+
+      return ResponseHelper.success(
+        'Directors onboarded successfully',
+        formatted_response,
+      );
+    } catch (error) {
+      console.log(colors.red('Error onboarding directors: '), error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Error onboarding directors',
+        error: error.message,
+        statusCode: 500,
+      });
+    }
+  }
+
+  async onboardData(dto: OnboardDataDto, user: any) {
+    console.log(colors.cyan('Starting comprehensive onboarding process...'));
+
+    console.log('user: ', user);
+
+    try {
+      // Check if school exists
+      const existingSchool = await this.prisma.school.findFirst({
+        where: { school_email: user.email },
+      });
+
+      if (!existingSchool) {
+        console.log(colors.red('School not found'));
+        throw new NotFoundException({
+          success: false,
+          message: 'School not found',
+          error: null,
+          statusCode: 404,
+        });
+      }
+
+      // Step 1: Database Transaction (Fast & Reliable)
+      const { response, createdUsers } = await this.prisma.$transaction(
+        async (prisma) => {
+          const response: any = {};
+          const createdUsers: any = {
+            teachers: [],
+            students: [],
+            directors: [],
+          };
+
+          // 1. Handle Classes
+          if (dto.class_names && dto.class_names.length > 0) {
+            console.log(colors.cyan('Processing classes...'));
+
+            // Check if any of the classes already exist
+            const existingClasses = await prisma.class.findMany({
+              where: {
+                name: {
+                  in: dto.class_names.map((name) =>
+                    name.toLowerCase().replace(/\s+/g, ''),
+                  ),
+                },
+                schoolId: existingSchool.id,
+              },
             });
 
             if (existingClasses.length > 0) {
-                console.log(colors.red("Some classes already exist in this school"));
-                throw new BadRequestException({
-                    success: false,
-                    message: "Some classes already exist in this school",
-                    error: existingClasses.map(c => c.name),
-                    statusCode: 400
-                });
+              console.log(
+                colors.red('Some classes already exist in this school'),
+              );
+              throw new BadRequestException({
+                success: false,
+                message: 'Some classes already exist in this school',
+                error: existingClasses.map((c) => c.name),
+                statusCode: 400,
+              });
             }
 
             // Get current academic session for the school
-            const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
+            const currentSessionResponse =
+              await this.academicSessionService.getCurrentSession(
+                existingSchool.id,
+              );
             if (!currentSessionResponse.success) {
-                throw new BadRequestException({
-                    success: false,
-                    message: "No current academic session found for the school",
-                    error: null,
-                    statusCode: 400
-                });
+              throw new BadRequestException({
+                success: false,
+                message: 'No current academic session found for the school',
+                error: null,
+                statusCode: 400,
+              });
             }
 
             // Create the classes
-            await this.prisma.class.createMany({
-                data: dto.class_names.map(className => ({
-                    name: className.toLowerCase().replace(/\s+/g, ''),
-                    schoolId: existingSchool.id,
-                    academic_session_id: currentSessionResponse.data.id
-                }))
+            await prisma.class.createMany({
+              data: dto.class_names.map((className) => ({
+                name: className.toLowerCase().replace(/\s+/g, ''),
+                schoolId: existingSchool.id,
+                academic_session_id: currentSessionResponse.data.id,
+              })),
             });
 
-            // Fetch the created classes
-            const createdClasses = await this.prisma.class.findMany({
-                where: {
-                    schoolId: existingSchool.id,
-                    name: {
-                        in: dto.class_names.map(name => name.toLowerCase().replace(/\s+/g, ''))
-                    }
-                }
+            // Fetch created classes
+            const createdClasses = await prisma.class.findMany({
+              where: {
+                schoolId: existingSchool.id,
+                name: {
+                  in: dto.class_names.map((name) =>
+                    name.toLowerCase().replace(/\s+/g, ''),
+                  ),
+                },
+              },
             });
 
-            console.log(colors.green("Classes created successfully!"));
-
-            const formatted_response = createdClasses.map(cls => ({
-                id: cls.id,
-                name: cls.name,
-                school_id: cls.schoolId,
-                class_teacher_id: cls.classTeacherId || null,
-                created_at: formatDate(cls.createdAt),
-                updated_at: formatDate(cls.updatedAt)
+            response.classes = createdClasses.map((cls) => ({
+              id: cls.id,
+              name: cls.name,
+              school_id: cls.schoolId,
+              class_teacher_id: cls.classTeacherId || null,
+              created_at: formatDate(cls.createdAt),
+              updated_at: formatDate(cls.updatedAt),
             }));
+          }
 
-            if (options?.performedBy) {
-                await this.auditService.log({
-                    auditForType: AuditForType.onboard_classes,
-                    targetId: existingSchool.id,
-                    performedById: options.performedBy.id,
-                    performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
-                });
-            }
+          // 2. Handle Teachers
+          if (dto.teachers && dto.teachers.length > 0) {
+            console.log(colors.cyan('Processing teachers...'));
 
-            return ResponseHelper.success(
-                "Classes created successfully",
-                formatted_response
-            );
-
-        } catch (error) {
-            console.log(colors.red("Error creating class: "), error);
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException({
-                success: false,
-                message: "Error creating class",
-                error: error.message,
-                statusCode: 500
-            });
-        }
-    }
-
-    async onboardTeachers(dto: OnboardTeachersDto, user: any, options?: OnboardOptions) {
-        console.log(colors.cyan("Onboarding teachers..."));
-
-        try {
-            const existingSchool = options?.schoolId
-                ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
-                : await this.prisma.school.findFirst({
-                    where: { school_email: user.email }
-                });
-
-            if (!existingSchool) {
-                console.log(colors.red("School not found"));
-                throw new NotFoundException({
-                    success: false,
-                    message: "School not found",
-                    error: null,
-                    statusCode: 404
-                });
-            }
-
-            // Check if any of the emails already exist
-            const existingEmails = await this.prisma.user.findMany({
-                where: {
-                    email: {
-                        in: dto.teachers.map(teacher => teacher.email.toLowerCase())
-                    }
-                }
+            // Check if any emails already exist
+            const existingEmails = await prisma.user.findMany({
+              where: {
+                email: {
+                  in: dto.teachers.map((teacher) =>
+                    teacher.email.toLowerCase(),
+                  ),
+                },
+              },
             });
 
             if (existingEmails.length > 0) {
-                console.log(colors.red("Some emails already exist in the system"));
-                throw new BadRequestException({
-                    success: false,
-                    message: "Some emails already exist in the system",
-                    error: existingEmails.map(u => u.email),
-                    statusCode: 400
-                });
-            }
-
-            // Get current academic session
-            const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
-            if (!currentSessionResponse.success || !currentSessionResponse.data) {
-                throw new BadRequestException({
-                    success: false,
-                    message: "No current academic session found for the school",
-                    error: null,
-                    statusCode: 400
-                });
-            }
-            const currentSession = currentSessionResponse.data;
-
-            // Import teacher ID generator (relative path so runtime resolve works from dist/)
-            const { generateUniqueTeacherId } = await import('../director/teachers/helper-functions/teacher-id-generator');
-
-            // Generate strong passwords for each teacher
-            const teachersWithPasswords = await Promise.all(
-                dto.teachers.map(async (teacher) => {
-                    // const defaultPassword = `${teacher.first_name.slice(0, 3).toLowerCase()}${teacher.phone_number.slice(-4)}`;
-                    const defaultPassword = `SmartEduHub123`;
-                    // const defaultPassword = `SmartEduHub123`;
-                    const hashedPassword = await argon.hash(defaultPassword);
-                    
-                    return {
-                        ...teacher,
-                        password: hashedPassword,
-                        defaultPassword // Store the unhashed password temporarily for email
-                    };
-                })
-            );
-
-            // Create users and teacher records (each in its own transaction for data integrity)
-            const teachers = await Promise.all(
-                teachersWithPasswords.map(async (teacherData) => {
-                    return await this.prisma.$transaction(async (tx) => {
-                        // Create user
-                        const user = await tx.user.create({
-                            data: {
-                                email: teacherData.email.toLowerCase(),
-                                password: teacherData.password,
-                                role: "teacher",
-                                school_id: existingSchool.id,
-                                first_name: teacherData.first_name.toLowerCase(),
-                                last_name: teacherData.last_name.toLowerCase(),
-                                phone_number: teacherData.phone_number
-                            }
-                        });
-
-                        // Generate unique teacher ID
-                        const teacherId = await generateUniqueTeacherId(this.prisma);
-
-                        // Create teacher record
-                        const teacher = await tx.teacher.create({
-                            data: {
-                                email: user.email,
-                                first_name: user.first_name,
-                                last_name: user.last_name,
-                                phone_number: user.phone_number,
-                                school_id: existingSchool.id,
-                                academic_session_id: currentSession.id,
-                                user_id: user.id,
-                                teacher_id: teacherId,
-                                role: "teacher",
-                                password: teacherData.password,
-                                gender: "other", // Default gender
-                                hire_date: new Date(),
-                                status: "active"
-                            }
-                        });
-
-                        console.log(colors.green(`✅ Created teacher record for ${user.email} with ID: ${teacher.id}`));
-
-                        return { user, teacher };
-                    });
-                })
-            );
-
-            console.log(colors.green("Teachers created successfully!"));
-
-            // Send congratulatory emails to all teachers
-            const emailPromises = teachers.map(async ({ user: teacher }) => {
-                try {
-                    await sendTeacherOnboardEmail({
-                        firstName: teacher.first_name,
-                        lastName: teacher.last_name,
-                        email: teacher.email,
-                        phone: teacher.phone_number,
-                        schoolName: existingSchool.school_name
-                    });
-                } catch (emailError) {
-                    console.log(colors.yellow(`⚠️ Failed to send email to ${teacher.email}: ${emailError.message}`));
-                }
-            });
-
-            // Wait for all emails to be sent (but don't fail if some emails fail)
-            await Promise.allSettled(emailPromises);
-
-            const formatted_response = teachers.map(({ user }) => ({
-                id: user.id,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                email: user.email,
-                phone_number: user.phone_number,
-                role: user.role,
-                school_id: user.school_id,
-                created_at: formatDate(user.createdAt),
-                updated_at: formatDate(user.updatedAt)
-            }));
-
-            if (options?.performedBy) {
-                await this.auditService.log({
-                    auditForType: AuditForType.onboard_teachers,
-                    targetId: existingSchool.id,
-                    performedById: options.performedBy.id,
-                    performedByType: options.performedBy.type === 'library_user' ? AuditPerformedByType.library_user : AuditPerformedByType.school_user,
-                });
-            }
-
-            return ResponseHelper.success(
-                "Teachers onboarded successfully",
-                formatted_response
-            );
-
-        } catch (error) {
-            console.log(colors.red("Error onboarding teachers: "), error);
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException({
+              console.log(
+                colors.red('Some teacher emails already exist in the system'),
+              );
+              throw new BadRequestException({
                 success: false,
-                message: "Error onboarding teachers",
-                error: error.message,
-                statusCode: 500
-            });
-        }
-    }
-
-    async onboardStudents(dto: OnboardStudentsDto, user: any, options?: OnboardOptions) {
-        console.log(colors.cyan("Onboarding students..."));
-
-        try {
-            const existingSchool = options?.schoolId
-                ? await this.prisma.school.findUnique({ where: { id: options.schoolId } })
-                : await this.prisma.school.findFirst({
-                    where: { school_email: user.email }
-                });
-
-            if (!existingSchool) {
-                console.log(colors.red("School not found"));
-                throw new NotFoundException({
-                    success: false,
-                    message: "School not found",
-                    error: null,
-                    statusCode: 404
-                });
+                message: 'Some teacher emails already exist in the system',
+                error: existingEmails.map((u) => u.email),
+                statusCode: 400,
+              });
             }
 
-            // Emails already in use (User, Teacher, School.school_email, LibraryResourceUser) — skip these and report in response
-            const requestedEmails = dto.students.map((s) => s.email.toLowerCase().trim());
-            const emailsAlreadyInUse = await this.getEmailsAlreadyInUse(requestedEmails);
-            const failedEmails = [...emailsAlreadyInUse];
-
-            const studentsToOnboard = dto.students.filter(
-                (s) => !emailsAlreadyInUse.includes(s.email.toLowerCase().trim())
+            // Generate passwords and create teachers
+            const teachersWithPasswords = await Promise.all(
+              dto.teachers.map(async (teacher) => {
+                const defaultPassword = `SmartEduHub123`;
+                // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
+                const hashedPassword = await argon.hash(defaultPassword);
+                return {
+                  ...teacher,
+                  password: hashedPassword,
+                  defaultPassword,
+                };
+              }),
             );
 
-            if (studentsToOnboard.length === 0) {
-                return ResponseHelper.success("No new students to onboard; all emails already in use", {
-                    totalSuccessfullyOnboarded: 0,
-                    totalFailed: failedEmails.length,
-                    failedEmailsToOnboard: failedEmails,
-                    onboardedUsers: [],
-                });
+            await prisma.user.createMany({
+              data: teachersWithPasswords.map((teacher) => ({
+                email: teacher.email.toLowerCase(),
+                password: teacher.password,
+                role: 'teacher',
+                school_id: existingSchool.id,
+                first_name: teacher.first_name.toLowerCase(),
+                last_name: teacher.last_name.toLowerCase(),
+                phone_number: teacher.phone_number,
+              })),
+            });
+
+            // Fetch created teachers
+            const teachers = await prisma.user.findMany({
+              where: {
+                email: {
+                  in: dto.teachers.map((teacher) =>
+                    teacher.email.toLowerCase(),
+                  ),
+                },
+              },
+            });
+
+            // Store teachers for email sending later
+            createdUsers.teachers = teachers;
+
+            response.teachers = teachers.map((teacher) => ({
+              id: teacher.id,
+              first_name: teacher.first_name,
+              last_name: teacher.last_name,
+              email: teacher.email,
+              phone_number: teacher.phone_number,
+              role: teacher.role,
+              school_id: teacher.school_id,
+              created_at: formatDate(teacher.createdAt),
+              updated_at: formatDate(teacher.updatedAt),
+            }));
+          }
+
+          // 3. Handle Students
+          if (dto.students && dto.students.length > 0) {
+            console.log(colors.cyan('Processing students...'));
+
+            // Check if any emails already exist
+            const existingEmails = await prisma.user.findMany({
+              where: {
+                email: {
+                  in: dto.students.map((student) =>
+                    student.email.toLowerCase(),
+                  ),
+                },
+              },
+            });
+
+            if (existingEmails.length > 0) {
+              console.log(
+                colors.red('Some student emails already exist in the system'),
+              );
+              throw new BadRequestException({
+                success: false,
+                message: 'Some student emails already exist in the system',
+                error: existingEmails.map((u) => u.email),
+                statusCode: 400,
+              });
             }
 
-            if (failedEmails.length > 0) {
-                console.log(colors.yellow(`Skipping ${failedEmails.length} email(s) already in use: ${failedEmails.join(", ")}`));
-            }
-
-            // Get all classes for the school
-            const schoolClasses = await this.prisma.class.findMany({
-                where: { schoolId: existingSchool.id }
+            // Get all classes for validation
+            const schoolClasses = await prisma.class.findMany({
+              where: { schoolId: existingSchool.id },
             });
 
             // Validate that all default classes exist
-            const requestedClasses = studentsToOnboard.map(student =>
-                student.default_class.toLowerCase().replace(/\s+/g, '')
+            const requestedClasses = dto.students.map((student) =>
+              student.default_class.toLowerCase().replace(/\s+/g, ''),
             );
 
             const invalidClasses = requestedClasses.filter(
-                className => !schoolClasses.some(c => c.name.toLowerCase().replace(/\s+/g, '') === className)
+              (className) => !schoolClasses.some((c) => c.name === className),
             );
 
             if (invalidClasses.length > 0) {
-                console.log(colors.red("Some selected classes do not exist in the school"));
-                throw new BadRequestException({
-                    success: false,
-                    message: "Some classes do not exist in the school",
-                    error: invalidClasses,
-                    statusCode: 400
-                });
-            }
-
-            // Generate default password for each student
-            const studentsWithPasswords = await Promise.all(
-                studentsToOnboard.map(async (student) => {
-                    // const defaultPassword = `${student.first_name.slice(0, 3).toLowerCase()}${student.phone_number.slice(-4)}`;
-                    const defaultPassword = `SmartEduHub123`;
-                    const hashedPassword = await argon.hash(defaultPassword);
-                    
-                    return {
-                        ...student,
-                        password: hashedPassword,
-                        defaultPassword // Store the unhashed password temporarily for email
-                    };
-                })
-            );
-
-            // Get current academic session
-            const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
-            if (!currentSessionResponse.success || !currentSessionResponse.data) {
-                throw new BadRequestException({
-                    success: false,
-                    message: "No current academic session found for the school",
-                    error: null,
-                    statusCode: 400
-                });
-            }
-            const currentSession = currentSessionResponse.data;
-
-            // Import student ID generator (relative path for runtime resolution from dist/)
-            const { generateUniqueStudentId } = await import('../director/students/helper-functions/student-id-generator');
-
-            // Create all users and student records in a single transaction to avoid P2028 (transaction timeout under concurrency)
-            const students = await this.prisma.$transaction(
-                async (tx) => {
-                    const results: Array<{ user: Awaited<ReturnType<typeof tx.user.create>>; student: Awaited<ReturnType<typeof tx.student.create>> }> = [];
-                    for (const studentData of studentsWithPasswords) {
-                        const user = await tx.user.create({
-                            data: {
-                                email: studentData.email.toLowerCase(),
-                                password: studentData.password,
-                                role: "student",
-                                school_id: existingSchool.id,
-                                first_name: studentData.first_name.toLowerCase(),
-                                last_name: studentData.last_name.toLowerCase(),
-                                phone_number: studentData.phone_number
-                            }
-                        });
-
-                        const classId = schoolClasses.find(c =>
-                            c.name.toLowerCase().replace(/\s+/g, '') === studentData.default_class.toLowerCase().replace(/\s+/g, '')
-                        )?.id;
-
-                        const studentId = await generateUniqueStudentId(tx);
-
-                        const student = await tx.student.create({
-                            data: {
-                                school_id: existingSchool.id,
-                                academic_session_id: currentSession.id,
-                                user_id: user.id,
-                                student_id: studentId,
-                                current_class_id: classId || null,
-                                admission_date: new Date(),
-                                status: "active"
-                            }
-                        });
-
-                        console.log(colors.green(`✅ Created student record for ${user.email} with ID: ${student.id}`));
-                        results.push({ user, student });
-                    }
-                    return results;
-                },
-                { timeout: 60000 }
-            );
-
-            console.log(colors.green("Students created and enrolled successfully!"));
-
-            // Send congratulatory emails one-by-one with delay to respect Resend rate limit (e.g. 2/sec)
-            const emailDelayMs = 1000; // 1 second between each email
-            for (let i = 0; i < students.length; i++) {
-                const { user: student } = students[i];
-                try {
-                    const studentData = studentsToOnboard.find(
-                        (s) => s.email.toLowerCase() === student.email.toLowerCase()
-                    );
-                    const className = studentData?.default_class || 'Unassigned';
-                    const defaultPassword = studentsWithPasswords[i]?.defaultPassword;
-                    await sendStudentOnboardEmail({
-                        firstName: student.first_name,
-                        lastName: student.last_name,
-                        email: student.email,
-                        phone: student.phone_number,
-                        schoolName: existingSchool.school_name,
-                        className: className,
-                        password: defaultPassword,
-                    });
-                } catch (emailError) {
-                    console.log(colors.yellow(`⚠️ Failed to send email to ${student.email}: ${emailError.message}`));
-                }
-                if (i < students.length - 1) {
-                    await new Promise((r) => setTimeout(r, emailDelayMs));
-                }
-            }
-
-            const formatted_response = students.map(({ user }) => ({
-                id: user.id,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                email: user.email,
-                phone_number: user.phone_number,
-                role: user.role,
-                school_id: user.school_id,
-                created_at: formatDate(user.createdAt),
-                updated_at: formatDate(user.updatedAt)
-            }));
-
-            // Audit log: onboard_students with full details of each onboarded student (first name, last name, email, password as used)
-            const onboardedDetails = students.map(({ user }, idx) => ({
-                first_name: user.first_name,
-                last_name: user.last_name,
-                email: user.email,
-                password: studentsWithPasswords[idx]?.defaultPassword ?? null,
-            }));
-            await this.auditService.log({
-                auditForType: AuditForType.onboard_students,
-                targetId: existingSchool.id,
-                performedById: options?.performedBy?.id,
-                performedByType: options?.performedBy
-                    ? options.performedBy.type === 'library_user'
-                        ? AuditPerformedByType.library_user
-                        : AuditPerformedByType.school_user
-                    : undefined,
-                metadata: {
-                    totalOnboarded: students.length,
-                    onboardedStudents: onboardedDetails,
-                },
-            });
-
-            const totalSuccessfullyOnboarded = students.length;
-            const totalFailed = failedEmails.length;
-
-            return ResponseHelper.success(
-                totalFailed > 0
-                    ? `Students onboarded with ${totalSuccessfullyOnboarded} succeeded, ${totalFailed} skipped (email already in use).`
-                    : "Students onboarded successfully",
-                {
-                    totalSuccessfullyOnboarded,
-                    totalFailed,
-                    failedEmailsToOnboard: failedEmails,
-                    onboardedUsers: formatted_response,
-                }
-            );
-
-        } catch (error) {
-            console.log(colors.red("Error onboarding students: "), error);
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException({
+              console.log(
+                colors.red('Some selected classes do not exist in the school'),
+              );
+              throw new BadRequestException({
                 success: false,
-                message: "Error onboarding students",
-                error: error.message,
-                statusCode: 500
-            });
-        }
-    }
-
-    async onboardDirectors(dto: OnboardDirectorsDto, user: any) {
-        console.log(colors.cyan("Onboarding directors..."));
-
-        try {
-            // Check if school exists
-            const existingSchool = await this.prisma.school.findFirst({
-                where: { school_email: user.email }
-            });
-
-            if (!existingSchool) {
-                console.log(colors.red("School not found"));
-                throw new NotFoundException({
-                    success: false,
-                    message: "School not found",
-                    error: null,
-                    statusCode: 404
-                });
+                message: 'Some selected classes do not exist in the school',
+                error: invalidClasses,
+                statusCode: 400,
+              });
             }
 
-            // Check if any of the emails already exist
-            const existingEmails = await this.prisma.user.findMany({
-                where: {
-                    email: {
-                        in: dto.directors.map(director => director.email.toLowerCase())
-                    }
+            // Generate passwords and create students
+            const studentsWithPasswords = await Promise.all(
+              dto.students.map(async (student) => {
+                const defaultPassword = `SmartEduHub123`;
+                // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
+                const hashedPassword = await argon.hash(defaultPassword);
+                return {
+                  ...student,
+                  password: hashedPassword,
+                  defaultPassword,
+                };
+              }),
+            );
+
+            await prisma.user.createMany({
+              data: studentsWithPasswords.map((student) => ({
+                email: student.email.toLowerCase(),
+                password: student.password,
+                role: 'student',
+                school_id: existingSchool.id,
+                first_name: student.first_name.toLowerCase(),
+                last_name: student.last_name.toLowerCase(),
+                phone_number: student.phone_number,
+              })),
+            });
+
+            // Fetch created students
+            const students = await prisma.user.findMany({
+              where: {
+                email: {
+                  in: dto.students.map((student) =>
+                    student.email.toLowerCase(),
+                  ),
+                },
+              },
+            });
+
+            // Enroll students in their default classes
+            await Promise.all(
+              students.map(async (student) => {
+                const studentData = dto.students?.find(
+                  (s) => s.email.toLowerCase() === student.email.toLowerCase(),
+                );
+                if (studentData) {
+                  const classId = schoolClasses.find(
+                    (c) =>
+                      c.name ===
+                      studentData.default_class
+                        .toLowerCase()
+                        .replace(/\s+/g, ''),
+                  )?.id;
+                  if (classId) {
+                    await prisma.student.update({
+                      where: { user_id: student.id },
+                      data: {
+                        current_class_id: classId,
+                      },
+                    });
+                  }
                 }
+              }),
+            );
+
+            // Store students for email sending later
+            createdUsers.students = students;
+
+            response.students = students.map((student) => ({
+              id: student.id,
+              first_name: student.first_name,
+              last_name: student.last_name,
+              email: student.email,
+              phone_number: student.phone_number,
+              role: student.role,
+              school_id: student.school_id,
+              created_at: formatDate(student.createdAt),
+              updated_at: formatDate(student.updatedAt),
+            }));
+          }
+
+          // 4. Handle Directors
+          if (dto.directors && dto.directors.length > 0) {
+            console.log(colors.cyan('Processing directors...'));
+
+            // Check if any emails already exist
+            const existingEmails = await prisma.user.findMany({
+              where: {
+                email: {
+                  in: dto.directors.map((director) =>
+                    director.email.toLowerCase(),
+                  ),
+                },
+              },
             });
 
             if (existingEmails.length > 0) {
-                console.log(colors.red("Some emails already exist in the system"));
-                throw new BadRequestException({
-                    success: false,
-                    message: "Some emails already exist in the system",
-                    error: existingEmails.map(u => u.email),
-                    statusCode: 400
-                });
+              console.log(
+                colors.red('Some director emails already exist in the system'),
+              );
+              throw new BadRequestException({
+                success: false,
+                message: 'Some director emails already exist in the system',
+                error: existingEmails.map((u) => u.email),
+                statusCode: 400,
+              });
             }
 
-            // Generate default password for each director (first 3 letters of first name + last 4 digits of phone)
+            // Generate passwords and create directors
             const directorsWithPasswords = await Promise.all(
-                dto.directors.map(async (director) => {
-                    const defaultPassword = `SmartEduHub123`;
-                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
-                    const hashedPassword = await argon.hash(defaultPassword);
-                    
-                    return {
-                        ...director,
-                        password: hashedPassword,
-                        defaultPassword // Storing the unhashed password temporarily for email
-                    };
-                })
+              dto.directors.map(async (director) => {
+                const defaultPassword = `SmartEduHub123`;
+                // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
+                const hashedPassword = await argon.hash(defaultPassword);
+                return {
+                  ...director,
+                  password: hashedPassword,
+                  defaultPassword,
+                };
+              }),
             );
 
-            // Create the directors
-            const createdDirectors = await this.prisma.user.createMany({
-                data: directorsWithPasswords.map(director => ({
-                    email: director.email.toLowerCase(),
-                    password: director.password,
-                    role: "school_director",
-                    school_id: existingSchool.id,
-                    first_name: director.first_name.toLowerCase(),
-                    last_name: director.last_name.toLowerCase(),
-                    phone_number: director.phone_number
-                }))
-            });
-
-            // Fetch the created directors
-            const directors = await this.prisma.user.findMany({
-                where: {
-                    email: {
-                        in: dto.directors.map(director => director.email.toLowerCase())
-                    }
-                }
-            });
-
-            console.log(colors.green("Directors created successfully!"));
-
-            // Send congratulatory emails to all directors
-            const emailPromises = directors.map(async (director) => {
-                try {
-                    await sendDirectorOnboardEmail({
-                        firstName: director.first_name,
-                        lastName: director.last_name,
-                        email: director.email,
-                        phone: director.phone_number,
-                        schoolName: existingSchool.school_name
-                    });
-                } catch (emailError) {
-                    console.log(colors.yellow(`⚠️ Failed to send email to ${director.email}: ${emailError.message}`));
-                }
-            });
-
-            // Wait for all emails to be sent (but don't fail if some emails fail)
-            await Promise.allSettled(emailPromises);
-
-            const formatted_response = directors.map(director => ({
-                id: director.id,
-                first_name: director.first_name,
-                last_name: director.last_name,
-                email: director.email,
+            await prisma.user.createMany({
+              data: directorsWithPasswords.map((director) => ({
+                email: director.email.toLowerCase(),
+                password: director.password,
+                role: 'school_director',
+                school_id: existingSchool.id,
+                first_name: director.first_name.toLowerCase(),
+                last_name: director.last_name.toLowerCase(),
                 phone_number: director.phone_number,
-                role: director.role,
-                school_id: director.school_id,
-                created_at: formatDate(director.createdAt),
-                updated_at: formatDate(director.updatedAt)
-            }));
-
-            return ResponseHelper.success(
-                "Directors onboarded successfully",
-                formatted_response
-            );
-
-        } catch (error) {
-            console.log(colors.red("Error onboarding directors: "), error);
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException({
-                success: false,
-                message: "Error onboarding directors",
-                error: error.message,
-                statusCode: 500
-            });
-        }
-    }
-
-    async onboardData(dto: OnboardDataDto, user: any) {
-        console.log(colors.cyan("Starting comprehensive onboarding process..."));
-
-        console.log("user: ", user)
-
-        try {
-            // Check if school exists
-            const existingSchool = await this.prisma.school.findFirst({
-                where: { school_email: user.email }
+              })),
             });
 
-            if (!existingSchool) {
-                console.log(colors.red("School not found"));
-                throw new NotFoundException({
-                    success: false,
-                    message: "School not found",
-                    error: null,
-                    statusCode: 404
-                });
-            }
-
-            // Step 1: Database Transaction (Fast & Reliable)
-            const { response, createdUsers } = await this.prisma.$transaction(async (prisma) => {
-                const response: any = {};
-                const createdUsers: any = { teachers: [], students: [], directors: [] };
-
-                // 1. Handle Classes
-                if (dto.class_names && dto.class_names.length > 0) {
-                    console.log(colors.cyan("Processing classes..."));
-                    
-                    // Check if any of the classes already exist
-                    const existingClasses = await prisma.class.findMany({
-                        where: {
-                            name: {
-                                in: dto.class_names.map(name => name.toLowerCase().replace(/\s+/g, ''))
-                            },
-                            schoolId: existingSchool.id
-                        }
-                    });
-
-                    if (existingClasses.length > 0) {
-                        console.log(colors.red("Some classes already exist in this school"));
-                        throw new BadRequestException({
-                            success: false,
-                            message: "Some classes already exist in this school",
-                            error: existingClasses.map(c => c.name),
-                            statusCode: 400
-                        });
-                    }
-
-                    // Get current academic session for the school
-                    const currentSessionResponse = await this.academicSessionService.getCurrentSession(existingSchool.id);
-                    if (!currentSessionResponse.success) {
-                        throw new BadRequestException({
-                            success: false,
-                            message: "No current academic session found for the school",
-                            error: null,
-                            statusCode: 400
-                        });
-                    }
-
-                    // Create the classes
-                    await prisma.class.createMany({
-                        data: dto.class_names.map(className => ({
-                            name: className.toLowerCase().replace(/\s+/g, ''),
-                            schoolId: existingSchool.id,
-                            academic_session_id: currentSessionResponse.data.id
-                        }))
-                    });
-
-                    // Fetch created classes
-                    const createdClasses = await prisma.class.findMany({
-                        where: {
-                            schoolId: existingSchool.id,
-                            name: {
-                                in: dto.class_names.map(name => name.toLowerCase().replace(/\s+/g, ''))
-                            }
-                        }
-                    });
-
-                    response.classes = createdClasses.map(cls => ({
-                        id: cls.id,
-                        name: cls.name,
-                        school_id: cls.schoolId,
-                        class_teacher_id: cls.classTeacherId || null,
-                        created_at: formatDate(cls.createdAt),
-                        updated_at: formatDate(cls.updatedAt)
-                    }));
-                }
-
-                // 2. Handle Teachers
-                if (dto.teachers && dto.teachers.length > 0) {
-                    console.log(colors.cyan("Processing teachers..."));
-                    
-                    // Check if any emails already exist
-                    const existingEmails = await prisma.user.findMany({
-                        where: {
-                            email: {
-                                in: dto.teachers.map(teacher => teacher.email.toLowerCase())
-                            }
-                        }
-                    });
-
-                    if (existingEmails.length > 0) {
-                        console.log(colors.red("Some teacher emails already exist in the system"));
-                        throw new BadRequestException({
-                            success: false,
-                            message: "Some teacher emails already exist in the system",
-                            error: existingEmails.map(u => u.email),
-                            statusCode: 400
-                        });
-                    }
-
-                    // Generate passwords and create teachers
-                    const teachersWithPasswords = await Promise.all(
-                        dto.teachers.map(async (teacher) => {
-                            const defaultPassword = `SmartEduHub123`;
-                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
-                            const hashedPassword = await argon.hash(defaultPassword);
-                            return {
-                                ...teacher,
-                                password: hashedPassword,
-                                defaultPassword
-                            };
-                        })
-                    );
-
-                    await prisma.user.createMany({
-                        data: teachersWithPasswords.map(teacher => ({
-                            email: teacher.email.toLowerCase(),
-                            password: teacher.password,
-                            role: "teacher",
-                            school_id: existingSchool.id,
-                            first_name: teacher.first_name.toLowerCase(),
-                            last_name: teacher.last_name.toLowerCase(),
-                            phone_number: teacher.phone_number
-                        }))
-                    });
-
-                    // Fetch created teachers
-                    const teachers = await prisma.user.findMany({
-                        where: {
-                            email: {
-                                in: dto.teachers.map(teacher => teacher.email.toLowerCase())
-                            }
-                        }
-                    });
-
-                    // Store teachers for email sending later
-                    createdUsers.teachers = teachers;
-
-                    response.teachers = teachers.map(teacher => ({
-                        id: teacher.id,
-                        first_name: teacher.first_name,
-                        last_name: teacher.last_name,
-                        email: teacher.email,
-                        phone_number: teacher.phone_number,
-                        role: teacher.role,
-                        school_id: teacher.school_id,
-                        created_at: formatDate(teacher.createdAt),
-                        updated_at: formatDate(teacher.updatedAt)
-                    }));
-                }
-
-                // 3. Handle Students
-                if (dto.students && dto.students.length > 0) {
-                    console.log(colors.cyan("Processing students..."));
-                    
-                    // Check if any emails already exist
-                    const existingEmails = await prisma.user.findMany({
-                        where: {
-                            email: {
-                                in: dto.students.map(student => student.email.toLowerCase())
-                            }
-                        }
-                    });
-
-                    if (existingEmails.length > 0) {
-                        console.log(colors.red("Some student emails already exist in the system"));
-                        throw new BadRequestException({
-                            success: false,
-                            message: "Some student emails already exist in the system",
-                            error: existingEmails.map(u => u.email),
-                            statusCode: 400
-                        });
-                    }
-
-                    // Get all classes for validation
-                    const schoolClasses = await prisma.class.findMany({
-                        where: { schoolId: existingSchool.id }
-                    });
-
-                    // Validate that all default classes exist
-                    const requestedClasses = dto.students.map(student => 
-                        student.default_class.toLowerCase().replace(/\s+/g, '')
-                    );
-                    
-                    const invalidClasses = requestedClasses.filter(
-                        className => !schoolClasses.some(c => c.name === className)
-                    );
-
-                    if (invalidClasses.length > 0) {
-                        console.log(colors.red("Some selected classes do not exist in the school"));
-                        throw new BadRequestException({
-                            success: false,
-                            message: "Some selected classes do not exist in the school",
-                            error: invalidClasses,
-                            statusCode: 400
-                        });
-                    }
-
-                    // Generate passwords and create students
-                    const studentsWithPasswords = await Promise.all(
-                        dto.students.map(async (student) => {
-                            const defaultPassword = `SmartEduHub123`;
-                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
-                            const hashedPassword = await argon.hash(defaultPassword);
-                            return {
-                                ...student,
-                                password: hashedPassword,
-                                defaultPassword
-                            };
-                        })
-                    );
-
-                    await prisma.user.createMany({
-                        data: studentsWithPasswords.map(student => ({
-                            email: student.email.toLowerCase(),
-                            password: student.password,
-                            role: "student",
-                            school_id: existingSchool.id,
-                            first_name: student.first_name.toLowerCase(),
-                            last_name: student.last_name.toLowerCase(),
-                            phone_number: student.phone_number
-                        }))
-                    });
-
-                    // Fetch created students
-                    const students = await prisma.user.findMany({
-                        where: {
-                            email: {
-                                in: dto.students.map(student => student.email.toLowerCase())
-                            }
-                        }
-                    });
-
-                    // Enroll students in their default classes
-                    await Promise.all(
-                        students.map(async (student) => {
-                            const studentData = dto.students?.find(s => 
-                                s.email.toLowerCase() === student.email.toLowerCase()
-                            );
-                            if (studentData) {
-                                const classId = schoolClasses.find(c => 
-                                    c.name === studentData.default_class.toLowerCase().replace(/\s+/g, '')
-                                )?.id;
-                                if (classId) {
-                                    await prisma.student.update({
-                                        where: { user_id: student.id },
-                                        data: {
-                                            current_class_id: classId
-                                        }
-                                    });
-                                }
-                            }
-                        })
-                    );
-
-                    // Store students for email sending later
-                    createdUsers.students = students;
-
-                    response.students = students.map(student => ({
-                        id: student.id,
-                        first_name: student.first_name,
-                        last_name: student.last_name,
-                        email: student.email,
-                        phone_number: student.phone_number,
-                        role: student.role,
-                        school_id: student.school_id,
-                        created_at: formatDate(student.createdAt),
-                        updated_at: formatDate(student.updatedAt)
-                    }));
-                }
-
-                // 4. Handle Directors
-                if (dto.directors && dto.directors.length > 0) {
-                    console.log(colors.cyan("Processing directors..."));
-                    
-                    // Check if any emails already exist
-                    const existingEmails = await prisma.user.findMany({
-                        where: {
-                            email: {
-                                in: dto.directors.map(director => director.email.toLowerCase())
-                            }
-                        }
-                    });
-
-                    if (existingEmails.length > 0) {
-                        console.log(colors.red("Some director emails already exist in the system"));
-                        throw new BadRequestException({
-                            success: false,
-                            message: "Some director emails already exist in the system",
-                            error: existingEmails.map(u => u.email),
-                            statusCode: 400
-                        });
-                    }
-
-                    // Generate passwords and create directors
-                    const directorsWithPasswords = await Promise.all(
-                        dto.directors.map(async (director) => {
-                            const defaultPassword = `SmartEduHub123`;
-                    // const defaultPassword = `${director.first_name.slice(0, 3).toLowerCase()}${director.phone_number.slice(-4)}`;
-                            const hashedPassword = await argon.hash(defaultPassword);
-                            return {
-                                ...director,
-                                password: hashedPassword,
-                                defaultPassword
-                            };
-                        })
-                    );
-
-                    await prisma.user.createMany({
-                        data: directorsWithPasswords.map(director => ({
-                            email: director.email.toLowerCase(),
-                            password: director.password,
-                            role: "school_director",
-                            school_id: existingSchool.id,
-                            first_name: director.first_name.toLowerCase(),
-                            last_name: director.last_name.toLowerCase(),
-                            phone_number: director.phone_number
-                        }))
-                    });
-
-                    // Fetch created directors
-                    const directors = await prisma.user.findMany({
-                        where: {
-                            email: {
-                                in: dto.directors.map(director => director.email.toLowerCase())
-                            }
-                        }
-                    });
-
-                    // Store directors for email sending later
-                    createdUsers.directors = directors;
-
-                    response.directors = directors.map(director => ({
-                        id: director.id,
-                        first_name: director.first_name,
-                        last_name: director.last_name,
-                        email: director.email,
-                        phone_number: director.phone_number,
-                        role: director.role,
-                        school_id: director.school_id,
-                        created_at: formatDate(director.createdAt),
-                        updated_at: formatDate(director.updatedAt)
-                    }));
-                }
-
-                console.log(colors.green("Database operations completed successfully!"));
-
-                return { response, createdUsers };
-            }, {
-                maxWait: 5000,  // Reduced timeout for database operations
-                timeout: 15000   // Reduced timeout for database operations
-            });
-
-            // Step 2: Email Sending (Separate from database transaction)
-            console.log(colors.cyan("Sending congratulatory emails..."));
-            
-            const emailPromises: Promise<void>[] = [];
-
-            // Send teacher emails
-            if (createdUsers.teachers.length > 0) {
-                const teacherEmailPromises = createdUsers.teachers.map(async (teacher) => {
-                    try {
-                        await sendTeacherOnboardEmail({
-                            firstName: teacher.first_name,
-                            lastName: teacher.last_name,
-                            email: teacher.email,
-                            phone: teacher.phone_number,
-                            schoolName: existingSchool?.school_name || 'Unknown School'
-                        });
-                        console.log(colors.green(`✅ Teacher email sent to: ${teacher.email}`));
-                    } catch (emailError) {
-                        console.log(colors.yellow(`⚠️ Failed to send teacher email to ${teacher.email}: ${emailError.message}`));
-                    }
-                });
-                emailPromises.push(...teacherEmailPromises);
-            }
-
-            // Send student emails
-            if (createdUsers.students.length > 0) {
-                const studentEmailPromises = createdUsers.students.map(async (student) => {
-                    try {
-                        const studentData = dto.students?.find(s => 
-                            s.email.toLowerCase() === student.email.toLowerCase()
-                        );
-                        const className = studentData?.default_class || 'Unassigned';
-                        
-                        await sendStudentOnboardEmail({
-                            firstName: student.first_name,
-                            lastName: student.last_name,
-                            email: student.email,
-                            phone: student.phone_number,
-                            schoolName: existingSchool?.school_name || 'Unknown School',
-                            className: className
-                        });
-                        console.log(colors.green(`✅ Student email sent to: ${student.email}`));
-                    } catch (emailError) {
-                        console.log(colors.yellow(`⚠️ Failed to send student email to ${student.email}: ${emailError.message}`));
-                    }
-                });
-                emailPromises.push(...studentEmailPromises);
-            }
-
-            // Send director emails
-            if (createdUsers.directors.length > 0) {
-                const directorEmailPromises = createdUsers.directors.map(async (director) => {
-                    try {
-                        await sendDirectorOnboardEmail({
-                            firstName: director.first_name,
-                            lastName: director.last_name,
-                            email: director.email,
-                            phone: director.phone_number,
-                            schoolName: existingSchool?.school_name || 'Unknown School'
-                        });
-                        console.log(colors.green(`✅ Director email sent to: ${director.email}`));
-                    } catch (emailError) {
-                        console.log(colors.yellow(`⚠️ Failed to send director email to ${director.email}: ${emailError.message}`));
-                    }
-                });
-                emailPromises.push(...directorEmailPromises);
-            }
-
-            // Send all emails in parallel (non-blocking)
-            if (emailPromises.length > 0) {
-                await Promise.allSettled(emailPromises);
-                console.log(colors.magenta(`📧 Sent ${emailPromises.length} congratulatory emails`));
-            }
-
-            console.log(colors.green("Comprehensive onboarding completed successfully!"));
-
-            return ResponseHelper.success(
-                "Data onboarded successfully",
-                response
-            );
-
-        } catch (error) {
-            console.log(colors.red("Error in comprehensive onboarding: "), error);
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException({
-                success: false,
-                message: "Error in comprehensive onboarding",
-                error: error.message,
-                statusCode: 500
-            });
-        }
-    }
-
-    /**
-     * Bulk onboard users from Excel file
-     * @param file - The uploaded Excel file
-     * @param user - The authenticated user
-     * @returns Bulk onboarding response
-     */
-    async bulkOnboardFromExcel(file: Express.Multer.File, user: any): Promise<BulkOnboardResponseDto> {
-        try {
-            console.log(colors.cyan("Starting bulk onboarding from Excel file..."));
-            
-            // Get the school from the authenticated user
-            const existingSchool = await this.prisma.school.findFirst({
-                where: {
-                    school_email: user.email
-                }
-            });
-
-            if (!existingSchool) {
-                throw new BadRequestException({
-                    success: false,
-                    message: "School not found",
-                    statusCode: 400
-                });
-            }
-
-            // Process the Excel file
-            const processedData = await this.excelProcessorService.processExcelFile(file);
-            
-            console.log(colors.green(`✅ Processed ${processedData.length} rows from Excel file`));
-
-            // Step 1: Database Transaction (Fast & Reliable)
-            const { response, createdUsers, errors } = await this.prisma.$transaction(async (prisma) => {
-                const response: any = {};
-                const createdUsers: any = { teachers: [], students: [], directors: [] };
-                const errors: Array<{ row: number; email: string; error: string }> = [];
-
-                // Group data by role
-                const teachers = processedData.filter(row => row['Role'] === 'teacher');
-                const students = processedData.filter(row => row['Role'] === 'student');
-                const directors = processedData.filter(row => row['Role'] === 'school_director');
-
-                // Process teachers
-                if (teachers.length > 0) {
-                    console.log(colors.cyan(`Processing ${teachers.length} teachers...`));
-                    
-                    for (let i = 0; i < teachers.length; i++) {
-                        const teacher = teachers[i];
-                        const rowNumber = processedData.findIndex(row => 
-                            row['Email'] === teacher['Email']
-                        ) + 2; // +2 because Excel rows start from 1 and we have header
-
-                        try {
-                            // Check if email already exists
-                            const existingUser = await prisma.user.findFirst({
-                                where: { email: teacher['Email'] }
-                            });
-
-                            if (existingUser) {
-                                errors.push({
-                                    row: rowNumber,
-                                    email: teacher['Email'],
-                                    error: 'Email already exists in the system'
-                                });
-                                continue;
-                            }
-
-                            // Generate password and create teacher
-                            const defaultPassword = `${teacher['First Name'].slice(0, 3).toLowerCase()}${teacher['Phone'].slice(-4)}`;
-                            const hashedPassword = await argon.hash(defaultPassword);
-
-                            const createdTeacher = await prisma.user.create({
-                                data: {
-                                    email: teacher['Email'],
-                                    password: hashedPassword,
-                                    role: "teacher",
-                                    school_id: existingSchool.id,
-                                    first_name: teacher['First Name'].toLowerCase(),
-                                    last_name: teacher['Last Name'].toLowerCase(),
-                                    phone_number: teacher['Phone']
-                                }
-                            });
-
-                            createdUsers.teachers.push(createdTeacher);
-                        } catch (error) {
-                            errors.push({
-                                row: rowNumber,
-                                email: teacher['Email'],
-                                error: error.message
-                            });
-                        }
-                    }
-                }
-
-                // Process students
-                if (students.length > 0) {
-                    console.log(colors.cyan(`Processing ${students.length} students...`));
-                    
-                    // Get all classes for validation
-                    const schoolClasses = await prisma.class.findMany({
-                        where: { schoolId: existingSchool.id }
-                    });
-
-                    for (let i = 0; i < students.length; i++) {
-                        const student = students[i];
-                        const rowNumber = processedData.findIndex(row => 
-                            row['Email'] === student['Email']
-                        ) + 2;
-
-                        try {
-                            // Check if email already exists
-                            const existingUser = await prisma.user.findFirst({
-                                where: { email: student['Email'] }
-                            });
-
-                            if (existingUser) {
-                                errors.push({
-                                    row: rowNumber,
-                                    email: student['Email'],
-                                    error: 'Email already exists in the system'
-                                });
-                                continue;
-                            }
-
-                            // Validate class exists
-                            const classExists = schoolClasses.some(c => c.name === student['Class']);
-                            if (!classExists) {
-                                errors.push({
-                                    row: rowNumber,
-                                    email: student['Email'],
-                                    error: `Class '${student['Class']}' does not exist in the school`
-                                });
-                                continue;
-                            }
-
-                            // Generate password and create student
-                            const defaultPassword = `${student['First Name'].slice(0, 3).toLowerCase()}${student['Phone'].slice(-4)}`;
-                            const hashedPassword = await argon.hash(defaultPassword);
-
-                            const createdStudent = await prisma.user.create({
-                                data: {
-                                    email: student['Email'],
-                                    password: hashedPassword,
-                                    role: "student",
-                                    school_id: existingSchool.id,
-                                    first_name: student['First Name'].toLowerCase(),
-                                    last_name: student['Last Name'].toLowerCase(),
-                                    phone_number: student['Phone']
-                                }
-                            });
-
-                            // Enroll student in class
-                            const classId = schoolClasses.find(c => c.name === student['Class'])?.id;
-                            if (classId) {
-                                await prisma.student.update({
-                                    where: { user_id: createdStudent.id },
-                                    data: {
-                                        current_class_id: classId
-                                    }
-                                });
-                            }
-
-                            createdUsers.students.push(createdStudent);
-                        } catch (error) {
-                            errors.push({
-                                row: rowNumber,
-                                email: student['Email'],
-                                error: error.message
-                            });
-                        }
-                    }
-                }
-
-                // Process directors
-                if (directors.length > 0) {
-                    console.log(colors.cyan(`Processing ${directors.length} directors...`));
-                    
-                    for (let i = 0; i < directors.length; i++) {
-                        const director = directors[i];
-                        const rowNumber = processedData.findIndex(row => 
-                            row['Email'] === director['Email']
-                        ) + 2;
-
-                        try {
-                            // Check if email already exists
-                            const existingUser = await prisma.user.findFirst({
-                                where: { email: director['Email'] }
-                            });
-
-                            if (existingUser) {
-                                errors.push({
-                                    row: rowNumber,
-                                    email: director['Email'],
-                                    error: 'Email already exists in the system'
-                                });
-                                continue;
-                            }
-
-                            // Generate password and create director
-                            const defaultPassword = `${director['First Name'].slice(0, 3).toLowerCase()}${director['Phone'].slice(-4)}`;
-                            const hashedPassword = await argon.hash(defaultPassword);
-
-                            const createdDirector = await prisma.user.create({
-                                data: {
-                                    email: director['Email'],
-                                    password: hashedPassword,
-                                    role: "school_director",
-                                    school_id: existingSchool.id,
-                                    first_name: director['First Name'].toLowerCase(),
-                                    last_name: director['Last Name'].toLowerCase(),
-                                    phone_number: director['Phone']
-                                }
-                            });
-
-                            createdUsers.directors.push(createdDirector);
-                        } catch (error) {
-                            errors.push({
-                                row: rowNumber,
-                                email: director['Email'],
-                                error: error.message
-                            });
-                        }
-                    }
-                }
-
-                console.log(colors.green("Database operations completed successfully!"));
-
-                return { response, createdUsers, errors };
-            }, {
-                maxWait: 5000,
-                timeout: 15000
-            });
-
-            // Step 2: Email Sending (Separate from database transaction)
-            console.log(colors.cyan("Sending congratulatory emails..."));
-            
-            const emailPromises: Promise<void>[] = [];
-
-            // Send teacher emails
-            if (createdUsers.teachers.length > 0) {
-                const teacherEmailPromises = createdUsers.teachers.map(async (teacher) => {
-                    try {
-                        await sendTeacherOnboardEmail({
-                            firstName: teacher.first_name,
-                            lastName: teacher.last_name,
-                            email: teacher.email,
-                            phone: teacher.phone_number,
-                            schoolName: existingSchool?.school_name || 'Unknown School'
-                        });
-                        console.log(colors.green(`✅ Teacher email sent to: ${teacher.email}`));
-                    } catch (emailError) {
-                        console.log(colors.yellow(`⚠️ Failed to send teacher email to ${teacher.email}: ${emailError.message}`));
-                    }
-                });
-                emailPromises.push(...teacherEmailPromises);
-            }
-
-            // Send student emails
-            if (createdUsers.students.length > 0) {
-                const studentEmailPromises = createdUsers.students.map(async (student) => {
-                    try {
-                        const studentData = processedData.find(s => 
-                            s['Email'] === student.email
-                        );
-                        const className = studentData?.['Class'] || 'Unassigned';
-                        
-                        await sendStudentOnboardEmail({
-                            firstName: student.first_name,
-                            lastName: student.last_name,
-                            email: student.email,
-                            phone: student.phone_number,
-                            schoolName: existingSchool?.school_name || 'Unknown School',
-                            className: className
-                        });
-                        console.log(colors.green(`✅ Student email sent to: ${student.email}`));
-                    } catch (emailError) {
-                        console.log(colors.yellow(`⚠️ Failed to send student email to ${student.email}: ${emailError.message}`));
-                    }
-                });
-                emailPromises.push(...studentEmailPromises);
-            }
-
-            // Send director emails
-            if (createdUsers.directors.length > 0) {
-                const directorEmailPromises = createdUsers.directors.map(async (director) => {
-                    try {
-                        await sendDirectorOnboardEmail({
-                            firstName: director.first_name,
-                            lastName: director.last_name,
-                            email: director.email,
-                            phone: director.phone_number,
-                            schoolName: existingSchool?.school_name || 'Unknown School'
-                        });
-                        console.log(colors.green(`✅ Director email sent to: ${director.email}`));
-                    } catch (emailError) {
-                        console.log(colors.yellow(`⚠️ Failed to send director email to ${director.email}: ${emailError.message}`));
-                    }
-                });
-                emailPromises.push(...directorEmailPromises);
-            }
-
-            // Send all emails in parallel (non-blocking)
-            if (emailPromises.length > 0) {
-                await Promise.allSettled(emailPromises);
-                console.log(colors.magenta(`📧 Sent ${emailPromises.length} congratulatory emails`));
-            }
-
-            // Calculate summary
-            const total = processedData.length;
-            const successful = createdUsers.teachers.length + createdUsers.students.length + createdUsers.directors.length;
-            const failed = errors.length;
-
-            console.log(colors.green("Bulk onboarding completed successfully!"));
-
-            return {
-                success: true,
-                message: "Bulk onboarding completed successfully",
-                data: {
-                    total,
-                    successful,
-                    failed,
-                    errors,
-                    createdUsers: {
-                        teachers: createdUsers.teachers.map(teacher => ({
-                            id: teacher.id,
-                            first_name: teacher.first_name,
-                            last_name: teacher.last_name,
-                            email: teacher.email,
-                            phone_number: teacher.phone_number,
-                            role: teacher.role,
-                            school_id: teacher.school_id,
-                            created_at: formatDate(teacher.createdAt),
-                            updated_at: formatDate(teacher.updatedAt)
-                        })),
-                        students: createdUsers.students.map(student => ({
-                            id: student.id,
-                            first_name: student.first_name,
-                            last_name: student.last_name,
-                            email: student.email,
-                            phone_number: student.phone_number,
-                            role: student.role,
-                            school_id: student.school_id,
-                            created_at: formatDate(student.createdAt),
-                            updated_at: formatDate(student.updatedAt)
-                        })),
-                        directors: createdUsers.directors.map(director => ({
-                            id: director.id,
-                            first_name: director.first_name,
-                            last_name: director.last_name,
-                            email: director.email,
-                            phone_number: director.phone_number,
-                            role: director.role,
-                            school_id: director.school_id,
-                            created_at: formatDate(director.createdAt),
-                            updated_at: formatDate(director.updatedAt)
-                        }))
-                    }
-                }
-            };
-
-        } catch (error) {
-            console.log(colors.red("Error in bulk onboarding: "), error);
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException({
-                success: false,
-                message: "Error in bulk onboarding",
-                error: error.message,
-                statusCode: 500
-            });
-        }
-    }
-
-    /**
-     * Download Excel template for bulk onboarding
-     * @returns Buffer containing the Excel template
-     */
-    async downloadExcelTemplate(): Promise<Buffer> {
-        return this.excelProcessorService.generateExcelTemplate();
-    }
-
-    /**
-     * Refresh access token using refresh token
-     * @param refreshToken - The refresh token
-     * @returns New access token and refresh token
-     */
-    async refreshToken(refreshToken: string) {
-        this.logger.log(colors.cyan('Refreshing access token...'));
-
-        try {
-            // Verify the refresh token
-            const secret = this.config.get('JWT_SECRET');
-            const payload = await this.jwt.verifyAsync(refreshToken, {
-                secret: secret
-            });
-
-            // Check if user still exists
-            const user = await this.prisma.user.findUnique({
-                where: { id: payload.sub }
-            });
-
-            if (!user) {
-                throw new NotFoundException('User not found');
-            }
-
-            // Generate new tokens
-            const { access_token, refresh_token } = await this.signToken(user.id, user.email, user.school_id);
-
-            this.logger.log(colors.green('Access token refreshed successfully'));
-
-            return ResponseHelper.success(
-                'Access token refreshed successfully',
-                {
-                    access_token,
-                    refresh_token
-                }
-            );
-
-        } catch (error) {
-            this.logger.error(colors.red(`Error refreshing token: ${error.message}`));
-            
-            if (error.name === 'TokenExpiredError') {
-                throw new UnauthorizedException('Refresh token has expired');
-            }
-            
-            if (error.name === 'JsonWebTokenError') {
-                throw new UnauthorizedException('Invalid refresh token');
-            }
-            
-            throw error;
-        }
-    }
-
-    /**
-     * Send email verification OTP
-     * @param email - User's email address
-     * @param firstName - User's first name
-     * @param otp - The OTP code
-     */
-    private async sendEmailVerificationOTP(email: string, firstName: string, otp: string) {
-        try {
-            await sendEmailVerificationOTP({ email, firstName, otp });
-            this.logger.log(colors.green(`Email verification OTP sent to: ${email}`));
-        } catch (error) {
-            this.logger.error(colors.red(`Error sending email verification OTP: ${error.message}`));
-            throw new InternalServerErrorException('Failed to send email verification OTP');
-        }
-    }
-
-    /**
-     * Request email verification code
-     * @param email - User's email address
-     * @returns Success response
-     */
-    async requestEmailVerification(email: string) {
-        this.logger.log(colors.cyan('Requesting email verification...'));
-
-        try {
-            // Find the user by email
-            const user = await this.prisma.user.findUnique({
-                where: { email }
-            });
-
-            if (!user) {
-                this.logger.error(colors.red(`User ${email} not found`));
-                throw new NotFoundException('User not found');
-            }
-
-            // Check if email is already verified
-            if (user.is_email_verified) {
-                this.logger.log(colors.green(`Email ${email} is already verified`));
-                return ResponseHelper.success(
-                    'Email is already verified',
-                    { email: user.email }
-                );
-            }
-
-            // Generate OTP for email verification
-            const otp = generateOTP();
-            const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-            // Update OTP for the user
-            await this.prisma.user.update({
-                where: { email: email },
-                data: {
-                    otp,
-                    otp_expires_at: otpExpiresAt,
+            // Fetch created directors
+            const directors = await prisma.user.findMany({
+              where: {
+                email: {
+                  in: dto.directors.map((director) =>
+                    director.email.toLowerCase(),
+                  ),
                 },
+              },
             });
 
-            // Send email verification OTP
-           try {
-            this.logger.log(colors.cyan(`Sending email verification OTP to: ${user.email}`));
-            await this.sendEmailVerificationOTP(user.email, user.first_name, otp);
-            this.logger.log(colors.green(`Email verification OTP ${otp} sent to: ${user.email}`));
-           } catch (error) {
-            this.logger.error(colors.red(`Error sending email verification OTP: ${error.message}`));
-            throw new InternalServerErrorException('Failed to send email verification OTP');
-           }
-                    
-            return ResponseHelper.success(
-                'Email verification code sent successfully. Please check your email.',
-                { email: user.email }
+            // Store directors for email sending later
+            createdUsers.directors = directors;
+
+            response.directors = directors.map((director) => ({
+              id: director.id,
+              first_name: director.first_name,
+              last_name: director.last_name,
+              email: director.email,
+              phone_number: director.phone_number,
+              role: director.role,
+              school_id: director.school_id,
+              created_at: formatDate(director.createdAt),
+              updated_at: formatDate(director.updatedAt),
+            }));
+          }
+
+          console.log(
+            colors.green('Database operations completed successfully!'),
+          );
+
+          return { response, createdUsers };
+        },
+        {
+          maxWait: 5000, // Reduced timeout for database operations
+          timeout: 15000, // Reduced timeout for database operations
+        },
+      );
+
+      // Step 2: Email Sending (Separate from database transaction)
+      console.log(colors.cyan('Sending congratulatory emails...'));
+
+      const emailPromises: Promise<void>[] = [];
+
+      // Send teacher emails
+      if (createdUsers.teachers.length > 0) {
+        const teacherEmailPromises = createdUsers.teachers.map(
+          async (teacher) => {
+            try {
+              await sendTeacherOnboardEmail({
+                firstName: teacher.first_name,
+                lastName: teacher.last_name,
+                email: teacher.email,
+                phone: teacher.phone_number,
+                schoolName: existingSchool?.school_name || 'Unknown School',
+              });
+              console.log(
+                colors.green(`✅ Teacher email sent to: ${teacher.email}`),
+              );
+            } catch (emailError) {
+              console.log(
+                colors.yellow(
+                  `⚠️ Failed to send teacher email to ${teacher.email}: ${emailError.message}`,
+                ),
+              );
+            }
+          },
+        );
+        emailPromises.push(...teacherEmailPromises);
+      }
+
+      // Send student emails
+      if (createdUsers.students.length > 0) {
+        const studentEmailPromises = createdUsers.students.map(
+          async (student) => {
+            try {
+              const studentData = dto.students?.find(
+                (s) => s.email.toLowerCase() === student.email.toLowerCase(),
+              );
+              const className = studentData?.default_class || 'Unassigned';
+
+              await sendStudentOnboardEmail({
+                firstName: student.first_name,
+                lastName: student.last_name,
+                email: student.email,
+                phone: student.phone_number,
+                schoolName: existingSchool?.school_name || 'Unknown School',
+                className: className,
+              });
+              console.log(
+                colors.green(`✅ Student email sent to: ${student.email}`),
+              );
+            } catch (emailError) {
+              console.log(
+                colors.yellow(
+                  `⚠️ Failed to send student email to ${student.email}: ${emailError.message}`,
+                ),
+              );
+            }
+          },
+        );
+        emailPromises.push(...studentEmailPromises);
+      }
+
+      // Send director emails
+      if (createdUsers.directors.length > 0) {
+        const directorEmailPromises = createdUsers.directors.map(
+          async (director) => {
+            try {
+              await sendDirectorOnboardEmail({
+                firstName: director.first_name,
+                lastName: director.last_name,
+                email: director.email,
+                phone: director.phone_number,
+                schoolName: existingSchool?.school_name || 'Unknown School',
+              });
+              console.log(
+                colors.green(`✅ Director email sent to: ${director.email}`),
+              );
+            } catch (emailError) {
+              console.log(
+                colors.yellow(
+                  `⚠️ Failed to send director email to ${director.email}: ${emailError.message}`,
+                ),
+              );
+            }
+          },
+        );
+        emailPromises.push(...directorEmailPromises);
+      }
+
+      // Send all emails in parallel (non-blocking)
+      if (emailPromises.length > 0) {
+        await Promise.allSettled(emailPromises);
+        console.log(
+          colors.magenta(
+            `📧 Sent ${emailPromises.length} congratulatory emails`,
+          ),
+        );
+      }
+
+      console.log(
+        colors.green('Comprehensive onboarding completed successfully!'),
+      );
+
+      return ResponseHelper.success('Data onboarded successfully', response);
+    } catch (error) {
+      console.log(colors.red('Error in comprehensive onboarding: '), error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Error in comprehensive onboarding',
+        error: error.message,
+        statusCode: 500,
+      });
+    }
+  }
+
+  /**
+   * Bulk onboard users from Excel file
+   * @param file - The uploaded Excel file
+   * @param user - The authenticated user
+   * @returns Bulk onboarding response
+   */
+  async bulkOnboardFromExcel(
+    file: Express.Multer.File,
+    user: any,
+  ): Promise<BulkOnboardResponseDto> {
+    try {
+      console.log(colors.cyan('Starting bulk onboarding from Excel file...'));
+
+      // Get the school from the authenticated user
+      const existingSchool = await this.prisma.school.findFirst({
+        where: {
+          school_email: user.email,
+        },
+      });
+
+      if (!existingSchool) {
+        throw new BadRequestException({
+          success: false,
+          message: 'School not found',
+          statusCode: 400,
+        });
+      }
+
+      // Process the Excel file
+      const processedData =
+        await this.excelProcessorService.processExcelFile(file);
+
+      console.log(
+        colors.green(
+          `✅ Processed ${processedData.length} rows from Excel file`,
+        ),
+      );
+
+      // Step 1: Database Transaction (Fast & Reliable)
+      const { response, createdUsers, errors } = await this.prisma.$transaction(
+        async (prisma) => {
+          const response: any = {};
+          const createdUsers: any = {
+            teachers: [],
+            students: [],
+            directors: [],
+          };
+          const errors: Array<{ row: number; email: string; error: string }> =
+            [];
+
+          // Group data by role
+          const teachers = processedData.filter(
+            (row) => row['Role'] === 'teacher',
+          );
+          const students = processedData.filter(
+            (row) => row['Role'] === 'student',
+          );
+          const directors = processedData.filter(
+            (row) => row['Role'] === 'school_director',
+          );
+
+          // Process teachers
+          if (teachers.length > 0) {
+            console.log(
+              colors.cyan(`Processing ${teachers.length} teachers...`),
             );
 
-        } catch (error) {
-            this.logger.error(colors.red(`Error requesting email verification: ${error.message}`));
-            
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            
-            throw new InternalServerErrorException('Error requesting email verification');
-        }
-    }
+            for (let i = 0; i < teachers.length; i++) {
+              const teacher = teachers[i];
+              const rowNumber =
+                processedData.findIndex(
+                  (row) => row['Email'] === teacher['Email'],
+                ) + 2; // +2 because Excel rows start from 1 and we have header
 
-    /**
-     * Logout user
-     * @param userId - User ID to logout
-     * @param reason - Optional reason for logout
-     * @returns Success response
-     */
-    async logout(userId: string) {
-        this.logger.log(colors.cyan(`Logging out user: ${userId}`));
+              try {
+                // Check if email already exists
+                const existingUser = await prisma.user.findFirst({
+                  where: { email: teacher['Email'] },
+                });
 
-        try {
-            // Find the user
-            const user = await this.prisma.user.findUnique({
-                where: { id: userId },
-                select: {
-                    id: true,
-                    email: true,
-                    first_name: true,
-                    last_name: true,
-                    role: true
+                if (existingUser) {
+                  errors.push({
+                    row: rowNumber,
+                    email: teacher['Email'],
+                    error: 'Email already exists in the system',
+                  });
+                  continue;
                 }
+
+                // Generate password and create teacher
+                const defaultPassword = `${teacher['First Name'].slice(0, 3).toLowerCase()}${teacher['Phone'].slice(-4)}`;
+                const hashedPassword = await argon.hash(defaultPassword);
+
+                const createdTeacher = await prisma.user.create({
+                  data: {
+                    email: teacher['Email'],
+                    password: hashedPassword,
+                    role: 'teacher',
+                    school_id: existingSchool.id,
+                    first_name: teacher['First Name'].toLowerCase(),
+                    last_name: teacher['Last Name'].toLowerCase(),
+                    phone_number: teacher['Phone'],
+                  },
+                });
+
+                createdUsers.teachers.push(createdTeacher);
+              } catch (error) {
+                errors.push({
+                  row: rowNumber,
+                  email: teacher['Email'],
+                  error: error.message,
+                });
+              }
+            }
+          }
+
+          // Process students
+          if (students.length > 0) {
+            console.log(
+              colors.cyan(`Processing ${students.length} students...`),
+            );
+
+            // Get all classes for validation
+            const schoolClasses = await prisma.class.findMany({
+              where: { schoolId: existingSchool.id },
             });
 
-            if (!user) {
-                throw new NotFoundException('User not found');
-            }
+            for (let i = 0; i < students.length; i++) {
+              const student = students[i];
+              const rowNumber =
+                processedData.findIndex(
+                  (row) => row['Email'] === student['Email'],
+                ) + 2;
 
-            this.logger.log(colors.green(`User ${user.email} logged out successfully`));
-            return ResponseHelper.success(
-                'Logged out successfully',
-                {
-                    message: 'You have been successfully logged out',
-                    user: {
-                        id: user.id,
-                        email: user.email,
-                        name: `${user.first_name} ${user.last_name}`,
-                        role: user.role
+              try {
+                // Check if email already exists
+                const existingUser = await prisma.user.findFirst({
+                  where: { email: student['Email'] },
+                });
+
+                if (existingUser) {
+                  errors.push({
+                    row: rowNumber,
+                    email: student['Email'],
+                    error: 'Email already exists in the system',
+                  });
+                  continue;
+                }
+
+                // Validate class exists
+                const classExists = schoolClasses.some(
+                  (c) => c.name === student['Class'],
+                );
+                if (!classExists) {
+                  errors.push({
+                    row: rowNumber,
+                    email: student['Email'],
+                    error: `Class '${student['Class']}' does not exist in the school`,
+                  });
+                  continue;
+                }
+
+                // Generate password and create student
+                const defaultPassword = `${student['First Name'].slice(0, 3).toLowerCase()}${student['Phone'].slice(-4)}`;
+                const hashedPassword = await argon.hash(defaultPassword);
+
+                const createdStudent = await prisma.user.create({
+                  data: {
+                    email: student['Email'],
+                    password: hashedPassword,
+                    role: 'student',
+                    school_id: existingSchool.id,
+                    first_name: student['First Name'].toLowerCase(),
+                    last_name: student['Last Name'].toLowerCase(),
+                    phone_number: student['Phone'],
+                  },
+                });
+
+                // Enroll student in class
+                const classId = schoolClasses.find(
+                  (c) => c.name === student['Class'],
+                )?.id;
+                if (classId) {
+                  await prisma.student.update({
+                    where: { user_id: createdStudent.id },
+                    data: {
+                      current_class_id: classId,
                     },
-                    logout_time: new Date().toISOString(),
+                  });
                 }
+
+                createdUsers.students.push(createdStudent);
+              } catch (error) {
+                errors.push({
+                  row: rowNumber,
+                  email: student['Email'],
+                  error: error.message,
+                });
+              }
+            }
+          }
+
+          // Process directors
+          if (directors.length > 0) {
+            console.log(
+              colors.cyan(`Processing ${directors.length} directors...`),
             );
 
-        } catch (error) {
-            this.logger.error(colors.red(`Error during logout: ${error.message}`));
-            
-            if (error instanceof HttpException) {
-                throw error;
+            for (let i = 0; i < directors.length; i++) {
+              const director = directors[i];
+              const rowNumber =
+                processedData.findIndex(
+                  (row) => row['Email'] === director['Email'],
+                ) + 2;
+
+              try {
+                // Check if email already exists
+                const existingUser = await prisma.user.findFirst({
+                  where: { email: director['Email'] },
+                });
+
+                if (existingUser) {
+                  errors.push({
+                    row: rowNumber,
+                    email: director['Email'],
+                    error: 'Email already exists in the system',
+                  });
+                  continue;
+                }
+
+                // Generate password and create director
+                const defaultPassword = `${director['First Name'].slice(0, 3).toLowerCase()}${director['Phone'].slice(-4)}`;
+                const hashedPassword = await argon.hash(defaultPassword);
+
+                const createdDirector = await prisma.user.create({
+                  data: {
+                    email: director['Email'],
+                    password: hashedPassword,
+                    role: 'school_director',
+                    school_id: existingSchool.id,
+                    first_name: director['First Name'].toLowerCase(),
+                    last_name: director['Last Name'].toLowerCase(),
+                    phone_number: director['Phone'],
+                  },
+                });
+
+                createdUsers.directors.push(createdDirector);
+              } catch (error) {
+                errors.push({
+                  row: rowNumber,
+                  email: director['Email'],
+                  error: error.message,
+                });
+              }
             }
-            
-            throw new InternalServerErrorException('Error during logout process');
-        }
+          }
+
+          console.log(
+            colors.green('Database operations completed successfully!'),
+          );
+
+          return { response, createdUsers, errors };
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
+
+      // Step 2: Email Sending (Separate from database transaction)
+      console.log(colors.cyan('Sending congratulatory emails...'));
+
+      const emailPromises: Promise<void>[] = [];
+
+      // Send teacher emails
+      if (createdUsers.teachers.length > 0) {
+        const teacherEmailPromises = createdUsers.teachers.map(
+          async (teacher) => {
+            try {
+              await sendTeacherOnboardEmail({
+                firstName: teacher.first_name,
+                lastName: teacher.last_name,
+                email: teacher.email,
+                phone: teacher.phone_number,
+                schoolName: existingSchool?.school_name || 'Unknown School',
+              });
+              console.log(
+                colors.green(`✅ Teacher email sent to: ${teacher.email}`),
+              );
+            } catch (emailError) {
+              console.log(
+                colors.yellow(
+                  `⚠️ Failed to send teacher email to ${teacher.email}: ${emailError.message}`,
+                ),
+              );
+            }
+          },
+        );
+        emailPromises.push(...teacherEmailPromises);
+      }
+
+      // Send student emails
+      if (createdUsers.students.length > 0) {
+        const studentEmailPromises = createdUsers.students.map(
+          async (student) => {
+            try {
+              const studentData = processedData.find(
+                (s) => s['Email'] === student.email,
+              );
+              const className = studentData?.['Class'] || 'Unassigned';
+
+              await sendStudentOnboardEmail({
+                firstName: student.first_name,
+                lastName: student.last_name,
+                email: student.email,
+                phone: student.phone_number,
+                schoolName: existingSchool?.school_name || 'Unknown School',
+                className: className,
+              });
+              console.log(
+                colors.green(`✅ Student email sent to: ${student.email}`),
+              );
+            } catch (emailError) {
+              console.log(
+                colors.yellow(
+                  `⚠️ Failed to send student email to ${student.email}: ${emailError.message}`,
+                ),
+              );
+            }
+          },
+        );
+        emailPromises.push(...studentEmailPromises);
+      }
+
+      // Send director emails
+      if (createdUsers.directors.length > 0) {
+        const directorEmailPromises = createdUsers.directors.map(
+          async (director) => {
+            try {
+              await sendDirectorOnboardEmail({
+                firstName: director.first_name,
+                lastName: director.last_name,
+                email: director.email,
+                phone: director.phone_number,
+                schoolName: existingSchool?.school_name || 'Unknown School',
+              });
+              console.log(
+                colors.green(`✅ Director email sent to: ${director.email}`),
+              );
+            } catch (emailError) {
+              console.log(
+                colors.yellow(
+                  `⚠️ Failed to send director email to ${director.email}: ${emailError.message}`,
+                ),
+              );
+            }
+          },
+        );
+        emailPromises.push(...directorEmailPromises);
+      }
+
+      // Send all emails in parallel (non-blocking)
+      if (emailPromises.length > 0) {
+        await Promise.allSettled(emailPromises);
+        console.log(
+          colors.magenta(
+            `📧 Sent ${emailPromises.length} congratulatory emails`,
+          ),
+        );
+      }
+
+      // Calculate summary
+      const total = processedData.length;
+      const successful =
+        createdUsers.teachers.length +
+        createdUsers.students.length +
+        createdUsers.directors.length;
+      const failed = errors.length;
+
+      console.log(colors.green('Bulk onboarding completed successfully!'));
+
+      return {
+        success: true,
+        message: 'Bulk onboarding completed successfully',
+        data: {
+          total,
+          successful,
+          failed,
+          errors,
+          createdUsers: {
+            teachers: createdUsers.teachers.map((teacher) => ({
+              id: teacher.id,
+              first_name: teacher.first_name,
+              last_name: teacher.last_name,
+              email: teacher.email,
+              phone_number: teacher.phone_number,
+              role: teacher.role,
+              school_id: teacher.school_id,
+              created_at: formatDate(teacher.createdAt),
+              updated_at: formatDate(teacher.updatedAt),
+            })),
+            students: createdUsers.students.map((student) => ({
+              id: student.id,
+              first_name: student.first_name,
+              last_name: student.last_name,
+              email: student.email,
+              phone_number: student.phone_number,
+              role: student.role,
+              school_id: student.school_id,
+              created_at: formatDate(student.createdAt),
+              updated_at: formatDate(student.updatedAt),
+            })),
+            directors: createdUsers.directors.map((director) => ({
+              id: director.id,
+              first_name: director.first_name,
+              last_name: director.last_name,
+              email: director.email,
+              phone_number: director.phone_number,
+              role: director.role,
+              school_id: director.school_id,
+              created_at: formatDate(director.createdAt),
+              updated_at: formatDate(director.updatedAt),
+            })),
+          },
+        },
+      };
+    } catch (error) {
+      console.log(colors.red('Error in bulk onboarding: '), error);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Error in bulk onboarding',
+        error: error.message,
+        statusCode: 500,
+      });
     }
+  }
+
+  /**
+   * Download Excel template for bulk onboarding
+   * @returns Buffer containing the Excel template
+   */
+  async downloadExcelTemplate(): Promise<Buffer> {
+    return this.excelProcessorService.generateExcelTemplate();
+  }
+
+  /**
+   * Refresh access token using refresh token
+   * @param refreshToken - The refresh token
+   * @returns New access token and refresh token
+   */
+  async refreshToken(refreshToken: string) {
+    this.logger.log(colors.cyan('Refreshing access token...'));
+
+    try {
+      // Verify the refresh token
+      const secret = this.config.get('JWT_SECRET');
+      const payload = await this.jwt.verifyAsync(refreshToken, {
+        secret: secret,
+      });
+
+      // Check if user still exists
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Generate new tokens
+      const { access_token, refresh_token } = await this.signToken(
+        user.id,
+        user.email,
+        user.school_id,
+      );
+
+      this.logger.log(colors.green('Access token refreshed successfully'));
+
+      return ResponseHelper.success('Access token refreshed successfully', {
+        access_token,
+        refresh_token,
+      });
+    } catch (error) {
+      this.logger.error(colors.red(`Error refreshing token: ${error.message}`));
+
+      if (error.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('Refresh token has expired');
+      }
+
+      if (error.name === 'JsonWebTokenError') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Send email verification OTP
+   * @param email - User's email address
+   * @param firstName - User's first name
+   * @param otp - The OTP code
+   */
+  private async sendEmailVerificationOTP(
+    email: string,
+    firstName: string,
+    otp: string,
+  ) {
+    try {
+      await sendEmailVerificationOTP({ email, firstName, otp });
+      this.logger.log(colors.green(`Email verification OTP sent to: ${email}`));
+    } catch (error) {
+      this.logger.error(
+        colors.red(`Error sending email verification OTP: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to send email verification OTP',
+      );
+    }
+  }
+
+  /**
+   * Request email verification code
+   * @param email - User's email address
+   * @returns Success response
+   */
+  async requestEmailVerification(email: string) {
+    this.logger.log(colors.cyan('Requesting email verification...'));
+
+    try {
+      // Find the user by email
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user) {
+        this.logger.error(colors.red(`User ${email} not found`));
+        throw new NotFoundException('User not found');
+      }
+
+      // Check if email is already verified
+      if (user.is_email_verified) {
+        this.logger.log(colors.green(`Email ${email} is already verified`));
+        return ResponseHelper.success('Email is already verified', {
+          email: user.email,
+        });
+      }
+
+      // Generate OTP for email verification
+      const otp = generateOTP();
+      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Update OTP for the user
+      await this.prisma.user.update({
+        where: { email: email },
+        data: {
+          otp,
+          otp_expires_at: otpExpiresAt,
+        },
+      });
+
+      // Send email verification OTP
+      try {
+        this.logger.log(
+          colors.cyan(`Sending email verification OTP to: ${user.email}`),
+        );
+        await this.sendEmailVerificationOTP(user.email, user.first_name, otp);
+        this.logger.log(
+          colors.green(`Email verification OTP ${otp} sent to: ${user.email}`),
+        );
+      } catch (error) {
+        this.logger.error(
+          colors.red(`Error sending email verification OTP: ${error.message}`),
+        );
+        throw new InternalServerErrorException(
+          'Failed to send email verification OTP',
+        );
+      }
+
+      return ResponseHelper.success(
+        'Email verification code sent successfully. Please check your email.',
+        { email: user.email },
+      );
+    } catch (error) {
+      this.logger.error(
+        colors.red(`Error requesting email verification: ${error.message}`),
+      );
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'Error requesting email verification',
+      );
+    }
+  }
+
+  /**
+   * Logout user
+   * @param userId - User ID to logout
+   * @param reason - Optional reason for logout
+   * @returns Success response
+   */
+  async logout(userId: string) {
+    this.logger.log(colors.cyan(`Logging out user: ${userId}`));
+
+    try {
+      // Find the user
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          first_name: true,
+          last_name: true,
+          role: true,
+        },
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      this.logger.log(
+        colors.green(`User ${user.email} logged out successfully`),
+      );
+      return ResponseHelper.success('Logged out successfully', {
+        message: 'You have been successfully logged out',
+        user: {
+          id: user.id,
+          email: user.email,
+          name: `${user.first_name} ${user.last_name}`,
+          role: user.role,
+        },
+        logout_time: new Date().toISOString(),
+      });
+    } catch (error) {
+      this.logger.error(colors.red(`Error during logout: ${error.message}`));
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Error during logout process');
+    }
+  }
 }
- 

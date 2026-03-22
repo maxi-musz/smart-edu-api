@@ -1,9 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { S3Service } from '../../../shared/services/s3.service';
-import { TextExtractionService, ExtractedText } from './text-extraction.service';
-import { DocumentChunkingService, DocumentChunk, ChunkingResult } from './document-chunking.service';
-import { EmbeddingService, EmbeddingResult, BatchEmbeddingResult } from './embedding.service';
+import {
+  TextExtractionService,
+  ExtractedText,
+} from './text-extraction.service';
+import {
+  DocumentChunkingService,
+  DocumentChunk,
+  ChunkingResult,
+} from './document-chunking.service';
+import {
+  EmbeddingService,
+  EmbeddingResult,
+  BatchEmbeddingResult,
+} from './embedding.service';
 import { PineconeService, PineconeChunk } from './pinecone.service';
 import * as colors from 'colors';
 
@@ -36,10 +47,14 @@ export class DocumentProcessingService {
   async processDocumentFromBuffer(
     materialId: string,
     fileBuffer: Buffer,
-    fileType: string
+    fileType: string,
   ): Promise<ProcessingResult> {
     const startTime = Date.now();
-    this.logger.log(colors.cyan(`🔄 Starting direct document processing for material: ${materialId}`));
+    this.logger.log(
+      colors.cyan(
+        `🔄 Starting direct document processing for material: ${materialId}`,
+      ),
+    );
 
     try {
       // Ensure a processing record exists (so polling doesn't 404)
@@ -52,17 +67,26 @@ export class DocumentProcessingService {
       }
 
       // Step 2: Extract text directly from buffer
-      this.logger.log(colors.blue(`📄 Extracting text from document buffer...`));
+      this.logger.log(
+        colors.blue(`📄 Extracting text from document buffer...`),
+      );
       const extractedText = await this.textExtractionService.extractText(
-        fileBuffer, 
-        fileType
+        fileBuffer,
+        fileType,
       );
 
       // Validate extraction
-      const extractionValidation = this.textExtractionService.validateExtraction(extractedText);
+      const extractionValidation =
+        this.textExtractionService.validateExtraction(extractedText);
       if (!extractionValidation.isValid) {
-        this.logger.warn(colors.yellow(`⚠️ Text extraction validation issues: ${extractionValidation.issues.join(', ')}`));
-        this.logger.warn(colors.yellow(`⚠️ Continuing with processing despite warnings...`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Text extraction validation issues: ${extractionValidation.issues.join(', ')}`,
+          ),
+        );
+        this.logger.warn(
+          colors.yellow(`⚠️ Continuing with processing despite warnings...`),
+        );
       }
 
       // Step 3: Chunk the document
@@ -73,31 +97,53 @@ export class DocumentProcessingService {
         {
           pageCount: extractedText.pageCount,
           originalName: material.originalName || undefined,
-        }
+        },
       );
 
       // Validate chunking
-      const chunkingValidation = this.chunkingService.validateChunks(chunkingResult.chunks);
+      const chunkingValidation = this.chunkingService.validateChunks(
+        chunkingResult.chunks,
+      );
       if (!chunkingValidation.isValid) {
-        this.logger.warn(colors.yellow(`⚠️ Chunking validation issues: ${chunkingValidation.issues.join(', ')}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Chunking validation issues: ${chunkingValidation.issues.join(', ')}`,
+          ),
+        );
       }
 
       // Step 4: Generate embeddings
-      this.logger.log(colors.blue(`🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`));
-      const embeddingResult = await this.embeddingService.generateBatchEmbeddings(
-        chunkingResult.chunks.map(chunk => chunk.content)
+      this.logger.log(
+        colors.blue(
+          `🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`,
+        ),
       );
+      const embeddingResult =
+        await this.embeddingService.generateBatchEmbeddings(
+          chunkingResult.chunks.map((chunk) => chunk.content),
+        );
 
       // Step 5: Save chunks and embeddings to Pinecone
-      this.logger.log(colors.blue(`💾 Saving chunks and embeddings to Pinecone...`));
-      
+      this.logger.log(
+        colors.blue(`💾 Saving chunks and embeddings to Pinecone...`),
+      );
+
       // Check if we have valid embeddings before saving
       if (embeddingResult.successCount === 0) {
-        this.logger.error(colors.red('No valid embeddings generated - cannot save to Pinecone'));
-        throw new Error('No valid embeddings generated - cannot save to Pinecone');
+        this.logger.error(
+          colors.red('No valid embeddings generated - cannot save to Pinecone'),
+        );
+        throw new Error(
+          'No valid embeddings generated - cannot save to Pinecone',
+        );
       }
-      
-      await this.saveChunksAndEmbeddings(materialId, chunkingResult.chunks, embeddingResult.embeddings, material.schoolId || '');
+
+      await this.saveChunksAndEmbeddings(
+        materialId,
+        chunkingResult.chunks,
+        embeddingResult.embeddings,
+        material.schoolId || '',
+      );
 
       // Step 6: Update material processing status
       await this.updateProcessingStatus(materialId, 'COMPLETED', {
@@ -107,7 +153,11 @@ export class DocumentProcessingService {
       });
 
       const processingTime = Date.now() - startTime;
-      this.logger.log(colors.green(`🎉 Direct document processing completed successfully in ${processingTime}ms`));
+      this.logger.log(
+        colors.green(
+          `🎉 Direct document processing completed successfully in ${processingTime}ms`,
+        ),
+      );
 
       return {
         materialId,
@@ -117,10 +167,11 @@ export class DocumentProcessingService {
         embeddingResult,
         processingTime,
       };
-
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      this.logger.error(colors.red(`❌ Direct document processing failed: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Direct document processing failed: ${error.message}`),
+      );
 
       // Update processing status to failed
       await this.updateProcessingStatus(materialId, 'FAILED', {
@@ -141,7 +192,11 @@ export class DocumentProcessingService {
    */
   async processDocument(materialId: string): Promise<ProcessingResult> {
     const startTime = Date.now();
-    this.logger.log(colors.cyan(`🔄 Starting document processing for material: ${materialId}`));
+    this.logger.log(
+      colors.cyan(
+        `🔄 Starting document processing for material: ${materialId}`,
+      ),
+    );
 
     try {
       // Ensure a processing record exists (so polling doesn't 404)
@@ -161,19 +216,26 @@ export class DocumentProcessingService {
       // Step 2: Download document from S3
       this.logger.log(colors.blue(`📥 Downloading document from S3...`));
       const documentBuffer = await this.downloadDocument(material.url);
-      
+
       // Step 3: Extract text
       this.logger.log(colors.blue(`📄 Extracting text from document...`));
       const extractedText = await this.textExtractionService.extractText(
-        documentBuffer, 
-        material.fileType || 'pdf'
+        documentBuffer,
+        material.fileType || 'pdf',
       );
 
       // Validate extraction (warnings only, don't fail on encoding issues)
-      const extractionValidation = this.textExtractionService.validateExtraction(extractedText);
+      const extractionValidation =
+        this.textExtractionService.validateExtraction(extractedText);
       if (!extractionValidation.isValid) {
-        this.logger.warn(colors.yellow(`⚠️ Text extraction validation issues: ${extractionValidation.issues.join(', ')}`));
-        this.logger.warn(colors.yellow(`⚠️ Continuing with processing despite warnings...`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Text extraction validation issues: ${extractionValidation.issues.join(', ')}`,
+          ),
+        );
+        this.logger.warn(
+          colors.yellow(`⚠️ Continuing with processing despite warnings...`),
+        );
       }
 
       // Step 4: Chunk the document
@@ -184,31 +246,53 @@ export class DocumentProcessingService {
         {
           pageCount: extractedText.pageCount,
           originalName: material.originalName || undefined,
-        }
+        },
       );
 
       // Validate chunking
-      const chunkingValidation = this.chunkingService.validateChunks(chunkingResult.chunks);
+      const chunkingValidation = this.chunkingService.validateChunks(
+        chunkingResult.chunks,
+      );
       if (!chunkingValidation.isValid) {
-        this.logger.warn(colors.yellow(`⚠️ Chunking validation issues: ${chunkingValidation.issues.join(', ')}`));
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Chunking validation issues: ${chunkingValidation.issues.join(', ')}`,
+          ),
+        );
       }
 
       // Step 5: Generate embeddings
-      this.logger.log(colors.blue(`🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`));
-      const embeddingResult = await this.embeddingService.generateBatchEmbeddings(
-        chunkingResult.chunks.map(chunk => chunk.content)
+      this.logger.log(
+        colors.blue(
+          `🧠 Generating embeddings for ${chunkingResult.chunks.length} chunks...`,
+        ),
       );
+      const embeddingResult =
+        await this.embeddingService.generateBatchEmbeddings(
+          chunkingResult.chunks.map((chunk) => chunk.content),
+        );
 
       // Step 6: Save chunks and embeddings to Pinecone
-      this.logger.log(colors.blue(`💾 Saving chunks and embeddings to Pinecone...`));
-      
+      this.logger.log(
+        colors.blue(`💾 Saving chunks and embeddings to Pinecone...`),
+      );
+
       // Check if we have valid embeddings before saving
       if (embeddingResult.successCount === 0) {
-        this.logger.error(colors.red('No valid embeddings generated - cannot save to Pinecone'));
-        throw new Error('No valid embeddings generated - cannot save to Pinecone');
+        this.logger.error(
+          colors.red('No valid embeddings generated - cannot save to Pinecone'),
+        );
+        throw new Error(
+          'No valid embeddings generated - cannot save to Pinecone',
+        );
       }
-      
-      await this.saveChunksAndEmbeddings(materialId, chunkingResult.chunks, embeddingResult.embeddings, material.schoolId || '');
+
+      await this.saveChunksAndEmbeddings(
+        materialId,
+        chunkingResult.chunks,
+        embeddingResult.embeddings,
+        material.schoolId || '',
+      );
 
       // Step 7: Update material processing status
       await this.updateProcessingStatus(materialId, 'COMPLETED', {
@@ -218,7 +302,11 @@ export class DocumentProcessingService {
       });
 
       const processingTime = Date.now() - startTime;
-      this.logger.log(colors.green(`🎉 Document processing completed successfully in ${processingTime}ms`));
+      this.logger.log(
+        colors.green(
+          `🎉 Document processing completed successfully in ${processingTime}ms`,
+        ),
+      );
 
       return {
         materialId,
@@ -228,10 +316,11 @@ export class DocumentProcessingService {
         embeddingResult,
         processingTime,
       };
-
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      this.logger.error(colors.red(`❌ Document processing failed: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Document processing failed: ${error.message}`),
+      );
 
       // Update processing status to failed
       await this.updateProcessingStatus(materialId, 'FAILED', {
@@ -270,63 +359,74 @@ export class DocumentProcessingService {
   private async downloadDocument(s3Url: string): Promise<Buffer> {
     try {
       this.logger.log(colors.blue(`📥 Starting S3 download from: ${s3Url}`));
-      
+
       // Extract S3 key from URL
       const url = new URL(s3Url);
       const s3Key = url.pathname.substring(1); // Remove leading slash
-      
-      this.logger.log(colors.blue(`🔑 Generating presigned URL for key: ${s3Key}`));
-      
+
+      this.logger.log(
+        colors.blue(`🔑 Generating presigned URL for key: ${s3Key}`),
+      );
+
       // Download from S3 using presigned URL
       const presignedUrl = await this.s3Service.generateReadPresignedUrl(s3Key);
-      
+
       this.logger.log(colors.blue(`🌐 Downloading from presigned URL...`));
-      
+
       // Add timeout and better error handling
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-      
+
       const response = await fetch(presignedUrl, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'SmartEdu-AI-Chat/1.0'
-        }
+          'User-Agent': 'SmartEdu-AI-Chat/1.0',
+        },
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
-        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Failed to download file: ${response.status} ${response.statusText}`,
+        );
       }
-      
+
       this.logger.log(colors.blue(`📦 Converting response to buffer...`));
-      
+
       // Use streaming approach for large files
       const chunks: Uint8Array[] = [];
       const reader = response.body?.getReader();
-      
+
       if (!reader) {
         throw new Error('Response body is not readable');
       }
-      
+
       let totalBytes = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         chunks.push(value);
         totalBytes += value.length;
-        
+
         // Log progress for large files
-        if (totalBytes % (1024 * 1024) === 0) { // Every MB
-          this.logger.log(colors.blue(`📦 Downloaded ${Math.round(totalBytes / 1024 / 1024)}MB...`));
+        if (totalBytes % (1024 * 1024) === 0) {
+          // Every MB
+          this.logger.log(
+            colors.blue(
+              `📦 Downloaded ${Math.round(totalBytes / 1024 / 1024)}MB...`,
+            ),
+          );
         }
       }
-      
+
       // Combine chunks into single buffer
-      const buffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
-      
-      this.logger.log(colors.green(`✅ S3 download completed: ${buffer.length} bytes`));
+      const buffer = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+
+      this.logger.log(
+        colors.green(`✅ S3 download completed: ${buffer.length} bytes`),
+      );
       return buffer;
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -343,30 +443,40 @@ export class DocumentProcessingService {
     materialId: string,
     chunks: DocumentChunk[],
     embeddings: EmbeddingResult[],
-    schoolId: string
+    schoolId: string,
   ): Promise<void> {
     try {
       // Get material processing record
-      const materialProcessing = await this.prisma.materialProcessing.findFirst({
-        where: { material_id: materialId },
-        select: { id: true }
-      });
+      const materialProcessing = await this.prisma.materialProcessing.findFirst(
+        {
+          where: { material_id: materialId },
+          select: { id: true },
+        },
+      );
 
       if (!materialProcessing) {
-        this.logger.error(colors.red(`❌ Material processing record not found for material: ${materialId}`));
+        this.logger.error(
+          colors.red(
+            `❌ Material processing record not found for material: ${materialId}`,
+          ),
+        );
         throw new Error('Material processing record not found');
       }
 
-      this.logger.log(colors.green(`✅ Found material processing record: ${materialProcessing.id}`));
+      this.logger.log(
+        colors.green(
+          `✅ Found material processing record: ${materialProcessing.id}`,
+        ),
+      );
 
       // Convert chunks to Pinecone format
-      const pineconeChunks: PineconeChunk[] = chunks.map((chunk, index) => 
+      const pineconeChunks: PineconeChunk[] = chunks.map((chunk, index) =>
         this.pineconeService.convertToPineconeChunk(
           chunk,
           embeddings[index]?.embedding || [],
           materialId,
-          schoolId
-        )
+          schoolId,
+        ),
       );
 
       // Save to Pinecone
@@ -391,13 +501,16 @@ export class DocumentProcessingService {
       }));
 
       // Save basic chunk info to database
-      this.logger.log(colors.blue(`💾 Saving ${chunkData.length} chunks to database...`));
+      this.logger.log(
+        colors.blue(`💾 Saving ${chunkData.length} chunks to database...`),
+      );
       for (const chunk of chunkData) {
         const embedding = embeddings[chunkData.indexOf(chunk)]?.embedding || [];
         // Format embedding array as PostgreSQL vector string: [0.1, 0.2, 0.3]
         const embeddingString = `[${embedding.join(',')}]`;
-        
-        await this.prisma.$executeRawUnsafe(`
+
+        await this.prisma.$executeRawUnsafe(
+          `
           INSERT INTO "DocumentChunk" (
             id, material_processing_id, material_id, school_id, content, chunk_type, 
             page_number, section_title, embedding, embedding_model, token_count, 
@@ -422,11 +535,15 @@ export class DocumentProcessingService {
           chunk.word_count,
           chunk.order_index,
           chunk.keywords || [],
-          chunk.summary || null
+          chunk.summary || null,
         );
       }
 
-      this.logger.log(colors.green(`✅ Saved ${chunkData.length} chunks to Pinecone and database`));
+      this.logger.log(
+        colors.green(
+          `✅ Saved ${chunkData.length} chunks to Pinecone and database`,
+        ),
+      );
     } catch (error) {
       this.logger.error(colors.red(`❌ Error saving chunks: ${error.message}`));
       throw new Error(`Failed to save chunks: ${error.message}`);
@@ -444,10 +561,10 @@ export class DocumentProcessingService {
       processedChunks?: number;
       failedChunks?: number;
       error?: string;
-    }
+    },
   ): Promise<void> {
     try {
-        await this.prisma.materialProcessing.updateMany({
+      await this.prisma.materialProcessing.updateMany({
         where: { material_id: materialId },
         data: {
           status,
@@ -459,9 +576,13 @@ export class DocumentProcessingService {
         },
       });
 
-      this.logger.log(colors.blue(`📊 Updated processing status to: ${status}`));
+      this.logger.log(
+        colors.blue(`📊 Updated processing status to: ${status}`),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error updating processing status: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error updating processing status: ${error.message}`),
+      );
     }
   }
 
@@ -470,7 +591,9 @@ export class DocumentProcessingService {
    */
   private async ensureProcessingRecord(materialId: string): Promise<void> {
     try {
-      const existing = await this.prisma.materialProcessing.findFirst({ where: { material_id: materialId } });
+      const existing = await this.prisma.materialProcessing.findFirst({
+        where: { material_id: materialId },
+      });
       if (existing) {
         // If it exists but is terminal FAILED/COMPLETED, set to PROCESSING when re-triggered
         if (existing.status !== 'PROCESSING') {
@@ -479,7 +602,10 @@ export class DocumentProcessingService {
         return;
       }
       // Need school_id for creation
-      const material = await this.prisma.pDFMaterial.findUnique({ where: { id: materialId }, select: { schoolId: true } });
+      const material = await this.prisma.pDFMaterial.findUnique({
+        where: { id: materialId },
+        select: { schoolId: true },
+      });
       await this.prisma.materialProcessing.create({
         data: {
           material_id: materialId,
@@ -488,11 +614,17 @@ export class DocumentProcessingService {
           total_chunks: 0,
           processed_chunks: 0,
           failed_chunks: 0,
-        }
+        },
       });
-      this.logger.log(colors.blue(`📝 Created processing status row (PROCESSING) for: ${materialId}`));
+      this.logger.log(
+        colors.blue(
+          `📝 Created processing status row (PROCESSING) for: ${materialId}`,
+        ),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to ensure processing record: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to ensure processing record: ${error.message}`),
+      );
       // do not throw; processing can continue, status updates may fail silently
     }
   }
@@ -544,28 +676,32 @@ export class DocumentProcessingService {
   async searchRelevantChunks(
     materialId: string,
     query: string,
-    topK: number = 5
-  ): Promise<{ id: string; content: string; similarity: number; chunk_type: string }[]> {
+    topK: number = 5,
+  ): Promise<
+    { id: string; content: string; similarity: number; chunk_type: string }[]
+  > {
     try {
       // Generate embedding for query
-      const queryEmbedding = await this.embeddingService.generateEmbedding(query);
-      
+      const queryEmbedding =
+        await this.embeddingService.generateEmbedding(query);
+
       // Search Pinecone
       const results = await this.pineconeService.searchSimilarChunks(
         queryEmbedding.embedding,
         materialId,
-        topK
+        topK,
       );
 
-      return results.map(result => ({
+      return results.map((result) => ({
         id: result.id,
         content: result.metadata.content,
         chunk_type: result.metadata.chunk_type,
         similarity: result.score,
       }));
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error searching relevant chunks: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error searching relevant chunks: ${error.message}`),
+      );
       throw new Error(`Failed to search relevant chunks: ${error.message}`);
     }
   }
@@ -573,13 +709,22 @@ export class DocumentProcessingService {
   /**
    * Map chunk type to database enum
    */
-  private mapChunkType(chunkType: string): 'TEXT' | 'HEADING' | 'PARAGRAPH' | 'LIST' | 'TABLE' | 'IMAGE_CAPTION' | 'FOOTNOTE' {
+  private mapChunkType(
+    chunkType: string,
+  ):
+    | 'TEXT'
+    | 'HEADING'
+    | 'PARAGRAPH'
+    | 'LIST'
+    | 'TABLE'
+    | 'IMAGE_CAPTION'
+    | 'FOOTNOTE' {
     switch (chunkType) {
       case 'text':
         return 'TEXT';
       case 'heading':
         return 'HEADING';
-        
+
       case 'paragraph':
         return 'PARAGRAPH';
       case 'list':
@@ -599,11 +744,13 @@ export class DocumentProcessingService {
    * Retry failed processing
    */
   async retryProcessing(materialId: string): Promise<ProcessingResult> {
-    this.logger.log(colors.yellow(`🔄 Retrying processing for material: ${materialId}`));
-    
+    this.logger.log(
+      colors.yellow(`🔄 Retrying processing for material: ${materialId}`),
+    );
+
     // Update status to retrying
     await this.updateProcessingStatus(materialId, 'RETRYING');
-    
+
     // Process the document again
     return this.processDocument(materialId);
   }

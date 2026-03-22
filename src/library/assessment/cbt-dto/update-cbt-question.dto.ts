@@ -1,14 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { 
-  IsString, 
-  IsNotEmpty, 
-  IsOptional, 
-  IsNumber, 
-  IsBoolean, 
-  IsArray, 
-  IsEnum, 
-  Min, 
-  ValidateNested
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
+  IsArray,
+  IsEnum,
+  Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { QuestionType, DifficultyLevel } from './create-cbt-question.dto';
@@ -19,7 +19,7 @@ import { QuestionType, DifficultyLevel } from './create-cbt-question.dto';
 export class UpdateLibraryCBTOptionDto {
   @ApiPropertyOptional({
     description: 'Option ID (required for updates, omit for new options)',
-    example: 'cmjb9opt123'
+    example: 'cmjb9opt123',
   })
   @IsString()
   @IsOptional()
@@ -27,7 +27,7 @@ export class UpdateLibraryCBTOptionDto {
 
   @ApiPropertyOptional({
     description: 'Option text',
-    example: 'Paris'
+    example: 'Paris',
   })
   @IsString()
   @IsNotEmpty()
@@ -36,7 +36,7 @@ export class UpdateLibraryCBTOptionDto {
   @ApiPropertyOptional({
     description: 'Order/position of the option',
     example: 1,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @Min(1)
@@ -44,14 +44,14 @@ export class UpdateLibraryCBTOptionDto {
 
   @ApiPropertyOptional({
     description: 'Whether this option is correct',
-    example: true
+    example: true,
   })
   @IsBoolean()
   isCorrect: boolean;
 
   @ApiPropertyOptional({
     description: 'Image URL for the option',
-    example: 'https://s3.amazonaws.com/bucket/option-image.jpg'
+    example: 'https://s3.amazonaws.com/bucket/option-image.jpg',
   })
   @IsString()
   @IsOptional()
@@ -59,7 +59,7 @@ export class UpdateLibraryCBTOptionDto {
 
   @ApiPropertyOptional({
     description: 'Audio URL for the option',
-    example: 'https://s3.amazonaws.com/bucket/option-audio.mp3'
+    example: 'https://s3.amazonaws.com/bucket/option-audio.mp3',
   })
   @IsString()
   @IsOptional()
@@ -72,7 +72,7 @@ export class UpdateLibraryCBTOptionDto {
 export class UpdateLibraryCBTCorrectAnswerDto {
   @ApiPropertyOptional({
     description: 'Answer ID (required for updates, omit for new answers)',
-    example: 'cmjb9ans123'
+    example: 'cmjb9ans123',
   })
   @IsString()
   @IsOptional()
@@ -80,7 +80,8 @@ export class UpdateLibraryCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct text answer (for text-based questions)',
-    example: 'Photosynthesis is the process by which plants convert sunlight into energy.'
+    example:
+      'Photosynthesis is the process by which plants convert sunlight into energy.',
   })
   @IsString()
   @IsOptional()
@@ -88,7 +89,7 @@ export class UpdateLibraryCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct numeric answer (for numeric questions)',
-    example: 42.5
+    example: 42.5,
   })
   @IsNumber()
   @IsOptional()
@@ -96,7 +97,7 @@ export class UpdateLibraryCBTCorrectAnswerDto {
 
   @ApiPropertyOptional({
     description: 'Correct date answer (for date questions)',
-    example: '1945-05-08T00:00:00Z'
+    example: '1945-05-08T00:00:00Z',
   })
   @IsString()
   @IsOptional()
@@ -105,7 +106,7 @@ export class UpdateLibraryCBTCorrectAnswerDto {
   @ApiPropertyOptional({
     description: 'Array of correct option IDs (for multiple choice questions)',
     example: ['option_1', 'option_3'],
-    type: [String]
+    type: [String],
   })
   @IsArray()
   @IsString({ each: true })
@@ -113,8 +114,14 @@ export class UpdateLibraryCBTCorrectAnswerDto {
   optionIds?: string[];
 
   @ApiPropertyOptional({
-    description: 'Complex answer data in JSON format (for matching, ordering, etc.)',
-    example: { pairs: [['A', '1'], ['B', '2']] }
+    description:
+      'Complex answer data in JSON format (for matching, ordering, etc.)',
+    example: {
+      pairs: [
+        ['A', '1'],
+        ['B', '2'],
+      ],
+    },
   })
   @IsOptional()
   answerJson?: any;
@@ -127,7 +134,7 @@ export class UpdateLibraryCBTCorrectAnswerDto {
 export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Question text/prompt',
-    example: 'What is the capital of France?'
+    example: 'What is the capital of France?',
   })
   @IsString()
   @IsOptional()
@@ -137,7 +144,7 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Type of question',
     enum: QuestionType,
-    example: QuestionType.MULTIPLE_CHOICE_SINGLE
+    example: QuestionType.MULTIPLE_CHOICE_SINGLE,
   })
   @IsEnum(QuestionType)
   @IsOptional()
@@ -146,7 +153,7 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Order/position of the question in the CBT',
     example: 1,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -156,7 +163,7 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Points awarded for correct answer',
     example: 2.0,
-    minimum: 0.1
+    minimum: 0.1,
   })
   @IsNumber()
   @IsOptional()
@@ -165,7 +172,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Whether this question is required (must be answered)',
-    example: true
+    example: true,
   })
   @IsBoolean()
   @IsOptional()
@@ -174,7 +181,7 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Time limit for this specific question in seconds',
     example: 60,
-    minimum: 10
+    minimum: 10,
   })
   @IsNumber()
   @IsOptional()
@@ -183,7 +190,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Image URL for the question',
-    example: 'https://s3.amazonaws.com/bucket/question-image.jpg'
+    example: 'https://s3.amazonaws.com/bucket/question-image.jpg',
   })
   @IsString()
   @IsOptional()
@@ -191,7 +198,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Audio URL for the question',
-    example: 'https://s3.amazonaws.com/bucket/question-audio.mp3'
+    example: 'https://s3.amazonaws.com/bucket/question-audio.mp3',
   })
   @IsString()
   @IsOptional()
@@ -199,7 +206,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Video URL for the question',
-    example: 'https://s3.amazonaws.com/bucket/question-video.mp4'
+    example: 'https://s3.amazonaws.com/bucket/question-video.mp4',
   })
   @IsString()
   @IsOptional()
@@ -207,7 +214,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Whether to allow multiple attempts for this question',
-    example: false
+    example: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -215,7 +222,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Whether to show hint for this question',
-    example: true
+    example: true,
   })
   @IsBoolean()
   @IsOptional()
@@ -223,7 +230,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Hint text to help users answer the question',
-    example: 'Think about European capitals'
+    example: 'Think about European capitals',
   })
   @IsString()
   @IsOptional()
@@ -232,7 +239,7 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Minimum length for text answers (in characters)',
     example: 10,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -242,7 +249,7 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Maximum length for text answers (in characters)',
     example: 500,
-    minimum: 1
+    minimum: 1,
   })
   @IsNumber()
   @IsOptional()
@@ -251,7 +258,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Minimum value for numeric answers',
-    example: 0
+    example: 0,
   })
   @IsNumber()
   @IsOptional()
@@ -259,7 +266,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Maximum value for numeric answers',
-    example: 100
+    example: 100,
   })
   @IsNumber()
   @IsOptional()
@@ -267,7 +274,7 @@ export class UpdateLibraryCBTQuestionDto {
 
   @ApiPropertyOptional({
     description: 'Explanation for the correct answer',
-    example: 'Paris is the capital and largest city of France.'
+    example: 'Paris is the capital and largest city of France.',
   })
   @IsString()
   @IsOptional()
@@ -276,21 +283,22 @@ export class UpdateLibraryCBTQuestionDto {
   @ApiPropertyOptional({
     description: 'Difficulty level of the question',
     enum: DifficultyLevel,
-    example: DifficultyLevel.MEDIUM
+    example: DifficultyLevel.MEDIUM,
   })
   @IsEnum(DifficultyLevel)
   @IsOptional()
   difficultyLevel?: DifficultyLevel;
 
   @ApiPropertyOptional({
-    description: 'Options for multiple choice questions (completely replaces existing options)',
+    description:
+      'Options for multiple choice questions (completely replaces existing options)',
     type: [UpdateLibraryCBTOptionDto],
     example: [
       { optionText: 'Paris', order: 1, isCorrect: true },
       { optionText: 'London', order: 2, isCorrect: false },
       { optionText: 'Berlin', order: 3, isCorrect: false },
-      { optionText: 'Madrid', order: 4, isCorrect: false }
-    ]
+      { optionText: 'Madrid', order: 4, isCorrect: false },
+    ],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -299,8 +307,9 @@ export class UpdateLibraryCBTQuestionDto {
   options?: UpdateLibraryCBTOptionDto[];
 
   @ApiPropertyOptional({
-    description: 'Correct answers for the question (completely replaces existing answers)',
-    type: [UpdateLibraryCBTCorrectAnswerDto]
+    description:
+      'Correct answers for the question (completely replaces existing answers)',
+    type: [UpdateLibraryCBTCorrectAnswerDto],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -308,4 +317,3 @@ export class UpdateLibraryCBTQuestionDto {
   @IsOptional()
   correctAnswers?: UpdateLibraryCBTCorrectAnswerDto[];
 }
-

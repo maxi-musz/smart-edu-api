@@ -3,7 +3,10 @@ import { PassportModule } from '@nestjs/passport';
 import { VideoController } from './video.controller';
 import { VideoService } from './video.service';
 import { PrismaModule } from '../prisma/prisma.module';
-import { UniversalJwtStrategy, UniversalJwtGuard } from './guards/universal-jwt.guard';
+import {
+  UniversalJwtStrategy,
+  UniversalJwtGuard,
+} from './guards/universal-jwt.guard';
 
 @Module({
   imports: [PrismaModule, PassportModule],
@@ -12,4 +15,3 @@ import { UniversalJwtStrategy, UniversalJwtGuard } from './guards/universal-jwt.
   exports: [VideoService],
 })
 export class VideoModule {}
-

@@ -11,4 +11,3 @@ import { LibraryAuthModule } from '../library-auth/library-auth.module';
   exports: [ResourcesService],
 })
 export class ResourcesModule {}
-

@@ -4,6 +4,6 @@ import { AuthAdminController } from './auth-admin.controller';
 
 @Module({
   providers: [AuthAdminService],
-  controllers: [AuthAdminController]
+  controllers: [AuthAdminController],
 })
 export class AuthAdminModule {}

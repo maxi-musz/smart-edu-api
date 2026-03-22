@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtGuard } from '../school/auth/guard';
 import { ExamPracticeService } from './exam-practice.service';
@@ -26,14 +35,20 @@ export class ExamPracticeController {
   @Get('assessments/:assessmentId')
   @UseGuards(JwtGuard)
   @ApiBearerAuth()
-  getAssessmentDetails(@Request() req: any, @Param('assessmentId') assessmentId: string) {
+  getAssessmentDetails(
+    @Request() req: any,
+    @Param('assessmentId') assessmentId: string,
+  ) {
     return this.service.getAssessmentDetails(req.user.sub, assessmentId);
   }
 
   @Get('assessments/:assessmentId/questions')
   @UseGuards(JwtGuard)
   @ApiBearerAuth()
-  getAssessmentQuestions(@Request() req: any, @Param('assessmentId') assessmentId: string) {
+  getAssessmentQuestions(
+    @Request() req: any,
+    @Param('assessmentId') assessmentId: string,
+  ) {
     return this.service.getAssessmentQuestions(req.user.sub, assessmentId);
   }
 
@@ -48,4 +63,3 @@ export class ExamPracticeController {
     return this.service.submitAssessment(req.user, assessmentId, submitDto);
   }
 }
-

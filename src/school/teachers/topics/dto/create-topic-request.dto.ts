@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsNotEmpty, IsUUID, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNotEmpty,
+  IsUUID,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -36,7 +42,8 @@ export class CreateTopicRequestDto {
   is_active?: boolean;
 
   @ApiProperty({
-    description: 'Subject ID that this topic belongs to (accepts both subjectId and subject_id)',
+    description:
+      'Subject ID that this topic belongs to (accepts both subjectId and subject_id)',
     example: 'cmevi6gbj000xvlhl2dxmixr0',
   })
   @IsString()
@@ -48,7 +55,8 @@ export class CreateTopicRequestDto {
   subject_id: string;
 
   @ApiPropertyOptional({
-    description: 'Academic session ID (optional - will use current active session if not provided)',
+    description:
+      'Academic session ID (optional - will use current active session if not provided)',
     example: 'clx1234567890abcdef',
   })
   @IsOptional()

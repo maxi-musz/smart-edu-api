@@ -5,7 +5,11 @@ export class StudentInfoDto {
   @ApiProperty({ example: 'student_1', description: 'Student ID' })
   id: string;
 
-  @ApiProperty({ example: 'user-uuid-1', description: 'User ID', required: false })
+  @ApiProperty({
+    example: 'user-uuid-1',
+    description: 'User ID',
+    required: false,
+  })
   user_id?: string;
 
   @ApiProperty({ example: 'John Doe', description: 'Student full name' })
@@ -17,10 +21,10 @@ export class StudentInfoDto {
   @ApiProperty({ example: 'Doe', description: 'Student last name' })
   last_name: string;
 
-  @ApiProperty({ 
-    example: 'https://api.school.com/images/students/student_1.jpg', 
+  @ApiProperty({
+    example: 'https://api.school.com/images/students/student_1.jpg',
     description: 'Student display picture URL',
-    nullable: true
+    nullable: true,
   })
   display_picture: string | null;
 
@@ -36,13 +40,21 @@ export class StudentInfoDto {
   @ApiProperty({ example: 'STU001', description: 'Student ID number' })
   student_id: string;
 
-  @ApiProperty({ example: 'STD/2024/001', description: 'Student admission number', nullable: true })
+  @ApiProperty({
+    example: 'STD/2024/001',
+    description: 'Student admission number',
+    nullable: true,
+  })
   admission_number: string | null;
 
   @ApiProperty({ example: '001', description: 'Student roll number' })
   roll_number: string;
 
-  @ApiProperty({ example: 'active', description: 'Student status', required: false })
+  @ApiProperty({
+    example: 'active',
+    description: 'Student status',
+    required: false,
+  })
   status?: string;
 }
 
@@ -67,10 +79,16 @@ export class ClassInfoForStudentsDto {
 }
 
 export class StudentsForClassDto {
-  @ApiProperty({ type: ClassInfoForStudentsDto, description: 'Class information' })
+  @ApiProperty({
+    type: ClassInfoForStudentsDto,
+    description: 'Class information',
+  })
   class_info: ClassInfoForStudentsDto;
 
-  @ApiProperty({ type: [StudentInfoDto], description: 'List of students in the class' })
+  @ApiProperty({
+    type: [StudentInfoDto],
+    description: 'List of students in the class',
+  })
   students: StudentInfoDto[];
 
   @ApiProperty({ type: PaginationMetaDto, description: 'Pagination metadata' })
@@ -81,7 +99,10 @@ export class StudentsForClassResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Students retrieved successfully', description: 'Response message' })
+  @ApiProperty({
+    example: 'Students retrieved successfully',
+    description: 'Response message',
+  })
   message: string;
 
   @ApiProperty({ type: StudentsForClassDto, description: 'Students data' })

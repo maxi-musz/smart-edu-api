@@ -33,7 +33,10 @@ export class StudentInfoDto {
   @ApiProperty({ example: '2005-03-15', description: 'Date of birth' })
   date_of_birth: string;
 
-  @ApiProperty({ example: 'https://example.com/profile.jpg', description: 'Display picture URL' })
+  @ApiProperty({
+    example: 'https://example.com/profile.jpg',
+    description: 'Display picture URL',
+  })
   display_picture: string;
 
   @ApiProperty({ example: 'STU001', description: 'Student ID number' })
@@ -42,7 +45,10 @@ export class StudentInfoDto {
   @ApiProperty({ example: 'Jane Doe', description: 'Emergency contact name' })
   emergency_contact_name: string;
 
-  @ApiProperty({ example: '+1234567891', description: 'Emergency contact phone' })
+  @ApiProperty({
+    example: '+1234567891',
+    description: 'Emergency contact phone',
+  })
   emergency_contact_phone: string;
 
   @ApiProperty({ type: StudentAddressDto, description: 'Student address' })
@@ -70,7 +76,11 @@ export class CurrentSessionDto {
   @ApiProperty({ example: '2024-2025', description: 'Academic year' })
   academic_year: string;
 
-  @ApiProperty({ example: 'first', description: 'Current term', enum: ['first', 'second', 'third'] })
+  @ApiProperty({
+    example: 'first',
+    description: 'Current term',
+    enum: ['first', 'second', 'third'],
+  })
   term: string;
 
   @ApiProperty({ example: '2024-09-01', description: 'Session start date' })
@@ -84,10 +94,16 @@ export class GeneralInfoDto {
   @ApiProperty({ type: StudentInfoDto, description: 'Student information' })
   student: StudentInfoDto;
 
-  @ApiProperty({ type: StudentClassDto, description: 'Student class information' })
+  @ApiProperty({
+    type: StudentClassDto,
+    description: 'Student class information',
+  })
   student_class: StudentClassDto;
 
-  @ApiProperty({ type: CurrentSessionDto, description: 'Current academic session' })
+  @ApiProperty({
+    type: CurrentSessionDto,
+    description: 'Current academic session',
+  })
   current_session: CurrentSessionDto;
 }
 
@@ -104,7 +120,11 @@ export class SubjectEnrolledDto {
   @ApiProperty({ example: 'Dr. Smith', description: 'Teacher name' })
   teacher_name: string;
 
-  @ApiProperty({ example: 'active', description: 'Subject status', enum: ['active', 'inactive', 'completed'] })
+  @ApiProperty({
+    example: 'active',
+    description: 'Subject status',
+    enum: ['active', 'inactive', 'completed'],
+  })
   status: string;
 
   @ApiProperty({ example: 4, description: 'Subject credits' })
@@ -141,16 +161,26 @@ export class RecentAchievementDto {
   @ApiProperty({ example: 'ach_001', description: 'Achievement ID' })
   id: string;
 
-  @ApiProperty({ example: 'Top Performer in Mathematics', description: 'Achievement title' })
+  @ApiProperty({
+    example: 'Top Performer in Mathematics',
+    description: 'Achievement title',
+  })
   title: string;
 
-  @ApiProperty({ example: 'Achieved highest score in mid-term mathematics exam', description: 'Achievement description' })
+  @ApiProperty({
+    example: 'Achieved highest score in mid-term mathematics exam',
+    description: 'Achievement description',
+  })
   description: string;
 
   @ApiProperty({ example: '2024-10-15', description: 'Date earned' })
   date_earned: string;
 
-  @ApiProperty({ example: 'academic', description: 'Achievement type', enum: ['academic', 'attendance', 'sports', 'other'] })
+  @ApiProperty({
+    example: 'academic',
+    description: 'Achievement type',
+    enum: ['academic', 'attendance', 'sports', 'other'],
+  })
   type: string;
 }
 
@@ -158,10 +188,16 @@ export class AcademicInfoDto {
   @ApiProperty({ type: [SubjectEnrolledDto], description: 'Subjects enrolled' })
   subjects_enrolled: SubjectEnrolledDto[];
 
-  @ApiProperty({ type: PerformanceSummaryDto, description: 'Performance summary' })
+  @ApiProperty({
+    type: PerformanceSummaryDto,
+    description: 'Performance summary',
+  })
   performance_summary: PerformanceSummaryDto;
 
-  @ApiProperty({ type: [RecentAchievementDto], description: 'Recent achievements' })
+  @ApiProperty({
+    type: [RecentAchievementDto],
+    description: 'Recent achievements',
+  })
   recent_achievements: RecentAchievementDto[];
 }
 
@@ -178,7 +214,10 @@ export class NotificationSettingsDto {
   @ApiProperty({ example: true, description: 'Grade notifications enabled' })
   grade_notifications: boolean;
 
-  @ApiProperty({ example: false, description: 'Announcement notifications enabled' })
+  @ApiProperty({
+    example: false,
+    description: 'Announcement notifications enabled',
+  })
   announcement_notifications: boolean;
 }
 
@@ -200,7 +239,11 @@ export class AppPreferencesDto {
 }
 
 export class PrivacySettingsDto {
-  @ApiProperty({ example: 'classmates', description: 'Profile visibility', enum: ['public', 'classmates', 'private'] })
+  @ApiProperty({
+    example: 'classmates',
+    description: 'Profile visibility',
+    enum: ['public', 'classmates', 'private'],
+  })
   profile_visibility: string;
 
   @ApiProperty({ example: true, description: 'Show contact info' })
@@ -214,7 +257,10 @@ export class PrivacySettingsDto {
 }
 
 export class SettingsDto {
-  @ApiProperty({ type: NotificationSettingsDto, description: 'Notification settings' })
+  @ApiProperty({
+    type: NotificationSettingsDto,
+    description: 'Notification settings',
+  })
   notifications: NotificationSettingsDto;
 
   @ApiProperty({ type: AppPreferencesDto, description: 'App preferences' })
@@ -231,7 +277,10 @@ export class HelpCenterDto {
   @ApiProperty({ example: '2024-10-01', description: 'Last updated date' })
   last_updated: string;
 
-  @ApiProperty({ example: ['General', 'Academic', 'Technical', 'Account'], description: 'FAQ categories' })
+  @ApiProperty({
+    example: ['General', 'Academic', 'Technical', 'Account'],
+    description: 'FAQ categories',
+  })
   categories: string[];
 }
 
@@ -295,9 +344,15 @@ export class MobileStudentProfileResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Profile retrieved successfully', description: 'Response message' })
+  @ApiProperty({
+    example: 'Profile retrieved successfully',
+    description: 'Response message',
+  })
   message: string;
 
-  @ApiProperty({ type: MobileStudentProfileDto, description: 'Student profile data' })
+  @ApiProperty({
+    type: MobileStudentProfileDto,
+    description: 'Student profile data',
+  })
   data: MobileStudentProfileDto;
 }

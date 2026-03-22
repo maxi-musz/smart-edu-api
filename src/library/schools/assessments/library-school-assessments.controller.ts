@@ -16,10 +16,25 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Response } from 'express';
-import { AssessmentService, LibraryAssessmentContext } from '../../../school/teachers/assessments/assessment.service';
-import { CreateAssessmentDto, UpdateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentQuestionDto } from '../../../school/teachers/assessments/cbt-dto';
+import {
+  AssessmentService,
+  LibraryAssessmentContext,
+} from '../../../school/teachers/assessments/assessment.service';
+import {
+  CreateAssessmentDto,
+  UpdateAssessmentDto,
+  CreateAssessmentQuestionDto,
+  UpdateAssessmentQuestionDto,
+} from '../../../school/teachers/assessments/cbt-dto';
 import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
 import { LibraryOwnerGuard } from '../../library-auth/guard/library-owner.guard';
 
@@ -30,7 +45,10 @@ import { LibraryOwnerGuard } from '../../library-auth/guard/library-owner.guard'
 export class LibrarySchoolAssessmentsController {
   constructor(private readonly assessmentService: AssessmentService) {}
 
-  private ctx(schoolId: string, createdByUserId?: string): LibraryAssessmentContext {
+  private ctx(
+    schoolId: string,
+    createdByUserId?: string,
+  ): LibraryAssessmentContext {
     return { schoolId, createdByUserId };
   }
 
@@ -54,10 +72,15 @@ export class LibrarySchoolAssessmentsController {
   }
 
   @Post(':id/duplicate')
-  @ApiOperation({ summary: 'Duplicate an assessment (copy) for the same school/subject' })
+  @ApiOperation({
+    summary: 'Duplicate an assessment (copy) for the same school/subject',
+  })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID to duplicate' })
-  @ApiResponse({ status: 201, description: 'Assessment duplicated successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Assessment duplicated successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 404, description: 'Assessment not found' })
   duplicate(
@@ -73,7 +96,9 @@ export class LibrarySchoolAssessmentsController {
   }
 
   @Get('')
-  @ApiOperation({ summary: 'Get all assessments for a school subject (library owner)' })
+  @ApiOperation({
+    summary: 'Get all assessments for a school subject (library owner)',
+  })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiQuery({ name: 'subject_id', required: true, description: 'Subject ID' })
   @ApiQuery({ name: 'status', required: false })
@@ -81,7 +106,10 @@ export class LibrarySchoolAssessmentsController {
   @ApiQuery({ name: 'assessment_type', required: false })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
-  @ApiResponse({ status: 200, description: 'Assessments retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessments retrieved successfully',
+  })
   getAll(
     @Param('schoolId') schoolId: string,
     @Query('subject_id') subjectId: string,
@@ -102,12 +130,20 @@ export class LibrarySchoolAssessmentsController {
   @ApiOperation({ summary: 'Get assessments for a topic (library owner)' })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'topicId', description: 'Topic ID' })
-  @ApiResponse({ status: 200, description: 'Topic assessments retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Topic assessments retrieved successfully',
+  })
   getTopicQuizzes(
     @Param('schoolId') schoolId: string,
     @Param('topicId') topicId: string,
   ) {
-    return this.assessmentService.getTopicQuizzes(topicId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.getTopicQuizzes(
+      topicId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Get(':id/attempts')
@@ -119,27 +155,39 @@ export class LibrarySchoolAssessmentsController {
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.getAssessmentAttempts(assessmentId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.getAssessmentAttempts(
+      assessmentId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Get(':id/attempts/download')
-  @ApiOperation({ summary: 'Download assessment results as Excel (library owner)' })
+  @ApiOperation({
+    summary: 'Download assessment results as Excel (library owner)',
+  })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Excel file downloaded successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Excel file downloaded successfully',
+  })
   async downloadAttempts(
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
     @Res() res: Response,
   ) {
-    const excelBuffer = await this.assessmentService.downloadAssessmentResultsAsExcel(
-      assessmentId,
-      schoolId,
-      this.ctx(schoolId),
-    );
+    const excelBuffer =
+      await this.assessmentService.downloadAssessmentResultsAsExcel(
+        assessmentId,
+        schoolId,
+        this.ctx(schoolId),
+      );
 
     res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="assessment-results-${assessmentId}.xlsx"`,
     });
 
@@ -147,7 +195,9 @@ export class LibrarySchoolAssessmentsController {
   }
 
   @Get(':id/attempts/download-pdf')
-  @ApiOperation({ summary: 'Download assessment results as PDF (library owner)' })
+  @ApiOperation({
+    summary: 'Download assessment results as PDF (library owner)',
+  })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiResponse({ status: 200, description: 'PDF file downloaded successfully' })
@@ -156,11 +206,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('id') assessmentId: string,
     @Res() res: Response,
   ) {
-    const pdfBuffer = await this.assessmentService.downloadAssessmentResultsAsPdf(
-      assessmentId,
-      schoolId,
-      this.ctx(schoolId),
-    );
+    const pdfBuffer =
+      await this.assessmentService.downloadAssessmentResultsAsPdf(
+        assessmentId,
+        schoolId,
+        this.ctx(schoolId),
+      );
 
     res.set({
       'Content-Type': 'application/pdf',
@@ -171,17 +222,28 @@ export class LibrarySchoolAssessmentsController {
   }
 
   @Get(':id/attempts/:studentId')
-  @ApiOperation({ summary: 'Get student submission for assessment (library owner)' })
+  @ApiOperation({
+    summary: 'Get student submission for assessment (library owner)',
+  })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiParam({ name: 'studentId', description: 'Student record ID' })
-  @ApiResponse({ status: 200, description: 'Submission retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Submission retrieved successfully',
+  })
   getStudentSubmission(
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
     @Param('studentId') studentId: string,
   ) {
-    return this.assessmentService.getStudentSubmission(assessmentId, studentId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.getStudentSubmission(
+      assessmentId,
+      studentId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Get(':id/questions')
@@ -193,7 +255,11 @@ export class LibrarySchoolAssessmentsController {
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.getAssessmentQuestions(assessmentId, '', this.ctx(schoolId));
+    return this.assessmentService.getAssessmentQuestions(
+      assessmentId,
+      '',
+      this.ctx(schoolId),
+    );
   }
 
   @Post(':id/questions')
@@ -206,7 +272,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('id') assessmentId: string,
     @Body() dto: CreateAssessmentQuestionDto,
   ) {
-    return this.assessmentService.createQuestion(assessmentId, dto, '', this.ctx(schoolId));
+    return this.assessmentService.createQuestion(
+      assessmentId,
+      dto,
+      '',
+      this.ctx(schoolId),
+    );
   }
 
   @Post(':id/questions/with-image')
@@ -244,7 +315,14 @@ export class LibrarySchoolAssessmentsController {
     @Body() dto: UpdateAssessmentQuestionDto,
     @UploadedFile() imageFile: Express.Multer.File,
   ) {
-    return this.assessmentService.updateQuestion(assessmentId, questionId, dto, '', imageFile, this.ctx(schoolId));
+    return this.assessmentService.updateQuestion(
+      assessmentId,
+      questionId,
+      dto,
+      '',
+      imageFile,
+      this.ctx(schoolId),
+    );
   }
 
   @Delete(':assessmentId/questions/:questionId/image')
@@ -259,7 +337,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('assessmentId') assessmentId: string,
     @Param('questionId') questionId: string,
   ) {
-    return this.assessmentService.deleteQuestionImage(assessmentId, questionId, '', this.ctx(schoolId));
+    return this.assessmentService.deleteQuestionImage(
+      assessmentId,
+      questionId,
+      '',
+      this.ctx(schoolId),
+    );
   }
 
   @Delete(':assessmentId/questions/:questionId')
@@ -274,7 +357,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('assessmentId') assessmentId: string,
     @Param('questionId') questionId: string,
   ) {
-    return this.assessmentService.deleteQuestion(assessmentId, questionId, '', this.ctx(schoolId));
+    return this.assessmentService.deleteQuestion(
+      assessmentId,
+      questionId,
+      '',
+      this.ctx(schoolId),
+    );
   }
 
   @Patch(':id')
@@ -287,7 +375,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('id') assessmentId: string,
     @Body() dto: UpdateAssessmentDto,
   ) {
-    return this.assessmentService.updateQuiz(assessmentId, dto, '', this.ctx(schoolId));
+    return this.assessmentService.updateQuiz(
+      assessmentId,
+      dto,
+      '',
+      this.ctx(schoolId),
+    );
   }
 
   @Delete(':id')
@@ -300,7 +393,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.deleteQuiz(assessmentId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.deleteQuiz(
+      assessmentId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Post(':id/publish')
@@ -308,12 +406,20 @@ export class LibrarySchoolAssessmentsController {
   @ApiOperation({ summary: 'Publish assessment (library owner)' })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment published successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment published successfully',
+  })
   publish(
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.publishQuiz(assessmentId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.publishQuiz(
+      assessmentId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Post(':id/unpublish')
@@ -321,12 +427,20 @@ export class LibrarySchoolAssessmentsController {
   @ApiOperation({ summary: 'Unpublish assessment (library owner)' })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment unpublished successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment unpublished successfully',
+  })
   unpublish(
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.unpublishQuiz(assessmentId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.unpublishQuiz(
+      assessmentId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Post(':id/release-results')
@@ -339,7 +453,12 @@ export class LibrarySchoolAssessmentsController {
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,
   ) {
-    return this.assessmentService.releaseAssessmentResults(assessmentId, '', schoolId, this.ctx(schoolId));
+    return this.assessmentService.releaseAssessmentResults(
+      assessmentId,
+      '',
+      schoolId,
+      this.ctx(schoolId),
+    );
   }
 
   @Get(':id')
@@ -350,7 +469,10 @@ export class LibrarySchoolAssessmentsController {
   })
   @ApiParam({ name: 'schoolId', description: 'School ID' })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment with details retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment with details retrieved successfully',
+  })
   getById(
     @Param('schoolId') schoolId: string,
     @Param('id') assessmentId: string,

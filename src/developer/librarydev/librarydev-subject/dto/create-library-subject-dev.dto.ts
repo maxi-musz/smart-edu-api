@@ -19,7 +19,8 @@ export class CreateLibrarySubjectDevDto {
   name: string;
 
   @ApiPropertyOptional({
-    description: 'Optional subject code (must be unique per library if provided)',
+    description:
+      'Optional subject code (must be unique per library if provided)',
     example: 'MTH101',
   })
   @IsOptional()
@@ -50,5 +51,3 @@ export class CreateLibrarySubjectDevDto {
   @IsString()
   description?: string;
 }
-
-

@@ -1,5 +1,8 @@
 import { ApiBody, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
-import { CreateLibraryExamBodyYearDto, UpdateLibraryExamBodyYearDto } from '../dto';
+import {
+  CreateLibraryExamBodyYearDto,
+  UpdateLibraryExamBodyYearDto,
+} from '../dto';
 
 export const LibraryExamBodyYearDocs = {
   create: {

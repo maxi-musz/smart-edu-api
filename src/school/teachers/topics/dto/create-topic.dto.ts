@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsNotEmpty, IsUUID, IsInt, Min, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNotEmpty,
+  IsUUID,
+  IsInt,
+  Min,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -13,13 +21,12 @@ export class CreateTopicDto {
 
   @ApiPropertyOptional({
     description: 'Description of the topic',
-    example: 'Basic concepts of algebra including variables, equations, and expressions',
+    example:
+      'Basic concepts of algebra including variables, equations, and expressions',
   })
   @IsOptional()
   @IsString()
   description?: string;
-
-
 
   @ApiPropertyOptional({
     description: 'Whether the topic is active (default: true)',
@@ -50,7 +57,8 @@ export class CreateTopicDto {
   instructions?: string;
 
   @ApiPropertyOptional({
-    description: 'Academic session ID (optional - will use current active session if not provided)',
+    description:
+      'Academic session ID (optional - will use current active session if not provided)',
     example: 'clx1234567890abcdef',
   })
   @IsOptional()

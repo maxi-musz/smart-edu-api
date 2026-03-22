@@ -16,7 +16,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly academicSessionService: AcademicSessionService,
-    private readonly pushNotificationsService: PushNotificationsService
+    private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
   // Create notification
@@ -27,18 +27,30 @@ export class NotificationsService {
       // 1. Get full user data with school_id
       const fullUser = await this.prisma.user.findFirst({
         where: { id: user.id },
-        select: { id: true, school_id: true, first_name: true, last_name: true }
+        select: {
+          id: true,
+          school_id: true,
+          first_name: true,
+          last_name: true,
+        },
       });
 
       if (!fullUser || !fullUser.school_id) {
-        this.logger.error(colors.red("User not found or missing school_id"));
-        return ResponseHelper.error('User not found or invalid school data', 400);
+        this.logger.error(colors.red('User not found or missing school_id'));
+        return ResponseHelper.error(
+          'User not found or invalid school data',
+          400,
+        );
       }
 
       // 2. Get current academic session for the school
-      const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
+      const currentSessionResponse =
+        await this.academicSessionService.getCurrentSession(fullUser.school_id);
       if (!currentSessionResponse.success) {
-        return ResponseHelper.error('No current academic session found for the school', 400);
+        return ResponseHelper.error(
+          'No current academic session found for the school',
+          400,
+        );
       }
       const currentSession = currentSessionResponse.data;
 
@@ -50,79 +62,119 @@ export class NotificationsService {
           title: dto.title,
           description: dto.description,
           type: dto.type,
-          comingUpOn: dto.comingUpOn ? new Date(dto.comingUpOn) : null
-        }
+          comingUpOn: dto.comingUpOn ? new Date(dto.comingUpOn) : null,
+        },
       });
 
-      this.logger.log(colors.green(`✅ Notification created successfully: ${notification.id}`));
+      this.logger.log(
+        colors.green(
+          `✅ Notification created successfully: ${notification.id}`,
+        ),
+      );
 
       // 4. Send push notifications to relevant users
       try {
-        const pushResult = await this.pushNotificationsService.sendNotificationByType({
-          title: dto.title,
-          body: dto.description,
-          notificationType: dto.type,
-          schoolId: fullUser.school_id,
-          data: {
-            type: 'notification',
-            notificationId: notification.id,
-            screen: 'NotificationDetail'
-          }
-        });
+        const pushResult =
+          await this.pushNotificationsService.sendNotificationByType({
+            title: dto.title,
+            body: dto.description,
+            notificationType: dto.type,
+            schoolId: fullUser.school_id,
+            data: {
+              type: 'notification',
+              notificationId: notification.id,
+              screen: 'NotificationDetail',
+            },
+          });
 
         if (pushResult.success) {
-          this.logger.log(colors.green(`✅ Push notifications sent to ${pushResult.sent} devices`));
+          this.logger.log(
+            colors.green(
+              `✅ Push notifications sent to ${pushResult.sent} devices`,
+            ),
+          );
         } else {
-          this.logger.warn(colors.yellow(`⚠️ Push notification failed: ${pushResult.message}`));
+          this.logger.warn(
+            colors.yellow(`⚠️ Push notification failed: ${pushResult.message}`),
+          );
         }
       } catch (pushError) {
-        this.logger.error(colors.red(`❌ Push notification error: ${pushError.message}`), pushError);
+        this.logger.error(
+          colors.red(`❌ Push notification error: ${pushError.message}`),
+          pushError,
+        );
         // Don't fail the notification creation if push fails
       }
 
       // Format the response
       const formattedNotification = {
         ...notification,
-        comingUpOn: notification.comingUpOn ? formatDate(notification.comingUpOn) : null,
+        comingUpOn: notification.comingUpOn
+          ? formatDate(notification.comingUpOn)
+          : null,
         createdAt: formatDate(notification.createdAt),
-        updatedAt: formatDate(notification.updatedAt)
+        updatedAt: formatDate(notification.updatedAt),
       };
 
-      return ResponseHelper.success('Notification created successfully', formattedNotification);
-
+      return ResponseHelper.success(
+        'Notification created successfully',
+        formattedNotification,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to create notification: ${error.message}`), error);
-      return ResponseHelper.error(`Failed to create notification: ${error.message}`, 500);
+      this.logger.error(
+        colors.red(`❌ Failed to create notification: ${error.message}`),
+        error,
+      );
+      return ResponseHelper.error(
+        `Failed to create notification: ${error.message}`,
+        500,
+      );
     }
   }
 
   // Get all notifications with pagination, filtering, and search
   async getAllNotifications(user: User, query: QueryNotificationsDto) {
-    this.logger.log(colors.cyan(`Fetching notifications with filters: ${JSON.stringify(query)}`));
+    this.logger.log(
+      colors.cyan(
+        `Fetching notifications with filters: ${JSON.stringify(query)}`,
+      ),
+    );
 
     try {
       // 1. Get full user data with school_id
       const fullUser = await this.prisma.user.findFirst({
         where: { id: user.id },
-        select: { id: true, school_id: true, first_name: true, last_name: true }
+        select: {
+          id: true,
+          school_id: true,
+          first_name: true,
+          last_name: true,
+        },
       });
 
       if (!fullUser || !fullUser.school_id) {
-        this.logger.error(colors.red("User not found or missing school_id"));
-        return ResponseHelper.error('User not found or invalid school data', 400);
+        this.logger.error(colors.red('User not found or missing school_id'));
+        return ResponseHelper.error(
+          'User not found or invalid school data',
+          400,
+        );
       }
 
       // 2. Get current academic session for the school
-      const currentSessionResponse = await this.academicSessionService.getCurrentSession(fullUser.school_id);
+      const currentSessionResponse =
+        await this.academicSessionService.getCurrentSession(fullUser.school_id);
       if (!currentSessionResponse.success) {
-        return ResponseHelper.error('No current academic session found for the school', 400);
+        return ResponseHelper.error(
+          'No current academic session found for the school',
+          400,
+        );
       }
       const currentSessionId = currentSessionResponse.data.id;
 
       // 3. Build where clause for filtering
       const whereClause: any = {
         school_id: fullUser.school_id,
-        academic_session_id: currentSessionId
+        academic_session_id: currentSessionId,
       };
 
       // Add type filter if provided
@@ -134,7 +186,7 @@ export class NotificationsService {
       if (query.search) {
         whereClause.OR = [
           { title: { contains: query.search, mode: 'insensitive' } },
-          { description: { contains: query.search, mode: 'insensitive' } }
+          { description: { contains: query.search, mode: 'insensitive' } },
         ];
       }
 
@@ -169,12 +221,12 @@ export class NotificationsService {
             type: true,
             comingUpOn: true,
             createdAt: true,
-            updatedAt: true
-          }
+            updatedAt: true,
+          },
         }),
         this.prisma.notification.count({
-          where: whereClause
-        })
+          where: whereClause,
+        }),
       ]);
 
       // 7. Get notification statistics
@@ -182,11 +234,11 @@ export class NotificationsService {
         by: ['type'],
         where: {
           school_id: fullUser.school_id,
-          academic_session_id: currentSessionId
+          academic_session_id: currentSessionId,
         },
         _count: {
-          type: true
-        }
+          type: true,
+        },
       });
 
       // 8. Format statistics
@@ -196,10 +248,10 @@ export class NotificationsService {
         teachers: 0,
         students: 0,
         school_director: 0,
-        admin: 0
+        admin: 0,
       };
 
-      stats.forEach(stat => {
+      stats.forEach((stat) => {
         notificationStats[stat.type] = stat._count.type;
       });
 
@@ -214,28 +266,39 @@ export class NotificationsService {
         total: totalCount,
         totalPages,
         hasNext,
-        hasPrev
+        hasPrev,
       };
 
       // Format notifications with date formatting
-      const formattedNotifications = notifications.map(notification => ({
+      const formattedNotifications = notifications.map((notification) => ({
         ...notification,
-        comingUpOn: notification.comingUpOn ? formatDate(notification.comingUpOn) : null,
+        comingUpOn: notification.comingUpOn
+          ? formatDate(notification.comingUpOn)
+          : null,
         createdAt: formatDate(notification.createdAt),
-        updatedAt: formatDate(notification.updatedAt)
+        updatedAt: formatDate(notification.updatedAt),
       }));
 
-      this.logger.log(colors.green(`✅ Fetched ${notifications.length} notifications out of ${totalCount} total`));
+      this.logger.log(
+        colors.green(
+          `✅ Fetched ${notifications.length} notifications out of ${totalCount} total`,
+        ),
+      );
 
       return ResponseHelper.success('Notifications fetched successfully', {
         pagination,
         stats: notificationStats,
         notifications: formattedNotifications,
       });
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to fetch notifications: ${error.message}`), error);
-      return ResponseHelper.error(`Failed to fetch notifications: ${error.message}`, 500);
+      this.logger.error(
+        colors.red(`❌ Failed to fetch notifications: ${error.message}`),
+        error,
+      );
+      return ResponseHelper.error(
+        `Failed to fetch notifications: ${error.message}`,
+        500,
+      );
     }
   }
 }

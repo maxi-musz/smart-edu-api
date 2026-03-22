@@ -18,8 +18,12 @@ export class IdentityService {
     private readonly config: ConfigService,
   ) {}
 
-  async registerDeveloper(dto: RegisterDeveloperDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Registering new developer: ${dto.email}`));
+  async registerDeveloper(
+    dto: RegisterDeveloperDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`[DEV] Registering new developer: ${dto.email}`),
+    );
 
     try {
       // Check for existing developer by email
@@ -28,8 +32,14 @@ export class IdentityService {
       });
 
       if (existing) {
-        this.logger.warn(colors.yellow(`⚠️ Developer with email already exists: ${dto.email}`));
-        return ResponseHelper.error('Developer with this email already exists', null, 400) as any;
+        this.logger.warn(
+          colors.yellow(`⚠️ Developer with email already exists: ${dto.email}`),
+        );
+        return ResponseHelper.error(
+          'Developer with this email already exists',
+          null,
+          400,
+        ) as any;
       }
 
       // Hash password
@@ -55,10 +65,19 @@ export class IdentityService {
         updatedAt: created.updatedAt,
       };
 
-      return ResponseHelper.created('Developer registered successfully', safeDeveloper) as ApiResponse<any>;
+      return ResponseHelper.created(
+        'Developer registered successfully',
+        safeDeveloper,
+      ) as ApiResponse<any>;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error registering developer: ${error.message}`));
-      return ResponseHelper.error('Failed to register developer', error?.message ?? error, 500) as any;
+      this.logger.error(
+        colors.red(`❌ Error registering developer: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        'Failed to register developer',
+        error?.message ?? error,
+        500,
+      ) as any;
     }
   }
 
@@ -75,9 +94,14 @@ export class IdentityService {
         return ResponseHelper.error('Developer not found', null, 404) as any;
       }
 
-      const passwordMatches = await argon2.verify(developer.password, dto.password);
+      const passwordMatches = await argon2.verify(
+        developer.password,
+        dto.password,
+      );
       if (!passwordMatches) {
-        this.logger.warn(colors.yellow(`⚠️ Invalid developer credentials for: ${dto.email}`));
+        this.logger.warn(
+          colors.yellow(`⚠️ Invalid developer credentials for: ${dto.email}`),
+        );
         return ResponseHelper.error('Invalid credentials', null, 400) as any;
       }
 
@@ -101,7 +125,8 @@ export class IdentityService {
 
       const secret = this.config.get('JWT_SECRET');
       const accessTokenExpiresIn = this.config.get('JWT_EXPIRES_IN') || '15m';
-      const refreshTokenExpiresIn = this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d';
+      const refreshTokenExpiresIn =
+        this.config.get('JWT_REFRESH_EXPIRES_IN') || '7d';
 
       const access_token = await this.jwt.signAsync(payload, {
         expiresIn: accessTokenExpiresIn,
@@ -119,12 +144,19 @@ export class IdentityService {
         developer: formattedDeveloper,
       };
 
-      return ResponseHelper.success('Developer signed in successfully', authPayload) as ApiResponse<any>;
+      return ResponseHelper.success(
+        'Developer signed in successfully',
+        authPayload,
+      ) as ApiResponse<any>;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error logging in developer: ${error.message}`));
-      return ResponseHelper.error('Failed to login developer', error?.message ?? error, 500) as any;
+      this.logger.error(
+        colors.red(`❌ Error logging in developer: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        'Failed to login developer',
+        error?.message ?? error,
+        500,
+      ) as any;
     }
   }
 }
-
-

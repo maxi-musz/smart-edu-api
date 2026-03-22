@@ -402,4 +402,3 @@ export class TeacherProfileResponseDto {
   @ApiProperty({ type: SubscriptionPlanDto, nullable: true })
   subscription_plan: SubscriptionPlanDto | null;
 }
-

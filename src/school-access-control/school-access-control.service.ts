@@ -17,7 +17,10 @@ import {
   QueryAccessAnalyticsDto,
   SchoolExcludeSubjectDto,
 } from './dto';
-import { LibraryResourceType, AccessLevel } from '../library-access-control/dto';
+import {
+  LibraryResourceType,
+  AccessLevel,
+} from '../library-access-control/dto';
 import * as colors from 'colors';
 
 @Injectable()
@@ -30,7 +33,9 @@ export class SchoolAccessControlService {
    * Get all library resources available to the school (granted by library owner)
    */
   async getAvailableResources(user: any, query: QueryAvailableResourcesDto) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Fetching available library resources`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Fetching available library resources`),
+    );
 
     try {
       // Get user's school
@@ -45,10 +50,19 @@ export class SchoolAccessControlService {
 
       // Verify user is school director or admin
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can manage access');
+        throw new ForbiddenException(
+          'Only school directors and admins can manage access',
+        );
       }
 
-      const { page = 1, limit = 20, resourceType, subjectId, isActive, search } = query;
+      const {
+        page = 1,
+        limit = 20,
+        resourceType,
+        subjectId,
+        isActive,
+        search,
+      } = query;
       const skip = (page - 1) * limit;
 
       // Build where clause for library resource access
@@ -61,75 +75,79 @@ export class SchoolAccessControlService {
       if (subjectId) where.subjectId = subjectId;
 
       // Filter out expired access
-      where.OR = [
-        { expiresAt: null },
-        { expiresAt: { gt: new Date() } },
-      ];
+      where.OR = [{ expiresAt: null }, { expiresAt: { gt: new Date() } }];
 
       // Get total count
-      const totalCount = await this.prisma.libraryResourceAccess.count({ where });
+      const totalCount = await this.prisma.libraryResourceAccess.count({
+        where,
+      });
 
       // Get paginated results
-      const availableResources = await this.prisma.libraryResourceAccess.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          platform: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
+      const availableResources =
+        await this.prisma.libraryResourceAccess.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            platform: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+              },
+            },
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                description: true,
+                thumbnailUrl: true,
+              },
+            },
+            topic: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+              },
+            },
+            video: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                thumbnailUrl: true,
+                durationSeconds: true,
+              },
+            },
+            material: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                materialType: true,
+              },
+            },
+            assessment: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                assessmentType: true,
+              },
             },
           },
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              description: true,
-              thumbnailUrl: true,
-            },
-          },
-          topic: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-            },
-          },
-          video: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              thumbnailUrl: true,
-              durationSeconds: true,
-            },
-          },
-          material: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              materialType: true,
-            },
-          },
-          assessment: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              assessmentType: true,
-            },
-          },
-        },
-      });
+        });
 
       const totalPages = Math.ceil(totalCount / limit);
 
-      this.logger.log(colors.green(`✅ Retrieved ${availableResources.length} available resources`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${availableResources.length} available resources`,
+        ),
+      );
 
       return {
         success: true,
@@ -151,8 +169,13 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching available resources: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to fetch available resources');
+      this.logger.error(
+        colors.red(`❌ Error fetching available resources: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch available resources',
+      );
     }
   }
 
@@ -160,7 +183,9 @@ export class SchoolAccessControlService {
    * Grant users/roles/classes access to library resources
    */
   async grantAccess(user: any, dto: SchoolGrantAccessDto) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Granting access within school`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Granting access within school`),
+    );
 
     try {
       // Get user's school and verify permissions
@@ -174,7 +199,9 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can grant access');
+        throw new ForbiddenException(
+          'Only school directors and admins can grant access',
+        );
       }
 
       // Verify the library resource access exists and belongs to this school
@@ -187,7 +214,9 @@ export class SchoolAccessControlService {
       });
 
       if (!libraryAccess) {
-        throw new NotFoundException('Library resource access not found or not available to your school');
+        throw new NotFoundException(
+          'Library resource access not found or not available to your school',
+        );
       }
 
       // Check that library access hasn't expired
@@ -197,7 +226,9 @@ export class SchoolAccessControlService {
 
       // Validate that at least one scope is provided (userId, roleType, or classId)
       if (!dto.userId && !dto.roleType && !dto.classId) {
-        throw new BadRequestException('Must specify at least one of: userId, roleType, or classId');
+        throw new BadRequestException(
+          'Must specify at least one of: userId, roleType, or classId',
+        );
       }
 
       // Validate specific user/class if provided
@@ -254,7 +285,9 @@ export class SchoolAccessControlService {
           },
         });
 
-        this.logger.log(colors.green(`✅ Reactivated school access: ${updated.id}`));
+        this.logger.log(
+          colors.green(`✅ Reactivated school access: ${updated.id}`),
+        );
         return {
           success: true,
           message: 'Access reactivated successfully',
@@ -268,7 +301,7 @@ export class SchoolAccessControlService {
           schoolId: userData.school_id,
           libraryResourceAccessId: dto.libraryResourceAccessId,
           userId: dto.userId || null,
-          roleType: dto.roleType as any || null,
+          roleType: (dto.roleType as any) || null,
           classId: dto.classId || null,
           resourceType: dto.resourceType,
           subjectId: dto.subjectId || null,
@@ -282,21 +315,25 @@ export class SchoolAccessControlService {
           notes: dto.notes,
         },
         include: {
-          user: dto.userId ? {
-            select: {
-              id: true,
-              email: true,
-              first_name: true,
-              last_name: true,
-              role: true,
-            },
-          } : undefined,
-          class: dto.classId ? {
-            select: {
-              id: true,
-              name: true,
-            },
-          } : undefined,
+          user: dto.userId
+            ? {
+                select: {
+                  id: true,
+                  email: true,
+                  first_name: true,
+                  last_name: true,
+                  role: true,
+                },
+              }
+            : undefined,
+          class: dto.classId
+            ? {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              }
+            : undefined,
         },
       });
 
@@ -317,7 +354,11 @@ export class SchoolAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ School access granted successfully: ${accessGrant.id}`));
+      this.logger.log(
+        colors.green(
+          `✅ School access granted successfully: ${accessGrant.id}`,
+        ),
+      );
       return {
         success: true,
         message: 'Access granted successfully',
@@ -331,7 +372,10 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error granting school access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error granting school access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to grant access');
     }
   }
@@ -354,7 +398,9 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can grant access');
+        throw new ForbiddenException(
+          'Only school directors and admins can grant access',
+        );
       }
 
       // Verify library access
@@ -428,10 +474,14 @@ export class SchoolAccessControlService {
         }
       }
 
-      const successful = results.filter(r => r.status === 'success').length;
-      const failed = results.filter(r => r.status === 'failed').length;
+      const successful = results.filter((r) => r.status === 'success').length;
+      const failed = results.filter((r) => r.status === 'failed').length;
 
-      this.logger.log(colors.green(`✅ Bulk grant completed: ${successful} successful, ${failed} failed`));
+      this.logger.log(
+        colors.green(
+          `✅ Bulk grant completed: ${successful} successful, ${failed} failed`,
+        ),
+      );
 
       return {
         success: true,
@@ -450,7 +500,10 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error in bulk grant: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error in bulk grant: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to grant bulk access');
     }
   }
@@ -459,7 +512,9 @@ export class SchoolAccessControlService {
    * Update an existing school resource access grant
    */
   async updateAccess(user: any, accessId: string, dto: SchoolUpdateAccessDto) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Updating access: ${accessId}`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Updating access: ${accessId}`),
+    );
 
     try {
       // Get user's school and verify permissions
@@ -473,7 +528,9 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can update access');
+        throw new ForbiddenException(
+          'Only school directors and admins can update access',
+        );
       }
 
       // Verify access belongs to this school
@@ -485,7 +542,9 @@ export class SchoolAccessControlService {
       });
 
       if (!existingAccess) {
-        throw new NotFoundException('Access not found or does not belong to your school');
+        throw new NotFoundException(
+          'Access not found or does not belong to your school',
+        );
       }
 
       // Update
@@ -510,7 +569,9 @@ export class SchoolAccessControlService {
         changes: dto,
       });
 
-      this.logger.log(colors.green(`✅ Access updated successfully: ${accessId}`));
+      this.logger.log(
+        colors.green(`✅ Access updated successfully: ${accessId}`),
+      );
       return {
         success: true,
         message: 'Access updated successfully',
@@ -523,7 +584,10 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error updating access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error updating access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to update access');
     }
   }
@@ -532,7 +596,9 @@ export class SchoolAccessControlService {
    * Revoke access
    */
   async revokeAccess(user: any, accessId: string, dto?: SchoolRevokeAccessDto) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Revoking access: ${accessId}`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Revoking access: ${accessId}`),
+    );
 
     try {
       // Get user's school and verify permissions
@@ -546,7 +612,9 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can revoke access');
+        throw new ForbiddenException(
+          'Only school directors and admins can revoke access',
+        );
       }
 
       // Verify access belongs to this school
@@ -558,7 +626,9 @@ export class SchoolAccessControlService {
       });
 
       if (!existingAccess) {
-        throw new NotFoundException('Access not found or does not belong to your school');
+        throw new NotFoundException(
+          'Access not found or does not belong to your school',
+        );
       }
 
       // Soft delete
@@ -581,7 +651,9 @@ export class SchoolAccessControlService {
         changes: { reason: dto?.reason },
       });
 
-      this.logger.log(colors.green(`✅ Access revoked successfully: ${accessId}`));
+      this.logger.log(
+        colors.green(`✅ Access revoked successfully: ${accessId}`),
+      );
       return {
         success: true,
         message: 'Access revoked successfully',
@@ -594,7 +666,10 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error revoking access: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error revoking access: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to revoke access');
     }
   }
@@ -604,7 +679,9 @@ export class SchoolAccessControlService {
    * Excluded subjects are hidden from non-admin users in explore; school owner still sees all.
    */
   async excludeSubject(user: any, dto: SchoolExcludeSubjectDto) {
-    this.logger.log(colors.cyan(`[SCHOOL LEVEL ACCESS] Excluding subject: ${dto.subjectId}`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL LEVEL ACCESS] Excluding subject: ${dto.subjectId}`),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -618,7 +695,9 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can exclude subjects');
+        throw new ForbiddenException(
+          'Only school directors and admins can exclude subjects',
+        );
       }
 
       const subject = await this.prisma.librarySubject.findUnique({
@@ -639,15 +718,15 @@ export class SchoolAccessControlService {
           isActive: true,
           AND: [
             {
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gt: new Date() } },
-              ],
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
             },
             {
               OR: [
                 { resourceType: LibraryResourceType.ALL },
-                { resourceType: LibraryResourceType.SUBJECT, subjectId: dto.subjectId },
+                {
+                  resourceType: LibraryResourceType.SUBJECT,
+                  subjectId: dto.subjectId,
+                },
               ],
             },
           ],
@@ -655,8 +734,14 @@ export class SchoolAccessControlService {
       });
 
       if (!libraryAccess) {
-        this.logger.error(colors.red(`❌ School does not have library access to this subject: ${dto.subjectId}`));
-        throw new BadRequestException('Your school does not have library access to this subject');
+        this.logger.error(
+          colors.red(
+            `❌ School does not have library access to this subject: ${dto.subjectId}`,
+          ),
+        );
+        throw new BadRequestException(
+          'Your school does not have library access to this subject',
+        );
       }
 
       const existing = await this.prisma.schoolResourceExclusion.findUnique({
@@ -670,7 +755,9 @@ export class SchoolAccessControlService {
       });
 
       if (existing) {
-        this.logger.error(colors.red(`❌ Subject already excluded: ${dto.subjectId}`));
+        this.logger.error(
+          colors.red(`❌ Subject already excluded: ${dto.subjectId}`),
+        );
         return {
           success: true,
           message: 'Subject already excluded',
@@ -706,7 +793,10 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error excluding subject: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error excluding subject: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to exclude subject');
     }
   }
@@ -715,7 +805,9 @@ export class SchoolAccessControlService {
    * Include (turn on) a previously excluded subject for the school.
    */
   async includeSubject(user: any, dto: SchoolExcludeSubjectDto) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Including subject: ${dto.subjectId}`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Including subject: ${dto.subjectId}`),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -729,8 +821,12 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        this.logger.error(colors.red(`❌ User not authorized to include subjects: ${user.sub}`));
-        throw new ForbiddenException('Only school directors and admins can include subjects');
+        this.logger.error(
+          colors.red(`❌ User not authorized to include subjects: ${user.sub}`),
+        );
+        throw new ForbiddenException(
+          'Only school directors and admins can include subjects',
+        );
       }
 
       const subject = await this.prisma.librarySubject.findUnique({
@@ -754,7 +850,9 @@ export class SchoolAccessControlService {
       });
 
       if (!existing) {
-        this.logger.error(colors.red(`❌ Subject was not excluded: ${dto.subjectId}`));
+        this.logger.error(
+          colors.red(`❌ Subject was not excluded: ${dto.subjectId}`),
+        );
         return {
           success: true,
           message: 'Subject was not excluded',
@@ -766,7 +864,9 @@ export class SchoolAccessControlService {
         where: { id: existing.id },
       });
 
-      this.logger.log(colors.green(`✅ Subject included (exclusion removed): ${existing.id}`));
+      this.logger.log(
+        colors.green(`✅ Subject included (exclusion removed): ${existing.id}`),
+      );
       return {
         success: true,
         message: 'Subject included successfully',
@@ -779,7 +879,10 @@ export class SchoolAccessControlService {
       ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error including subject: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error including subject: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to include subject');
     }
   }
@@ -789,7 +892,9 @@ export class SchoolAccessControlService {
    * Frontend should use this to show correct "Visible to school" toggle state: OFF for these, ON for others.
    */
   async getExcludedSubjects(user: any) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Fetching excluded subjects for school`));
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Fetching excluded subjects for school`),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -802,12 +907,17 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can view excluded subjects');
+        throw new ForbiddenException(
+          'Only school directors and admins can view excluded subjects',
+        );
       }
 
       const exclusions = await this.prisma.schoolResourceExclusion.findMany({
         where: { schoolId: userData.school_id },
-        select: { subjectId: true, subject: { select: { id: true, name: true, code: true } } },
+        select: {
+          subjectId: true,
+          subject: { select: { id: true, name: true, code: true } },
+        },
       });
 
       return {
@@ -815,15 +925,26 @@ export class SchoolAccessControlService {
         message: 'Excluded subjects retrieved successfully',
         data: {
           subjectIds: exclusions.map((e) => e.subjectId),
-          items: exclusions.map((e) => ({ subjectId: e.subjectId, subject: e.subject })),
+          items: exclusions.map((e) => ({
+            subjectId: e.subjectId,
+            subject: e.subject,
+          })),
         },
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching excluded subjects: ${error.message}`), error.stack);
-      throw new InternalServerErrorException('Failed to fetch excluded subjects');
+      this.logger.error(
+        colors.red(`❌ Error fetching excluded subjects: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to fetch excluded subjects',
+      );
     }
   }
 
@@ -832,7 +953,11 @@ export class SchoolAccessControlService {
    * Use when the school owner wants "everyone sees all library subjects" and there are stale exclusions.
    */
   async includeAllSubjects(user: any) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Including all subjects (clearing exclusions)`));
+    this.logger.log(
+      colors.cyan(
+        `[SCHOOL ACCESS] Including all subjects (clearing exclusions)`,
+      ),
+    );
 
     try {
       const userData = await this.prisma.user.findUnique({
@@ -845,24 +970,37 @@ export class SchoolAccessControlService {
       }
 
       if (!['school_director', 'school_admin'].includes(userData.role)) {
-        throw new ForbiddenException('Only school directors and admins can include all subjects');
+        throw new ForbiddenException(
+          'Only school directors and admins can include all subjects',
+        );
       }
 
       const result = await this.prisma.schoolResourceExclusion.deleteMany({
         where: { schoolId: userData.school_id },
       });
 
-      this.logger.log(colors.green(`✅ Cleared ${result.count} subject exclusion(s)`));
+      this.logger.log(
+        colors.green(`✅ Cleared ${result.count} subject exclusion(s)`),
+      );
       return {
         success: true,
-        message: result.count > 0 ? `All subjects are now visible to the school (${result.count} exclusion(s) removed)` : 'No exclusions to clear; all subjects are already visible',
+        message:
+          result.count > 0
+            ? `All subjects are now visible to the school (${result.count} exclusion(s) removed)`
+            : 'No exclusions to clear; all subjects are already visible',
         data: { removedCount: result.count },
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error including all subjects: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error including all subjects: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to include all subjects');
     }
   }
@@ -870,8 +1008,14 @@ export class SchoolAccessControlService {
   /**
    * Get resources accessible to a specific user
    */
-  async getUserResources(user: any, userId: string, query: QueryUserResourcesDto) {
-    this.logger.log(colors.cyan(`[SCHOOL ACCESS] Fetching user resources: ${userId}`));
+  async getUserResources(
+    user: any,
+    userId: string,
+    query: QueryUserResourcesDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`[SCHOOL ACCESS] Fetching user resources: ${userId}`),
+    );
 
     try {
       // Get requesting user's school
@@ -922,10 +1066,7 @@ export class SchoolAccessControlService {
       if (!query.includeExpired) {
         where.AND = [
           {
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: new Date() } },
-            ],
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
           },
         ];
       }
@@ -986,7 +1127,11 @@ export class SchoolAccessControlService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Retrieved ${accessGrants.length} accessible resources for user`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${accessGrants.length} accessible resources for user`,
+        ),
+      );
 
       return {
         success: true,
@@ -1005,7 +1150,10 @@ export class SchoolAccessControlService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching user resources: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`❌ Error fetching user resources: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to fetch user resources');
     }
   }
@@ -1017,7 +1165,10 @@ export class SchoolAccessControlService {
   /**
    * Validate that school is not granting more access than library owner granted
    */
-  private async validateSchoolResourceScope(libraryAccess: any, dto: SchoolGrantAccessDto) {
+  private async validateSchoolResourceScope(
+    libraryAccess: any,
+    dto: SchoolGrantAccessDto,
+  ) {
     // If library granted ALL, school can grant anything
     if (libraryAccess.resourceType === LibraryResourceType.ALL) {
       return;
@@ -1025,8 +1176,13 @@ export class SchoolAccessControlService {
 
     // If library granted SUBJECT, school can only grant that subject or its children
     if (libraryAccess.resourceType === LibraryResourceType.SUBJECT) {
-      if (dto.resourceType === LibraryResourceType.SUBJECT && dto.subjectId !== libraryAccess.subjectId) {
-        throw new BadRequestException('Cannot grant access to a different subject than what library granted');
+      if (
+        dto.resourceType === LibraryResourceType.SUBJECT &&
+        dto.subjectId !== libraryAccess.subjectId
+      ) {
+        throw new BadRequestException(
+          'Cannot grant access to a different subject than what library granted',
+        );
       }
       // School can grant topics/videos/materials under the granted subject
       return;
@@ -1061,7 +1217,9 @@ export class SchoolAccessControlService {
         },
       });
     } catch (error) {
-      this.logger.error(colors.yellow(`⚠️ Failed to log audit trail: ${error.message}`));
+      this.logger.error(
+        colors.yellow(`⚠️ Failed to log audit trail: ${error.message}`),
+      );
     }
   }
 

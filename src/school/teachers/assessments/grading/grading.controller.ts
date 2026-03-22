@@ -9,7 +9,13 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { GradingService } from './grading.service';
 import { JwtGuard } from '../../../auth/guard/jwt.guard';
 import { GetUser } from '../../../auth/decorator/get-user-decorator';
@@ -24,7 +30,7 @@ export class GradingController {
   // ========================================
   // GRADING ENDPOINTS
   // ========================================
-  
+
   // TODO: Implement grading endpoints:
   // - POST /assignments/:id/grade/:submissionId - Grade assignment
   // - POST /quizzes/:id/grade/:submissionId - Grade quiz

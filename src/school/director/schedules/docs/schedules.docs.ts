@@ -1,5 +1,15 @@
-import { ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
-import { TimeSlotDTO, UpdateTimeSlotDTO, CreateTimetableDTO, getTimeTableDTO } from 'src/shared/dto/schedules.dto';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import {
+  TimeSlotDTO,
+  UpdateTimeSlotDTO,
+  CreateTimetableDTO,
+  getTimeTableDTO,
+} from 'src/shared/dto/schedules.dto';
 
 export const CreateTimeSlotDocs = {
   operation: ApiOperation({
@@ -45,7 +55,7 @@ export const CreateTimeSlotDocs = {
 export const GetTimeSlotsDocs = {
   operation: ApiOperation({
     summary: 'Get all time slots',
-    description: 'Fetch all time slots for the authenticated director\'s school',
+    description: "Fetch all time slots for the authenticated director's school",
   }),
 
   response200: ApiResponse({
@@ -84,7 +94,8 @@ export const GetTimeSlotsDocs = {
 export const GetTimetableOptionsDocs = {
   operation: ApiOperation({
     summary: 'Get timetable options',
-    description: 'Fetch all available classes, teachers, subjects, and time slots for creating timetables',
+    description:
+      'Fetch all available classes, teachers, subjects, and time slots for creating timetables',
   }),
 
   response200: ApiResponse({
@@ -94,7 +105,10 @@ export const GetTimetableOptionsDocs = {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Timetable options retrieved successfully' },
+        message: {
+          type: 'string',
+          example: 'Timetable options retrieved successfully',
+        },
         data: {
           type: 'object',
           properties: {
@@ -257,7 +271,10 @@ export const GetTimetableSchedulesDocs = {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Timetable schedules fetched successfully' },
+        message: {
+          type: 'string',
+          example: 'Timetable schedules fetched successfully',
+        },
         data: {
           type: 'array',
           items: {
@@ -297,7 +314,10 @@ export const CreateTimetableDocs = {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Timetable entry created successfully' },
+        message: {
+          type: 'string',
+          example: 'Timetable entry created successfully',
+        },
         data: {
           type: 'object',
           properties: {
@@ -329,7 +349,8 @@ export const CreateTimetableDocs = {
 export const GetSubjectsWithTeachersDocs = {
   operation: ApiOperation({
     summary: 'Get subjects with teachers',
-    description: 'Fetch all subjects with their assigned teachers for the school',
+    description:
+      'Fetch all subjects with their assigned teachers for the school',
   }),
 
   response200: ApiResponse({
@@ -339,7 +360,10 @@ export const GetSubjectsWithTeachersDocs = {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Subjects with teachers fetched successfully' },
+        message: {
+          type: 'string',
+          example: 'Subjects with teachers fetched successfully',
+        },
         data: {
           type: 'object',
           properties: {
@@ -352,7 +376,10 @@ export const GetSubjectsWithTeachersDocs = {
                   name: { type: 'string', example: 'Mathematics' },
                   code: { type: 'string', example: 'MATH101' },
                   color: { type: 'string', example: '#FF5733' },
-                  description: { type: 'string', example: 'Advanced mathematics course' },
+                  description: {
+                    type: 'string',
+                    example: 'Advanced mathematics course',
+                  },
                   assigned_class: {
                     type: 'object',
                     properties: {
@@ -368,7 +395,10 @@ export const GetSubjectsWithTeachersDocs = {
                         id: { type: 'string', example: 'teacher-uuid' },
                         name: { type: 'string', example: 'John Doe' },
                         email: { type: 'string', example: 'john@school.com' },
-                        display_picture: { type: 'string', example: 'https://example.com/profile.jpg' },
+                        display_picture: {
+                          type: 'string',
+                          example: 'https://example.com/profile.jpg',
+                        },
                       },
                     },
                   },
@@ -395,4 +425,3 @@ export const GetSubjectsWithTeachersDocs = {
     description: 'Unauthorized - Invalid or missing JWT token',
   }),
 };
-

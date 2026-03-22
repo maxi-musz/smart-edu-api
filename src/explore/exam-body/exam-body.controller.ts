@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtGuard } from '../../school/auth/guard';
 import { ExploreExamBodyService } from './exam-body.service';
@@ -100,7 +111,12 @@ export class ExploreExamBodyController {
     @Param('assessmentId') assessmentId: string,
     @Body() submitDto: SubmitExamBodyAssessmentDto,
   ) {
-    return this.service.submitAssessment(req.user, examBodyId, assessmentId, submitDto);
+    return this.service.submitAssessment(
+      req.user,
+      examBodyId,
+      assessmentId,
+      submitDto,
+    );
   }
 
   // Get attempts for a specific assessment (nested route)

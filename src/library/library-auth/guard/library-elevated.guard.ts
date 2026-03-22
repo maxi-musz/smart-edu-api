@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import * as colors from 'colors';
 
@@ -17,7 +23,9 @@ export class LibraryElevatedGuard implements CanActivate {
     const user = request.user;
 
     if (!user?.sub) {
-      console.log(colors.red('Library Elevated Guard - No library user payload'));
+      console.log(
+        colors.red('Library Elevated Guard - No library user payload'),
+      );
       throw new UnauthorizedException('Library authentication required');
     }
 
@@ -34,12 +42,17 @@ export class LibraryElevatedGuard implements CanActivate {
     });
 
     if (!libraryUser || libraryUser.status !== 'active') {
-      console.log(colors.red('Library Elevated Guard - Library user not found or inactive'));
+      console.log(
+        colors.red(
+          'Library Elevated Guard - Library user not found or inactive',
+        ),
+      );
       throw new UnauthorizedException('Library user not found or inactive');
     }
 
     let hasElevatedLevel =
-      libraryUser.permissionLevel != null && libraryUser.permissionLevel >= ELEVATED_PERMISSION_LEVEL;
+      libraryUser.permissionLevel != null &&
+      libraryUser.permissionLevel >= ELEVATED_PERMISSION_LEVEL;
     let hasManagePermission =
       Array.isArray(libraryUser.permissions) &&
       libraryUser.permissions.includes(MANAGE_LIBRARY_USERS_PERMISSION);
@@ -50,18 +63,22 @@ export class LibraryElevatedGuard implements CanActivate {
         where: { platformId: libraryUser.platformId },
       });
       if (userCount <= 2) {
-        const firstDef = await this.prisma.libraryPermissionDefinition.findFirst({
-          orderBy: { id: 'asc' },
-          select: { code: true },
-        });
-        const manageDef = await this.prisma.libraryPermissionDefinition.findUnique({
-          where: { code: MANAGE_LIBRARY_USERS_PERMISSION },
-          select: { code: true },
-        });
+        const firstDef =
+          await this.prisma.libraryPermissionDefinition.findFirst({
+            orderBy: { id: 'asc' },
+            select: { code: true },
+          });
+        const manageDef =
+          await this.prisma.libraryPermissionDefinition.findUnique({
+            where: { code: MANAGE_LIBRARY_USERS_PERMISSION },
+            select: { code: true },
+          });
         const current = libraryUser.permissions ?? [];
         const toAdd = new Set<string>();
-        if (firstDef?.code && !current.includes(firstDef.code)) toAdd.add(firstDef.code);
-        if (manageDef?.code && !current.includes(manageDef.code)) toAdd.add(manageDef.code);
+        if (firstDef?.code && !current.includes(firstDef.code))
+          toAdd.add(firstDef.code);
+        if (manageDef?.code && !current.includes(manageDef.code))
+          toAdd.add(manageDef.code);
         if (toAdd.size > 0) {
           const newPermissions = [...current, ...toAdd];
           const updated = await this.prisma.libraryResourceUser.update({
@@ -83,7 +100,8 @@ export class LibraryElevatedGuard implements CanActivate {
           );
           Object.assign(libraryUser, updated);
           hasElevatedLevel =
-            libraryUser.permissionLevel != null && libraryUser.permissionLevel >= ELEVATED_PERMISSION_LEVEL;
+            libraryUser.permissionLevel != null &&
+            libraryUser.permissionLevel >= ELEVATED_PERMISSION_LEVEL;
           hasManagePermission =
             Array.isArray(libraryUser.permissions) &&
             libraryUser.permissions.includes(MANAGE_LIBRARY_USERS_PERMISSION);
@@ -97,7 +115,9 @@ export class LibraryElevatedGuard implements CanActivate {
           `Library Elevated Guard - Access denied (permissionLevel=${libraryUser.permissionLevel}, permissions=${JSON.stringify(libraryUser.permissions)})`,
         ),
       );
-      throw new ForbiddenException('Insufficient permissions: elevated access or manage_library_users required');
+      throw new ForbiddenException(
+        'Insufficient permissions: elevated access or manage_library_users required',
+      );
     }
 
     request.libraryUser = libraryUser;

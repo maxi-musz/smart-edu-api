@@ -13,7 +13,8 @@ export class ChatTTSDocs {
       }),
       ApiBody({
         type: TextToSpeechDto,
-        description: 'Text to convert to speech with optional voice, speed, and language settings',
+        description:
+          'Text to convert to speech with optional voice, speed, and language settings',
       }),
       ApiResponse({
         status: 200,

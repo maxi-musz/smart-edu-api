@@ -1,9 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseHelper } from '../../../shared/helper-functions/response.helpers';
 import { Logger } from '@nestjs/common';
 import * as colors from 'colors';
-import { CreateAssessmentDto, CreateAssessmentQuestionDto, UpdateAssessmentDto, UpdateAssessmentQuestionDto } from './cbt-dto';
+import {
+  CreateAssessmentDto,
+  CreateAssessmentQuestionDto,
+  UpdateAssessmentDto,
+  UpdateAssessmentQuestionDto,
+} from './cbt-dto';
 import { StorageService } from '../../../shared/services/providers/storage.service';
 import { AssessmentNotificationsService } from '../../../push-notifications/assessment/assessment-notifications.service';
 import * as XLSX from 'xlsx';
@@ -48,8 +58,8 @@ export class AssessmentService {
         academic_session_id: true,
         first_name: true,
         last_name: true,
-        email: true
-      }
+        email: true,
+      },
     });
   }
 
@@ -67,10 +77,12 @@ export class AssessmentService {
   async createAssessment(
     createQuizDto: CreateAssessmentDto,
     user: any,
-    libraryContext?: LibraryAssessmentContext
+    libraryContext?: LibraryAssessmentContext,
   ) {
     try {
-      this.logger.log(colors.cyan(`Creating New Assessment: ${createQuizDto.title}`));
+      this.logger.log(
+        colors.cyan(`Creating New Assessment: ${createQuizDto.title}`),
+      );
 
       let schoolId: string;
       let academicSessionId: string;
@@ -88,7 +100,9 @@ export class AssessmentService {
           where: { school_id: schoolId, is_current: true },
         });
         if (!session) {
-          throw new BadRequestException('No current academic session found for the school');
+          throw new BadRequestException(
+            'No current academic session found for the school',
+          );
         }
         academicSessionId = session.id;
         if (libraryContext.createdByUserId) {
@@ -96,7 +110,9 @@ export class AssessmentService {
             where: { id: libraryContext.createdByUserId, school_id: schoolId },
           });
           if (!u) {
-            throw new BadRequestException('created_by_user_id does not belong to this school');
+            throw new BadRequestException(
+              'created_by_user_id does not belong to this school',
+            );
           }
           createdByUserId = u.id;
         } else {
@@ -104,13 +120,21 @@ export class AssessmentService {
             where: { school_id: schoolId, role: 'school_director' },
           });
           if (!director) {
-            throw new BadRequestException('School has no director; provide created_by_user_id');
+            throw new BadRequestException(
+              'School has no director; provide created_by_user_id',
+            );
           }
           createdByUserId = director.id;
         }
-        await this.verifySubjectBelongsToSchool(createQuizDto.subject_id, schoolId);
+        await this.verifySubjectBelongsToSchool(
+          createQuizDto.subject_id,
+          schoolId,
+        );
         if (createQuizDto.topic_id) {
-          await this.verifyTopicBelongsToSchool(createQuizDto.topic_id, schoolId);
+          await this.verifyTopicBelongsToSchool(
+            createQuizDto.topic_id,
+            schoolId,
+          );
         }
       } else {
         const teacher = await this.prisma.teacher.findFirst({
@@ -124,9 +148,16 @@ export class AssessmentService {
         schoolId = teacher.school_id;
         academicSessionId = teacher.academic_session_id;
         createdByUserId = user.sub;
-        await this.verifyTeacherSubjectAccess(createQuizDto.subject_id, user.sub);
+        await this.verifyTeacherSubjectAccess(
+          createQuizDto.subject_id,
+          user.sub,
+        );
         if (createQuizDto.topic_id) {
-          await this.verifyTeacherTopicAccess(createQuizDto.topic_id, teacherId, schoolId);
+          await this.verifyTeacherTopicAccess(
+            createQuizDto.topic_id,
+            teacherId,
+            schoolId,
+          );
         }
       }
 
@@ -149,8 +180,12 @@ export class AssessmentService {
         show_correct_answers: createQuizDto.show_correct_answers || false,
         show_feedback: createQuizDto.show_feedback !== false, // default true
         allow_review: createQuizDto.allow_review !== false, // default true
-        start_date: createQuizDto.start_date ? new Date(createQuizDto.start_date) : null,
-        end_date: createQuizDto.end_date ? new Date(createQuizDto.end_date) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // Default: 2 days from now
+        start_date: createQuizDto.start_date
+          ? new Date(createQuizDto.start_date)
+          : null,
+        end_date: createQuizDto.end_date
+          ? new Date(createQuizDto.end_date)
+          : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // Default: 2 days from now
         time_limit: createQuizDto.time_limit,
         grading_type: createQuizDto.grading_type || 'AUTOMATIC',
         auto_submit: createQuizDto.auto_submit || false,
@@ -159,12 +194,12 @@ export class AssessmentService {
         status: 'DRAFT',
         is_published: false,
       };
-  
+
       // Only add topic_id if provided
       if (createQuizDto.topic_id) {
         createData.topic_id = createQuizDto.topic_id;
       }
-  
+
       // Create the quiz
       const quiz = await this.prisma.assessment.create({
         data: createData,
@@ -173,29 +208,33 @@ export class AssessmentService {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
               id: true,
-              title: true
-            }
+              title: true,
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
-          }
-        }
+              last_name: true,
+            },
+          },
+        },
       });
-  
-      this.logger.log(colors.green(`Assessment created successfully: ${quiz.id}`));
+
+      this.logger.log(
+        colors.green(`Assessment created successfully: ${quiz.id}`),
+      );
       return ResponseHelper.success('Assessment created successfully', quiz);
     } catch (error) {
-      this.logger.error(colors.red(`Error creating Assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error creating Assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -210,7 +249,9 @@ export class AssessmentService {
     libraryContext?: LibraryAssessmentContext,
   ) {
     if (!libraryContext) {
-      throw new BadRequestException('Duplicate assessment is only supported for library context');
+      throw new BadRequestException(
+        'Duplicate assessment is only supported for library context',
+      );
     }
     const schoolId = libraryContext.schoolId;
 
@@ -234,7 +275,9 @@ export class AssessmentService {
       where: { school_id: schoolId, is_current: true },
     });
     if (!session) {
-      throw new BadRequestException('No current academic session found for the school');
+      throw new BadRequestException(
+        'No current academic session found for the school',
+      );
     }
 
     let createdByUserId: string;
@@ -243,7 +286,9 @@ export class AssessmentService {
         where: { id: libraryContext.createdByUserId, school_id: schoolId },
       });
       if (!u) {
-        throw new BadRequestException('created_by_user_id does not belong to this school');
+        throw new BadRequestException(
+          'created_by_user_id does not belong to this school',
+        );
       }
       createdByUserId = u.id;
     } else {
@@ -251,7 +296,9 @@ export class AssessmentService {
         where: { school_id: schoolId, role: 'school_director' },
       });
       if (!director) {
-        throw new BadRequestException('School has no director; provide created_by_user_id');
+        throw new BadRequestException(
+          'School has no director; provide created_by_user_id',
+        );
       }
       createdByUserId = director.id;
     }
@@ -341,7 +388,9 @@ export class AssessmentService {
         }
 
         for (const ca of q.correct_answers) {
-          const newOptionIds = (ca.option_ids ?? []).map((oid: string) => oldToNewOptionId[oid] ?? oid).filter(Boolean);
+          const newOptionIds = (ca.option_ids ?? [])
+            .map((oid: string) => oldToNewOptionId[oid] ?? oid)
+            .filter(Boolean);
           await tx.assessmentCorrectAnswer.create({
             data: {
               question_id: newQuestion.id,
@@ -349,7 +398,9 @@ export class AssessmentService {
               answer_number: ca.answer_number,
               answer_date: ca.answer_date,
               option_ids: newOptionIds,
-              ...(ca.answer_json != null && { answer_json: ca.answer_json as any }),
+              ...(ca.answer_json != null && {
+                answer_json: ca.answer_json as any,
+              }),
             },
           });
         }
@@ -360,13 +411,22 @@ export class AssessmentService {
         include: {
           subject: { select: { id: true, name: true, code: true } },
           topic: { select: { id: true, title: true } },
-          createdBy: { select: { id: true, first_name: true, last_name: true } },
+          createdBy: {
+            select: { id: true, first_name: true, last_name: true },
+          },
         },
       });
     });
 
-    this.logger.log(colors.green(`Assessment duplicated: ${source.id} -> ${newAssessment!.id}`));
-    return ResponseHelper.success('Assessment duplicated successfully', newAssessment);
+    this.logger.log(
+      colors.green(
+        `Assessment duplicated: ${source.id} -> ${newAssessment!.id}`,
+      ),
+    );
+    return ResponseHelper.success(
+      'Assessment duplicated successfully',
+      newAssessment,
+    );
   }
 
   /**
@@ -384,15 +444,22 @@ export class AssessmentService {
       page?: number;
       limit?: number;
     },
-    libraryContext?: LibraryAssessmentContext
+    libraryContext?: LibraryAssessmentContext,
   ) {
     try {
       const receivedParams = Object.entries(filters)
-        .filter(([key, value]) => value !== undefined && value !== null && value !== '')
+        .filter(
+          ([key, value]) =>
+            value !== undefined && value !== null && value !== '',
+        )
         .map(([key, value]) => `${key}=${value}`)
         .join(', ');
-      
-      this.logger.log(colors.cyan(`Getting all assessments for user: ${userId} with params: ${receivedParams}`));
+
+      this.logger.log(
+        colors.cyan(
+          `Getting all assessments for user: ${userId} with params: ${receivedParams}`,
+        ),
+      );
 
       if (!filters.subjectId) {
         throw new BadRequestException('subject_id is required');
@@ -400,7 +467,11 @@ export class AssessmentService {
 
       // if user is a library owner, log it that library owner fetching assessment for subject {name}
       if (libraryContext) {
-        this.logger.log(colors.cyan(`Library owner fetching assessment for subject: ${filters.subjectId}`));
+        this.logger.log(
+          colors.cyan(
+            `Library owner fetching assessment for subject: ${filters.subjectId}`,
+          ),
+        );
       }
 
       let schoolId: string;
@@ -461,7 +532,7 @@ export class AssessmentService {
         topicId,
         assessmentType,
         page = 1,
-        limit = 10
+        limit = 10,
       } = filters;
 
       // Convert string parameters to numbers
@@ -515,7 +586,11 @@ export class AssessmentService {
         data: { status: 'CLOSED' },
       });
       if (expiredResult.count > 0) {
-        this.logger.log(colors.yellow(`[Assessment Service] Auto-closed ${expiredResult.count} expired assessment(s)`));
+        this.logger.log(
+          colors.yellow(
+            `[Assessment Service] Auto-closed ${expiredResult.count} expired assessment(s)`,
+          ),
+        );
       }
 
       // Get all assessments grouped by type
@@ -527,87 +602,95 @@ export class AssessmentService {
               select: {
                 id: true,
                 name: true,
-                code: true
-              }
+                code: true,
+              },
             },
             topic: {
               select: {
                 id: true,
-                title: true
-              }
+                title: true,
+              },
             },
             _count: {
               select: {
                 questions: true,
-                attempts: true
-              }
-            }
+                attempts: true,
+              },
+            },
           },
           orderBy: {
-            createdAt: 'desc'
-          }
+            createdAt: 'desc',
+          },
         }),
         // Get counts for each assessment type
         this.prisma.assessment.groupBy({
           by: ['assessment_type'],
           where: baseWhere,
           _count: {
-            assessment_type: true
-          }
-        })
+            assessment_type: true,
+          },
+        }),
       ]);
 
       // Group assessments by type
-      const groupedAssessments = allAssessments.reduce((acc, assessment) => {
-        const type = assessment.assessment_type;
-        if (!acc[type]) {
-          acc[type] = [];
-        }
-        acc[type].push(assessment);
-        return acc;
-      }, {} as Record<string, any[]>);
+      const groupedAssessments = allAssessments.reduce(
+        (acc, assessment) => {
+          const type = assessment.assessment_type;
+          if (!acc[type]) {
+            acc[type] = [];
+          }
+          acc[type].push(assessment);
+          return acc;
+        },
+        {} as Record<string, any[]>,
+      );
 
       // Create counts object
-      const counts = assessmentTypeCounts.reduce((acc, item) => {
-        acc[item.assessment_type] = item._count.assessment_type;
-        return acc;
-      }, {} as Record<string, number>);
+      const counts = assessmentTypeCounts.reduce(
+        (acc, item) => {
+          acc[item.assessment_type] = item._count.assessment_type;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       // If specific assessment type is requested, return only that type with pagination
       if (assessmentType) {
         const typeAssessments = groupedAssessments[assessmentType] || [];
         const total = typeAssessments.length;
-        const paginatedAssessments = typeAssessments.slice(skip, skip + limitNum);
+        const paginatedAssessments = typeAssessments.slice(
+          skip,
+          skip + limitNum,
+        );
         const totalPages = Math.ceil(total / limitNum);
 
-        return ResponseHelper.success(
-          'Assessments retrieved successfully',
-          {
-            pagination: {
-              page: pageNum,
-              limit: limitNum,
-              total,
-              totalPages
-            },
-            assessments: paginatedAssessments,
-            counts
-          }
-        );
+        return ResponseHelper.success('Assessments retrieved successfully', {
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages,
+          },
+          assessments: paginatedAssessments,
+          counts,
+        });
       }
 
       // Return all assessments grouped by type
-      this.logger.log(colors.green(`[Assessment Service] Found ${allAssessments.length} assessments for teacher`));
-      return ResponseHelper.success(
-        'Assessments retrieved successfully',
-        {
-          assessments: groupedAssessments,
-          counts,
-          total: allAssessments.length
-        }
+      this.logger.log(
+        colors.green(
+          `[Assessment Service] Found ${allAssessments.length} assessments for teacher`,
+        ),
       );
-
+      return ResponseHelper.success('Assessments retrieved successfully', {
+        assessments: groupedAssessments,
+        counts,
+        total: allAssessments.length,
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error getting all assessments: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting all assessments: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -617,9 +700,17 @@ export class AssessmentService {
    * @param assessmentId - ID of the assessment
    * @param userId - ID of the teacher
    */
-  async getAssessmentQuestions(assessmentId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
+  async getAssessmentQuestions(
+    assessmentId: string,
+    userId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Getting questions for assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Getting questions for assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       const whereClause: any = { id: assessmentId };
       if (libraryContext) {
@@ -634,46 +725,52 @@ export class AssessmentService {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
               id: true,
-              title: true
-            }
-          }
-        }
+              title: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Get all questions for this assessment with their options and correct answers
       const questions = await this.prisma.assessmentQuestion.findMany({
         where: {
-          assessment_id: assessmentId
+          assessment_id: assessmentId,
         },
         include: {
           options: {
             orderBy: {
-              order: 'asc'
-            }
+              order: 'asc',
+            },
           },
           correct_answers: true,
           _count: {
             select: {
-              responses: true
-            }
-          }
+              responses: true,
+            },
+          },
         },
         orderBy: {
-          order: 'asc'
-        }
+          order: 'asc',
+        },
       });
 
-      this.logger.log(colors.green(`Found ${questions.length} questions for assessment: ${assessmentId}`));
+      this.logger.log(
+        colors.green(
+          `Found ${questions.length} questions for assessment: ${assessmentId}`,
+        ),
+      );
 
       // Log detailed question information
       // questions.forEach((question, index) => {
@@ -685,7 +782,7 @@ export class AssessmentService {
       //   this.logger.log(colors.white(`   Order: ${question.order}`));
       //   this.logger.log(colors.white(`   Required: ${question.is_required}`));
       //   this.logger.log(colors.white(`   Difficulty: ${question.difficulty_level}`));
-        
+
       //   // Always show media fields (even if null)
       //   this.logger.log(colors.blue(`   Image URL: ${question.image_url || 'null'}`));
       //   if (question.audio_url) {
@@ -694,7 +791,7 @@ export class AssessmentService {
       //   if (question.video_url) {
       //     this.logger.log(colors.blue(`   Video URL: ${question.video_url}`));
       //   }
-        
+
       //   if (question.options.length > 0) {
       //     this.logger.log(colors.yellow(`   Options (${question.options.length}):`));
       //     question.options.forEach((option, optIdx) => {
@@ -702,11 +799,11 @@ export class AssessmentService {
       //       this.logger.log(colors.white(`      ${optIdx + 1}. ${option.option_text} [${correctMarker}]`));
       //     });
       //   }
-        
+
       //   if (question.correct_answers.length > 0) {
       //     this.logger.log(colors.green(`   Correct Answers: ${JSON.stringify(question.correct_answers)}`));
       //   }
-        
+
       //   this.logger.log(colors.white(`   Total Responses: ${question._count.responses}`));
       // });
 
@@ -722,9 +819,9 @@ export class AssessmentService {
             total_points: assessment.total_points,
             duration: assessment.duration,
             subject: assessment.subject,
-            topic: assessment.topic
+            topic: assessment.topic,
           },
-          questions: questions.map(question => ({
+          questions: questions.map((question) => ({
             id: question.id,
             question_text: question.question_text,
             question_type: question.question_type,
@@ -744,33 +841,34 @@ export class AssessmentService {
             max_value: question.max_value,
             explanation: question.explanation,
             difficulty_level: question.difficulty_level,
-            options: question.options.map(option => ({
+            options: question.options.map((option) => ({
               id: option.id,
               option_text: option.option_text,
               order: option.order,
               is_correct: option.is_correct,
               image_url: option.image_url,
-              audio_url: option.audio_url
+              audio_url: option.audio_url,
             })),
-            correct_answers: question.correct_answers.map(answer => ({
+            correct_answers: question.correct_answers.map((answer) => ({
               id: answer.id,
               answer_text: answer.answer_text,
               answer_number: answer.answer_number,
               answer_date: answer.answer_date,
               option_ids: answer.option_ids,
-              answer_json: answer.answer_json
+              answer_json: answer.answer_json,
             })),
             total_responses: question._count.responses,
             createdAt: question.createdAt,
-            updatedAt: question.updatedAt
+            updatedAt: question.updatedAt,
           })),
           total_questions: questions.length,
-          total_points: questions.reduce((sum, q) => sum + q.points, 0)
-        }
+          total_points: questions.reduce((sum, q) => sum + q.points, 0),
+        },
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error getting assessment questions: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting assessment questions: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -781,33 +879,51 @@ export class AssessmentService {
    * @param imageFile - Image file to upload
    * @param userId - ID of the teacher
    */
-  async uploadQuestionImage(assessmentId: string, imageFile: Express.Multer.File, userId: string) {
+  async uploadQuestionImage(
+    assessmentId: string,
+    imageFile: Express.Multer.File,
+    userId: string,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Uploading question image for assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Uploading question image for assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       // Verify the assessment exists and the teacher has access to it
       const assessment = await this.prisma.assessment.findFirst({
         where: {
           id: assessmentId,
-          created_by: userId
+          created_by: userId,
         },
         include: {
           school: {
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Validate image file type
-      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+      ];
       if (!allowedMimeTypes.includes(imageFile.mimetype)) {
-        throw new BadRequestException('Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP');
+        throw new BadRequestException(
+          'Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP',
+        );
       }
 
       // Validate file size (max 5MB)
@@ -819,25 +935,37 @@ export class AssessmentService {
       // Upload to S3
       const s3Folder = `assessment-images/schools/${assessment.school.id}/assessments/${assessmentId}`;
       const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      
+
       try {
-        const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
-        this.logger.log(colors.green(`✅ Image uploaded to S3: ${uploadResult.key}`));
+        const uploadResult = await this.storageService.uploadFile(
+          imageFile,
+          s3Folder,
+          fileName,
+        );
+        this.logger.log(
+          colors.green(`✅ Image uploaded to S3: ${uploadResult.key}`),
+        );
 
         return ResponseHelper.success(
           'Image uploaded successfully',
           {
             image_url: uploadResult.url,
-            image_s3_key: uploadResult.key
+            image_s3_key: uploadResult.key,
           },
-          201
+          201,
         );
       } catch (s3Error) {
-        this.logger.error(colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`));
-        throw new BadRequestException(`Failed to upload image: ${s3Error.message}`);
+        this.logger.error(
+          colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`),
+        );
+        throw new BadRequestException(
+          `Failed to upload image: ${s3Error.message}`,
+        );
       }
     } catch (error) {
-      this.logger.error(colors.red(`Error uploading question image: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error uploading question image: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -851,24 +979,28 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    */
   async createQuestionWithImage(
-    assessmentId: string, 
-    questionDataString: string, 
+    assessmentId: string,
+    questionDataString: string,
     imageFile: Express.Multer.File | undefined,
     userId: string,
-    libraryContext?: LibraryAssessmentContext
+    libraryContext?: LibraryAssessmentContext,
   ) {
     let uploadedImageKey: string | undefined;
-    
+
     try {
-      this.logger.log(colors.cyan(`Creating question with image for assessment: ${assessmentId}`));
-      
+      this.logger.log(
+        colors.cyan(
+          `Creating question with image for assessment: ${assessmentId}`,
+        ),
+      );
+
       let createQuestionDto: CreateAssessmentQuestionDto;
       try {
         createQuestionDto = JSON.parse(questionDataString);
       } catch (parseError) {
         throw new BadRequestException('Invalid JSON in questionData field');
       }
-      
+
       const whereClause: any = { id: assessmentId };
       if (libraryContext) {
         whereClause.school_id = libraryContext.schoolId;
@@ -880,77 +1012,116 @@ export class AssessmentService {
         include: {
           school: {
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if assessment allows modifications
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot add questions to a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot add questions to a closed or archived assessment',
+        );
       }
-      
+
       // Upload image to S3 if provided
       if (imageFile) {
-        this.logger.log(colors.blue(`📤 Uploading image: ${imageFile.originalname}`));
-        
+        this.logger.log(
+          colors.blue(`📤 Uploading image: ${imageFile.originalname}`),
+        );
+
         // Validate image
-        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
         if (!allowedMimeTypes.includes(imageFile.mimetype)) {
-          throw new BadRequestException('Invalid image file type. Allowed: JPEG, PNG, GIF, WEBP');
+          throw new BadRequestException(
+            'Invalid image file type. Allowed: JPEG, PNG, GIF, WEBP',
+          );
         }
-        
+
         const maxSize = 5 * 1024 * 1024; // 5MB
         if (imageFile.size > maxSize) {
           throw new BadRequestException('Image file size exceeds 5MB limit');
         }
-        
+
         // Upload to S3
         const s3Folder = `assessment-images/schools/${assessment.school.id}/assessments/${assessmentId}`;
         const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        
+
         try {
-          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+          const uploadResult = await this.storageService.uploadFile(
+            imageFile,
+            s3Folder,
+            fileName,
+          );
           uploadedImageKey = uploadResult.key;
-          
+
           // Add image data to DTO
           createQuestionDto.image_url = uploadResult.url;
           createQuestionDto.image_s3_key = uploadResult.key;
-          
-          this.logger.log(colors.green(`✅ Image uploaded: ${uploadResult.key}`));
+
+          this.logger.log(
+            colors.green(`✅ Image uploaded: ${uploadResult.key}`),
+          );
         } catch (uploadError) {
-          this.logger.error(colors.red(`❌ Image upload failed: ${uploadError.message}`));
-          throw new BadRequestException(`Failed to upload image: ${uploadError.message}`);
+          this.logger.error(
+            colors.red(`❌ Image upload failed: ${uploadError.message}`),
+          );
+          throw new BadRequestException(
+            `Failed to upload image: ${uploadError.message}`,
+          );
         }
       }
-      
+
       // Create question in database
       try {
-        const question = await this.createQuestion(assessmentId, createQuestionDto, userId);
-        this.logger.log(colors.green(`✅ Question created successfully with image`));
+        const question = await this.createQuestion(
+          assessmentId,
+          createQuestionDto,
+          userId,
+        );
+        this.logger.log(
+          colors.green(`✅ Question created successfully with image`),
+        );
         return question;
       } catch (questionError) {
         // Question creation failed - rollback image upload
         if (uploadedImageKey) {
-          this.logger.warn(colors.yellow(`⚠️  Question creation failed. Rolling back image upload: ${uploadedImageKey}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️  Question creation failed. Rolling back image upload: ${uploadedImageKey}`,
+            ),
+          );
           try {
             await this.storageService.deleteFile(uploadedImageKey);
             this.logger.log(colors.green(`✅ Orphaned image deleted from S3`));
           } catch (deleteError) {
-            this.logger.error(colors.red(`❌ Failed to delete orphaned image: ${deleteError.message}`));
+            this.logger.error(
+              colors.red(
+                `❌ Failed to delete orphaned image: ${deleteError.message}`,
+              ),
+            );
             // Continue throwing the original error
           }
         }
         throw questionError;
       }
-      
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error in createQuestionWithImage: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error in createQuestionWithImage: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -961,9 +1132,18 @@ export class AssessmentService {
    * @param createQuestionDto - Question data (includes image_url if image was uploaded separately)
    * @param userId - ID of the teacher
    */
-  async createQuestion(assessmentId: string, createQuestionDto: CreateAssessmentQuestionDto, userId: string, libraryContext?: LibraryAssessmentContext) {
+  async createQuestion(
+    assessmentId: string,
+    createQuestionDto: CreateAssessmentQuestionDto,
+    userId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Creating question for assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Creating question for assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       const whereClause: any = { id: assessmentId };
       if (libraryContext) {
@@ -976,23 +1156,27 @@ export class AssessmentService {
         include: {
           school: {
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows adding questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot add questions to a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot add questions to a closed or archived assessment',
+        );
       }
 
       // Extract image_url and image_s3_key from DTO if provided
-      let imageUrl: string | undefined = createQuestionDto.image_url;
+      const imageUrl: string | undefined = createQuestionDto.image_url;
       let imageS3Key: string | undefined = createQuestionDto.image_s3_key;
 
       // If image_s3_key not provided but image_url is, try to extract it from the URL
@@ -1007,31 +1191,37 @@ export class AssessmentService {
 
       // Auto-calculate the next available order if not provided or if the provided order already exists
       let questionOrder = createQuestionDto.order;
-      
+
       if (!questionOrder) {
         // If no order provided, get the highest order and add 1
         const lastQuestion = await this.prisma.assessmentQuestion.findFirst({
           where: { assessment_id: assessmentId },
-          orderBy: { order: 'desc' }
+          orderBy: { order: 'desc' },
         });
         questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
       } else {
         // If order is provided, check if it already exists
-        const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
-          where: {
-            assessment_id: assessmentId,
-            order: questionOrder
-          }
-        });
+        const existingQuestion = await this.prisma.assessmentQuestion.findFirst(
+          {
+            where: {
+              assessment_id: assessmentId,
+              order: questionOrder,
+            },
+          },
+        );
 
         if (existingQuestion) {
           // If the provided order exists, find the next available order
           const lastQuestion = await this.prisma.assessmentQuestion.findFirst({
             where: { assessment_id: assessmentId },
-            orderBy: { order: 'desc' }
+            orderBy: { order: 'desc' },
           });
           questionOrder = lastQuestion ? lastQuestion.order + 1 : 1;
-          this.logger.log(colors.yellow(`Order ${createQuestionDto.order} already exists, auto-assigning order ${questionOrder}`));
+          this.logger.log(
+            colors.yellow(
+              `Order ${createQuestionDto.order} already exists, auto-assigning order ${questionOrder}`,
+            ),
+          );
         }
       }
 
@@ -1045,13 +1235,17 @@ export class AssessmentService {
             question_type: createQuestionDto.question_type,
             order: questionOrder,
             points: createQuestionDto.points || 1.0,
-            is_required: createQuestionDto.is_required !== undefined ? createQuestionDto.is_required : true,
+            is_required:
+              createQuestionDto.is_required !== undefined
+                ? createQuestionDto.is_required
+                : true,
             time_limit: createQuestionDto.time_limit,
             image_url: imageUrl ?? undefined,
             image_s3_key: imageS3Key ?? undefined,
             audio_url: createQuestionDto.audio_url,
             video_url: createQuestionDto.video_url,
-            allow_multiple_attempts: createQuestionDto.allow_multiple_attempts || false,
+            allow_multiple_attempts:
+              createQuestionDto.allow_multiple_attempts || false,
             show_hint: createQuestionDto.show_hint || false,
             hint_text: createQuestionDto.hint_text,
             min_length: createQuestionDto.min_length,
@@ -1059,8 +1253,8 @@ export class AssessmentService {
             min_value: createQuestionDto.min_value,
             max_value: createQuestionDto.max_value,
             explanation: createQuestionDto.explanation,
-            difficulty_level: createQuestionDto.difficulty_level || 'MEDIUM'
-          }
+            difficulty_level: createQuestionDto.difficulty_level || 'MEDIUM',
+          },
         });
 
         // Create options if provided
@@ -1075,16 +1269,19 @@ export class AssessmentService {
                   order: optionData.order,
                   is_correct: optionData.is_correct,
                   image_url: optionData.image_url,
-                  audio_url: optionData.audio_url
-                }
+                  audio_url: optionData.audio_url,
+                },
               });
-            })
+            }),
           );
         }
 
         // Create correct answers if provided
         let correctAnswers: any[] = [];
-        if (createQuestionDto.correct_answers && createQuestionDto.correct_answers.length > 0) {
+        if (
+          createQuestionDto.correct_answers &&
+          createQuestionDto.correct_answers.length > 0
+        ) {
           correctAnswers = await Promise.all(
             createQuestionDto.correct_answers.map(async (answerData: any) => {
               return await prisma.assessmentCorrectAnswer.create({
@@ -1092,12 +1289,14 @@ export class AssessmentService {
                   question_id: question.id,
                   answer_text: answerData.answer_text,
                   answer_number: answerData.answer_number,
-                  answer_date: answerData.answer_date ? new Date(answerData.answer_date) : null,
+                  answer_date: answerData.answer_date
+                    ? new Date(answerData.answer_date)
+                    : null,
                   option_ids: answerData.option_ids || [],
-                  answer_json: answerData.answer_json
-                }
+                  answer_json: answerData.answer_json,
+                },
               });
-            })
+            }),
           );
         }
 
@@ -1107,15 +1306,19 @@ export class AssessmentService {
       // Update the assessment's total points
       const totalPoints = await this.prisma.assessmentQuestion.aggregate({
         where: { assessment_id: assessmentId },
-        _sum: { points: true }
+        _sum: { points: true },
       });
 
       await this.prisma.assessment.update({
         where: { id: assessmentId },
-        data: { total_points: totalPoints._sum?.points || 0 }
+        data: { total_points: totalPoints._sum?.points || 0 },
       });
 
-      this.logger.log(colors.green(`Question created successfully with ID: ${result.question.id}`));
+      this.logger.log(
+        colors.green(
+          `Question created successfully with ID: ${result.question.id}`,
+        ),
+      );
 
       return ResponseHelper.success(
         'Question created successfully',
@@ -1141,35 +1344,36 @@ export class AssessmentService {
             explanation: result.question.explanation,
             difficulty_level: result.question.difficulty_level,
             createdAt: result.question.createdAt,
-            updatedAt: result.question.updatedAt
+            updatedAt: result.question.updatedAt,
           },
-          options: result.options.map(option => ({
+          options: result.options.map((option) => ({
             id: option.id,
             option_text: option.option_text,
             order: option.order,
             is_correct: option.is_correct,
             image_url: option.image_url,
-            audio_url: option.audio_url
+            audio_url: option.audio_url,
           })),
-          correct_answers: result.correctAnswers.map(answer => ({
+          correct_answers: result.correctAnswers.map((answer) => ({
             id: answer.id,
             answer_text: answer.answer_text,
             answer_number: answer.answer_number,
             answer_date: answer.answer_date,
             option_ids: answer.option_ids,
-            answer_json: answer.answer_json
+            answer_json: answer.answer_json,
           })),
           assessment: {
             id: assessment.id,
             title: assessment.title,
-            total_points: totalPoints._sum?.points || 0
-          }
+            total_points: totalPoints._sum?.points || 0,
+          },
         },
-        201
+        201,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error creating question: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error creating question: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1182,9 +1386,20 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    * @param imageFile - Optional image file to upload (replaces existing image)
    */
-  async updateQuestion(assessmentId: string, questionId: string, updateQuestionDto: any, userId: string, imageFile?: Express.Multer.File, libraryContext?: LibraryAssessmentContext) {
+  async updateQuestion(
+    assessmentId: string,
+    questionId: string,
+    updateQuestionDto: any,
+    userId: string,
+    imageFile?: Express.Multer.File,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Updating question: ${questionId} in assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       const whereClause: any = { id: assessmentId };
       if (libraryContext) {
@@ -1197,27 +1412,31 @@ export class AssessmentService {
         include: {
           school: {
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows editing questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot edit questions in a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot edit questions in a closed or archived assessment',
+        );
       }
 
       // Verify the question exists and belongs to this assessment
       const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
         where: {
           id: questionId,
-          assessment_id: assessmentId
-        }
+          assessment_id: assessmentId,
+        },
       });
 
       if (!existingQuestion) {
@@ -1226,14 +1445,24 @@ export class AssessmentService {
 
       // Handle image upload/replacement if new image file is provided
       let imageUrl: string | undefined = updateQuestionDto.image_url;
-      let imageS3Key: string | undefined = existingQuestion.image_s3_key ?? undefined;
-      let oldImageS3Key: string | undefined = existingQuestion.image_s3_key ?? undefined;
+      let imageS3Key: string | undefined =
+        existingQuestion.image_s3_key ?? undefined;
+      let oldImageS3Key: string | undefined =
+        existingQuestion.image_s3_key ?? undefined;
 
       if (imageFile) {
         // Validate image file type
-        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
         if (!allowedMimeTypes.includes(imageFile.mimetype)) {
-          throw new BadRequestException('Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP');
+          throw new BadRequestException(
+            'Invalid image file type. Allowed types: JPEG, PNG, GIF, WEBP',
+          );
         }
 
         // Validate file size (max 5MB)
@@ -1245,17 +1474,30 @@ export class AssessmentService {
         // Upload new image to S3
         const s3Folder = `assessment-images/schools/${assessment.school.id}/assessments/${assessmentId}`;
         const fileName = `question_${Date.now()}_${imageFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        
+
         try {
-          const uploadResult = await this.storageService.uploadFile(imageFile, s3Folder, fileName);
+          const uploadResult = await this.storageService.uploadFile(
+            imageFile,
+            s3Folder,
+            fileName,
+          );
           imageUrl = uploadResult.url;
           imageS3Key = uploadResult.key;
-          this.logger.log(colors.green(`✅ New image uploaded to S3: ${imageS3Key}`));
+          this.logger.log(
+            colors.green(`✅ New image uploaded to S3: ${imageS3Key}`),
+          );
         } catch (s3Error) {
-          this.logger.error(colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`));
-          throw new BadRequestException(`Failed to upload image: ${s3Error.message}`);
+          this.logger.error(
+            colors.red(`❌ Failed to upload image to S3: ${s3Error.message}`),
+          );
+          throw new BadRequestException(
+            `Failed to upload image: ${s3Error.message}`,
+          );
         }
-      } else if (updateQuestionDto.image_url === null || updateQuestionDto.image_url === '') {
+      } else if (
+        updateQuestionDto.image_url === null ||
+        updateQuestionDto.image_url === ''
+      ) {
         // If image_url is explicitly set to null/empty, remove the image
         imageUrl = undefined;
         imageS3Key = undefined;
@@ -1263,17 +1505,23 @@ export class AssessmentService {
       }
 
       // If order is being changed, check for conflicts
-      if (updateQuestionDto.order && updateQuestionDto.order !== existingQuestion.order) {
-        const conflictingQuestion = await this.prisma.assessmentQuestion.findFirst({
-          where: {
-            assessment_id: assessmentId,
-            order: updateQuestionDto.order,
-            id: { not: questionId }
-          }
-        });
+      if (
+        updateQuestionDto.order &&
+        updateQuestionDto.order !== existingQuestion.order
+      ) {
+        const conflictingQuestion =
+          await this.prisma.assessmentQuestion.findFirst({
+            where: {
+              assessment_id: assessmentId,
+              order: updateQuestionDto.order,
+              id: { not: questionId },
+            },
+          });
 
         if (conflictingQuestion) {
-          throw new BadRequestException(`A question with order ${updateQuestionDto.order} already exists in this assessment`);
+          throw new BadRequestException(
+            `A question with order ${updateQuestionDto.order} already exists in this assessment`,
+          );
         }
       }
 
@@ -1297,11 +1545,15 @@ export class AssessmentService {
           min_value: updateQuestionDto.min_value,
           max_value: updateQuestionDto.max_value,
           explanation: updateQuestionDto.explanation,
-          difficulty_level: updateQuestionDto.difficulty_level
+          difficulty_level: updateQuestionDto.difficulty_level,
         };
 
         // Only update image fields if they've changed
-        if (imageFile || updateQuestionDto.image_url === null || updateQuestionDto.image_url === '') {
+        if (
+          imageFile ||
+          updateQuestionDto.image_url === null ||
+          updateQuestionDto.image_url === ''
+        ) {
           updateData.image_url = imageUrl;
           updateData.image_s3_key = imageS3Key;
         } else if (updateQuestionDto.image_url !== undefined) {
@@ -1311,7 +1563,7 @@ export class AssessmentService {
         // Update the question
         const updatedQuestion = await prisma.assessmentQuestion.update({
           where: { id: questionId },
-          data: updateData
+          data: updateData,
         });
 
         // Handle options update if provided
@@ -1319,7 +1571,7 @@ export class AssessmentService {
         if (updateQuestionDto.options !== undefined) {
           // Delete existing options
           await prisma.assessmentOption.deleteMany({
-            where: { question_id: questionId }
+            where: { question_id: questionId },
           });
 
           // Create new options if provided
@@ -1333,17 +1585,17 @@ export class AssessmentService {
                     order: optionData.order,
                     is_correct: optionData.is_correct,
                     image_url: optionData.image_url,
-                    audio_url: optionData.audio_url
-                  }
+                    audio_url: optionData.audio_url,
+                  },
                 });
-              })
+              }),
             );
           }
         } else {
           // Keep existing options
           options = await prisma.assessmentOption.findMany({
             where: { question_id: questionId },
-            orderBy: { order: 'asc' }
+            orderBy: { order: 'asc' },
           });
         }
 
@@ -1352,7 +1604,7 @@ export class AssessmentService {
         if (updateQuestionDto.correct_answers !== undefined) {
           // Delete existing correct answers
           await prisma.assessmentCorrectAnswer.deleteMany({
-            where: { question_id: questionId }
+            where: { question_id: questionId },
           });
 
           // Create new correct answers if provided
@@ -1364,18 +1616,20 @@ export class AssessmentService {
                     question_id: questionId,
                     answer_text: answerData.answer_text,
                     answer_number: answerData.answer_number,
-                    answer_date: answerData.answer_date ? new Date(answerData.answer_date) : null,
+                    answer_date: answerData.answer_date
+                      ? new Date(answerData.answer_date)
+                      : null,
                     option_ids: answerData.option_ids || [],
-                    answer_json: answerData.answer_json
-                  }
+                    answer_json: answerData.answer_json,
+                  },
                 });
-              })
+              }),
             );
           }
         } else {
           // Keep existing correct answers
           correctAnswers = await prisma.assessmentCorrectAnswer.findMany({
-            where: { question_id: questionId }
+            where: { question_id: questionId },
           });
         }
 
@@ -1386,78 +1640,84 @@ export class AssessmentService {
       if (oldImageS3Key && imageS3Key !== oldImageS3Key) {
         try {
           await this.storageService.deleteFile(oldImageS3Key);
-          this.logger.log(colors.green(`🗑️ Old image deleted from S3: ${oldImageS3Key}`));
+          this.logger.log(
+            colors.green(`🗑️ Old image deleted from S3: ${oldImageS3Key}`),
+          );
         } catch (deleteError) {
           // Log error but don't fail the update
-          this.logger.error(colors.yellow(`⚠️ Failed to delete old image from S3: ${deleteError.message}`));
+          this.logger.error(
+            colors.yellow(
+              `⚠️ Failed to delete old image from S3: ${deleteError.message}`,
+            ),
+          );
         }
       }
 
       // Update the assessment's total points
       const totalPoints = await this.prisma.assessmentQuestion.aggregate({
         where: { assessment_id: assessmentId },
-        _sum: { points: true }
+        _sum: { points: true },
       });
 
       await this.prisma.assessment.update({
         where: { id: assessmentId },
-        data: { total_points: totalPoints._sum?.points || 0 }
+        data: { total_points: totalPoints._sum?.points || 0 },
       });
 
-      this.logger.log(colors.green(`Question updated successfully: ${questionId}`));
-
-      return ResponseHelper.success(
-        'Question updated successfully',
-        {
-          question: {
-            id: result.question.id,
-            question_text: result.question.question_text,
-            question_type: result.question.question_type,
-            order: result.question.order,
-            points: result.question.points,
-            is_required: result.question.is_required,
-            time_limit: result.question.time_limit,
-            image_url: result.question.image_url,
-            audio_url: result.question.audio_url,
-            video_url: result.question.video_url,
-            allow_multiple_attempts: result.question.allow_multiple_attempts,
-            show_hint: result.question.show_hint,
-            hint_text: result.question.hint_text,
-            min_length: result.question.min_length,
-            max_length: result.question.max_length,
-            min_value: result.question.min_value,
-            max_value: result.question.max_value,
-            explanation: result.question.explanation,
-            difficulty_level: result.question.difficulty_level,
-            createdAt: result.question.createdAt,
-            updatedAt: result.question.updatedAt
-          },
-          options: result.options.map(option => ({
-            id: option.id,
-            option_text: option.option_text,
-            order: option.order,
-            is_correct: option.is_correct,
-            image_url: option.image_url,
-            audio_url: option.audio_url
-          })),
-          correct_answers: result.correctAnswers.map(answer => ({
-            id: answer.id,
-            answer_text: answer.answer_text,
-            answer_number: answer.answer_number,
-            answer_date: answer.answer_date,
-            option_ids: answer.option_ids,
-            answer_json: answer.answer_json
-          })),
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            total_points: totalPoints._sum?.points || 0
-          }
-        }
+      this.logger.log(
+        colors.green(`Question updated successfully: ${questionId}`),
       );
 
+      return ResponseHelper.success('Question updated successfully', {
+        question: {
+          id: result.question.id,
+          question_text: result.question.question_text,
+          question_type: result.question.question_type,
+          order: result.question.order,
+          points: result.question.points,
+          is_required: result.question.is_required,
+          time_limit: result.question.time_limit,
+          image_url: result.question.image_url,
+          audio_url: result.question.audio_url,
+          video_url: result.question.video_url,
+          allow_multiple_attempts: result.question.allow_multiple_attempts,
+          show_hint: result.question.show_hint,
+          hint_text: result.question.hint_text,
+          min_length: result.question.min_length,
+          max_length: result.question.max_length,
+          min_value: result.question.min_value,
+          max_value: result.question.max_value,
+          explanation: result.question.explanation,
+          difficulty_level: result.question.difficulty_level,
+          createdAt: result.question.createdAt,
+          updatedAt: result.question.updatedAt,
+        },
+        options: result.options.map((option) => ({
+          id: option.id,
+          option_text: option.option_text,
+          order: option.order,
+          is_correct: option.is_correct,
+          image_url: option.image_url,
+          audio_url: option.audio_url,
+        })),
+        correct_answers: result.correctAnswers.map((answer) => ({
+          id: answer.id,
+          answer_text: answer.answer_text,
+          answer_number: answer.answer_number,
+          answer_date: answer.answer_date,
+          option_ids: answer.option_ids,
+          answer_json: answer.answer_json,
+        })),
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          total_points: totalPoints._sum?.points || 0,
+        },
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error updating question: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error updating question: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1468,9 +1728,16 @@ export class AssessmentService {
    * @param questionId - ID of the question
    * @param userId - ID of the teacher
    */
-  async deleteQuestionImage(assessmentId: string, questionId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
+  async deleteQuestionImage(
+    assessmentId: string,
+    questionId: string,
+    userId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Deleting image for question: ${questionId}`));
+      this.logger.log(
+        colors.cyan(`Deleting image for question: ${questionId}`),
+      );
 
       const whereClause: any = { id: assessmentId };
       if (libraryContext) {
@@ -1483,25 +1750,29 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows editing questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot edit questions in a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot edit questions in a closed or archived assessment',
+        );
       }
 
       // Verify the question exists and belongs to this assessment
       const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
         where: {
           id: questionId,
-          assessment_id: assessmentId
+          assessment_id: assessmentId,
         },
         select: {
           id: true,
           image_s3_key: true,
-          image_url: true
-        }
+          image_url: true,
+        },
       });
 
       if (!existingQuestion) {
@@ -1510,17 +1781,27 @@ export class AssessmentService {
 
       // Check if the question has an image
       if (!existingQuestion.image_s3_key && !existingQuestion.image_url) {
-        throw new BadRequestException('Question does not have an image to delete');
+        throw new BadRequestException(
+          'Question does not have an image to delete',
+        );
       }
 
       // Delete the image from S3 if S3 key exists
       if (existingQuestion.image_s3_key) {
         try {
           await this.storageService.deleteFile(existingQuestion.image_s3_key);
-          this.logger.log(colors.green(`✅ Image deleted from S3: ${existingQuestion.image_s3_key}`));
+          this.logger.log(
+            colors.green(
+              `✅ Image deleted from S3: ${existingQuestion.image_s3_key}`,
+            ),
+          );
         } catch (s3Error) {
           // Log error but don't fail - the image might already be deleted
-          this.logger.warn(colors.yellow(`⚠️ Failed to delete image from S3 (may already be deleted): ${s3Error.message}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Failed to delete image from S3 (may already be deleted): ${s3Error.message}`,
+            ),
+          );
         }
       }
 
@@ -1529,23 +1810,26 @@ export class AssessmentService {
         where: { id: questionId },
         data: {
           image_url: null,
-          image_s3_key: null
-        }
+          image_s3_key: null,
+        },
       });
 
-      this.logger.log(colors.green(`Image deleted successfully for question: ${questionId}`));
+      this.logger.log(
+        colors.green(`Image deleted successfully for question: ${questionId}`),
+      );
 
       return ResponseHelper.success(
         'Question image deleted successfully',
         {
           question_id: questionId,
-          image_deleted: true
+          image_deleted: true,
         },
-        200
+        200,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting question image: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting question image: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1556,9 +1840,18 @@ export class AssessmentService {
    * @param questionId - ID of the question
    * @param userId - ID of the teacher
    */
-  async deleteQuestion(assessmentId: string, questionId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
+  async deleteQuestion(
+    assessmentId: string,
+    questionId: string,
+    userId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`));
+      this.logger.log(
+        colors.cyan(
+          `Deleting question: ${questionId} from assessment: ${assessmentId} by user: ${userId}`,
+        ),
+      );
 
       const whereClause: any = { id: assessmentId };
       if (libraryContext) {
@@ -1571,19 +1864,23 @@ export class AssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check if the assessment is in a state that allows deleting questions
       if (assessment.status === 'CLOSED' || assessment.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot delete questions from a closed or archived assessment');
+        throw new BadRequestException(
+          'Cannot delete questions from a closed or archived assessment',
+        );
       }
 
       // Verify the question exists and belongs to this assessment
       const existingQuestion = await this.prisma.assessmentQuestion.findFirst({
         where: {
           id: questionId,
-          assessment_id: assessmentId
+          assessment_id: assessmentId,
         },
         select: {
           id: true,
@@ -1593,10 +1890,10 @@ export class AssessmentService {
           image_s3_key: true,
           _count: {
             select: {
-              responses: true
-            }
-          }
-        }
+              responses: true,
+            },
+          },
+        },
       });
 
       if (!existingQuestion) {
@@ -1605,7 +1902,9 @@ export class AssessmentService {
 
       // Check if the question has any student responses
       if (existingQuestion._count.responses > 0) {
-        throw new BadRequestException('Cannot delete question that has student responses. Consider archiving the assessment instead.');
+        throw new BadRequestException(
+          'Cannot delete question that has student responses. Consider archiving the assessment instead.',
+        );
       }
 
       // Store S3 key for deletion after question is deleted
@@ -1615,63 +1914,69 @@ export class AssessmentService {
       await this.prisma.$transaction(async (prisma) => {
         // Delete correct answers first (due to foreign key constraints)
         await prisma.assessmentCorrectAnswer.deleteMany({
-          where: { question_id: questionId }
+          where: { question_id: questionId },
         });
 
         // Delete options
         await prisma.assessmentOption.deleteMany({
-          where: { question_id: questionId }
+          where: { question_id: questionId },
         });
 
         // Delete the question
         await prisma.assessmentQuestion.delete({
-          where: { id: questionId }
+          where: { id: questionId },
         });
       });
 
       // Update the assessment's total points
       const totalPoints = await this.prisma.assessmentQuestion.aggregate({
         where: { assessment_id: assessmentId },
-        _sum: { points: true }
+        _sum: { points: true },
       });
 
       await this.prisma.assessment.update({
         where: { id: assessmentId },
-        data: { total_points: totalPoints._sum?.points || 0 }
+        data: { total_points: totalPoints._sum?.points || 0 },
       });
 
       // Delete associated image from S3 if it exists
       if (imageS3Key) {
         try {
           await this.storageService.deleteFile(imageS3Key);
-          this.logger.log(colors.green(`🗑️ Image deleted from S3: ${imageS3Key}`));
+          this.logger.log(
+            colors.green(`🗑️ Image deleted from S3: ${imageS3Key}`),
+          );
         } catch (deleteError) {
           // Log error but don't fail the deletion
-          this.logger.error(colors.yellow(`⚠️ Failed to delete image from S3: ${deleteError.message}`));
+          this.logger.error(
+            colors.yellow(
+              `⚠️ Failed to delete image from S3: ${deleteError.message}`,
+            ),
+          );
         }
       }
 
-      this.logger.log(colors.green(`Question deleted successfully: ${questionId}`));
-
-      return ResponseHelper.success(
-        'Question deleted successfully',
-        {
-          deleted_question: {
-            id: questionId,
-            question_text: existingQuestion.question_text,
-            order: existingQuestion.order,
-            points: existingQuestion.points
-          },
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            total_points: totalPoints._sum?.points || 0
-          }
-        }
+      this.logger.log(
+        colors.green(`Question deleted successfully: ${questionId}`),
       );
 
+      return ResponseHelper.success('Question deleted successfully', {
+        deleted_question: {
+          id: questionId,
+          question_text: existingQuestion.question_text,
+          order: existingQuestion.order,
+          points: existingQuestion.points,
+        },
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          total_points: totalPoints._sum?.points || 0,
+        },
+      });
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting question: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting question: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1682,7 +1987,12 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async getTopicQuizzes(topicId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async getTopicQuizzes(
+    topicId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
       this.logger.log(colors.cyan(`Getting quizzes for topic: ${topicId}`));
 
@@ -1710,34 +2020,41 @@ export class AssessmentService {
               subject: {
                 select: {
                   id: true,
-                  name: true
-                }
-              }
-            }
+                  name: true,
+                },
+              },
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           _count: {
             select: {
               questions: true,
-              attempts: true
-            }
-          }
+              attempts: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: 'desc'
-        }
+          createdAt: 'desc',
+        },
       });
 
-      this.logger.log(colors.green(`Found ${quizzes.length} quizzes for topic`));
-      return ResponseHelper.success('Topic quizzes retrieved successfully', quizzes);
+      this.logger.log(
+        colors.green(`Found ${quizzes.length} quizzes for topic`),
+      );
+      return ResponseHelper.success(
+        'Topic quizzes retrieved successfully',
+        quizzes,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error getting topic quizzes: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting topic quizzes: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1747,7 +2064,11 @@ export class AssessmentService {
    * @param quizId - ID of the quiz
    * @param userId - ID of the user (teacher)
    */
-  async getQuizById(quizId: string, userId: string, libraryContext?: LibraryAssessmentContext) {
+  async getQuizById(
+    quizId: string,
+    userId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
       this.logger.log(colors.cyan(`Getting quiz: ${quizId}`));
 
@@ -1772,17 +2093,17 @@ export class AssessmentService {
               subject: {
                 select: {
                   id: true,
-                  name: true
-                }
-              }
-            }
+                  name: true,
+                },
+              },
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           questions: {
             include: {
@@ -1790,27 +2111,29 @@ export class AssessmentService {
               correct_answers: true,
               _count: {
                 select: {
-                  responses: true
-                }
-              }
+                  responses: true,
+                },
+              },
             },
             orderBy: {
-              order: 'asc'
-            }
+              order: 'asc',
+            },
           },
           _count: {
             select: {
-              attempts: true
-            }
-          }
-        }
+              attempts: true,
+            },
+          },
+        },
       });
 
       if (!quiz) {
         throw new NotFoundException('Quiz not found or access denied');
       }
 
-      this.logger.log(colors.green(`Quiz retrieved successfully: ${quiz.title}`));
+      this.logger.log(
+        colors.green(`Quiz retrieved successfully: ${quiz.title}`),
+      );
       return ResponseHelper.success('Quiz retrieved successfully', quiz);
     } catch (error) {
       this.logger.error(colors.red(`Error getting quiz: ${error.message}`));
@@ -1828,23 +2151,42 @@ export class AssessmentService {
     quizId: string,
     updateQuizDto: UpdateAssessmentDto,
     userId: string,
-    libraryContext?: LibraryAssessmentContext
+    libraryContext?: LibraryAssessmentContext,
   ) {
     try {
       this.logger.log(colors.cyan(`Updating assessment: ${quizId}`));
-      this.logger.log(colors.yellow(`Update payload received: ${JSON.stringify(updateQuizDto, null, 2)}`));
+      this.logger.log(
+        colors.yellow(
+          `Update payload received: ${JSON.stringify(updateQuizDto, null, 2)}`,
+        ),
+      );
 
       let existingQuiz: any;
       let schoolIdForNotify: string;
 
       if (libraryContext) {
-        existingQuiz = await this.verifyAssessmentBelongsToSchool(quizId, libraryContext.schoolId);
+        existingQuiz = await this.verifyAssessmentBelongsToSchool(
+          quizId,
+          libraryContext.schoolId,
+        );
         schoolIdForNotify = libraryContext.schoolId;
-        if (updateQuizDto.subject_id && updateQuizDto.subject_id !== existingQuiz.subject_id) {
-          await this.verifySubjectBelongsToSchool(updateQuizDto.subject_id, libraryContext.schoolId);
+        if (
+          updateQuizDto.subject_id &&
+          updateQuizDto.subject_id !== existingQuiz.subject_id
+        ) {
+          await this.verifySubjectBelongsToSchool(
+            updateQuizDto.subject_id,
+            libraryContext.schoolId,
+          );
         }
-        if (updateQuizDto.topic_id && updateQuizDto.topic_id !== existingQuiz.topic_id) {
-          await this.verifyTopicBelongsToSchool(updateQuizDto.topic_id, libraryContext.schoolId);
+        if (
+          updateQuizDto.topic_id &&
+          updateQuizDto.topic_id !== existingQuiz.topic_id
+        ) {
+          await this.verifyTopicBelongsToSchool(
+            updateQuizDto.topic_id,
+            libraryContext.schoolId,
+          );
         }
       } else {
         const teacher = await this.getTeacherByUserId(userId);
@@ -1852,35 +2194,62 @@ export class AssessmentService {
           throw new NotFoundException('Teacher not found');
         }
         existingQuiz = await this.prisma.assessment.findFirst({
-          where: { id: quizId, school_id: teacher.school_id, created_by: userId },
+          where: {
+            id: quizId,
+            school_id: teacher.school_id,
+            created_by: userId,
+          },
         });
         if (!existingQuiz) {
           throw new NotFoundException('Assessment not found or access denied');
         }
         schoolIdForNotify = teacher.school_id;
-        if (updateQuizDto.subject_id && updateQuizDto.subject_id !== existingQuiz.subject_id) {
-          await this.verifyTeacherSubjectAccess(updateQuizDto.subject_id, userId);
+        if (
+          updateQuizDto.subject_id &&
+          updateQuizDto.subject_id !== existingQuiz.subject_id
+        ) {
+          await this.verifyTeacherSubjectAccess(
+            updateQuizDto.subject_id,
+            userId,
+          );
         }
-        if (updateQuizDto.topic_id && updateQuizDto.topic_id !== existingQuiz.topic_id) {
-          await this.verifyTeacherTopicAccess(updateQuizDto.topic_id, teacher.id, teacher.school_id);
+        if (
+          updateQuizDto.topic_id &&
+          updateQuizDto.topic_id !== existingQuiz.topic_id
+        ) {
+          await this.verifyTeacherTopicAccess(
+            updateQuizDto.topic_id,
+            teacher.id,
+            teacher.school_id,
+          );
         }
       }
 
       // Check if quiz has attempts and is being changed to a state that would affect students
-      if (updateQuizDto.status && ['CLOSED', 'ARCHIVED'].includes(updateQuizDto.status)) {
+      if (
+        updateQuizDto.status &&
+        ['CLOSED', 'ARCHIVED'].includes(updateQuizDto.status)
+      ) {
         const attemptCount = await this.prisma.assessmentAttempt.count({
-          where: { assessment_id: quizId }
+          where: { assessment_id: quizId },
         });
 
         if (attemptCount > 0) {
-          this.logger.warn(colors.yellow(`Assessment ${quizId} has ${attemptCount} attempts but status is being changed to ${updateQuizDto.status}`));
+          this.logger.warn(
+            colors.yellow(
+              `Assessment ${quizId} has ${attemptCount} attempts but status is being changed to ${updateQuizDto.status}`,
+            ),
+          );
         }
       }
 
       const updateData: any = { ...updateQuizDto };
 
       // Don't pass empty assessment_type to Prisma (enum expects a valid value)
-      if (updateData.assessment_type === '' || updateData.assessment_type === undefined) {
+      if (
+        updateData.assessment_type === '' ||
+        updateData.assessment_type === undefined
+      ) {
         delete updateData.assessment_type;
       }
 
@@ -1893,9 +2262,16 @@ export class AssessmentService {
       }
 
       // Track status changes for notifications
-      const wasPublished = existingQuiz.status === 'ACTIVE' || existingQuiz.status === 'PUBLISHED' || existingQuiz.is_published;
-      const isBeingUnpublished = updateQuizDto.status === 'DRAFT' && wasPublished;
-      const isBeingPublished = (updateQuizDto.status === 'PUBLISHED' || updateQuizDto.status === 'ACTIVE') && !wasPublished;
+      const wasPublished =
+        existingQuiz.status === 'ACTIVE' ||
+        existingQuiz.status === 'PUBLISHED' ||
+        existingQuiz.is_published;
+      const isBeingUnpublished =
+        updateQuizDto.status === 'DRAFT' && wasPublished;
+      const isBeingPublished =
+        (updateQuizDto.status === 'PUBLISHED' ||
+          updateQuizDto.status === 'ACTIVE') &&
+        !wasPublished;
 
       // If status is being changed to PUBLISHED/ACTIVE, ensure end_date is not already past
       if (isBeingPublished) {
@@ -1925,8 +2301,8 @@ export class AssessmentService {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
@@ -1935,48 +2311,68 @@ export class AssessmentService {
               subject: {
                 select: {
                   id: true,
-                  name: true
-                }
-              }
-            }
+                  name: true,
+                },
+              },
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           _count: {
             select: {
               questions: true,
-              attempts: true
-            }
-          }
-        }
+              attempts: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`Assessment updated successfully: ${quiz.title}`));
+      this.logger.log(
+        colors.green(`Assessment updated successfully: ${quiz.title}`),
+      );
 
       // Send notifications if status changed
-      const notifySchoolId = libraryContext ? libraryContext.schoolId : schoolIdForNotify;
+      const notifySchoolId = libraryContext
+        ? libraryContext.schoolId
+        : schoolIdForNotify;
       if (isBeingPublished) {
         try {
-          await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, notifySchoolId);
+          await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(
+            quiz,
+            notifySchoolId,
+          );
         } catch (notificationError) {
-          this.logger.error(colors.yellow(`⚠️ Failed to send published notifications: ${notificationError.message}`));
+          this.logger.error(
+            colors.yellow(
+              `⚠️ Failed to send published notifications: ${notificationError.message}`,
+            ),
+          );
         }
       } else if (isBeingUnpublished) {
         try {
-          await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, notifySchoolId);
+          await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(
+            quiz,
+            notifySchoolId,
+          );
         } catch (notificationError) {
-          this.logger.error(colors.yellow(`⚠️ Failed to send unpublished notifications: ${notificationError.message}`));
+          this.logger.error(
+            colors.yellow(
+              `⚠️ Failed to send unpublished notifications: ${notificationError.message}`,
+            ),
+          );
         }
       }
 
       return ResponseHelper.success('Assessment updated successfully', quiz);
     } catch (error) {
-      this.logger.error(colors.red(`Error updating assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error updating assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -1987,11 +2383,18 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async deleteQuiz(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async deleteQuiz(
+    quizId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
       this.logger.log(colors.cyan(`Deleting Assessment: ${quizId}`));
 
-      const effectiveSchoolId = libraryContext ? libraryContext.schoolId : schoolId;
+      const effectiveSchoolId = libraryContext
+        ? libraryContext.schoolId
+        : schoolId;
       const whereClause: any = { id: quizId, school_id: effectiveSchoolId };
       if (!libraryContext) {
         whereClause.created_by = userId;
@@ -2006,21 +2409,27 @@ export class AssessmentService {
 
       // Check if quiz has attempts (prevent deletion if students have taken it)
       const attemptCount = await this.prisma.assessmentAttempt.count({
-        where: { assessment_id: quizId }
+        where: { assessment_id: quizId },
       });
 
       if (attemptCount > 0) {
-        throw new BadRequestException('Cannot delete assessment that has student attempts. Consider archiving instead.');
+        throw new BadRequestException(
+          'Cannot delete assessment that has student attempts. Consider archiving instead.',
+        );
       }
 
       await this.prisma.assessment.delete({
-        where: { id: quizId }
+        where: { id: quizId },
       });
 
-      this.logger.log(colors.green(`Assessment deleted successfully: ${quizId}`));
+      this.logger.log(
+        colors.green(`Assessment deleted successfully: ${quizId}`),
+      );
       return ResponseHelper.success('Assessment deleted successfully');
     } catch (error) {
-      this.logger.error(colors.red(`Error deleting assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error deleting assessment: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2031,7 +2440,12 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async publishQuiz(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async publishQuiz(
+    quizId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
       this.logger.log(colors.cyan(`Publishing quiz: ${quizId}`));
 
@@ -2050,7 +2464,9 @@ export class AssessmentService {
       });
 
       if (!existingQuiz) {
-        this.logger.error(colors.red(`Quiz not found or access denied: ${quizId}`));
+        this.logger.error(
+          colors.red(`Quiz not found or access denied: ${quizId}`),
+        );
         throw new NotFoundException('Quiz not found or access denied');
       }
 
@@ -2061,7 +2477,11 @@ export class AssessmentService {
 
       const now = new Date();
       if (existingQuiz.end_date && new Date(existingQuiz.end_date) < now) {
-        this.logger.error(colors.red(`Cannot publish quiz ${quizId}: end date has already passed`));
+        this.logger.error(
+          colors.red(
+            `Cannot publish quiz ${quizId}: end date has already passed`,
+          ),
+        );
         throw new BadRequestException(
           'Cannot publish an assessment that has already expired. Please set an end date in the future first.',
         );
@@ -2072,15 +2492,15 @@ export class AssessmentService {
         data: {
           status: 'ACTIVE',
           is_published: true,
-          published_at: new Date()
+          published_at: new Date(),
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
@@ -2089,22 +2509,31 @@ export class AssessmentService {
               subject: {
                 select: {
                   id: true,
-                  name: true
-                }
-              }
-            }
-          }
-        }
+                  name: true,
+                },
+              },
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`Quiz published successfully: ${quiz.title}`));
+      this.logger.log(
+        colors.green(`Quiz published successfully: ${quiz.title}`),
+      );
 
       // Send push notifications and emails to students enrolled in classes with this subject
       try {
-        await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(quiz, effectiveSchoolId);
+        await this.assessmentNotificationsService.sendAssessmentPublishedNotifications(
+          quiz,
+          effectiveSchoolId,
+        );
       } catch (notificationError) {
         // Log error but don't fail the publish operation
-        this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
+        this.logger.error(
+          colors.yellow(
+            `⚠️ Failed to send notifications: ${notificationError.message}`,
+          ),
+        );
       }
 
       return ResponseHelper.success('Quiz published successfully', quiz);
@@ -2120,7 +2549,12 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async unpublishQuiz(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async unpublishQuiz(
+    quizId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
       this.logger.log(colors.cyan(`Unpublishing quiz: ${quizId}`));
 
@@ -2134,7 +2568,9 @@ export class AssessmentService {
       });
 
       if (!existingQuiz) {
-        this.logger.error(colors.red(`Quiz not found or access denied: ${quizId}`));
+        this.logger.error(
+          colors.red(`Quiz not found or access denied: ${quizId}`),
+        );
         throw new NotFoundException('Quiz not found or access denied');
       }
 
@@ -2142,32 +2578,43 @@ export class AssessmentService {
         where: { id: quizId },
         data: {
           status: 'DRAFT',
-          is_published: false
+          is_published: false,
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
-          }
-        }
+              code: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`Quiz unpublished successfully: ${quiz.title}`));
+      this.logger.log(
+        colors.green(`Quiz unpublished successfully: ${quiz.title}`),
+      );
 
       // Send push notifications and emails to students enrolled in classes with this subject
       try {
-        await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(quiz, effectiveSchoolId);
+        await this.assessmentNotificationsService.sendAssessmentUnpublishedNotifications(
+          quiz,
+          effectiveSchoolId,
+        );
       } catch (notificationError) {
         // Log error but don't fail the unpublish operation
-        this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
+        this.logger.error(
+          colors.yellow(
+            `⚠️ Failed to send notifications: ${notificationError.message}`,
+          ),
+        );
       }
 
       return ResponseHelper.success('Quiz unpublished successfully', quiz);
     } catch (error) {
-      this.logger.error(colors.red(`Error unpublishing quiz: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error unpublishing quiz: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2178,9 +2625,16 @@ export class AssessmentService {
    * @param userId - ID of the user (teacher)
    * @param schoolId - ID of the school
    */
-  async releaseAssessmentResults(quizId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async releaseAssessmentResults(
+    quizId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Releasing results for assessment: ${quizId}`));
+      this.logger.log(
+        colors.cyan(`Releasing results for assessment: ${quizId}`),
+      );
 
       const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
       const whereClause: any = { id: quizId, school_id: effectiveSchoolId };
@@ -2192,13 +2646,17 @@ export class AssessmentService {
       });
 
       if (!existingQuiz) {
-        this.logger.error(colors.red(`Quiz not found or access denied: ${quizId}`));
+        this.logger.error(
+          colors.red(`Quiz not found or access denied: ${quizId}`),
+        );
         throw new NotFoundException('Quiz not found or access denied');
       }
 
       // Check if results are already released
       if (existingQuiz.is_result_released) {
-        this.logger.warn(colors.yellow(`Results already released for assessment: ${quizId}`));
+        this.logger.warn(
+          colors.yellow(`Results already released for assessment: ${quizId}`),
+        );
         return ResponseHelper.success('Results already released', existingQuiz);
       }
 
@@ -2208,38 +2666,54 @@ export class AssessmentService {
         data: {
           is_result_released: true,
           result_released_at: new Date(),
-          status: 'CLOSED'
+          status: 'CLOSED',
         },
         include: {
           subject: {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
               id: true,
-              title: true
-            }
-          }
-        }
+              title: true,
+            },
+          },
+        },
       });
 
-      this.logger.log(colors.green(`✅ Results released and assessment closed: ${quiz.title}`));
+      this.logger.log(
+        colors.green(
+          `✅ Results released and assessment closed: ${quiz.title}`,
+        ),
+      );
 
       // Send push notifications and emails to students enrolled in classes with this subject
       try {
-        await this.assessmentNotificationsService.sendAssessmentResultReleasedNotifications(quiz, effectiveSchoolId);
+        await this.assessmentNotificationsService.sendAssessmentResultReleasedNotifications(
+          quiz,
+          effectiveSchoolId,
+        );
       } catch (notificationError) {
         // Log error but don't fail the release operation
-        this.logger.error(colors.yellow(`⚠️ Failed to send notifications: ${notificationError.message}`));
+        this.logger.error(
+          colors.yellow(
+            `⚠️ Failed to send notifications: ${notificationError.message}`,
+          ),
+        );
       }
 
-      return ResponseHelper.success('Assessment results released successfully. Assessment has been closed.', quiz);
+      return ResponseHelper.success(
+        'Assessment results released successfully. Assessment has been closed.',
+        quiz,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error releasing assessment results: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error releasing assessment results: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2250,12 +2724,22 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    * @param schoolId - ID of the school
    */
-  async getAssessmentAttempts(assessmentId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async getAssessmentAttempts(
+    assessmentId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Getting assessment attempts for: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(`Getting assessment attempts for: ${assessmentId}`),
+      );
 
       const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
-      const whereClause: any = { id: assessmentId, school_id: effectiveSchoolId };
+      const whereClause: any = {
+        id: assessmentId,
+        school_id: effectiveSchoolId,
+      };
       if (!libraryContext) {
         whereClause.created_by = userId;
       }
@@ -2266,20 +2750,22 @@ export class AssessmentService {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
               id: true,
-              title: true
-            }
-          }
-        }
+              title: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        this.logger.error(colors.red(`Assessment not found or access denied: ${assessmentId}`));
+        this.logger.error(
+          colors.red(`Assessment not found or access denied: ${assessmentId}`),
+        );
         throw new NotFoundException('Assessment not found or access denied');
       }
 
@@ -2287,8 +2773,8 @@ export class AssessmentService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: effectiveSchoolId,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
@@ -2303,33 +2789,36 @@ export class AssessmentService {
           subjects: {
             some: {
               id: assessment.subject_id,
-              academic_session_id: currentSession.id
-            }
-          }
+              academic_session_id: currentSession.id,
+            },
+          },
         },
         select: {
           id: true,
-          name: true
-        }
+          name: true,
+        },
       });
 
       if (classesWithSubject.length === 0) {
-        return ResponseHelper.success('Assessment attempts retrieved successfully', {
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            subject: assessment.subject,
-            topic: assessment.topic
+        return ResponseHelper.success(
+          'Assessment attempts retrieved successfully',
+          {
+            assessment: {
+              id: assessment.id,
+              title: assessment.title,
+              subject: assessment.subject,
+              topic: assessment.topic,
+            },
+            totalStudents: 0,
+            studentsAttempted: 0,
+            studentsNotAttempted: 0,
+            classes: [],
+            students: [],
           },
-          totalStudents: 0,
-          studentsAttempted: 0,
-          studentsNotAttempted: 0,
-          classes: [],
-          students: []
-        });
+        );
       }
 
-      const classIds = classesWithSubject.map(cls => cls.id);
+      const classIds = classesWithSubject.map((cls) => cls.id);
 
       // Get all active students in these classes
       const allStudents = await this.prisma.student.findMany({
@@ -2337,7 +2826,7 @@ export class AssessmentService {
           school_id: effectiveSchoolId,
           academic_session_id: currentSession.id,
           current_class_id: { in: classIds },
-          status: 'active'
+          status: 'active',
         },
         include: {
           user: {
@@ -2346,21 +2835,21 @@ export class AssessmentService {
               first_name: true,
               last_name: true,
               email: true,
-              display_picture: true
-            }
+              display_picture: true,
+            },
           },
           current_class: {
             select: {
               id: true,
-              name: true
-            }
-          }
+              name: true,
+            },
+          },
         },
         orderBy: {
           user: {
-            last_name: 'asc'
-          }
-        }
+            last_name: 'asc',
+          },
+        },
       });
 
       // Get all attempts for this assessment
@@ -2368,7 +2857,7 @@ export class AssessmentService {
         where: {
           assessment_id: assessmentId,
           school_id: effectiveSchoolId,
-          academic_session_id: currentSession.id
+          academic_session_id: currentSession.id,
         },
         select: {
           id: true,
@@ -2386,16 +2875,16 @@ export class AssessmentService {
           graded_at: true,
           grade_letter: true,
           overall_feedback: true,
-          createdAt: true
+          createdAt: true,
         },
         orderBy: {
-          submitted_at: 'desc'
-        }
+          submitted_at: 'desc',
+        },
       });
 
       // Create a map of student_id to attempts
       const attemptsByStudent = new Map<string, typeof attempts>();
-      attempts.forEach(attempt => {
+      attempts.forEach((attempt) => {
         if (!attemptsByStudent.has(attempt.student_id)) {
           attemptsByStudent.set(attempt.student_id, []);
         }
@@ -2403,11 +2892,12 @@ export class AssessmentService {
       });
 
       // Combine students with their attempts
-      const studentsWithAttempts = allStudents.map(student => {
+      const studentsWithAttempts = allStudents.map((student) => {
         const studentAttempts = attemptsByStudent.get(student.user_id) || [];
-        const latestAttempt = studentAttempts.length > 0 
-          ? studentAttempts[0] // Most recent attempt (already sorted by submitted_at desc)
-          : null;
+        const latestAttempt =
+          studentAttempts.length > 0
+            ? studentAttempts[0] // Most recent attempt (already sorted by submitted_at desc)
+            : null;
 
         return {
           studentId: student.id,
@@ -2421,24 +2911,26 @@ export class AssessmentService {
           classId: student.current_class_id,
           hasAttempted: studentAttempts.length > 0,
           attemptCount: studentAttempts.length,
-          latestAttempt: latestAttempt ? {
-            id: latestAttempt.id,
-            attemptNumber: latestAttempt.attempt_number,
-            status: latestAttempt.status,
-            startedAt: latestAttempt.started_at,
-            submittedAt: latestAttempt.submitted_at,
-            timeSpent: latestAttempt.time_spent,
-            totalScore: latestAttempt.total_score,
-            maxScore: latestAttempt.max_score,
-            percentage: latestAttempt.percentage,
-            passed: latestAttempt.passed,
-            isGraded: latestAttempt.is_graded,
-            gradedAt: latestAttempt.graded_at,
-            gradeLetter: latestAttempt.grade_letter,
-            overallFeedback: latestAttempt.overall_feedback,
-            createdAt: latestAttempt.createdAt
-          } : null,
-          allAttempts: studentAttempts.map(attempt => ({
+          latestAttempt: latestAttempt
+            ? {
+                id: latestAttempt.id,
+                attemptNumber: latestAttempt.attempt_number,
+                status: latestAttempt.status,
+                startedAt: latestAttempt.started_at,
+                submittedAt: latestAttempt.submitted_at,
+                timeSpent: latestAttempt.time_spent,
+                totalScore: latestAttempt.total_score,
+                maxScore: latestAttempt.max_score,
+                percentage: latestAttempt.percentage,
+                passed: latestAttempt.passed,
+                isGraded: latestAttempt.is_graded,
+                gradedAt: latestAttempt.graded_at,
+                gradeLetter: latestAttempt.grade_letter,
+                overallFeedback: latestAttempt.overall_feedback,
+                createdAt: latestAttempt.createdAt,
+              }
+            : null,
+          allAttempts: studentAttempts.map((attempt) => ({
             id: attempt.id,
             attemptNumber: attempt.attempt_number,
             status: attempt.status,
@@ -2453,65 +2945,88 @@ export class AssessmentService {
             gradedAt: attempt.graded_at,
             gradeLetter: attempt.grade_letter,
             overallFeedback: attempt.overall_feedback,
-            createdAt: attempt.createdAt
-          }))
+            createdAt: attempt.createdAt,
+          })),
         };
       });
 
       // Calculate statistics
-      const studentsAttempted = studentsWithAttempts.filter(s => s.hasAttempted).length;
+      const studentsAttempted = studentsWithAttempts.filter(
+        (s) => s.hasAttempted,
+      ).length;
       const studentsNotAttempted = allStudents.length - studentsAttempted;
       const totalAttempts = attempts.length;
 
       // Calculate average score
-      const completedAttempts = attempts.filter(a => a.submitted_at && a.status === 'SUBMITTED');
-      const averageScore = completedAttempts.length > 0
-        ? completedAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / completedAttempts.length
-        : 0;
+      const completedAttempts = attempts.filter(
+        (a) => a.submitted_at && a.status === 'SUBMITTED',
+      );
+      const averageScore =
+        completedAttempts.length > 0
+          ? completedAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) /
+            completedAttempts.length
+          : 0;
 
       // Group by class
-      const studentsByClass = studentsWithAttempts.reduce((acc, student) => {
-        const className = student.className;
-        if (!acc[className]) {
-          acc[className] = [];
-        }
-        acc[className].push(student);
-        return acc;
-      }, {} as Record<string, typeof studentsWithAttempts>);
-
-      const classesData = Object.entries(studentsByClass).map(([className, students]) => ({
-        className,
-        totalStudents: students.length,
-        studentsAttempted: students.filter(s => s.hasAttempted).length,
-        studentsNotAttempted: students.filter(s => !s.hasAttempted).length
-      }));
-
-      this.logger.log(colors.green(`✅ Retrieved attempts for ${allStudents.length} students, ${studentsAttempted} have attempted`));
-
-      return ResponseHelper.success('Assessment attempts retrieved successfully', {
-        assessment: {
-          id: assessment.id,
-          title: assessment.title,
-          subject: assessment.subject,
-          topic: assessment.topic,
-          totalPoints: assessment.total_points,
-          passingScore: assessment.passing_score
+      const studentsByClass = studentsWithAttempts.reduce(
+        (acc, student) => {
+          const className = student.className;
+          if (!acc[className]) {
+            acc[className] = [];
+          }
+          acc[className].push(student);
+          return acc;
         },
-        statistics: {
-          totalStudents: allStudents.length,
-          studentsAttempted,
-          studentsNotAttempted,
-          totalAttempts,
-          averageScore: Math.round(averageScore * 100) / 100,
-          completionRate: allStudents.length > 0 
-            ? Math.round((studentsAttempted / allStudents.length) * 100 * 100) / 100 
-            : 0
+        {} as Record<string, typeof studentsWithAttempts>,
+      );
+
+      const classesData = Object.entries(studentsByClass).map(
+        ([className, students]) => ({
+          className,
+          totalStudents: students.length,
+          studentsAttempted: students.filter((s) => s.hasAttempted).length,
+          studentsNotAttempted: students.filter((s) => !s.hasAttempted).length,
+        }),
+      );
+
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved attempts for ${allStudents.length} students, ${studentsAttempted} have attempted`,
+        ),
+      );
+
+      return ResponseHelper.success(
+        'Assessment attempts retrieved successfully',
+        {
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            subject: assessment.subject,
+            topic: assessment.topic,
+            totalPoints: assessment.total_points,
+            passingScore: assessment.passing_score,
+          },
+          statistics: {
+            totalStudents: allStudents.length,
+            studentsAttempted,
+            studentsNotAttempted,
+            totalAttempts,
+            averageScore: Math.round(averageScore * 100) / 100,
+            completionRate:
+              allStudents.length > 0
+                ? Math.round(
+                    (studentsAttempted / allStudents.length) * 100 * 100,
+                  ) / 100
+                : 0,
+          },
+          classes: classesData,
+          students: studentsWithAttempts,
         },
-        classes: classesData,
-        students: studentsWithAttempts
-      });
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error getting assessment attempts: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting assessment attempts: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2520,9 +3035,17 @@ export class AssessmentService {
    * Get assessment with full details (assessment + questions + attempts) in one call.
    * For library owner: single endpoint instead of GET :id, GET :id/questions, GET :id/attempts.
    */
-  async getAssessmentWithDetailsForLibrary(assessmentId: string, schoolId: string, libraryContext: LibraryAssessmentContext) {
+  async getAssessmentWithDetailsForLibrary(
+    assessmentId: string,
+    schoolId: string,
+    libraryContext: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Getting full assessment details for library: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(
+          `Getting full assessment details for library: ${assessmentId}`,
+        ),
+      );
 
       const [quizRes, questionsRes, attemptsRes] = await Promise.all([
         this.getQuizById(assessmentId, '', libraryContext),
@@ -2530,13 +3053,18 @@ export class AssessmentService {
         this.getAssessmentAttempts(assessmentId, '', schoolId, libraryContext),
       ]);
 
-      return ResponseHelper.success('Assessment with details retrieved successfully', {
-        assessment: quizRes.data,
-        questions: questionsRes.data,
-        attempts: attemptsRes.data,
-      });
+      return ResponseHelper.success(
+        'Assessment with details retrieved successfully',
+        {
+          assessment: quizRes.data,
+          questions: questionsRes.data,
+          attempts: attemptsRes.data,
+        },
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error getting assessment with details: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting assessment with details: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2548,12 +3076,25 @@ export class AssessmentService {
    * @param userId - ID of the teacher
    * @param schoolId - ID of the school
    */
-  async getStudentSubmission(assessmentId: string, studentId: string, userId: string, schoolId: string, libraryContext?: LibraryAssessmentContext) {
+  async getStudentSubmission(
+    assessmentId: string,
+    studentId: string,
+    userId: string,
+    schoolId: string,
+    libraryContext?: LibraryAssessmentContext,
+  ) {
     try {
-      this.logger.log(colors.cyan(`Getting student submission for assessment: ${assessmentId}, student: ${studentId}`));
+      this.logger.log(
+        colors.cyan(
+          `Getting student submission for assessment: ${assessmentId}, student: ${studentId}`,
+        ),
+      );
 
       const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
-      const whereClause: any = { id: assessmentId, school_id: effectiveSchoolId };
+      const whereClause: any = {
+        id: assessmentId,
+        school_id: effectiveSchoolId,
+      };
       if (!libraryContext) {
         whereClause.created_by = userId;
       }
@@ -2564,20 +3105,22 @@ export class AssessmentService {
             select: {
               id: true,
               name: true,
-              code: true
-            }
+              code: true,
+            },
           },
           topic: {
             select: {
               id: true,
-              title: true
-            }
-          }
-        }
+              title: true,
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        this.logger.error(colors.red(`Assessment not found or access denied: ${assessmentId}`));
+        this.logger.error(
+          colors.red(`Assessment not found or access denied: ${assessmentId}`),
+        );
         throw new NotFoundException('Assessment not found or access denied');
       }
 
@@ -2589,7 +3132,7 @@ export class AssessmentService {
       const student = await this.prisma.student.findFirst({
         where: {
           id: studentId,
-          school_id: effectiveSchoolId
+          school_id: effectiveSchoolId,
         },
         include: {
           user: {
@@ -2598,48 +3141,64 @@ export class AssessmentService {
               first_name: true,
               last_name: true,
               email: true,
-              display_picture: true
-            }
+              display_picture: true,
+            },
           },
           current_class: {
             select: {
               id: true,
-              name: true
-            }
-          }
-        }
+              name: true,
+            },
+          },
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`Student not found with id: ${studentId}`));
+        this.logger.error(
+          colors.red(`Student not found with id: ${studentId}`),
+        );
         throw new NotFoundException('Student not found');
       }
 
-      this.logger.log(colors.green(`Student found: ${student.user.first_name} ${student.user.last_name} (user_id: ${student.user_id})`));
+      this.logger.log(
+        colors.green(
+          `Student found: ${student.user.first_name} ${student.user.last_name} (user_id: ${student.user_id})`,
+        ),
+      );
 
       // Get current academic session
-      this.logger.log(colors.cyan(`Getting current academic session for school: ${effectiveSchoolId}`));
+      this.logger.log(
+        colors.cyan(
+          `Getting current academic session for school: ${effectiveSchoolId}`,
+        ),
+      );
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: effectiveSchoolId,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
         throw new NotFoundException('Current academic session not found');
       }
 
-      this.logger.log(colors.green(`Current session found: ${currentSession.id}`));
+      this.logger.log(
+        colors.green(`Current session found: ${currentSession.id}`),
+      );
 
       // Get all attempts for this student and assessment
-      this.logger.log(colors.cyan(`Fetching attempts for assessment: ${assessmentId}, user_id: ${student.user_id}`));
+      this.logger.log(
+        colors.cyan(
+          `Fetching attempts for assessment: ${assessmentId}, user_id: ${student.user_id}`,
+        ),
+      );
       const attempts = await this.prisma.assessmentAttempt.findMany({
         where: {
           assessment_id: assessmentId,
           student_id: student.user_id,
           school_id: effectiveSchoolId,
-          academic_session_id: currentSession.id
+          academic_session_id: currentSession.id,
         },
         include: {
           responses: {
@@ -2657,66 +3216,69 @@ export class AssessmentService {
                       id: true,
                       option_text: true,
                       is_correct: true,
-                      order: true
+                      order: true,
                     },
                     orderBy: {
-                      order: 'asc'
-                    }
-                  }
-                }
+                      order: 'asc',
+                    },
+                  },
+                },
               },
               selectedOptions: {
                 select: {
                   id: true,
                   option_text: true,
                   is_correct: true,
-                  order: true
+                  order: true,
                 },
                 orderBy: {
-                  order: 'asc'
-                }
-              }
+                  order: 'asc',
+                },
+              },
             },
             orderBy: {
               question: {
-                order: 'asc'
-              }
-            }
-          }
+                order: 'asc',
+              },
+            },
+          },
         },
         orderBy: {
-          submitted_at: 'desc'
-        }
+          submitted_at: 'desc',
+        },
       });
 
       if (attempts.length === 0) {
-        return ResponseHelper.success('Student submission retrieved successfully', {
-          assessment: {
-            id: assessment.id,
-            title: assessment.title,
-            subject: assessment.subject,
-            topic: assessment.topic,
-            totalPoints: assessment.total_points,
-            passingScore: assessment.passing_score
+        return ResponseHelper.success(
+          'Student submission retrieved successfully',
+          {
+            assessment: {
+              id: assessment.id,
+              title: assessment.title,
+              subject: assessment.subject,
+              topic: assessment.topic,
+              totalPoints: assessment.total_points,
+              passingScore: assessment.passing_score,
+            },
+            student: {
+              id: student.id,
+              userId: student.user_id,
+              studentNumber: student.student_id,
+              firstName: student.user.first_name,
+              lastName: student.user.last_name,
+              email: student.user.email,
+              displayPicture: student.user.display_picture,
+              className: student.current_class?.name || 'Unknown',
+              classId: student.current_class_id,
+            },
+            attempts: [],
+            hasAttempted: false,
           },
-          student: {
-            id: student.id,
-            userId: student.user_id,
-            studentNumber: student.student_id,
-            firstName: student.user.first_name,
-            lastName: student.user.last_name,
-            email: student.user.email,
-            displayPicture: student.user.display_picture,
-            className: student.current_class?.name || 'Unknown',
-            classId: student.current_class_id
-          },
-          attempts: [],
-          hasAttempted: false
-        });
+        );
       }
 
       // Format attempts with responses
-      const formattedAttempts = attempts.map(attempt => ({
+      const formattedAttempts = attempts.map((attempt) => ({
         id: attempt.id,
         attemptNumber: attempt.attempt_number,
         status: attempt.status,
@@ -2733,7 +3295,7 @@ export class AssessmentService {
         gradeLetter: attempt.grade_letter,
         overallFeedback: attempt.overall_feedback,
         createdAt: attempt.createdAt,
-        responses: attempt.responses.map(response => ({
+        responses: attempt.responses.map((response) => ({
           id: response.id,
           question: {
             id: response.question.id,
@@ -2742,7 +3304,7 @@ export class AssessmentService {
             points: response.question.points,
             order: response.question.order,
             imageUrl: response.question.image_url,
-            options: response.question.options
+            options: response.question.options,
           },
           textAnswer: response.text_answer,
           numericAnswer: response.numeric_answer,
@@ -2755,39 +3317,48 @@ export class AssessmentService {
           timeSpent: response.time_spent,
           feedback: response.feedback,
           isGraded: response.is_graded,
-          createdAt: response.createdAt
-        }))
+          createdAt: response.createdAt,
+        })),
       }));
 
-      this.logger.log(colors.green(`✅ Retrieved ${attempts.length} attempt(s) for student ${student.user.first_name} ${student.user.last_name}`));
+      this.logger.log(
+        colors.green(
+          `✅ Retrieved ${attempts.length} attempt(s) for student ${student.user.first_name} ${student.user.last_name}`,
+        ),
+      );
 
-      return ResponseHelper.success('Student submission retrieved successfully', {
-        assessment: {
-          id: assessment.id,
-          title: assessment.title,
-          subject: assessment.subject,
-          topic: assessment.topic,
-          totalPoints: assessment.total_points,
-          passingScore: assessment.passing_score
+      return ResponseHelper.success(
+        'Student submission retrieved successfully',
+        {
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            subject: assessment.subject,
+            topic: assessment.topic,
+            totalPoints: assessment.total_points,
+            passingScore: assessment.passing_score,
+          },
+          student: {
+            id: student.id,
+            userId: student.user_id,
+            studentNumber: student.student_id,
+            firstName: student.user.first_name,
+            lastName: student.user.last_name,
+            email: student.user.email,
+            displayPicture: student.user.display_picture,
+            className: student.current_class?.name || 'Unknown',
+            classId: student.current_class_id,
+          },
+          attempts: formattedAttempts,
+          hasAttempted: true,
+          attemptCount: attempts.length,
+          latestAttempt: formattedAttempts[0] || null,
         },
-        student: {
-          id: student.id,
-          userId: student.user_id,
-          studentNumber: student.student_id,
-          firstName: student.user.first_name,
-          lastName: student.user.last_name,
-          email: student.user.email,
-          displayPicture: student.user.display_picture,
-          className: student.current_class?.name || 'Unknown',
-          classId: student.current_class_id
-        },
-        attempts: formattedAttempts,
-        hasAttempted: true,
-        attemptCount: attempts.length,
-        latestAttempt: formattedAttempts[0] || null
-      });
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error getting student submission: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error getting student submission: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -2802,11 +3373,15 @@ export class AssessmentService {
    * @param teacherId - ID of the teacher
    * @param schoolId - ID of the school
    */
-  private async verifyTeacherTopicAccess(topicId: string, teacherId: string, schoolId: string) {
+  private async verifyTeacherTopicAccess(
+    topicId: string,
+    teacherId: string,
+    schoolId: string,
+  ) {
     const topic = await this.prisma.topic.findFirst({
       where: {
         id: topicId,
-        school_id: schoolId
+        school_id: schoolId,
       },
       include: {
         subject: {
@@ -2814,13 +3389,13 @@ export class AssessmentService {
             teacherSubjects: {
               where: {
                 teacher: {
-                  user_id: teacherId
-                }
-              }
-            }
-          }
-        }
-      }
+                  user_id: teacherId,
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!topic) {
@@ -2829,7 +3404,9 @@ export class AssessmentService {
 
     // Check if teacher teaches this subject
     if (topic.subject.teacherSubjects.length === 0) {
-      throw new ForbiddenException('You do not have permission to create quizzes for this subject');
+      throw new ForbiddenException(
+        'You do not have permission to create quizzes for this subject',
+      );
     }
 
     return topic;
@@ -2840,7 +3417,10 @@ export class AssessmentService {
    * @param subjectId - ID of the subject
    * @param teacherId - ID of the teacher
    */
-  private async verifyTeacherSubjectAccess(subjectId: string, teacherId: string) {
+  private async verifyTeacherSubjectAccess(
+    subjectId: string,
+    teacherId: string,
+  ) {
     const subject = await this.prisma.subject.findFirst({
       where: {
         id: subjectId,
@@ -2849,11 +3429,11 @@ export class AssessmentService {
         teacherSubjects: {
           where: {
             teacher: {
-              user_id: teacherId
-            }
-          }
-        }
-      }
+              user_id: teacherId,
+            },
+          },
+        },
+      },
     });
 
     if (!subject) {
@@ -2863,19 +3443,26 @@ export class AssessmentService {
 
     // Check if teacher teaches this subject
     if (subject.teacherSubjects.length === 0) {
-      throw new ForbiddenException('You do not have permission to create quizzes for this subject');
+      throw new ForbiddenException(
+        'You do not have permission to create quizzes for this subject',
+      );
     }
 
     return subject;
   }
 
   /** Verify subject exists and belongs to school (for library context). */
-  private async verifySubjectBelongsToSchool(subjectId: string, schoolId: string) {
+  private async verifySubjectBelongsToSchool(
+    subjectId: string,
+    schoolId: string,
+  ) {
     const subject = await this.prisma.subject.findFirst({
       where: { id: subjectId, schoolId },
     });
     if (!subject) {
-      throw new NotFoundException('Subject not found or does not belong to this school');
+      throw new NotFoundException(
+        'Subject not found or does not belong to this school',
+      );
     }
     return subject;
   }
@@ -2886,7 +3473,9 @@ export class AssessmentService {
       where: { id: topicId, school_id: schoolId },
     });
     if (!topic) {
-      throw new NotFoundException('Topic not found or does not belong to this school');
+      throw new NotFoundException(
+        'Topic not found or does not belong to this school',
+      );
     }
     return topic;
   }
@@ -2903,10 +3492,17 @@ export class AssessmentService {
     libraryContext?: LibraryAssessmentContext,
   ): Promise<Buffer> {
     try {
-      this.logger.log(colors.cyan(`Generating Excel results for assessment: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(`Generating Excel results for assessment: ${assessmentId}`),
+      );
 
       // Reuse the existing getAssessmentAttempts to get all data
-      const attemptsResponse = await this.getAssessmentAttempts(assessmentId, '', schoolId, libraryContext);
+      const attemptsResponse = await this.getAssessmentAttempts(
+        assessmentId,
+        '',
+        schoolId,
+        libraryContext,
+      );
       const data = attemptsResponse.data;
 
       const assessmentTitle = data.assessment?.title || 'Assessment';
@@ -2924,25 +3520,42 @@ export class AssessmentService {
 
       // Rows 2-3: Stats row (label + value side by side, 3 pairs per row)
       sheetData.push([
-        'Total Students', stats.totalStudents || 0, '',
-        'Attempted', stats.studentsAttempted || 0, '',
-        'Not Attempted', stats.studentsNotAttempted || 0,
+        'Total Students',
+        stats.totalStudents || 0,
+        '',
+        'Attempted',
+        stats.studentsAttempted || 0,
+        '',
+        'Not Attempted',
+        stats.studentsNotAttempted || 0,
       ]);
       sheetData.push([
-        'Total Attempts', stats.totalAttempts || 0, '',
-        'Avg Score', `${stats.averageScore || 0}%`, '',
-        'Completion', `${stats.completionRate || 0}%`,
+        'Total Attempts',
+        stats.totalAttempts || 0,
+        '',
+        'Avg Score',
+        `${stats.averageScore || 0}%`,
+        '',
+        'Completion',
+        `${stats.completionRate || 0}%`,
       ]);
 
       sheetData.push([]); // blank row
 
       // Class Breakdown header
       sheetData.push(['Class Breakdown']);
-      sheetData.push(['Class', 'Students', 'Attempted', 'Not Attempted', 'Completion']);
+      sheetData.push([
+        'Class',
+        'Students',
+        'Attempted',
+        'Not Attempted',
+        'Completion',
+      ]);
       for (const cls of classes) {
-        const completion = cls.totalStudents > 0
-          ? Math.round((cls.studentsAttempted / cls.totalStudents) * 100)
-          : 0;
+        const completion =
+          cls.totalStudents > 0
+            ? Math.round((cls.studentsAttempted / cls.totalStudents) * 100)
+            : 0;
         sheetData.push([
           cls.className,
           cls.totalStudents,
@@ -2959,15 +3572,24 @@ export class AssessmentService {
       // ══════════════════════════════════════════════════════════════
       const attemptedStudents = (data.students || [])
         .filter((s: any) => s.hasAttempted && s.latestAttempt)
-        .sort((a: any, b: any) => (b.latestAttempt.percentage || 0) - (a.latestAttempt.percentage || 0));
+        .sort(
+          (a: any, b: any) =>
+            (b.latestAttempt.percentage || 0) -
+            (a.latestAttempt.percentage || 0),
+        );
 
-      const notAttemptedStudents = (data.students || [])
-        .filter((s: any) => !s.hasAttempted);
+      const notAttemptedStudents = (data.students || []).filter(
+        (s: any) => !s.hasAttempted,
+      );
 
       // Assign positions (handle ties)
       let position = 1;
       for (let i = 0; i < attemptedStudents.length; i++) {
-        if (i > 0 && attemptedStudents[i].latestAttempt.percentage === attemptedStudents[i - 1].latestAttempt.percentage) {
+        if (
+          i > 0 &&
+          attemptedStudents[i].latestAttempt.percentage ===
+            attemptedStudents[i - 1].latestAttempt.percentage
+        ) {
           attemptedStudents[i]._position = attemptedStudents[i - 1]._position;
         } else {
           attemptedStudents[i]._position = position;
@@ -2977,9 +3599,19 @@ export class AssessmentService {
 
       // Table header row
       const tableHeaders = [
-        'S/N', 'Student Name', 'Email', 'Class', 'Status',
-        'Score', 'Percentage', 'Total Score', 'Max Score',
-        'Grade', 'Time Spent (mins)', 'Submitted', 'Position',
+        'S/N',
+        'Student Name',
+        'Email',
+        'Class',
+        'Status',
+        'Score',
+        'Percentage',
+        'Total Score',
+        'Max Score',
+        'Grade',
+        'Time Spent (mins)',
+        'Submitted',
+        'Position',
       ];
       const tableHeaderRowIdx = sheetData.length;
       sheetData.push(tableHeaders);
@@ -2990,8 +3622,12 @@ export class AssessmentService {
         const attempt = student.latestAttempt;
         const submittedDate = attempt.submittedAt
           ? new Date(attempt.submittedAt).toLocaleString('en-US', {
-              month: 'short', day: 'numeric', year: 'numeric',
-              hour: 'numeric', minute: '2-digit', hour12: true,
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
             })
           : '';
 
@@ -3020,7 +3656,14 @@ export class AssessmentService {
           student.email || '',
           student.className || '',
           'Not Attempted',
-          '-', '-', '-', '-', '-', '-', '-', '-',
+          '-',
+          '-',
+          '-',
+          '-',
+          '-',
+          '-',
+          '-',
+          '-',
         ]);
       }
 
@@ -3031,19 +3674,19 @@ export class AssessmentService {
 
       // Column widths
       ws['!cols'] = [
-        { wch: 6 },   // S/N
-        { wch: 32 },  // Student Name
-        { wch: 40 },  // Email
-        { wch: 15 },  // Class
-        { wch: 15 },  // Status
-        { wch: 20 },  // Score
-        { wch: 12 },  // Percentage
-        { wch: 12 },  // Total Score
-        { wch: 10 },  // Max Score
-        { wch: 8 },   // Grade
-        { wch: 16 },  // Time Spent
-        { wch: 26 },  // Submitted
-        { wch: 10 },  // Position
+        { wch: 6 }, // S/N
+        { wch: 32 }, // Student Name
+        { wch: 40 }, // Email
+        { wch: 15 }, // Class
+        { wch: 15 }, // Status
+        { wch: 20 }, // Score
+        { wch: 12 }, // Percentage
+        { wch: 12 }, // Total Score
+        { wch: 10 }, // Max Score
+        { wch: 8 }, // Grade
+        { wch: 16 }, // Time Spent
+        { wch: 26 }, // Submitted
+        { wch: 10 }, // Position
       ];
 
       // Auto-filter on the table header row so it opens as a filterable table
@@ -3057,18 +3700,20 @@ export class AssessmentService {
       };
 
       // Merge the title cell across all columns for a clean header look
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
-      ];
+      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }];
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, ws, 'Assessment Results');
 
-      this.logger.log(colors.green(`✅ Excel generated: ${sn - 1} student rows with summary`));
+      this.logger.log(
+        colors.green(`✅ Excel generated: ${sn - 1} student rows with summary`),
+      );
 
       return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     } catch (error) {
-      this.logger.error(colors.red(`Error generating Excel results: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error generating Excel results: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -3083,7 +3728,9 @@ export class AssessmentService {
     libraryContext?: LibraryAssessmentContext,
   ): Promise<Buffer> {
     try {
-      this.logger.log(colors.cyan(`Generating PDF results for assessment: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(`Generating PDF results for assessment: ${assessmentId}`),
+      );
 
       const effectiveSchoolId = libraryContext?.schoolId ?? schoolId;
 
@@ -3111,12 +3758,19 @@ export class AssessmentService {
               const ab = await resp.arrayBuffer();
               schoolLogoBuffer = Buffer.from(ab);
             }
-          } catch { /* no logo */ }
+          } catch {
+            /* no logo */
+          }
         }
       }
 
       // Get attempts data (reuse existing method)
-      const attemptsResponse = await this.getAssessmentAttempts(assessmentId, '', schoolId, libraryContext);
+      const attemptsResponse = await this.getAssessmentAttempts(
+        assessmentId,
+        '',
+        schoolId,
+        libraryContext,
+      );
       const data = attemptsResponse.data;
 
       const assessmentInfo = data.assessment || {};
@@ -3125,15 +3779,24 @@ export class AssessmentService {
       // Separate and sort students
       const attemptedStudents = (data.students || [])
         .filter((s: any) => s.hasAttempted && s.latestAttempt)
-        .sort((a: any, b: any) => (b.latestAttempt.percentage || 0) - (a.latestAttempt.percentage || 0));
+        .sort(
+          (a: any, b: any) =>
+            (b.latestAttempt.percentage || 0) -
+            (a.latestAttempt.percentage || 0),
+        );
 
-      const notAttemptedStudents = (data.students || [])
-        .filter((s: any) => !s.hasAttempted);
+      const notAttemptedStudents = (data.students || []).filter(
+        (s: any) => !s.hasAttempted,
+      );
 
       // Assign positions (handle ties)
       let position = 1;
       for (let i = 0; i < attemptedStudents.length; i++) {
-        if (i > 0 && attemptedStudents[i].latestAttempt.percentage === attemptedStudents[i - 1].latestAttempt.percentage) {
+        if (
+          i > 0 &&
+          attemptedStudents[i].latestAttempt.percentage ===
+            attemptedStudents[i - 1].latestAttempt.percentage
+        ) {
           attemptedStudents[i]._position = attemptedStudents[i - 1]._position;
         } else {
           attemptedStudents[i]._position = position;
@@ -3149,14 +3812,19 @@ export class AssessmentService {
         const attempt = student.latestAttempt;
         const submittedDate = attempt.submittedAt
           ? new Date(attempt.submittedAt).toLocaleString('en-US', {
-              month: 'short', day: 'numeric', year: 'numeric',
-              hour: 'numeric', minute: '2-digit', hour12: true,
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
             })
           : '';
 
         pdfStudents.push({
           sn: sn++,
-          studentName: `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+          studentName:
+            `${student.firstName || ''} ${student.lastName || ''}`.trim(),
           email: student.email || '',
           className: student.className || '',
           status: attempt.passed ? 'Passed' : 'Failed',
@@ -3170,7 +3838,8 @@ export class AssessmentService {
       for (const student of notAttemptedStudents) {
         pdfStudents.push({
           sn: sn++,
-          studentName: `${student.firstName || ''} ${student.lastName || ''}`.trim(),
+          studentName:
+            `${student.firstName || ''} ${student.lastName || ''}`.trim(),
           email: student.email || '',
           className: student.className || '',
           status: 'Not Attempted',
@@ -3182,15 +3851,18 @@ export class AssessmentService {
       }
 
       // Build class data
-      const pdfClasses: AssessmentResultsPdfClass[] = (data.classes || []).map((cls: any) => ({
-        className: cls.className,
-        totalStudents: cls.totalStudents,
-        studentsAttempted: cls.studentsAttempted,
-        studentsNotAttempted: cls.studentsNotAttempted,
-        completion: cls.totalStudents > 0
-          ? Math.round((cls.studentsAttempted / cls.totalStudents) * 100)
-          : 0,
-      }));
+      const pdfClasses: AssessmentResultsPdfClass[] = (data.classes || []).map(
+        (cls: any) => ({
+          className: cls.className,
+          totalStudents: cls.totalStudents,
+          studentsAttempted: cls.studentsAttempted,
+          studentsNotAttempted: cls.studentsNotAttempted,
+          completion:
+            cls.totalStudents > 0
+              ? Math.round((cls.studentsAttempted / cls.totalStudents) * 100)
+              : 0,
+        }),
+      );
 
       const pdfData: AssessmentResultsPdfData = {
         school: {
@@ -3221,11 +3893,15 @@ export class AssessmentService {
 
       const pdfBuffer = await buildAssessmentResultsPdf(pdfData);
 
-      this.logger.log(colors.green(`✅ PDF generated: ${pdfStudents.length} student rows`));
+      this.logger.log(
+        colors.green(`✅ PDF generated: ${pdfStudents.length} student rows`),
+      );
 
       return pdfBuffer;
     } catch (error) {
-      this.logger.error(colors.red(`Error generating PDF results: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error generating PDF results: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -3239,7 +3915,10 @@ export class AssessmentService {
   }
 
   /** Verify assessment exists and belongs to school (for library context). */
-  private async verifyAssessmentBelongsToSchool(assessmentId: string, schoolId: string) {
+  private async verifyAssessmentBelongsToSchool(
+    assessmentId: string,
+    schoolId: string,
+  ) {
     const assessment = await this.prisma.assessment.findFirst({
       where: { id: assessmentId, school_id: schoolId },
     });

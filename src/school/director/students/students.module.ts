@@ -5,9 +5,9 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { AcademicSessionModule } from '../../../academic-session/academic-session.module';
 
 @Module({
-    imports: [PrismaModule, AcademicSessionModule],
-    controllers: [StudentsController],
-    providers: [StudentsService],
-    exports: [StudentsService]
+  imports: [PrismaModule, AcademicSessionModule],
+  controllers: [StudentsController],
+  providers: [StudentsService],
+  exports: [StudentsService],
 })
 export class StudentsModule {}

@@ -8,7 +8,7 @@ export class QueryNotificationsDto {
     description: 'Page number for pagination',
     example: 1,
     required: false,
-    default: 1
+    default: 1,
   })
   @IsOptional()
   @Type(() => Number)
@@ -20,7 +20,7 @@ export class QueryNotificationsDto {
     description: 'Number of items per page',
     example: 10,
     required: false,
-    default: 10
+    default: 10,
   })
   @IsOptional()
   @Type(() => Number)
@@ -32,7 +32,7 @@ export class QueryNotificationsDto {
   @ApiProperty({
     description: 'Search term for title or description',
     example: 'student enrollment',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsString()
@@ -42,7 +42,7 @@ export class QueryNotificationsDto {
     description: 'Filter by notification type',
     enum: NotificationType,
     example: 'all',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsEnum(NotificationType)
@@ -52,7 +52,7 @@ export class QueryNotificationsDto {
     description: 'Sort by field',
     example: 'createdAt',
     required: false,
-    default: 'createdAt'
+    default: 'createdAt',
   })
   @IsOptional()
   @IsString()
@@ -62,7 +62,7 @@ export class QueryNotificationsDto {
     description: 'Sort order',
     example: 'desc',
     required: false,
-    default: 'desc'
+    default: 'desc',
   })
   @IsOptional()
   @IsString()

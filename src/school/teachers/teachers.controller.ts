@@ -1,9 +1,23 @@
-import { Controller, Get, Post, UseGuards, HttpCode, HttpStatus, Body, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  Body,
+  Query,
+} from '@nestjs/common';
 import { TeachersService } from './teachers.service';
 import { JwtGuard } from '../auth/guard';
 import { GetUser } from '../auth/decorator';
 import { User } from '@prisma/client';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AddStudentToClassDto } from '../director/students/dto/auth.dto';
 import { TeachersDocs } from './utils/api-docs/teachers.docs';
 
@@ -37,7 +51,7 @@ export class TeachersController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Get teacher timetable',
-    description: 'Fetch the timetable of the authenticated teacher'
+    description: 'Fetch the timetable of the authenticated teacher',
   })
   @ApiResponse({
     status: 200,
@@ -46,7 +60,10 @@ export class TeachersController {
       type: 'object',
       properties: {
         success: { type: 'boolean', example: true },
-        message: { type: 'string', example: 'Teacher timetable fetched successfully' },
+        message: {
+          type: 'string',
+          example: 'Teacher timetable fetched successfully',
+        },
         data: {
           type: 'object',
           properties: {
@@ -59,9 +76,9 @@ export class TeachersController {
                   startTime: { type: 'string', example: '08:30' },
                   endTime: { type: 'string', example: '10:30' },
                   label: { type: 'string', example: 'First Period' },
-                  order: { type: 'number', example: 1 }
-                }
-              }
+                  order: { type: 'number', example: 1 },
+                },
+              },
             },
             schedule: {
               type: 'object',
@@ -79,8 +96,8 @@ export class TeachersController {
                         type: 'object',
                         properties: {
                           id: { type: 'string', example: 'class-uuid' },
-                          name: { type: 'string', example: 'Class 10A' }
-                        }
+                          name: { type: 'string', example: 'Class 10A' },
+                        },
                       },
                       subject: {
                         type: 'object',
@@ -88,24 +105,24 @@ export class TeachersController {
                           id: { type: 'string', example: 'subject-uuid' },
                           name: { type: 'string', example: 'Mathematics' },
                           code: { type: 'string', example: 'MATH101' },
-                          color: { type: 'string', example: '#FF5733' }
-                        }
+                          color: { type: 'string', example: '#FF5733' },
+                        },
                       },
-                      room: { type: 'string', example: 'Room 101' }
-                    }
-                  }
-                }
-              }
-            }
-          }
+                      room: { type: 'string', example: 'Room 101' },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
-        statusCode: { type: 'number', example: 200 }
-      }
-    }
+        statusCode: { type: 'number', example: 200 },
+      },
+    },
   })
   @ApiResponse({
     status: 401,
-    description: 'Unauthorized - Invalid or missing JWT token'
+    description: 'Unauthorized - Invalid or missing JWT token',
   })
   getTeacherTimetable(@GetUser() user: User) {
     return this.teachersService.getTeacherTimetable(user);
@@ -145,7 +162,7 @@ export class TeachersController {
     @Query('search') search?: string,
     @Query('class_id') class_id?: string,
     @Query('sort_by') sort_by: string = 'createdAt',
-    @Query('sort_order') sort_order: string = 'desc'
+    @Query('sort_order') sort_order: string = 'desc',
   ) {
     return this.teachersService.fetchStudentTabForTeacher(user, {
       page: parseInt(page) || 1,
@@ -153,7 +170,7 @@ export class TeachersController {
       search,
       class_id,
       sort_by: sort_by as any,
-      sort_order: sort_order as 'asc' | 'desc'
+      sort_order: sort_order as 'asc' | 'desc',
     });
   }
 
@@ -192,7 +209,7 @@ export class TeachersController {
     @Query('academic_session_id') academic_session_id?: string,
     @Query('class_id') class_id?: string,
     @Query('sort_by') sort_by: string = 'name',
-    @Query('sort_order') sort_order: string = 'asc'
+    @Query('sort_order') sort_order: string = 'asc',
   ) {
     return this.teachersService.fetchSubjectsTabForTeacher(user, {
       page: parseInt(page) || 1,
@@ -201,7 +218,7 @@ export class TeachersController {
       academic_session_id,
       class_id,
       sort_by: sort_by as any,
-      sort_order: sort_order as 'asc' | 'desc'
+      sort_order: sort_order as 'asc' | 'desc',
     });
   }
-} 
+}

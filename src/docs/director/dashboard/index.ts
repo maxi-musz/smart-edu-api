@@ -1,2 +1,2 @@
 // Export director dashboard documentation
-export * from './dashboard.docs'; 
+export * from './dashboard.docs';

@@ -64,7 +64,7 @@ export const DeleteLibraryDevDocs = {
     description: 'Library deleted successfully',
   }),
 };
- 
+
 export const AddLibraryOwnerDocs = {
   operation: ApiOperation({
     summary: 'Add a library owner/manager (developer only)',
@@ -79,4 +79,3 @@ export const AddLibraryOwnerDocs = {
     description: 'Library owner added successfully',
   }),
 };
-

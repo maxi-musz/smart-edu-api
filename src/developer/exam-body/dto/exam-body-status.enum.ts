@@ -3,4 +3,3 @@ export enum ExamBodyStatus {
   inactive = 'inactive',
   archived = 'archived',
 }
-

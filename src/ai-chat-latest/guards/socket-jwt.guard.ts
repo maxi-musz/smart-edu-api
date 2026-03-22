@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Socket } from 'socket.io';
@@ -18,11 +23,12 @@ export class SocketJwtGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     try {
       const client: Socket = context.switchToWs().getClient();
-      
+
       // Extract token from handshake auth
-      const token = client.handshake.auth?.token || 
-                   client.handshake.headers?.authorization?.replace('Bearer ', '');
-      
+      const token =
+        client.handshake.auth?.token ||
+        client.handshake.headers?.authorization?.replace('Bearer ', '');
+
       if (!token) {
         this.logger('SocketJwtGuard - No token provided');
         throw new UnauthorizedException('Authentication token required');
@@ -48,17 +54,27 @@ export class SocketJwtGuard implements CanActivate {
       if (!payload.email) missingFields.push('email');
 
       if (missingFields.length > 0) {
-        this.logger(`SocketJwtGuard - Invalid payload structure. Missing fields: ${missingFields.join(', ')}`);
-        this.logger(`SocketJwtGuard - Available fields: ${Object.keys(payload).join(', ')}`);
-        throw new UnauthorizedException(`Invalid token structure. Missing required fields: ${missingFields.join(', ')}`);
+        this.logger(
+          `SocketJwtGuard - Invalid payload structure. Missing fields: ${missingFields.join(', ')}`,
+        );
+        this.logger(
+          `SocketJwtGuard - Available fields: ${Object.keys(payload).join(', ')}`,
+        );
+        throw new UnauthorizedException(
+          `Invalid token structure. Missing required fields: ${missingFields.join(', ')}`,
+        );
       }
 
       // Log if school_id is missing (we'll fetch it from DB or use default for library users)
       if (!payload.school_id) {
         if (payload.platform_id) {
-          this.logger(`SocketJwtGuard - Library user detected (platform_id: ${payload.platform_id}), will use default library school`);
+          this.logger(
+            `SocketJwtGuard - Library user detected (platform_id: ${payload.platform_id}), will use default library school`,
+          );
         } else {
-          this.logger(`SocketJwtGuard - school_id not in token, will fetch from database`);
+          this.logger(
+            `SocketJwtGuard - school_id not in token, will fetch from database`,
+          );
         }
       }
 
@@ -77,7 +93,9 @@ export class SocketJwtGuard implements CanActivate {
       return true;
     } catch (error) {
       this.logger(`SocketJwtGuard - Authentication failed: ${error.message}`);
-      throw new UnauthorizedException(`Authentication failed: ${error.message}`);
+      throw new UnauthorizedException(
+        `Authentication failed: ${error.message}`,
+      );
     }
   }
 
@@ -85,4 +103,3 @@ export class SocketJwtGuard implements CanActivate {
     console.log(colors.yellow(`[${new Date().toISOString()}] ${message}`));
   }
 }
-

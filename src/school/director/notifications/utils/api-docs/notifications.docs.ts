@@ -9,7 +9,7 @@ export class NotificationsDocs {
   static get createNotificationOperation() {
     return {
       summary: 'Create a new notification',
-      description: 'Create a new notification for the school'
+      description: 'Create a new notification for the school',
     };
   }
 
@@ -17,14 +17,14 @@ export class NotificationsDocs {
     return {
       status: 201,
       description: 'Notification created successfully',
-      type: NotificationResponseDto
+      type: NotificationResponseDto,
     };
   }
 
   static get createNotificationResponse400() {
     return {
       status: 400,
-      description: 'Bad request - Invalid data provided'
+      description: 'Bad request - Invalid data provided',
     };
   }
 
@@ -32,7 +32,7 @@ export class NotificationsDocs {
   static get getAllNotificationsOperation() {
     return {
       summary: 'Get all notifications',
-      description: 'Retrieve all notifications with pagination and filtering'
+      description: 'Retrieve all notifications with pagination and filtering',
     };
   }
 
@@ -44,13 +44,16 @@ export class NotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Notifications retrieved successfully' },
+          message: {
+            type: 'string',
+            example: 'Notifications retrieved successfully',
+          },
           data: {
             type: 'object',
             properties: {
               notifications: {
                 type: 'array',
-                items: { $ref: '#/components/schemas/NotificationResponseDto' }
+                items: { $ref: '#/components/schemas/NotificationResponseDto' },
               },
               pagination: {
                 type: 'object',
@@ -60,8 +63,8 @@ export class NotificationsDocs {
                   total: { type: 'number', example: 25 },
                   totalPages: { type: 'number', example: 3 },
                   hasNext: { type: 'boolean', example: true },
-                  hasPrev: { type: 'boolean', example: false }
-                }
+                  hasPrev: { type: 'boolean', example: false },
+                },
               },
               stats: {
                 type: 'object',
@@ -71,13 +74,13 @@ export class NotificationsDocs {
                   teachers: { type: 'number', example: 5 },
                   students: { type: 'number', example: 5 },
                   school_director: { type: 'number', example: 3 },
-                  admin: { type: 'number', example: 2 }
-                }
-              }
-            }
-          }
-        }
-      }
+                  admin: { type: 'number', example: 2 },
+                },
+              },
+            },
+          },
+        },
+      },
     };
   }
 
@@ -85,7 +88,7 @@ export class NotificationsDocs {
   static get getNotificationByIdOperation() {
     return {
       summary: 'Get notification by ID',
-      description: 'Retrieve a specific notification by its ID'
+      description: 'Retrieve a specific notification by its ID',
     };
   }
 
@@ -93,14 +96,14 @@ export class NotificationsDocs {
     return {
       status: 200,
       description: 'Notification retrieved successfully',
-      type: NotificationResponseDto
+      type: NotificationResponseDto,
     };
   }
 
   static get getNotificationByIdResponse404() {
     return {
       status: 404,
-      description: 'Notification not found'
+      description: 'Notification not found',
     };
   }
 
@@ -108,7 +111,7 @@ export class NotificationsDocs {
   static get updateNotificationOperation() {
     return {
       summary: 'Update notification',
-      description: 'Update an existing notification'
+      description: 'Update an existing notification',
     };
   }
 
@@ -116,14 +119,14 @@ export class NotificationsDocs {
     return {
       status: 200,
       description: 'Notification updated successfully',
-      type: NotificationResponseDto
+      type: NotificationResponseDto,
     };
   }
 
   static get updateNotificationResponse404() {
     return {
       status: 404,
-      description: 'Notification not found'
+      description: 'Notification not found',
     };
   }
 
@@ -131,21 +134,21 @@ export class NotificationsDocs {
   static get deleteNotificationOperation() {
     return {
       summary: 'Delete notification',
-      description: 'Delete a notification by its ID'
+      description: 'Delete a notification by its ID',
     };
   }
 
   static get deleteNotificationResponse200() {
     return {
       status: 200,
-      description: 'Notification deleted successfully'
+      description: 'Notification deleted successfully',
     };
   }
 
   static get deleteNotificationResponse404() {
     return {
       status: 404,
-      description: 'Notification not found'
+      description: 'Notification not found',
     };
   }
 }

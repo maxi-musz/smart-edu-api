@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Socket } from 'socket.io';
@@ -18,11 +23,12 @@ export class ExploreChatSocketJwtGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     try {
       const client: Socket = context.switchToWs().getClient();
-      
+
       // Extract token from handshake auth
-      const token = client.handshake.auth?.token || 
-                   client.handshake.headers?.authorization?.replace('Bearer ', '');
-      
+      const token =
+        client.handshake.auth?.token ||
+        client.handshake.headers?.authorization?.replace('Bearer ', '');
+
       if (!token) {
         this.logger('ExploreChatSocketJwtGuard - No token provided');
         throw new UnauthorizedException('Authentication token required');
@@ -43,8 +49,12 @@ export class ExploreChatSocketJwtGuard implements CanActivate {
       if (!payload.email) missingFields.push('email');
 
       if (missingFields.length > 0) {
-        this.logger(`ExploreChatSocketJwtGuard - Invalid payload structure. Missing fields: ${missingFields.join(', ')}`);
-        throw new UnauthorizedException(`Invalid token structure. Missing required fields: ${missingFields.join(', ')}`);
+        this.logger(
+          `ExploreChatSocketJwtGuard - Invalid payload structure. Missing fields: ${missingFields.join(', ')}`,
+        );
+        throw new UnauthorizedException(
+          `Invalid token structure. Missing required fields: ${missingFields.join(', ')}`,
+        );
       }
 
       // Check token expiration
@@ -61,8 +71,12 @@ export class ExploreChatSocketJwtGuard implements CanActivate {
 
       return true;
     } catch (error) {
-      this.logger(`ExploreChatSocketJwtGuard - Authentication failed: ${error.message}`);
-      throw new UnauthorizedException(`Authentication failed: ${error.message}`);
+      this.logger(
+        `ExploreChatSocketJwtGuard - Authentication failed: ${error.message}`,
+      );
+      throw new UnauthorizedException(
+        `Authentication failed: ${error.message}`,
+      );
     }
   }
 

@@ -12,5 +12,3 @@ export const LoginDeveloperDocs = {
     description: 'Developer logged in successfully',
   }),
 };
-
-

@@ -11,22 +11,18 @@ export class ClassesService {
 
   constructor(
     private prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService
+    private readonly academicSessionService: AcademicSessionService,
   ) {}
 
   async getAllClasses(user: any) {
     // Fetch complete user data including school_id
     const userData = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { school_id: true }
+      select: { school_id: true },
     });
 
     if (!userData) {
-      return new ApiResponse(
-        false,
-        'User not found',
-        null
-      );
+      return new ApiResponse(false, 'User not found', null);
     }
 
     // this.logger.log(colors.cyan(`Fetching all classes for school: ${userData.school_id}`));
@@ -76,15 +72,17 @@ export class ClassesService {
       },
     });
 
-    this.logger.log(`Found ${classes.length} classes and ${teachers.length} teachers`);
+    this.logger.log(
+      `Found ${classes.length} classes and ${teachers.length} teachers`,
+    );
 
     return new ApiResponse(
-        true,
-        `Total of ${classes.length} classes retrieved`,
-        {
-          classes,
-          teachers
-        }
+      true,
+      `Total of ${classes.length} classes retrieved`,
+      {
+        classes,
+        teachers,
+      },
     );
   }
 
@@ -92,18 +90,18 @@ export class ClassesService {
     // Fetch complete user data including school_id
     const userData = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { school_id: true }
+      select: { school_id: true },
     });
 
     if (!userData) {
-      return new ApiResponse(
-        false,
-        'User not found',
-        null
-      );
+      return new ApiResponse(false, 'User not found', null);
     }
 
-    this.logger.log(colors.cyan(`Creating new class: ${createClassDto.name} for school: ${userData.school_id}`));
+    this.logger.log(
+      colors.cyan(
+        `Creating new class: ${createClassDto.name} for school: ${userData.school_id}`,
+      ),
+    );
 
     // Check if class name already exists for this school
     const existingClass = await this.prisma.class.findFirst({
@@ -114,18 +112,21 @@ export class ClassesService {
     });
 
     if (existingClass) {
-      this.logger.error(`A class with the name "${createClassDto.name}" already exists in this school`);
+      this.logger.error(
+        `A class with the name "${createClassDto.name}" already exists in this school`,
+      );
       return new ApiResponse(
         false,
         `A class with the name "${createClassDto.name}" already exists in this school`,
-        null
+        null,
       );
     }
 
     // If classTeacherId is provided, verify the teacher exists and belongs to the school
     if (createClassDto.classTeacherId) {
-
-      this.logger.log(`Checking if teacher exists: ${createClassDto.classTeacherId}`);
+      this.logger.log(
+        `Checking if teacher exists: ${createClassDto.classTeacherId}`,
+      );
 
       // Find the Teacher record using the User ID
       const teacher = await this.prisma.teacher.findFirst({
@@ -136,11 +137,13 @@ export class ClassesService {
       });
 
       if (!teacher) {
-        this.logger.error(`The specified teacher does not exist or does not belong to this school`);
+        this.logger.error(
+          `The specified teacher does not exist or does not belong to this school`,
+        );
         return new ApiResponse(
           false,
           'The specified teacher does not exist or does not belong to this school',
-          null
+          null,
         );
       }
 
@@ -149,12 +152,13 @@ export class ClassesService {
     }
 
     // Get current academic session for the school
-    const currentSessionResponse = await this.academicSessionService.getCurrentSession(userData.school_id);
+    const currentSessionResponse =
+      await this.academicSessionService.getCurrentSession(userData.school_id);
     if (!currentSessionResponse.success) {
       return new ApiResponse(
         false,
         'No current academic session found for the school',
-        null
+        null,
       );
     }
 
@@ -183,12 +187,14 @@ export class ClassesService {
       },
     });
 
-    this.logger.log(`Successfully created class: ${newClass.name} with ID: ${newClass.id}`);
+    this.logger.log(
+      `Successfully created class: ${newClass.name} with ID: ${newClass.id}`,
+    );
 
     return new ApiResponse(
       true,
       `Class "${newClass.name}" created successfully`,
-      newClass
+      newClass,
     );
   }
 
@@ -196,18 +202,18 @@ export class ClassesService {
     // Fetch complete user data including school_id
     const userData = await this.prisma.user.findUnique({
       where: { id: user.sub },
-      select: { school_id: true }
+      select: { school_id: true },
     });
 
     if (!userData) {
-      return new ApiResponse(
-        false,
-        'User not found',
-        null
-      );
+      return new ApiResponse(false, 'User not found', null);
     }
 
-    this.logger.log(colors.cyan(`Editing class: ${classId} for school: ${userData.school_id}`));
+    this.logger.log(
+      colors.cyan(
+        `Editing class: ${classId} for school: ${userData.school_id}`,
+      ),
+    );
 
     // Check if class exists and belongs to the school
     const existingClass = await this.prisma.class.findFirst({
@@ -221,7 +227,7 @@ export class ClassesService {
       return new ApiResponse(
         false,
         'Class not found or does not belong to this school',
-        null
+        null,
       );
     }
 
@@ -241,7 +247,7 @@ export class ClassesService {
         return new ApiResponse(
           false,
           `A class with the name "${editClassDto.name}" already exists in this school`,
-          null
+          null,
         );
       }
     }
@@ -260,7 +266,7 @@ export class ClassesService {
         return new ApiResponse(
           false,
           'The specified teacher does not exist or does not belong to this school',
-          null
+          null,
         );
       }
 
@@ -270,7 +276,7 @@ export class ClassesService {
 
     // Build update data object with only provided fields
     const updateData: any = {};
-    
+
     if (editClassDto.name !== undefined) {
       updateData.name = editClassDto.name;
     }
@@ -301,12 +307,14 @@ export class ClassesService {
       },
     });
 
-    this.logger.log(`Successfully updated class: ${updatedClass.name} with ID: ${updatedClass.id}`);
+    this.logger.log(
+      `Successfully updated class: ${updatedClass.name} with ID: ${updatedClass.id}`,
+    );
 
     return new ApiResponse(
       true,
       `Class updated successfully to "${updatedClass.name}"`,
-      updatedClass
+      updatedClass,
     );
   }
 

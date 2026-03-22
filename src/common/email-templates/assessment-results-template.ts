@@ -39,10 +39,10 @@ export interface AssessmentResultsPdfStudent {
   email: string;
   className: string;
   status: 'Passed' | 'Failed' | 'Not Attempted';
-  score: string;       // e.g. "95% (95/100)"
+  score: string; // e.g. "95% (95/100)"
   percentage: number;
-  submitted: string;   // formatted date string
-  position: string;    // e.g. "1st"
+  submitted: string; // formatted date string
+  position: string; // e.g. "1st"
 }
 
 export interface AssessmentResultsPdfClass {
@@ -50,7 +50,7 @@ export interface AssessmentResultsPdfClass {
   totalStudents: number;
   studentsAttempted: number;
   studentsNotAttempted: number;
-  completion: number;  // percentage
+  completion: number; // percentage
 }
 
 export interface AssessmentResultsPdfData {
@@ -83,7 +83,11 @@ export interface AssessmentResultsPdfData {
 // ─── Helpers ─────────────────────────────────────────────────────────
 function toTitleCase(s: string | null | undefined): string {
   if (!s) return '';
-  return s.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  return s
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
 }
 
 function getOrdinal(n: number): string {
@@ -98,7 +102,9 @@ function getOrdinal(n: number): string {
 }
 
 // ─── PDF Builder ─────────────────────────────────────────────────────
-export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promise<Buffer> {
+export function buildAssessmentResultsPdf(
+  data: AssessmentResultsPdfData,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -127,7 +133,10 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
 
     // ─── School Header ───────────────────────────────────────────
     const logoSize = { w: D.logoMaxWidth, h: D.logoMaxHeight };
-    const hasLogo = data.school.school_logo && Buffer.isBuffer(data.school.school_logo) && data.school.school_logo.length > 0;
+    const hasLogo =
+      data.school.school_logo &&
+      Buffer.isBuffer(data.school.school_logo) &&
+      data.school.school_logo.length > 0;
 
     if (hasLogo) {
       try {
@@ -136,18 +145,30 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
           align: 'center',
           valign: 'center',
         });
-      } catch { /* fallback: no logo */ }
+      } catch {
+        /* fallback: no logo */
+      }
     }
 
     // School name + contact (centered)
-    doc.fontSize(18).font('Helvetica-Bold').fillColor(D.brandPrimary)
-      .text(toTitleCase(data.school.school_name) || data.school.school_name, left, y, { width, align: 'center' });
+    doc
+      .fontSize(18)
+      .font('Helvetica-Bold')
+      .fillColor(D.brandPrimary)
+      .text(
+        toTitleCase(data.school.school_name) || data.school.school_name,
+        left,
+        y,
+        { width, align: 'center' },
+      );
     y += 22;
 
     doc.fontSize(9).font('Helvetica').fillColor(D.brandMuted);
     const contactParts: string[] = [];
-    if (data.school.school_address) contactParts.push(data.school.school_address);
-    if (data.school.school_phone) contactParts.push(`Tel: ${data.school.school_phone}`);
+    if (data.school.school_address)
+      contactParts.push(data.school.school_address);
+    if (data.school.school_phone)
+      contactParts.push(`Tel: ${data.school.school_phone}`);
     if (data.school.school_email) contactParts.push(data.school.school_email);
     if (contactParts.length) {
       doc.text(contactParts.join('  |  '), left, y, { width, align: 'center' });
@@ -157,21 +178,31 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
 
     // ─── Banner: ASSESSMENT RESULTS ──────────────────────────────
     doc.rect(left, y, width, 30).fill(D.brandPrimary);
-    doc.fontSize(13).font('Helvetica-Bold').fillColor(D.white)
+    doc
+      .fontSize(13)
+      .font('Helvetica-Bold')
+      .fillColor(D.white)
       .text('ASSESSMENT RESULTS', left, y + 8, { width, align: 'center' });
     y += 38;
 
     // ─── Assessment Info ─────────────────────────────────────────
-    doc.fontSize(10).font('Helvetica-Bold').fillColor(D.brandHeading)
+    doc
+      .fontSize(10)
+      .font('Helvetica-Bold')
+      .fillColor(D.brandHeading)
       .text(data.assessment.title, left, y, { width });
     y += 16;
 
     doc.fontSize(9).font('Helvetica').fillColor(D.brandMuted);
     const infoParts: string[] = [];
-    if (data.assessment.subject) infoParts.push(`Subject: ${data.assessment.subject}`);
-    if (data.assessment.topic) infoParts.push(`Topic: ${data.assessment.topic}`);
-    if (data.assessment.totalPoints != null) infoParts.push(`Total Points: ${data.assessment.totalPoints}`);
-    if (data.assessment.passingScore != null) infoParts.push(`Passing Score: ${data.assessment.passingScore}`);
+    if (data.assessment.subject)
+      infoParts.push(`Subject: ${data.assessment.subject}`);
+    if (data.assessment.topic)
+      infoParts.push(`Topic: ${data.assessment.topic}`);
+    if (data.assessment.totalPoints != null)
+      infoParts.push(`Total Points: ${data.assessment.totalPoints}`);
+    if (data.assessment.passingScore != null)
+      infoParts.push(`Passing Score: ${data.assessment.passingScore}`);
     if (infoParts.length) {
       doc.text(infoParts.join('   |   '), left, y, { width });
       y += 16;
@@ -191,28 +222,55 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
 
     const statBoxW = Math.floor(width / statItems.length);
     const statBoxH = 36;
-    doc.rect(left, y, width, statBoxH).fill(D.summaryBg).stroke(D.summaryBorder);
+    doc
+      .rect(left, y, width, statBoxH)
+      .fill(D.summaryBg)
+      .stroke(D.summaryBorder);
 
     for (let i = 0; i < statItems.length; i++) {
       const bx = left + i * statBoxW;
       // Vertical separator
       if (i > 0) {
-        doc.moveTo(bx, y + 6).lineTo(bx, y + statBoxH - 6).stroke(D.summaryBorder);
+        doc
+          .moveTo(bx, y + 6)
+          .lineTo(bx, y + statBoxH - 6)
+          .stroke(D.summaryBorder);
       }
-      doc.fontSize(8).font('Helvetica').fillColor(D.brandMuted)
-        .text(statItems[i].label, bx + 8, y + 6, { width: statBoxW - 16, align: 'center' });
-      doc.fontSize(12).font('Helvetica-Bold').fillColor(D.brandHeading)
-        .text(statItems[i].value, bx + 8, y + 18, { width: statBoxW - 16, align: 'center' });
+      doc
+        .fontSize(8)
+        .font('Helvetica')
+        .fillColor(D.brandMuted)
+        .text(statItems[i].label, bx + 8, y + 6, {
+          width: statBoxW - 16,
+          align: 'center',
+        });
+      doc
+        .fontSize(12)
+        .font('Helvetica-Bold')
+        .fillColor(D.brandHeading)
+        .text(statItems[i].value, bx + 8, y + 18, {
+          width: statBoxW - 16,
+          align: 'center',
+        });
     }
     y += statBoxH + 10;
 
     // ─── Class Breakdown ─────────────────────────────────────────
     if (data.classes.length > 0) {
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(D.brandHeading)
+      doc
+        .fontSize(9)
+        .font('Helvetica-Bold')
+        .fillColor(D.brandHeading)
         .text('Class Breakdown', left, y);
       y += 14;
 
-      const cbHeaders = ['Class', 'Students', 'Attempted', 'Not Attempted', 'Completion'];
+      const cbHeaders = [
+        'Class',
+        'Students',
+        'Attempted',
+        'Not Attempted',
+        'Completion',
+      ];
       const cbColW = [140, 80, 80, 100, 80];
       const cbTotalW = cbColW.reduce((a, b) => a + b, 0);
 
@@ -236,7 +294,13 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
         doc.fillColor(D.brandHeading);
 
         cx = left;
-        const vals = [cls.className, String(cls.totalStudents), String(cls.studentsAttempted), String(cls.studentsNotAttempted), `${cls.completion}%`];
+        const vals = [
+          cls.className,
+          String(cls.totalStudents),
+          String(cls.studentsAttempted),
+          String(cls.studentsNotAttempted),
+          `${cls.completion}%`,
+        ];
         for (let j = 0; j < vals.length; j++) {
           doc.text(vals[j], cx + 6, y + 6, { width: cbColW[j] - 12 });
           cx += cbColW[j];
@@ -247,11 +311,23 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
     }
 
     // ─── Student Results Table ───────────────────────────────────
-    doc.fontSize(9).font('Helvetica-Bold').fillColor(D.brandHeading)
+    doc
+      .fontSize(9)
+      .font('Helvetica-Bold')
+      .fillColor(D.brandHeading)
       .text(`Student Attempts (${data.students.length})`, left, y);
     y += 14;
 
-    const headers = ['S/N', 'Student Name', 'Email', 'Class', 'Status', 'Score', 'Submitted', 'Position'];
+    const headers = [
+      'S/N',
+      'Student Name',
+      'Email',
+      'Class',
+      'Status',
+      'Score',
+      'Submitted',
+      'Position',
+    ];
     const colW = [30, 140, 190, 80, 72, 110, 120, 60];
     const tableW = colW.reduce((a, b) => a + b, 0);
 
@@ -300,12 +376,16 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
       rx += colW[0];
       doc.text(student.studentName, rx + 4, y + 6, { width: colW[1] - 8 });
       rx += colW[1];
-      doc.fontSize(7).text(student.email, rx + 4, y + 7, { width: colW[2] - 8 });
+      doc
+        .fontSize(7)
+        .text(student.email, rx + 4, y + 7, { width: colW[2] - 8 });
       doc.fontSize(8);
       rx += colW[2];
       doc.text(student.className, rx + 4, y + 6, { width: colW[3] - 8 });
       rx += colW[3];
-      doc.fillColor(statusColor).font('Helvetica-Bold')
+      doc
+        .fillColor(statusColor)
+        .font('Helvetica-Bold')
         .text(student.status, rx + 4, y + 6, { width: colW[4] - 8 });
       doc.font('Helvetica').fillColor(D.brandHeading);
       rx += colW[4];
@@ -313,7 +393,9 @@ export function buildAssessmentResultsPdf(data: AssessmentResultsPdfData): Promi
       rx += colW[5];
       doc.text(student.submitted, rx + 4, y + 6, { width: colW[6] - 8 });
       rx += colW[6];
-      doc.font('Helvetica-Bold').text(student.position, rx + 4, y + 6, { width: colW[7] - 8 });
+      doc
+        .font('Helvetica-Bold')
+        .text(student.position, rx + 4, y + 6, { width: colW[7] - 8 });
       doc.font('Helvetica');
 
       y += D.rowHeight;
@@ -332,6 +414,9 @@ function addWatermark(doc: any, pageWidth: number, pageHeight: number) {
   doc.fontSize(14).font('Helvetica').fillColor(D.brandMuted);
   doc.translate(pageWidth / 2, pageHeight / 2);
   doc.rotate(30, { origin: [0, 0] });
-  doc.text(WATERMARK, -pageWidth / 2, -10, { width: pageWidth, align: 'center' });
+  doc.text(WATERMARK, -pageWidth / 2, -10, {
+    width: pageWidth,
+    align: 'center',
+  });
   doc.restore();
 }

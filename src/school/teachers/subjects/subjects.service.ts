@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 import { CreateSubjectDto } from './dto/create-subject.dto';
@@ -16,11 +21,21 @@ export class SubjectsService {
     private readonly academicSessionService: AcademicSessionService,
   ) {}
 
-  async createSubject(createSubjectDto: CreateSubjectDto, schoolId: string, userId: string): Promise<SubjectResponseDto> {
-    this.logger.log(colors.cyan(`Creating subject: ${createSubjectDto.name} for school: ${schoolId}`));
+  async createSubject(
+    createSubjectDto: CreateSubjectDto,
+    schoolId: string,
+    userId: string,
+  ): Promise<SubjectResponseDto> {
+    this.logger.log(
+      colors.cyan(
+        `Creating subject: ${createSubjectDto.name} for school: ${schoolId}`,
+      ),
+    );
 
     // Validate academic session
-    const academicSessionResponse = await this.academicSessionService.findOne(createSubjectDto.academic_session_id);
+    const academicSessionResponse = await this.academicSessionService.findOne(
+      createSubjectDto.academic_session_id,
+    );
     if (!academicSessionResponse.success || !academicSessionResponse.data) {
       throw new NotFoundException('Academic session not found');
     }
@@ -36,7 +51,9 @@ export class SubjectsService {
       });
 
       if (existingSubject) {
-        throw new BadRequestException(`Subject with code ${createSubjectDto.code} already exists in this academic session`);
+        throw new BadRequestException(
+          `Subject with code ${createSubjectDto.code} already exists in this academic session`,
+        );
       }
     }
 
@@ -67,7 +84,9 @@ export class SubjectsService {
       },
     });
 
-    this.logger.log(colors.green(`Subject created successfully: ${subject.id}`));
+    this.logger.log(
+      colors.green(`Subject created successfully: ${subject.id}`),
+    );
     return this.mapToResponseDto(subject);
   }
 
@@ -83,7 +102,7 @@ export class SubjectsService {
       isActive?: boolean;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
-    } = {}
+    } = {},
   ): Promise<{
     data: SubjectResponseDto[];
     meta: {
@@ -104,44 +123,48 @@ export class SubjectsService {
       color,
       isActive,
       sortBy = 'name',
-      sortOrder = 'asc'
+      sortOrder = 'asc',
     } = query;
 
     // Get teacher ID from user
     const teacherId = await this.getTeacherIdFromUser(user);
-    this.logger.log(colors.cyan(`Fetching subjects for teacher: ${teacherId} in school: ${schoolId} with pagination and filters`));
+    this.logger.log(
+      colors.cyan(
+        `Fetching subjects for teacher: ${teacherId} in school: ${schoolId} with pagination and filters`,
+      ),
+    );
 
     // Build where clause - filter by teacher assignments
     const where: any = {
       schoolId,
       teacherSubjects: {
         some: {
-          teacherId: teacherId
-        }
-      }
+          teacherId: teacherId,
+        },
+      },
     };
-    
+
     if (academicSessionId) {
       where.academic_session_id = academicSessionId;
     }
-    
+
     if (color) {
       where.color = color;
     }
-    
+
     if (isActive !== undefined) {
       where.is_active = isActive;
     }
-    
+
     if (search) {
       where.AND = [
         {
           OR: [
             { name: { contains: search, mode: 'insensitive' } },
             { code: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } }
-          ]
-        }
+            { description: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -195,7 +218,7 @@ export class SubjectsService {
       take: limit,
     });
 
-    const data = subjects.map(subject => this.mapToResponseDto(subject));
+    const data = subjects.map((subject) => this.mapToResponseDto(subject));
 
     return {
       data,
@@ -211,7 +234,10 @@ export class SubjectsService {
     };
   }
 
-  async getSubjectById(subjectId: string, schoolId: string): Promise<SubjectResponseDto> {
+  async getSubjectById(
+    subjectId: string,
+    schoolId: string,
+  ): Promise<SubjectResponseDto> {
     this.logger.log(colors.cyan(`Fetching subject: ${subjectId}`));
 
     const subject = await this.prisma.subject.findFirst({
@@ -258,7 +284,7 @@ export class SubjectsService {
   }
 
   async getComprehensiveSubjectById(
-    subjectId: string, 
+    subjectId: string,
     schoolId: string,
     query: {
       page?: number;
@@ -268,7 +294,7 @@ export class SubjectsService {
       type?: string;
       orderBy?: string;
       orderDirection?: 'asc' | 'desc';
-    } = {}
+    } = {},
   ): Promise<{
     success: boolean;
     message: string;
@@ -287,10 +313,12 @@ export class SubjectsService {
       status,
       type = 'all',
       orderBy = 'order',
-      orderDirection = 'asc'
+      orderDirection = 'asc',
     } = query;
 
-    this.logger.log(colors.cyan(`Fetching comprehensive subject data: ${subjectId}`));
+    this.logger.log(
+      colors.cyan(`Fetching comprehensive subject data: ${subjectId}`),
+    );
 
     // Get subject with basic info
     const subject = await this.prisma.subject.findFirst({
@@ -332,7 +360,7 @@ export class SubjectsService {
     if (search) {
       topicsWhere.OR = [
         { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+        { description: { contains: search, mode: 'insensitive' } },
       ];
     }
 
@@ -401,13 +429,13 @@ export class SubjectsService {
     const classes = ['jss2']; // This would come from class assignments
 
     // Transform topics to match frontend format
-    const transformedTopics = topics.map(topic => ({
+    const transformedTopics = topics.map((topic) => ({
       id: topic.id,
       title: topic.title,
       description: topic.description || '',
       order: topic.order,
       status: topic.is_active ? 'active' : 'inactive',
-      videos: topic.videoContent.map(video => ({
+      videos: topic.videoContent.map((video) => ({
         id: video.id,
         title: video.title,
         duration: '00:00', // Mock duration since it's not in schema
@@ -418,7 +446,7 @@ export class SubjectsService {
         views: 0, // Mock views since it's not in schema
         status: 'published', // Mock status since it's not in schema
       })),
-      materials: topic.pdfMaterial.map(material => ({
+      materials: topic.pdfMaterial.map((material) => ({
         id: material.id,
         title: material.title,
         type: 'pdf', // Default type
@@ -489,7 +517,11 @@ export class SubjectsService {
     };
   }
 
-  async updateSubject(subjectId: string, updateSubjectDto: UpdateSubjectDto, schoolId: string): Promise<SubjectResponseDto> {
+  async updateSubject(
+    subjectId: string,
+    updateSubjectDto: UpdateSubjectDto,
+    schoolId: string,
+  ): Promise<SubjectResponseDto> {
     this.logger.log(colors.cyan(`Updating subject: ${subjectId}`));
 
     // Check if subject exists
@@ -505,7 +537,10 @@ export class SubjectsService {
     }
 
     // Check if code is being updated and if it conflicts with existing subjects
-    if (updateSubjectDto.code && updateSubjectDto.code !== existingSubject.code) {
+    if (
+      updateSubjectDto.code &&
+      updateSubjectDto.code !== existingSubject.code
+    ) {
       const codeConflict = await this.prisma.subject.findFirst({
         where: {
           code: updateSubjectDto.code,
@@ -516,7 +551,9 @@ export class SubjectsService {
       });
 
       if (codeConflict) {
-        throw new BadRequestException(`Subject with code ${updateSubjectDto.code} already exists in this academic session`);
+        throw new BadRequestException(
+          `Subject with code ${updateSubjectDto.code} already exists in this academic session`,
+        );
       }
     }
 
@@ -571,7 +608,9 @@ export class SubjectsService {
     });
 
     if (topicCount > 0) {
-      throw new BadRequestException(`Cannot delete subject. It has ${topicCount} topic(s) associated with it.`);
+      throw new BadRequestException(
+        `Cannot delete subject. It has ${topicCount} topic(s) associated with it.`,
+      );
     }
 
     await this.prisma.subject.delete({
@@ -581,8 +620,14 @@ export class SubjectsService {
     this.logger.log(colors.green(`Subject deleted successfully: ${subjectId}`));
   }
 
-  async assignTeacherToSubject(subjectId: string, teacherId: string, schoolId: string): Promise<void> {
-    this.logger.log(colors.cyan(`Assigning teacher ${teacherId} to subject ${subjectId}`));
+  async assignTeacherToSubject(
+    subjectId: string,
+    teacherId: string,
+    schoolId: string,
+  ): Promise<void> {
+    this.logger.log(
+      colors.cyan(`Assigning teacher ${teacherId} to subject ${subjectId}`),
+    );
 
     // Check if subject exists
     const subject = await this.prisma.subject.findFirst({
@@ -626,8 +671,14 @@ export class SubjectsService {
     this.logger.log(colors.green(`Teacher assigned to subject successfully`));
   }
 
-  async removeTeacherFromSubject(subjectId: string, teacherId: string, schoolId: string): Promise<void> {
-    this.logger.log(colors.cyan(`Removing teacher ${teacherId} from subject ${subjectId}`));
+  async removeTeacherFromSubject(
+    subjectId: string,
+    teacherId: string,
+    schoolId: string,
+  ): Promise<void> {
+    this.logger.log(
+      colors.cyan(`Removing teacher ${teacherId} from subject ${subjectId}`),
+    );
 
     await this.prisma.teacherSubject.deleteMany({
       where: {
@@ -639,7 +690,10 @@ export class SubjectsService {
     this.logger.log(colors.green(`Teacher removed from subject successfully`));
   }
 
-  async getTeachersForSubject(subjectId: string, schoolId: string): Promise<any[]> {
+  async getTeachersForSubject(
+    subjectId: string,
+    schoolId: string,
+  ): Promise<any[]> {
     this.logger.log(colors.cyan(`Fetching teachers for subject: ${subjectId}`));
 
     const teacherSubjects = await this.prisma.teacherSubject.findMany({
@@ -669,20 +723,17 @@ export class SubjectsService {
       },
     });
 
-    return teacherSubjects.map(ts => ts.teacher);
+    return teacherSubjects.map((ts) => ts.teacher);
   }
 
   private async getTeacherIdFromUser(user: any): Promise<string> {
-    const userId = (user as any).sub || user.id;
+    const userId = user.sub || user.id;
     const teacher = await this.prisma.teacher.findFirst({
       where: {
-        OR: [
-          { user_id: userId },
-          { email: user.email }
-        ],
-        school_id: user.school_id
+        OR: [{ user_id: userId }, { email: user.email }],
+        school_id: user.school_id,
       },
-      select: { id: true }
+      select: { id: true },
     });
 
     if (!teacher) {

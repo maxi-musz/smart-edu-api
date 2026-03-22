@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsDateString, Min, Max, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+  Min,
+  Max,
+  IsEnum,
+} from 'class-validator';
 
 export enum ExamType {
   MIDTERM = 'midterm',
@@ -7,7 +16,7 @@ export enum ExamType {
   QUIZ = 'quiz',
   PRACTICAL = 'practical',
   ORAL = 'oral',
-  WRITTEN = 'written'
+  WRITTEN = 'written',
 }
 
 export enum ExamStatus {
@@ -15,13 +24,13 @@ export enum ExamStatus {
   SCHEDULED = 'scheduled',
   ONGOING = 'ongoing',
   COMPLETED = 'completed',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
 }
 
 export class CreateExamDto {
   @ApiProperty({
     description: 'Title of the exam',
-    example: 'Mathematics Midterm Exam'
+    example: 'Mathematics Midterm Exam',
   })
   @IsString()
   @IsNotEmpty()
@@ -29,7 +38,7 @@ export class CreateExamDto {
 
   @ApiPropertyOptional({
     description: 'Description of the exam',
-    example: 'This exam covers chapters 1-5 of the mathematics textbook'
+    example: 'This exam covers chapters 1-5 of the mathematics textbook',
   })
   @IsString()
   @IsOptional()
@@ -37,7 +46,7 @@ export class CreateExamDto {
 
   @ApiProperty({
     description: 'Topic ID where the exam belongs',
-    example: 'topic123'
+    example: 'topic123',
   })
   @IsString()
   @IsNotEmpty()
@@ -46,7 +55,7 @@ export class CreateExamDto {
   @ApiProperty({
     description: 'Type of exam',
     enum: ExamType,
-    example: ExamType.MIDTERM
+    example: ExamType.MIDTERM,
   })
   @IsEnum(ExamType)
   @IsNotEmpty()
@@ -56,7 +65,7 @@ export class CreateExamDto {
     description: 'Duration of the exam in minutes',
     example: 120,
     minimum: 15,
-    maximum: 300
+    maximum: 300,
   })
   @IsNumber()
   @IsOptional()
@@ -68,7 +77,7 @@ export class CreateExamDto {
     description: 'Total number of questions in the exam',
     example: 50,
     minimum: 1,
-    maximum: 200
+    maximum: 200,
   })
   @IsNumber()
   @IsOptional()
@@ -80,7 +89,7 @@ export class CreateExamDto {
     description: 'Maximum score for the exam',
     example: 100,
     minimum: 1,
-    maximum: 1000
+    maximum: 1000,
   })
   @IsNumber()
   @IsOptional()
@@ -92,7 +101,7 @@ export class CreateExamDto {
     description: 'Passing score percentage',
     example: 50,
     minimum: 0,
-    maximum: 100
+    maximum: 100,
   })
   @IsNumber()
   @IsOptional()
@@ -102,7 +111,7 @@ export class CreateExamDto {
 
   @ApiPropertyOptional({
     description: 'Scheduled date and time for the exam',
-    example: '2025-02-15T10:00:00.000Z'
+    example: '2025-02-15T10:00:00.000Z',
   })
   @IsDateString()
   @IsOptional()
@@ -110,7 +119,7 @@ export class CreateExamDto {
 
   @ApiPropertyOptional({
     description: 'Instructions for the exam',
-    example: 'Read all questions carefully. Show your work for partial credit.'
+    example: 'Read all questions carefully. Show your work for partial credit.',
   })
   @IsString()
   @IsOptional()
@@ -118,14 +127,14 @@ export class CreateExamDto {
 
   @ApiPropertyOptional({
     description: 'Whether the exam allows multiple attempts',
-    example: false
+    example: false,
   })
   @IsOptional()
   allowMultipleAttempts?: boolean;
 
   @ApiPropertyOptional({
     description: 'Whether the exam is proctored',
-    example: true
+    example: true,
   })
   @IsOptional()
   isProctored?: boolean;

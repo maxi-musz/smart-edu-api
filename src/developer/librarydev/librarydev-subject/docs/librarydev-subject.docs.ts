@@ -39,7 +39,8 @@ export const GetLibrarySubjectDevDocs = {
 export const UpdateLibrarySubjectDevDocs = {
   operation: ApiOperation({
     summary: 'Update a library subject (developer only)',
-    description: 'Update name, code, class binding, color or description of a subject.',
+    description:
+      'Update name, code, class binding, color or description of a subject.',
   }),
   response200: ApiResponse({
     status: 200,
@@ -57,5 +58,3 @@ export const DeleteLibrarySubjectDevDocs = {
     description: 'Library subject deleted successfully',
   }),
 };
-
-

@@ -31,7 +31,9 @@ export const libraryUserOnboardNewUserTemplate = (payload: {
   const roleLabel = payload.role ? ` (${payload.role.replace(/_/g, ' ')})` : '';
   const permissionsList =
     payload.permissions && payload.permissions.length > 0
-      ? payload.permissions.map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`).join('')
+      ? payload.permissions
+          .map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`)
+          .join('')
       : '<li style="margin: 4px 0; color: #64748b;">No additional permissions assigned.</li>';
 
   return `
@@ -85,7 +87,9 @@ export const libraryUserOnboardCreatorTemplate = (payload: {
   const roleLabel = payload.newUserRole.replace(/_/g, ' ');
   const permissionsList =
     payload.permissions && payload.permissions.length > 0
-      ? payload.permissions.map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`).join('')
+      ? payload.permissions
+          .map((p) => `<li style="margin: 4px 0;">${p.replace(/_/g, ' ')}</li>`)
+          .join('')
       : '<li style="margin: 4px 0; color: #64748b;">None</li>';
 
   return `

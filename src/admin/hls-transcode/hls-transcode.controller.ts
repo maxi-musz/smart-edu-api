@@ -1,5 +1,10 @@
 import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { HlsTranscodeService } from '../../shared/services/hls-transcode.service';
 import { ResponseHelper } from '../../shared/helper-functions/response.helpers';
 
@@ -67,7 +72,10 @@ export class HlsTranscodeController {
   @ApiResponse({ status: 200, description: 'Bulk retry queued' })
   async retryAllFailedLibraryVideos() {
     const result = await this.hlsTranscodeService.retryAllFailedLibraryVideos();
-    return ResponseHelper.success('Bulk retry queued for library videos', result);
+    return ResponseHelper.success(
+      'Bulk retry queued for library videos',
+      result,
+    );
   }
 
   @Post('retry-all/school')
@@ -75,14 +83,18 @@ export class HlsTranscodeController {
   @ApiResponse({ status: 200, description: 'Bulk retry queued' })
   async retryAllFailedSchoolVideos() {
     const result = await this.hlsTranscodeService.retryAllFailedSchoolVideos();
-    return ResponseHelper.success('Bulk retry queued for school videos', result);
+    return ResponseHelper.success(
+      'Bulk retry queued for school videos',
+      result,
+    );
   }
 
   @Get('status/library/:videoId')
   @ApiOperation({ summary: 'Get HLS transcode status for a library video' })
   @ApiResponse({ status: 200, description: 'Status retrieved' })
   async getLibraryVideoStatus(@Param('videoId') videoId: string) {
-    const status = await this.hlsTranscodeService.getLibraryVideoTranscodeStatus(videoId);
+    const status =
+      await this.hlsTranscodeService.getLibraryVideoTranscodeStatus(videoId);
     return ResponseHelper.success('Transcode status retrieved', status);
   }
 
@@ -90,7 +102,8 @@ export class HlsTranscodeController {
   @ApiOperation({ summary: 'Get HLS transcode status for a school video' })
   @ApiResponse({ status: 200, description: 'Status retrieved' })
   async getSchoolVideoStatus(@Param('videoId') videoId: string) {
-    const status = await this.hlsTranscodeService.getSchoolVideoTranscodeStatus(videoId);
+    const status =
+      await this.hlsTranscodeService.getSchoolVideoTranscodeStatus(videoId);
     return ResponseHelper.success('Transcode status retrieved', status);
   }
 }

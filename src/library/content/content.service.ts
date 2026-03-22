@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../shared/services/s3.service';
 import { HlsTranscodeService } from '../../shared/services/hls-transcode.service';
@@ -11,12 +17,19 @@ import { UploadLibraryVideoDto } from './dto/upload-video.dto';
 import { UploadLibraryMaterialDto } from './dto/upload-material.dto';
 import { CreateLibraryLinkDto } from './dto/create-link.dto';
 import { UpdateLibraryVideoDto } from './dto/update-video.dto';
+import {
+  RequestVideoUploadDto,
+  ConfirmVideoUploadDto,
+  RequestThumbnailUploadDto,
+} from './dto/request-video-upload.dto';
 import { HlsTranscodeStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import * as colors from 'colors';
 
 @Injectable()
 export class ContentService {
   private readonly logger = new Logger(ContentService.name);
+  private readonly maxActiveUploadsPerUser: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -24,7 +37,26 @@ export class ContentService {
     private readonly hlsTranscodeService: HlsTranscodeService,
     private readonly uploadProgressService: UploadProgressService,
     private readonly videoUploadService: VideoUploadService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.maxActiveUploadsPerUser =
+      Number(this.configService.get('MAX_ACTIVE_UPLOADS_PER_USER')) || 5;
+  }
+
+  private async enforceUploadLimit(userId: string): Promise<void> {
+    const activeCount = await this.prisma.directUpload.count({
+      where: {
+        userId,
+        userType: 'library_user',
+        status: { in: ['pending', 'uploading', 'uploaded', 'processing'] },
+      },
+    });
+    if (activeCount >= this.maxActiveUploadsPerUser) {
+      throw new BadRequestException(
+        `You already have ${activeCount} active upload(s). Please wait for at least one to finish before starting another (limit: ${this.maxActiveUploadsPerUser}).`,
+      );
+    }
+  }
 
   /**
    * Start video upload session (delegates to central VideoUploadService with library handler).
@@ -55,7 +87,9 @@ export class ContentService {
           select: { id: true },
         });
         if (!topic) {
-          throw new NotFoundException('Topic not found or does not belong to your platform');
+          throw new NotFoundException(
+            'Topic not found or does not belong to your platform',
+          );
         }
         libraryUserRef.platformId = libraryUser.platformId;
       },
@@ -64,15 +98,18 @@ export class ContentService {
       getThumbnailS3Key: (originalName: string) =>
         `library/video-thumbnails/platforms/${libraryUserRef.platformId}/subjects/${uploadDto.subjectId}/topics/${uploadDto.topicId}/${uploadDto.title.replace(/\s+/g, '_')}_thumbnail_${Date.now()}.${originalName.split('.').pop()}`,
       persistVideo: async (params) => {
-        const lastVideo = await this.prisma.libraryVideoLesson.findFirst({
-          where: { topicId: uploadDto.topicId, platformId: libraryUserRef.platformId },
-          orderBy: { order: 'desc' },
-          select: { order: true },
-        });
-        const nextOrder = (lastVideo?.order ?? 0) + 1;
         const videoLesson = await this.prisma.$transaction(
-          async (tx) =>
-            tx.libraryVideoLesson.create({
+          async (tx) => {
+            const lastVideo = await tx.libraryVideoLesson.findFirst({
+              where: {
+                topicId: uploadDto.topicId,
+                platformId: libraryUserRef.platformId,
+              },
+              orderBy: { order: 'desc' },
+              select: { order: true },
+            });
+            const nextOrder = (lastVideo?.order ?? 0) + 1;
+            return tx.libraryVideoLesson.create({
               data: {
                 platformId: libraryUserRef.platformId,
                 subjectId: uploadDto.subjectId,
@@ -91,7 +128,8 @@ export class ContentService {
                 hlsStatus: HlsTranscodeStatus.pending,
               },
               select: { id: true },
-            }),
+            });
+          },
           { maxWait: 5000, timeout: 15000 },
         );
         return { id: videoLesson.id };
@@ -122,6 +160,613 @@ export class ContentService {
     });
   }
 
+  // ==================== PRESIGNED DIRECT UPLOAD (FAST PATH) ====================
+
+  private readonly DEFAULT_MAX_VIDEO_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
+  private readonly MULTIPART_THRESHOLD = 100 * 1024 * 1024;
+
+  private get MAX_VIDEO_SIZE(): number {
+    return (
+      Number(this.configService.get('MAX_LIBRARY_OWNER_UPLOAD_SIZE')) ||
+      this.DEFAULT_MAX_VIDEO_SIZE
+    );
+  }
+
+  /** Scale part size with file size to keep part count between 20-100 */
+  private getPartSize(fileSize: number): number {
+    if (fileSize <= 500 * 1024 * 1024) return 10 * 1024 * 1024;  // ≤500MB → 10MB parts
+    if (fileSize <= 2 * 1024 * 1024 * 1024) return 25 * 1024 * 1024; // ≤2GB → 25MB parts
+    return 50 * 1024 * 1024; // ≤5GB → 50MB parts
+  }
+
+  /** Longer expiry for larger files so slow connections can finish */
+  private getPresignedExpiry(fileSize: number): number {
+    if (fileSize <= 500 * 1024 * 1024) return 3600;    // 1 hour
+    if (fileSize <= 2 * 1024 * 1024 * 1024) return 7200; // 2 hours
+    return 14400; // 4 hours for files > 2GB
+  }
+
+  /**
+   * Step 1: Generate presigned URL(s) for direct client-to-S3 video upload.
+   * Creates a persistent DirectUpload record so uploads survive page refresh/logout.
+   */
+  async requestVideoUpload(dto: RequestVideoUploadDto, user: any) {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Requesting presigned upload for: "${dto.title}"`,
+      ),
+    );
+
+    await this.enforceUploadLimit(user.sub);
+
+    if (dto.fileSize > this.MAX_VIDEO_SIZE) {
+      throw new BadRequestException(
+        `Video file size exceeds ${Math.round(this.MAX_VIDEO_SIZE / 1024 / 1024)}MB limit`,
+      );
+    }
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: { platformId: true },
+    });
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    const topic = await this.prisma.libraryTopic.findFirst({
+      where: {
+        id: dto.topicId,
+        subjectId: dto.subjectId,
+        platformId: libraryUser.platformId,
+      },
+      select: { id: true },
+    });
+    if (!topic) {
+      throw new NotFoundException(
+        'Topic not found or does not belong to your platform',
+      );
+    }
+
+    const safeTitle = dto.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    const s3Key = `library/videos/platforms/${libraryUser.platformId}/subjects/${dto.subjectId}/topics/${dto.topicId}/${safeTitle}_${Date.now()}.mp4`;
+    const expiry = this.getPresignedExpiry(dto.fileSize);
+    const expiresAt = new Date(Date.now() + expiry * 1000);
+
+    let uploadType: 'single' | 'multipart' = 'single';
+    let presignedUrl: string | undefined;
+    let uploadId: string | undefined;
+    let parts: { partNumber: number; presignedUrl: string }[] | undefined;
+    let partSize: number | undefined;
+
+    if (dto.fileSize > this.MULTIPART_THRESHOLD) {
+      uploadType = 'multipart';
+      partSize = this.getPartSize(dto.fileSize);
+      const multipart = await this.s3Service.createMultipartPresignedUpload(
+        s3Key,
+        dto.contentType || 'video/mp4',
+        dto.fileSize,
+        partSize,
+        expiry,
+      );
+      uploadId = multipart.uploadId;
+      parts = multipart.parts;
+    } else {
+      const result = await this.s3Service.generateUploadPresignedUrl(
+        s3Key,
+        dto.contentType || 'video/mp4',
+        expiry,
+      );
+      presignedUrl = result.presignedUrl;
+    }
+
+    // Persist upload session in DB
+    const directUpload = await this.prisma.directUpload.create({
+      data: {
+        userId: user.sub,
+        userType: 'library_user',
+        platformId: libraryUser.platformId,
+        subjectId: dto.subjectId,
+        topicId: dto.topicId,
+        title: dto.title,
+        description: dto.description ?? null,
+        fileName: dto.fileName,
+        contentType: dto.contentType || 'video/mp4',
+        fileSize: dto.fileSize,
+        s3Key,
+        uploadType,
+        multipartUploadId: uploadId ?? null,
+        status: 'pending',
+        expiresAt,
+      },
+    });
+
+    this.logger.log(
+      colors.green(
+        `✅ DirectUpload record created: ${directUpload.id} (type=${uploadType})`,
+      ),
+    );
+
+    return new ApiResponse(true, 'Upload initiated', {
+      uploadId: directUpload.id,
+      uploadType,
+      s3Key,
+      presignedUrl,
+      multipartUploadId: uploadId,
+      parts,
+      partSize,
+      fileUrl: this.s3Service.getFileUrl(s3Key),
+      expiresAt,
+    });
+  }
+
+  /**
+   * Generate a presigned URL for direct thumbnail upload.
+   */
+  async requestThumbnailUpload(dto: RequestThumbnailUploadDto, user: any) {
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: { platformId: true },
+    });
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    const ext = dto.fileName.split('.').pop() || 'jpg';
+    const safeTitle = dto.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    const thumbnailKey = `library/video-thumbnails/platforms/${libraryUser.platformId}/subjects/${dto.subjectId}/topics/${dto.topicId}/${safeTitle}_thumbnail_${Date.now()}.${ext}`;
+
+    const { presignedUrl } = await this.s3Service.generateUploadPresignedUrl(
+      thumbnailKey,
+      dto.contentType || 'image/jpeg',
+      3600,
+    );
+
+    return new ApiResponse(true, 'Thumbnail presigned URL generated', {
+      s3Key: thumbnailKey,
+      presignedUrl,
+      fileUrl: this.s3Service.getFileUrl(thumbnailKey),
+    });
+  }
+
+  /**
+   * Frontend calls this to report its upload progress so it persists in DB.
+   */
+  async updateUploadProgress(uploadId: string, progress: number, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({
+      where: { id: uploadId, userId: user.sub },
+    });
+    if (!upload) {
+      throw new NotFoundException('Upload not found');
+    }
+
+    await this.prisma.directUpload.update({
+      where: { id: uploadId },
+      data: {
+        status: progress >= 100 ? 'uploaded' : 'uploading',
+        progress: Math.min(100, Math.max(0, progress)),
+      },
+    });
+
+    return new ApiResponse(true, 'Progress updated');
+  }
+
+  /**
+   * Step 2: Confirm the upload after client has PUT the file directly to S3.
+   * Verifies the S3 object, saves DB record, and triggers HLS transcoding.
+   */
+  async confirmVideoUpload(dto: ConfirmVideoUploadDto, user: any) {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Confirming presigned upload: "${dto.title}"`,
+      ),
+    );
+
+    // Look up the DirectUpload record
+    const directUpload = dto.directUploadId
+      ? await this.prisma.directUpload.findFirst({
+          where: { id: dto.directUploadId, userId: user.sub },
+        })
+      : null;
+
+    if (directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { status: 'uploaded', progress: 100 },
+      });
+    }
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: { platformId: true },
+    });
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    const topic = await this.prisma.libraryTopic.findFirst({
+      where: {
+        id: dto.topicId,
+        subjectId: dto.subjectId,
+        platformId: libraryUser.platformId,
+      },
+      select: { id: true },
+    });
+    if (!topic) {
+      throw new NotFoundException(
+        'Topic not found or does not belong to your platform',
+      );
+    }
+
+    // If multipart upload, complete it first
+    if (dto.uploadId && dto.parts?.length) {
+      await this.s3Service.completeMultipartUpload(
+        dto.s3Key,
+        dto.uploadId,
+        dto.parts,
+      );
+    }
+
+    // Verify the object exists in S3
+    let objectMeta: { contentLength: number; contentType?: string };
+    try {
+      objectMeta = await this.s3Service.headObject(dto.s3Key);
+    } catch {
+      if (directUpload) {
+        await this.prisma.directUpload.update({
+          where: { id: directUpload.id },
+          data: { status: 'failed', error: 'Video file not found in S3' },
+        });
+      }
+      throw new BadRequestException(
+        'Video file not found in S3. Upload may have failed or the s3Key is incorrect.',
+      );
+    }
+
+    if (objectMeta.contentLength === 0) {
+      throw new BadRequestException('Uploaded file is empty');
+    }
+
+    if (objectMeta.contentLength > this.MAX_VIDEO_SIZE) {
+      try { await this.s3Service.deleteFile(dto.s3Key); } catch { /* best effort */ }
+      if (directUpload) {
+        await this.prisma.directUpload.update({
+          where: { id: directUpload.id },
+          data: { status: 'failed', error: 'Video exceeds size limit' },
+        });
+      }
+      throw new BadRequestException(
+        `Video file exceeds ${Math.round(this.MAX_VIDEO_SIZE / 1024 / 1024)}MB limit`,
+      );
+    }
+
+    // Update thumbnail on the DirectUpload record
+    if (dto.thumbnailS3Key && directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { thumbnailS3Key: dto.thumbnailS3Key },
+      });
+    }
+
+    // Verify thumbnail if provided
+    let thumbnailUrl: string | null = null;
+    if (dto.thumbnailS3Key) {
+      try {
+        await this.s3Service.headObject(dto.thumbnailS3Key);
+        thumbnailUrl = this.s3Service.getFileUrl(dto.thumbnailS3Key);
+      } catch {
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Thumbnail not found in S3, proceeding without thumbnail`,
+          ),
+        );
+      }
+    }
+
+    const videoUrl = this.s3Service.getFileUrl(dto.s3Key);
+
+    // Mark as processing before creating video record
+    if (directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { status: 'processing' },
+      });
+    }
+
+    const videoLesson = await this.prisma.$transaction(
+      async (tx) => {
+        const lastVideo = await tx.libraryVideoLesson.findFirst({
+          where: { topicId: dto.topicId, platformId: libraryUser.platformId },
+          orderBy: { order: 'desc' },
+          select: { order: true },
+        });
+        const nextOrder = (lastVideo?.order ?? 0) + 1;
+        return tx.libraryVideoLesson.create({
+          data: {
+            platformId: libraryUser.platformId,
+            subjectId: dto.subjectId,
+            topicId: dto.topicId,
+            uploadedById: user.sub,
+            title: dto.title,
+            description: dto.description ?? null,
+            videoUrl,
+            videoS3Key: dto.s3Key,
+            thumbnailUrl,
+            thumbnailS3Key: dto.thumbnailS3Key ?? null,
+            sizeBytes: objectMeta.contentLength,
+            durationSeconds: null,
+            order: nextOrder,
+            status: 'published',
+            hlsStatus: HlsTranscodeStatus.pending,
+          },
+          select: { id: true, title: true, videoUrl: true, sizeBytes: true },
+        });
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+
+    // Mark DirectUpload as completed with the video ID
+    if (directUpload) {
+      await this.prisma.directUpload.update({
+        where: { id: directUpload.id },
+        data: { status: 'completed', videoId: videoLesson.id },
+      });
+    }
+
+    this.logger.log(
+      colors.green(
+        `✅ Video confirmed & saved: ${videoLesson.id} (${(objectMeta.contentLength / 1024 / 1024).toFixed(2)} MB)`,
+      ),
+    );
+
+    // Trigger HLS transcoding in background
+    this.hlsTranscodeService
+      .transcodeLibraryVideo(videoLesson.id)
+      .then(() =>
+        this.logger.log(
+          colors.green(`✅ HLS transcode completed for: ${videoLesson.id}`),
+        ),
+      )
+      .catch((err) =>
+        this.logger.error(
+          colors.red(
+            `❌ HLS transcode failed for ${videoLesson.id}: ${err?.message ?? String(err)}`,
+          ),
+        ),
+      );
+
+    return new ApiResponse(true, 'Video upload confirmed and saved', {
+      id: videoLesson.id,
+      title: videoLesson.title,
+      videoUrl: videoLesson.videoUrl,
+      sizeBytes: videoLesson.sizeBytes,
+      thumbnailUrl,
+    });
+  }
+
+  /**
+   * Direct-upload sessions (presigned flow) plus saved library videos/materials for the current user.
+   * Optional topicId filters direct uploads and topic-scoped videos/materials.
+   */
+  async getMyUploads(user: any, topicId?: string) {
+    const uploads = await this.prisma.directUpload.findMany({
+      where: {
+        userId: user.sub,
+        userType: 'library_user',
+        ...(topicId ? { topicId } : {}),
+        NOT: {
+          AND: [
+            { status: 'completed' },
+            { updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+          ],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        fileName: true,
+        fileSize: true,
+        s3Key: true,
+        uploadType: true,
+        status: true,
+        progress: true,
+        error: true,
+        videoId: true,
+        topicId: true,
+        subjectId: true,
+        thumbnailS3Key: true,
+        createdAt: true,
+        updatedAt: true,
+        expiresAt: true,
+      },
+    });
+
+    const now = new Date();
+    for (const upload of uploads) {
+      if (
+        (upload.status === 'pending' || upload.status === 'uploading') &&
+        upload.expiresAt < now
+      ) {
+        await this.prisma.directUpload.update({
+          where: { id: upload.id },
+          data: { status: 'expired', error: 'Presigned URL expired' },
+        });
+        (upload as any).status = 'expired';
+        (upload as any).error = 'Presigned URL expired';
+      }
+    }
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: user.sub },
+      select: {
+        uploadedVideos: {
+          ...(topicId ? { where: { topicId } } : {}),
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            videoUrl: true,
+            thumbnailUrl: true,
+            durationSeconds: true,
+            sizeBytes: true,
+            status: true,
+            order: true,
+            subjectId: true,
+            topicId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        uploadedMaterials: {
+          ...(topicId ? { where: { topicId } } : {}),
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            materialType: true,
+            url: true,
+            sizeBytes: true,
+            pageCount: true,
+            status: true,
+            order: true,
+            subjectId: true,
+            topicId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!libraryUser) {
+      throw new NotFoundException('Library user not found');
+    }
+
+    return new ApiResponse(true, 'My uploads retrieved successfully', {
+      directUploads: uploads,
+      videos: libraryUser.uploadedVideos,
+      materials: libraryUser.uploadedMaterials,
+    });
+  }
+
+  /**
+   * Resume a failed or expired upload by generating fresh presigned URLs.
+   * Reuses the same S3 key, so partially uploaded multipart parts may still be valid.
+   */
+  async resumeUpload(uploadId: string, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({
+      where: {
+        id: uploadId,
+        userId: user.sub,
+        status: { in: ['failed', 'expired', 'pending'] },
+      },
+    });
+    if (!upload) {
+      throw new NotFoundException(
+        'Upload not found or cannot be resumed (only failed/expired uploads can be resumed)',
+      );
+    }
+
+    const fileSize = Number(upload.fileSize);
+    const expiry = this.getPresignedExpiry(fileSize);
+    const expiresAt = new Date(Date.now() + expiry * 1000);
+
+    let presignedUrl: string | undefined;
+    let multipartUploadId: string | undefined;
+    let parts: { partNumber: number; presignedUrl: string }[] | undefined;
+    let partSize: number | undefined;
+
+    if (upload.uploadType === 'multipart') {
+      if (upload.multipartUploadId) {
+        try {
+          await this.s3Service.abortMultipartUpload(upload.s3Key, upload.multipartUploadId);
+        } catch { /* old one may already be gone */ }
+      }
+
+      partSize = this.getPartSize(fileSize);
+      const multipart = await this.s3Service.createMultipartPresignedUpload(
+        upload.s3Key,
+        upload.contentType,
+        fileSize,
+        partSize,
+        expiry,
+      );
+      multipartUploadId = multipart.uploadId;
+      parts = multipart.parts;
+    } else {
+      const result = await this.s3Service.generateUploadPresignedUrl(
+        upload.s3Key,
+        upload.contentType,
+        expiry,
+      );
+      presignedUrl = result.presignedUrl;
+    }
+
+    await this.prisma.directUpload.update({
+      where: { id: upload.id },
+      data: {
+        status: 'pending',
+        progress: 0,
+        error: null,
+        multipartUploadId: multipartUploadId ?? upload.multipartUploadId,
+        expiresAt,
+      },
+    });
+
+    return new ApiResponse(true, 'Upload resumed with fresh presigned URLs', {
+      uploadId: upload.id,
+      uploadType: upload.uploadType,
+      s3Key: upload.s3Key,
+      presignedUrl,
+      multipartUploadId,
+      parts,
+      partSize,
+      fileUrl: this.s3Service.getFileUrl(upload.s3Key),
+      expiresAt,
+    });
+  }
+
+  /**
+   * Cancel an in-progress or pending upload.
+   */
+  async cancelUpload(uploadId: string, user: any) {
+    const upload = await this.prisma.directUpload.findFirst({
+      where: { id: uploadId, userId: user.sub },
+    });
+    if (!upload) {
+      throw new NotFoundException('Upload not found');
+    }
+
+    if (upload.status === 'completed') {
+      throw new BadRequestException('Cannot cancel a completed upload');
+    }
+
+    // Abort multipart if applicable
+    if (upload.multipartUploadId) {
+      try {
+        await this.s3Service.abortMultipartUpload(
+          upload.s3Key,
+          upload.multipartUploadId,
+        );
+      } catch { /* best effort */ }
+    }
+
+    // Try to delete the S3 object if it was uploaded
+    if (upload.status === 'uploaded' || upload.status === 'uploading') {
+      try { await this.s3Service.deleteFile(upload.s3Key); } catch { /* best effort */ }
+    }
+
+    await this.prisma.directUpload.update({
+      where: { id: upload.id },
+      data: { status: 'cancelled' },
+    });
+
+    return new ApiResponse(true, 'Upload cancelled');
+  }
+
   /**
    * Start material upload session
    */
@@ -134,19 +779,31 @@ export class ContentService {
       throw new BadRequestException('Material file is required');
     }
 
-    const sessionId = this.uploadProgressService.createUploadSession(user.sub, user.platform_id || 'library', materialFile.size);
-
-    this.uploadMaterialWithProgress(uploadDto, materialFile, user, sessionId)
-      .catch(err => this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, err.message));
-
-    return new ApiResponse(
-      true,
-      'Material upload started successfully',
-      {
-        sessionId,
-        progressEndpoint: `/api/v1/library/content/upload-progress/${sessionId}`,
-      },
+    const sessionId = this.uploadProgressService.createUploadSession(
+      user.sub,
+      user.platform_id || 'library',
+      materialFile.size,
     );
+
+    this.uploadMaterialWithProgress(
+      uploadDto,
+      materialFile,
+      user,
+      sessionId,
+    ).catch((err) =>
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        undefined,
+        undefined,
+        err.message,
+      ),
+    );
+
+    return new ApiResponse(true, 'Material upload started successfully', {
+      sessionId,
+      progressEndpoint: `/api/v1/library/content/upload-progress/${sessionId}`,
+    });
   }
 
   /**
@@ -158,7 +815,11 @@ export class ContentService {
     user: any,
     sessionId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Starting material upload: "${uploadDto.title}"`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Starting material upload: "${uploadDto.title}"`,
+      ),
+    );
 
     let smoother: NodeJS.Timeout | null = null;
     let s3Key: string | undefined;
@@ -168,9 +829,16 @@ export class ContentService {
       this.uploadProgressService.updateProgress(sessionId, 'validating', 0);
 
       // Validate file
-      const validationResult = FileValidationHelper.validateMaterialFile(materialFile);
+      const validationResult =
+        FileValidationHelper.validateMaterialFile(materialFile);
       if (!validationResult.isValid) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, validationResult.error);
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          validationResult.error,
+        );
         throw new BadRequestException(validationResult.error);
       }
 
@@ -181,7 +849,13 @@ export class ContentService {
       });
 
       if (!libraryUser) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Library user not found');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'Library user not found',
+        );
         throw new NotFoundException('Library user not found');
       }
 
@@ -199,8 +873,16 @@ export class ContentService {
       });
 
       if (!topic) {
-        this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, 'Topic not found or does not belong to your platform');
-        throw new NotFoundException('Topic not found or does not belong to your platform');
+        this.uploadProgressService.updateProgress(
+          sessionId,
+          'error',
+          undefined,
+          undefined,
+          'Topic not found or does not belong to your platform',
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to your platform',
+        );
       }
 
       // Upload material with progress
@@ -214,12 +896,19 @@ export class ContentService {
       this.uploadProgressService.updateProgress(sessionId, 'uploading', 0);
       smoother = setInterval(() => {
         if (emittedLoaded < lastKnownLoaded) {
-          const delta = Math.max(onePercent, Math.floor((lastKnownLoaded - emittedLoaded) / 3));
+          const delta = Math.max(
+            onePercent,
+            Math.floor((lastKnownLoaded - emittedLoaded) / 3),
+          );
           emittedLoaded = Math.min(emittedLoaded + delta, lastKnownLoaded);
           const percent = Math.floor((emittedLoaded / totalBytes) * 100);
           if (percent > lastPercent) {
             lastPercent = percent;
-            this.uploadProgressService.updateProgress(sessionId, 'uploading', emittedLoaded);
+            this.uploadProgressService.updateProgress(
+              sessionId,
+              'uploading',
+              emittedLoaded,
+            );
           }
         }
       }, tickMs);
@@ -237,85 +926,128 @@ export class ContentService {
       s3Key = materialUploadResult.key;
       s3UploadSucceeded = true;
 
-      this.uploadProgressService.updateProgress(sessionId, 'processing', lastKnownLoaded);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'processing',
+        lastKnownLoaded,
+      );
 
       // Get next order
       const lastMaterial = await this.prisma.libraryMaterial.findFirst({
-        where: { topicId: uploadDto.topicId, platformId: libraryUser.platformId },
+        where: {
+          topicId: uploadDto.topicId,
+          platformId: libraryUser.platformId,
+        },
         orderBy: { order: 'desc' },
         select: { order: true },
       });
       const nextOrder = (lastMaterial?.order || 0) + 1;
 
-      this.uploadProgressService.updateProgress(sessionId, 'saving', lastKnownLoaded);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'saving',
+        lastKnownLoaded,
+      );
 
       // Determine material type from file extension
-      const materialType = this.getMaterialTypeFromExtension(validationResult.fileType || 'pdf');
+      const materialType = this.getMaterialTypeFromExtension(
+        validationResult.fileType || 'pdf',
+      );
 
       // Save to database
-      const material = await this.prisma.$transaction(async (tx) => {
-        return await tx.libraryMaterial.create({
-          data: {
-            platformId: libraryUser.platformId,
-            subjectId: uploadDto.subjectId,
-            topicId: uploadDto.topicId,
-            uploadedById: user.sub,
-            title: uploadDto.title,
-            description: uploadDto.description ?? null,
-            materialType: materialType,
-            url: materialUploadResult.url,
-            s3Key: s3Key,
-            sizeBytes: materialFile.size,
-            order: nextOrder,
-            status: 'published',
-          },
-          include: {
-            topic: {
-              select: {
-                id: true,
-                title: true,
+      const material = await this.prisma.$transaction(
+        async (tx) => {
+          return await tx.libraryMaterial.create({
+            data: {
+              platformId: libraryUser.platformId,
+              subjectId: uploadDto.subjectId,
+              topicId: uploadDto.topicId,
+              uploadedById: user.sub,
+              title: uploadDto.title,
+              description: uploadDto.description ?? null,
+              materialType: materialType,
+              url: materialUploadResult.url,
+              s3Key: s3Key,
+              sizeBytes: materialFile.size,
+              order: nextOrder,
+              status: 'published',
+            },
+            include: {
+              topic: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
             },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        });
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
-      });
+          });
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
 
       // Complete
       lastKnownLoaded = totalBytes;
       emittedLoaded = totalBytes;
       if (smoother) clearInterval(smoother);
-      this.uploadProgressService.updateProgress(sessionId, 'completed', totalBytes, undefined, undefined, material.id);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'completed',
+        totalBytes,
+        undefined,
+        undefined,
+        material.id,
+      );
 
-      this.logger.log(colors.green(`✅ Material uploaded successfully: ${material.id}`));
+      this.logger.log(
+        colors.green(`✅ Material uploaded successfully: ${material.id}`),
+      );
       return material;
     } catch (error) {
       if (smoother) clearInterval(smoother);
-      this.uploadProgressService.updateProgress(sessionId, 'error', undefined, undefined, error.message);
+      this.uploadProgressService.updateProgress(
+        sessionId,
+        'error',
+        undefined,
+        undefined,
+        error.message,
+      );
 
       // Rollback: Delete uploaded file if DB save failed
       if (s3UploadSucceeded && s3Key) {
         try {
           await this.s3Service.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`🗑️ Rolled back: Deleted material from storage`));
+          this.logger.log(
+            colors.yellow(`🗑️ Rolled back: Deleted material from storage`),
+          );
         } catch (deleteError) {
-          this.logger.error(colors.red(`❌ Failed to rollback material file: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to rollback material file: ${deleteError.message}`,
+            ),
+          );
         }
       }
 
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error uploading material: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error uploading material: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to upload material');
     }
   }
@@ -323,8 +1055,13 @@ export class ContentService {
   /**
    * Create a link (no file upload required)
    */
-  async createLink(user: any, payload: CreateLibraryLinkDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Creating link: "${payload.title}"`));
+  async createLink(
+    user: any,
+    payload: CreateLibraryLinkDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`[LIBRARY CONTENT] Creating link: "${payload.title}"`),
+    );
 
     try {
       // Get library user and platform
@@ -351,7 +1088,9 @@ export class ContentService {
       });
 
       if (!topic) {
-        throw new NotFoundException('Topic not found or does not belong to your platform');
+        throw new NotFoundException(
+          'Topic not found or does not belong to your platform',
+        );
       }
 
       // Extract domain from URL
@@ -405,11 +1144,17 @@ export class ContentService {
       this.logger.log(colors.green(`✅ Link created successfully: ${link.id}`));
       return new ApiResponse(true, 'Link created successfully', link);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error creating link: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error creating link: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to create link');
     }
   }
@@ -426,68 +1171,17 @@ export class ContentService {
   }
 
   /**
-   * Videos and materials uploaded by the current library user (topic content).
-   */
-  async getMyUploads(user: any): Promise<ApiResponse<{ videos: unknown[]; materials: unknown[] }>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] My uploads for: ${user.email}`));
-
-    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
-      where: { id: user.sub },
-      select: {
-        uploadedVideos: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            videoUrl: true,
-            thumbnailUrl: true,
-            durationSeconds: true,
-            sizeBytes: true,
-            status: true,
-            order: true,
-            subjectId: true,
-            topicId: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-        uploadedMaterials: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            materialType: true,
-            url: true,
-            sizeBytes: true,
-            pageCount: true,
-            status: true,
-            order: true,
-            subjectId: true,
-            topicId: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    });
-
-    if (!libraryUser) {
-      throw new NotFoundException('Library user not found');
-    }
-
-    return new ApiResponse(true, 'My uploads retrieved successfully', {
-      videos: libraryUser.uploadedVideos,
-      materials: libraryUser.uploadedMaterials,
-    });
-  }
-
-  /**
    * Get video for playback (tracks unique views like YouTube)
    */
-  async getVideoForPlayback(user: any, videoId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Getting video for playback: ${videoId} for library user: ${user.email}`));
+  async getVideoForPlayback(
+    user: any,
+    videoId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Getting video for playback: ${videoId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get library user and platform
@@ -545,8 +1239,14 @@ export class ContentService {
       }) as any);
 
       if (!video) {
-        this.logger.error(colors.red(`Video not found or does not belong to your platform: ${videoId}`));
-        throw new NotFoundException('Video not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Video not found or does not belong to your platform: ${videoId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Video not found or does not belong to your platform',
+        );
       }
 
       this.logger.log(colors.blue(`Video URL: ${video.videoUrl}`));
@@ -554,32 +1254,42 @@ export class ContentService {
       // Extract userId and determine user type
       const userId = user.sub || user.id;
       let isLibraryUser = false;
-      
+
       if (!userId) {
-        this.logger.error(colors.red(`❌ No valid user ID found in token. user.sub: ${user.sub}, user.id: ${user.id}`));
-        throw new BadRequestException('Invalid user session. Please log in again.');
+        this.logger.error(
+          colors.red(
+            `❌ No valid user ID found in token. user.sub: ${user.sub}, user.id: ${user.id}`,
+          ),
+        );
+        throw new BadRequestException(
+          'Invalid user session. Please log in again.',
+        );
       }
 
       // Determine which table the user belongs to
       const regularUser = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true }
+        select: { id: true },
       });
 
       if (!regularUser) {
         // Check library resource users table
         const libraryUser = await this.prisma.libraryResourceUser.findUnique({
           where: { id: userId },
-          select: { id: true }
+          select: { id: true },
         });
 
         if (!libraryUser) {
-          this.logger.error(colors.red(`❌ User not found in any table: ${userId}`));
+          this.logger.error(
+            colors.red(`❌ User not found in any table: ${userId}`),
+          );
           throw new NotFoundException('User not found');
         }
-        
+
         isLibraryUser = true;
-        this.logger.log(colors.blue(`📚 Library resource user detected: ${userId}`));
+        this.logger.log(
+          colors.blue(`📚 Library resource user detected: ${userId}`),
+        );
       } else {
         this.logger.log(colors.blue(`👤 Regular user detected: ${userId}`));
       }
@@ -588,10 +1298,9 @@ export class ContentService {
       const existingView = await this.prisma.libraryVideoView.findFirst({
         where: {
           videoId: videoId,
-          ...(isLibraryUser 
+          ...(isLibraryUser
             ? { libraryResourceUserId: userId }
-            : { userId: userId }
-          ),
+            : { userId: userId }),
         },
       });
 
@@ -618,15 +1327,29 @@ export class ContentService {
 
           updatedViews = video.views + 1;
           const userType = isLibraryUser ? 'library user' : 'user';
-          this.logger.log(colors.green(`✅ New unique view recorded for video: ${video.title} by ${userType}: ${userId} (Total views: ${updatedViews})`));
+          this.logger.log(
+            colors.green(
+              `✅ New unique view recorded for video: ${video.title} by ${userType}: ${userId} (Total views: ${updatedViews})`,
+            ),
+          );
         } catch (viewError) {
           // If view tracking fails, log error but still return video
-          this.logger.error(colors.red(`❌ Failed to track view: ${viewError.message}`));
-          this.logger.warn(colors.yellow(`⚠️ Video playback will continue despite view tracking failure`));
+          this.logger.error(
+            colors.red(`❌ Failed to track view: ${viewError.message}`),
+          );
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Video playback will continue despite view tracking failure`,
+            ),
+          );
           // Don't throw - allow video playback to continue
         }
       } else {
-        this.logger.log(colors.yellow(`⚠️ User ${userId} has already viewed video: ${video.title} (View not counted)`));
+        this.logger.log(
+          colors.yellow(
+            `⚠️ User ${userId} has already viewed video: ${video.title} (View not counted)`,
+          ),
+        );
       }
 
       const responseData = {
@@ -635,14 +1358,25 @@ export class ContentService {
         hasViewedBefore: !!existingView,
       };
 
-      this.logger.log(colors.green(`Video retrieved for playback: ${video.title} (Total unique views: ${updatedViews})`));
-      return new ApiResponse(true, 'Video retrieved successfully', responseData);
+      this.logger.log(
+        colors.green(
+          `Video retrieved for playback: ${video.title} (Total unique views: ${updatedViews})`,
+        ),
+      );
+      return new ApiResponse(
+        true,
+        'Video retrieved successfully',
+        responseData,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error getting video for playback: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error getting video for playback: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to retrieve video');
     }
   }
@@ -665,13 +1399,13 @@ export class ContentService {
       bufferingEvents?: number;
       sessionId?: string;
       userAgent?: string;
-    }
+    },
   ): Promise<ApiResponse<any>> {
     try {
       // Extract userId and determine user type
       const userId = user.sub || user.id;
       let isLibraryUser = false;
-      
+
       if (!userId) {
         throw new BadRequestException('Invalid user session');
       }
@@ -683,27 +1417,27 @@ export class ContentService {
           id: true,
           school_id: true,
           role: true,
-          student: { select: { current_class_id: true } }
-        }
+          student: { select: { current_class_id: true } },
+        },
       });
 
       if (!regularUser) {
         const libraryUser = await this.prisma.libraryResourceUser.findUnique({
           where: { id: userId },
-          select: { id: true }
+          select: { id: true },
         });
 
         if (!libraryUser) {
           throw new NotFoundException('User not found');
         }
-        
+
         isLibraryUser = true;
       }
 
       // Get video details
       const video = await this.prisma.libraryVideoLesson.findUnique({
         where: { id: videoId },
-        select: { id: true, title: true, durationSeconds: true }
+        select: { id: true, title: true, durationSeconds: true },
       });
 
       if (!video) {
@@ -711,9 +1445,13 @@ export class ContentService {
       }
 
       // Calculate completion percentage
-      const completionPercentage = video.durationSeconds && watchData.watchDurationSeconds
-        ? Math.min(100, (watchData.watchDurationSeconds / video.durationSeconds) * 100)
-        : 0;
+      const completionPercentage =
+        video.durationSeconds && watchData.watchDurationSeconds
+          ? Math.min(
+              100,
+              (watchData.watchDurationSeconds / video.durationSeconds) * 100,
+            )
+          : 0;
 
       const isCompleted = completionPercentage >= 90; // Consider 90%+ as completed
 
@@ -743,27 +1481,27 @@ export class ContentService {
 
       // Create watch history record
       const watchHistory = await this.prisma.libraryVideoWatchHistory.create({
-        data: watchHistoryData
+        data: watchHistoryData,
       });
 
-      this.logger.log(colors.green(
-        `📺 Watch tracked: ${video.title} | User: ${userId} | ` +
-        `Completion: ${completionPercentage.toFixed(1)}% | ` +
-        `Duration: ${watchData.watchDurationSeconds}s | ` +
-        `Completed: ${isCompleted ? 'Yes ✓' : 'No'}`
-      ));
-
-      return new ApiResponse(
-        true,
-        'Watch history tracked successfully',
-        {
-          watchId: watchHistory.id,
-          completionPercentage: watchHistory.completionPercentage,
-          isCompleted: watchHistory.isCompleted
-        }
+      this.logger.log(
+        colors.green(
+          `📺 Watch tracked: ${video.title} | User: ${userId} | ` +
+            `Completion: ${completionPercentage.toFixed(1)}% | ` +
+            `Duration: ${watchData.watchDurationSeconds}s | ` +
+            `Completed: ${isCompleted ? 'Yes ✓' : 'No'}`,
+        ),
       );
+
+      return new ApiResponse(true, 'Watch history tracked successfully', {
+        watchId: watchHistory.id,
+        completionPercentage: watchHistory.completionPercentage,
+        isCompleted: watchHistory.isCompleted,
+      });
     } catch (error) {
-      this.logger.error(colors.red(`❌ Failed to track watch history: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Failed to track watch history: ${error.message}`),
+      );
       // Don't throw - tracking failure shouldn't block video playback
       return new ApiResponse(false, 'Failed to track watch history', null);
     }
@@ -774,7 +1512,7 @@ export class ContentService {
    */
   async getUserWatchHistory(
     user: any,
-    options: { page?: number; limit?: number } = {}
+    options: { page?: number; limit?: number } = {},
   ): Promise<ApiResponse<any>> {
     try {
       const { page = 1, limit = 20 } = options;
@@ -786,28 +1524,26 @@ export class ContentService {
       // Determine user type
       const regularUser = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true }
+        select: { id: true },
       });
 
       if (!regularUser) {
         const libraryUser = await this.prisma.libraryResourceUser.findUnique({
           where: { id: userId },
-          select: { id: true }
+          select: { id: true },
         });
 
         if (!libraryUser) {
           throw new NotFoundException('User not found');
         }
-        
+
         isLibraryUser = true;
       }
 
       // Get watch history
       const [history, total] = await Promise.all([
         this.prisma.libraryVideoWatchHistory.findMany({
-          where: isLibraryUser
-            ? { libraryResourceUserId: userId }
-            : { userId },
+          where: isLibraryUser ? { libraryResourceUserId: userId } : { userId },
           include: {
             video: {
               select: {
@@ -818,26 +1554,28 @@ export class ContentService {
                 durationSeconds: true,
                 views: true,
                 subject: {
-                  select: { id: true, name: true, code: true, color: true }
+                  select: { id: true, name: true, code: true, color: true },
                 },
                 topic: {
-                  select: { id: true, title: true }
-                }
-              }
-            }
+                  select: { id: true, title: true },
+                },
+              },
+            },
           },
           orderBy: { watchedAt: 'desc' },
           take: limit,
-          skip
+          skip,
         }),
         this.prisma.libraryVideoWatchHistory.count({
-          where: isLibraryUser
-            ? { libraryResourceUserId: userId }
-            : { userId }
-        })
+          where: isLibraryUser ? { libraryResourceUserId: userId } : { userId },
+        }),
       ]);
 
-      this.logger.log(colors.blue(`📋 Watch history retrieved: ${history.length} records for user: ${userId}`));
+      this.logger.log(
+        colors.blue(
+          `📋 Watch history retrieved: ${history.length} records for user: ${userId}`,
+        ),
+      );
 
       return new ApiResponse(true, 'Watch history retrieved successfully', {
         history,
@@ -845,12 +1583,16 @@ export class ContentService {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit)
-        }
+          totalPages: Math.ceil(total / limit),
+        },
       });
     } catch (error) {
-      this.logger.error(colors.red(`Error retrieving watch history: ${error.message}`));
-      throw new InternalServerErrorException('Failed to retrieve watch history');
+      this.logger.error(
+        colors.red(`Error retrieving watch history: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve watch history',
+      );
     }
   }
 
@@ -865,66 +1607,76 @@ export class ContentService {
       // Determine user type
       const regularUser = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true }
+        select: { id: true },
       });
 
       if (!regularUser) {
         const libraryUser = await this.prisma.libraryResourceUser.findUnique({
           where: { id: userId },
-          select: { id: true }
+          select: { id: true },
         });
 
         if (!libraryUser) {
           throw new NotFoundException('User not found');
         }
-        
+
         isLibraryUser = true;
       }
 
       // Get videos with partial completion
-      const continueWatching = await this.prisma.libraryVideoWatchHistory.findMany({
-        where: {
-          ...(isLibraryUser
-            ? { libraryResourceUserId: userId }
-            : { userId }
-          ),
-          completionPercentage: { gte: 10, lte: 90 },
-          isCompleted: false
-        },
-        distinct: ['videoId'],
-        include: {
-          video: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              thumbnailUrl: true,
-              durationSeconds: true,
-              subject: { select: { name: true, color: true } },
-              topic: { select: { title: true } }
-            }
-          }
-        },
-        orderBy: { watchedAt: 'desc' },
-        take: 10
-      });
+      const continueWatching =
+        await this.prisma.libraryVideoWatchHistory.findMany({
+          where: {
+            ...(isLibraryUser ? { libraryResourceUserId: userId } : { userId }),
+            completionPercentage: { gte: 10, lte: 90 },
+            isCompleted: false,
+          },
+          distinct: ['videoId'],
+          include: {
+            video: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                thumbnailUrl: true,
+                durationSeconds: true,
+                subject: { select: { name: true, color: true } },
+                topic: { select: { title: true } },
+              },
+            },
+          },
+          orderBy: { watchedAt: 'desc' },
+          take: 10,
+        });
 
-      const enriched = continueWatching.map(watch => ({
+      const enriched = continueWatching.map((watch) => ({
         ...watch.video,
         watchProgress: {
           lastPosition: watch.lastWatchPosition,
           completionPercentage: watch.completionPercentage,
           lastWatched: watch.watchedAt,
-          watchDuration: watch.watchDurationSeconds
-        }
+          watchDuration: watch.watchDurationSeconds,
+        },
       }));
 
-      this.logger.log(colors.blue(`▶️ Continue watching: ${enriched.length} videos for user: ${userId}`));
+      this.logger.log(
+        colors.blue(
+          `▶️ Continue watching: ${enriched.length} videos for user: ${userId}`,
+        ),
+      );
 
-      return new ApiResponse(true, 'Continue watching videos retrieved', enriched);
+      return new ApiResponse(
+        true,
+        'Continue watching videos retrieved',
+        enriched,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error retrieving continue watching: ${error.message}`));
-      throw new InternalServerErrorException('Failed to retrieve continue watching');
+      this.logger.error(
+        colors.red(`Error retrieving continue watching: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve continue watching',
+      );
     }
   }
 
@@ -932,7 +1684,11 @@ export class ContentService {
    * Delete a video
    */
   async deleteVideo(user: any, videoId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting video: ${videoId} for library user: ${user.email}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Deleting video: ${videoId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get library user and platform
@@ -947,7 +1703,7 @@ export class ContentService {
       }
 
       // Get video and verify it belongs to user's platform
-      const video = await this.prisma.libraryVideoLesson.findFirst({
+      const video = (await this.prisma.libraryVideoLesson.findFirst({
         where: {
           id: videoId,
           platformId: libraryUser.platformId,
@@ -960,85 +1716,122 @@ export class ContentService {
           topicId: true,
           order: true,
         },
-      }) as any;
+      })) as any;
 
       if (!video) {
-        this.logger.error(colors.red(`Video not found or does not belong to your platform: ${videoId}`));
-        throw new NotFoundException('Video not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Video not found or does not belong to your platform: ${videoId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Video not found or does not belong to your platform',
+        );
       }
 
       // Delete in transaction: files first, then database
-      await this.prisma.$transaction(async (tx) => {
-        // Delete video file from storage
-        if (video.videoS3Key) {
-          try {
-            await this.s3Service.deleteFile(video.videoS3Key);
-            this.logger.log(colors.green(`✅ Deleted video file from storage: ${video.videoS3Key}`));
-          } catch (error) {
-            this.logger.error(colors.yellow(`⚠️ Failed to delete video file from storage: ${error.message}`));
-            // Continue with DB deletion even if file deletion fails
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Delete video file from storage
+          if (video.videoS3Key) {
+            try {
+              await this.s3Service.deleteFile(video.videoS3Key);
+              this.logger.log(
+                colors.green(
+                  `✅ Deleted video file from storage: ${video.videoS3Key}`,
+                ),
+              );
+            } catch (error) {
+              this.logger.error(
+                colors.yellow(
+                  `⚠️ Failed to delete video file from storage: ${error.message}`,
+                ),
+              );
+              // Continue with DB deletion even if file deletion fails
+            }
           }
-        }
 
-        // Delete thumbnail from storage
-        if (video.thumbnailS3Key) {
-          try {
-            await this.s3Service.deleteFile(video.thumbnailS3Key);
-            this.logger.log(colors.green(`✅ Deleted thumbnail from storage: ${video.thumbnailS3Key}`));
-          } catch (error) {
-            this.logger.error(colors.yellow(`⚠️ Failed to delete thumbnail from storage: ${error.message}`));
-            // Continue with DB deletion even if file deletion fails
+          // Delete thumbnail from storage
+          if (video.thumbnailS3Key) {
+            try {
+              await this.s3Service.deleteFile(video.thumbnailS3Key);
+              this.logger.log(
+                colors.green(
+                  `✅ Deleted thumbnail from storage: ${video.thumbnailS3Key}`,
+                ),
+              );
+            } catch (error) {
+              this.logger.error(
+                colors.yellow(
+                  `⚠️ Failed to delete thumbnail from storage: ${error.message}`,
+                ),
+              );
+              // Continue with DB deletion even if file deletion fails
+            }
           }
-        }
 
-        // Delete from database
-        await tx.libraryVideoLesson.delete({
-          where: { id: videoId },
-        });
-
-        // Reorder remaining videos in the same topic (close gaps)
-        // Get all videos in the same topic with order greater than deleted video's order
-        const videosToReorder = await tx.libraryVideoLesson.findMany({
-          where: {
-            topicId: video.topicId,
-            platformId: libraryUser.platformId,
-            order: {
-              gt: video.order,
-            },
-          },
-          select: {
-            id: true,
-            order: true,
-          },
-          orderBy: {
-            order: 'asc',
-          },
-        });
-
-        // Decrement order for all videos after the deleted one
-        for (const vid of videosToReorder) {
-          await tx.libraryVideoLesson.update({
-            where: { id: vid.id },
-            data: { order: vid.order - 1 },
+          // Delete from database
+          await tx.libraryVideoLesson.delete({
+            where: { id: videoId },
           });
-        }
 
-        if (videosToReorder.length > 0) {
-          this.logger.log(colors.cyan(`🔄 Reordered ${videosToReorder.length} video(s) after deletion`));
-        }
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
+          // Reorder remaining videos in the same topic (close gaps)
+          // Get all videos in the same topic with order greater than deleted video's order
+          const videosToReorder = await tx.libraryVideoLesson.findMany({
+            where: {
+              topicId: video.topicId,
+              platformId: libraryUser.platformId,
+              order: {
+                gt: video.order,
+              },
+            },
+            select: {
+              id: true,
+              order: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          });
+
+          // Decrement order for all videos after the deleted one
+          for (const vid of videosToReorder) {
+            await tx.libraryVideoLesson.update({
+              where: { id: vid.id },
+              data: { order: vid.order - 1 },
+            });
+          }
+
+          if (videosToReorder.length > 0) {
+            this.logger.log(
+              colors.cyan(
+                `🔄 Reordered ${videosToReorder.length} video(s) after deletion`,
+              ),
+            );
+          }
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
+
+      this.logger.log(
+        colors.green(`✅ Video deleted successfully: ${video.title}`),
+      );
+      return new ApiResponse(true, 'Video deleted successfully', {
+        id: videoId,
+        title: video.title,
       });
-
-      this.logger.log(colors.green(`✅ Video deleted successfully: ${video.title}`));
-      return new ApiResponse(true, 'Video deleted successfully', { id: videoId, title: video.title });
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error deleting video: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error deleting video: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to delete video');
     }
   }
@@ -1046,8 +1839,16 @@ export class ContentService {
   /**
    * Update a video (title, description, order swap)
    */
-  async updateVideo(user: any, videoId: string, payload: UpdateLibraryVideoDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Updating video: ${videoId} for library user: ${user.email}`));
+  async updateVideo(
+    user: any,
+    videoId: string,
+    payload: UpdateLibraryVideoDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Updating video: ${videoId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get library user and platform
@@ -1062,7 +1863,7 @@ export class ContentService {
       }
 
       // Get current video and verify it belongs to user's platform
-      const currentVideo = await this.prisma.libraryVideoLesson.findFirst({
+      const currentVideo = (await this.prisma.libraryVideoLesson.findFirst({
         where: {
           id: videoId,
           platformId: libraryUser.platformId,
@@ -1074,132 +1875,156 @@ export class ContentService {
           order: true,
           topicId: true,
         },
-      }) as any;
+      })) as any;
 
       if (!currentVideo) {
-        this.logger.error(colors.red(`Video not found or does not belong to your platform: ${videoId}`));
-        throw new NotFoundException('Video not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Video not found or does not belong to your platform: ${videoId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Video not found or does not belong to your platform',
+        );
       }
 
       // Update in transaction
-      const updatedVideo = await this.prisma.$transaction(async (tx) => {
-        // If swapping order, handle that first
-        if (payload.swapOrderWith) {
-          // Get target video
-          const targetVideo = await tx.libraryVideoLesson.findFirst({
-            where: {
-              id: payload.swapOrderWith,
-              platformId: libraryUser.platformId,
-              topicId: currentVideo.topicId, // Must be in same topic
-            },
-            select: {
-              id: true,
-              order: true,
-            },
-          }) as any;
+      const updatedVideo = (await this.prisma.$transaction(
+        async (tx) => {
+          // If swapping order, handle that first
+          if (payload.swapOrderWith) {
+            // Get target video
+            const targetVideo = (await tx.libraryVideoLesson.findFirst({
+              where: {
+                id: payload.swapOrderWith,
+                platformId: libraryUser.platformId,
+                topicId: currentVideo.topicId, // Must be in same topic
+              },
+              select: {
+                id: true,
+                order: true,
+              },
+            })) as any;
 
-          if (!targetVideo) {
-            throw new NotFoundException('Target video not found, does not belong to your platform, or is not in the same topic');
+            if (!targetVideo) {
+              throw new NotFoundException(
+                'Target video not found, does not belong to your platform, or is not in the same topic',
+              );
+            }
+
+            // Swap orders
+            await tx.libraryVideoLesson.update({
+              where: { id: videoId },
+              data: { order: targetVideo.order },
+            });
+
+            await tx.libraryVideoLesson.update({
+              where: { id: payload.swapOrderWith },
+              data: { order: currentVideo.order },
+            });
+
+            this.logger.log(
+              colors.cyan(
+                `🔄 Swapped orders: Video ${videoId} (${currentVideo.order} ↔ ${targetVideo.order}) with Video ${payload.swapOrderWith}`,
+              ),
+            );
           }
 
-          // Swap orders
-          await tx.libraryVideoLesson.update({
-            where: { id: videoId },
-            data: { order: targetVideo.order },
-          });
+          // Build update data (title, description)
+          const updateData: any = {};
+          if (payload.title !== undefined) updateData.title = payload.title;
+          if (payload.description !== undefined)
+            updateData.description = payload.description ?? null;
 
-          await tx.libraryVideoLesson.update({
-            where: { id: payload.swapOrderWith },
-            data: { order: currentVideo.order },
-          });
-
-          this.logger.log(colors.cyan(`🔄 Swapped orders: Video ${videoId} (${currentVideo.order} ↔ ${targetVideo.order}) with Video ${payload.swapOrderWith}`));
-        }
-
-        // Build update data (title, description)
-        const updateData: any = {};
-        if (payload.title !== undefined) updateData.title = payload.title;
-        if (payload.description !== undefined) updateData.description = payload.description ?? null;
-
-        // Update video if there are other fields to update
-        if (Object.keys(updateData).length > 0) {
-          return await tx.libraryVideoLesson.update({
-            where: { id: videoId },
-            data: updateData,
-            include: {
-              topic: {
-                select: {
-                  id: true,
-                  title: true,
+          // Update video if there are other fields to update
+          if (Object.keys(updateData).length > 0) {
+            return await tx.libraryVideoLesson.update({
+              where: { id: videoId },
+              data: updateData,
+              include: {
+                topic: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+                subject: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
+                uploadedBy: {
+                  select: {
+                    id: true,
+                    email: true,
+                    first_name: true,
+                    last_name: true,
+                  },
                 },
               },
-              subject: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
+            });
+          } else {
+            // If only order swap, just return the updated video
+            const video = await tx.libraryVideoLesson.findUnique({
+              where: { id: videoId },
+              include: {
+                topic: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+                subject: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
+                uploadedBy: {
+                  select: {
+                    id: true,
+                    email: true,
+                    first_name: true,
+                    last_name: true,
+                  },
                 },
               },
-              uploadedBy: {
-                select: {
-                  id: true,
-                  email: true,
-                  first_name: true,
-                  last_name: true,
-                },
-              },
-            },
-          });
-        } else {
-          // If only order swap, just return the updated video
-          const video = await tx.libraryVideoLesson.findUnique({
-            where: { id: videoId },
-            include: {
-              topic: {
-                select: {
-                  id: true,
-                  title: true,
-                },
-              },
-              subject: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
-                },
-              },
-              uploadedBy: {
-                select: {
-                  id: true,
-                  email: true,
-                  first_name: true,
-                  last_name: true,
-                },
-              },
-            },
-          });
-          if (!video) {
-            throw new NotFoundException('Video not found after update');
+            });
+            if (!video) {
+              throw new NotFoundException('Video not found after update');
+            }
+            return video;
           }
-          return video;
-        }
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
-      }) as any;
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      )) as any;
 
       if (!updatedVideo) {
         throw new NotFoundException('Video not found after update');
       }
 
-      this.logger.log(colors.green(`✅ Video updated successfully: ${updatedVideo.title}`));
+      this.logger.log(
+        colors.green(`✅ Video updated successfully: ${updatedVideo.title}`),
+      );
       return new ApiResponse(true, 'Video updated successfully', updatedVideo);
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error updating video: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error updating video: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to update video');
     }
   }
@@ -1207,8 +2032,15 @@ export class ContentService {
   /**
    * Delete a material
    */
-  async deleteMaterial(user: any, materialId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting material: ${materialId} for library user: ${user.email}`));
+  async deleteMaterial(
+    user: any,
+    materialId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Deleting material: ${materialId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get library user and platform
@@ -1223,7 +2055,7 @@ export class ContentService {
       }
 
       // Get material and verify it belongs to user's platform
-      const material = await this.prisma.libraryMaterial.findFirst({
+      const material = (await this.prisma.libraryMaterial.findFirst({
         where: {
           id: materialId,
           platformId: libraryUser.platformId,
@@ -1235,73 +2067,102 @@ export class ContentService {
           topicId: true,
           order: true,
         },
-      }) as any;
+      })) as any;
 
       if (!material) {
-        this.logger.error(colors.red(`Material not found or does not belong to your platform: ${materialId}`));
-        throw new NotFoundException('Material not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Material not found or does not belong to your platform: ${materialId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Material not found or does not belong to your platform',
+        );
       }
 
       // Delete in transaction: file first, then database
-      await this.prisma.$transaction(async (tx) => {
-        // Delete material file from storage
-        if (material.s3Key) {
-          try {
-            await this.s3Service.deleteFile(material.s3Key);
-            this.logger.log(colors.green(`✅ Deleted material file from storage: ${material.s3Key}`));
-          } catch (error) {
-            this.logger.error(colors.yellow(`⚠️ Failed to delete material file from storage: ${error.message}`));
-            // Continue with DB deletion even if file deletion fails
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Delete material file from storage
+          if (material.s3Key) {
+            try {
+              await this.s3Service.deleteFile(material.s3Key);
+              this.logger.log(
+                colors.green(
+                  `✅ Deleted material file from storage: ${material.s3Key}`,
+                ),
+              );
+            } catch (error) {
+              this.logger.error(
+                colors.yellow(
+                  `⚠️ Failed to delete material file from storage: ${error.message}`,
+                ),
+              );
+              // Continue with DB deletion even if file deletion fails
+            }
           }
-        }
 
-        // Delete from database
-        await tx.libraryMaterial.delete({
-          where: { id: materialId },
-        });
-
-        // Reorder remaining materials in the same topic (close gaps)
-        const materialsToReorder = await tx.libraryMaterial.findMany({
-          where: {
-            topicId: material.topicId,
-            platformId: libraryUser.platformId,
-            order: {
-              gt: material.order,
-            },
-          },
-          select: {
-            id: true,
-            order: true,
-          },
-          orderBy: {
-            order: 'asc',
-          },
-        });
-
-        // Decrement order for all materials after the deleted one
-        for (const mat of materialsToReorder) {
-          await tx.libraryMaterial.update({
-            where: { id: mat.id },
-            data: { order: mat.order - 1 },
+          // Delete from database
+          await tx.libraryMaterial.delete({
+            where: { id: materialId },
           });
-        }
 
-        if (materialsToReorder.length > 0) {
-          this.logger.log(colors.cyan(`🔄 Reordered ${materialsToReorder.length} material(s) after deletion`));
-        }
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
+          // Reorder remaining materials in the same topic (close gaps)
+          const materialsToReorder = await tx.libraryMaterial.findMany({
+            where: {
+              topicId: material.topicId,
+              platformId: libraryUser.platformId,
+              order: {
+                gt: material.order,
+              },
+            },
+            select: {
+              id: true,
+              order: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          });
+
+          // Decrement order for all materials after the deleted one
+          for (const mat of materialsToReorder) {
+            await tx.libraryMaterial.update({
+              where: { id: mat.id },
+              data: { order: mat.order - 1 },
+            });
+          }
+
+          if (materialsToReorder.length > 0) {
+            this.logger.log(
+              colors.cyan(
+                `🔄 Reordered ${materialsToReorder.length} material(s) after deletion`,
+              ),
+            );
+          }
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
+
+      this.logger.log(
+        colors.green(`✅ Material deleted successfully: ${material.title}`),
+      );
+      return new ApiResponse(true, 'Material deleted successfully', {
+        id: materialId,
+        title: material.title,
       });
-
-      this.logger.log(colors.green(`✅ Material deleted successfully: ${material.title}`));
-      return new ApiResponse(true, 'Material deleted successfully', { id: materialId, title: material.title });
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error deleting material: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error deleting material: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to delete material');
     }
   }
@@ -1310,7 +2171,11 @@ export class ContentService {
    * Delete a link
    */
   async deleteLink(user: any, linkId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting link: ${linkId} for library user: ${user.email}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Deleting link: ${linkId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get library user and platform
@@ -1325,7 +2190,7 @@ export class ContentService {
       }
 
       // Get link and verify it belongs to user's platform
-      const link = await this.prisma.libraryLink.findFirst({
+      const link = (await this.prisma.libraryLink.findFirst({
         where: {
           id: linkId,
           platformId: libraryUser.platformId,
@@ -1336,64 +2201,85 @@ export class ContentService {
           topicId: true,
           order: true,
         },
-      }) as any;
+      })) as any;
 
       if (!link) {
-        this.logger.error(colors.red(`Link not found or does not belong to your platform: ${linkId}`));
-        throw new NotFoundException('Link not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Link not found or does not belong to your platform: ${linkId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Link not found or does not belong to your platform',
+        );
       }
 
       // Delete in transaction
-      await this.prisma.$transaction(async (tx) => {
-        // Delete from database (links don't have files, just URLs)
-        await tx.libraryLink.delete({
-          where: { id: linkId },
-        });
-
-        // Reorder remaining links in the same topic (close gaps)
-        if (link.topicId) {
-          const linksToReorder = await tx.libraryLink.findMany({
-            where: {
-              topicId: link.topicId,
-              platformId: libraryUser.platformId,
-              order: {
-                gt: link.order,
-              },
-            },
-            select: {
-              id: true,
-              order: true,
-            },
-            orderBy: {
-              order: 'asc',
-            },
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Delete from database (links don't have files, just URLs)
+          await tx.libraryLink.delete({
+            where: { id: linkId },
           });
 
-          // Decrement order for all links after the deleted one
-          for (const l of linksToReorder) {
-            await tx.libraryLink.update({
-              where: { id: l.id },
-              data: { order: l.order - 1 },
+          // Reorder remaining links in the same topic (close gaps)
+          if (link.topicId) {
+            const linksToReorder = await tx.libraryLink.findMany({
+              where: {
+                topicId: link.topicId,
+                platformId: libraryUser.platformId,
+                order: {
+                  gt: link.order,
+                },
+              },
+              select: {
+                id: true,
+                order: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
             });
-          }
 
-          if (linksToReorder.length > 0) {
-            this.logger.log(colors.cyan(`🔄 Reordered ${linksToReorder.length} link(s) after deletion`));
+            // Decrement order for all links after the deleted one
+            for (const l of linksToReorder) {
+              await tx.libraryLink.update({
+                where: { id: l.id },
+                data: { order: l.order - 1 },
+              });
+            }
+
+            if (linksToReorder.length > 0) {
+              this.logger.log(
+                colors.cyan(
+                  `🔄 Reordered ${linksToReorder.length} link(s) after deletion`,
+                ),
+              );
+            }
           }
-        }
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
+
+      this.logger.log(
+        colors.green(`✅ Link deleted successfully: ${link.title}`),
+      );
+      return new ApiResponse(true, 'Link deleted successfully', {
+        id: linkId,
+        title: link.title,
       });
-
-      this.logger.log(colors.green(`✅ Link deleted successfully: ${link.title}`));
-      return new ApiResponse(true, 'Link deleted successfully', { id: linkId, title: link.title });
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error deleting link: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error deleting link: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to delete link');
     }
   }
@@ -1401,8 +2287,15 @@ export class ContentService {
   /**
    * Delete an assignment
    */
-  async deleteAssignment(user: any, assignmentId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CONTENT] Deleting assignment: ${assignmentId} for library user: ${user.email}`));
+  async deleteAssignment(
+    user: any,
+    assignmentId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CONTENT] Deleting assignment: ${assignmentId} for library user: ${user.email}`,
+      ),
+    );
 
     try {
       // Get library user and platform
@@ -1417,7 +2310,7 @@ export class ContentService {
       }
 
       // Get assignment and verify it belongs to user's platform
-      const assignment = await this.prisma.libraryAssignment.findFirst({
+      const assignment = (await this.prisma.libraryAssignment.findFirst({
         where: {
           id: assignmentId,
           platformId: libraryUser.platformId,
@@ -1429,73 +2322,102 @@ export class ContentService {
           topicId: true,
           order: true,
         },
-      }) as any;
+      })) as any;
 
       if (!assignment) {
-        this.logger.error(colors.red(`Assignment not found or does not belong to your platform: ${assignmentId}`));
-        throw new NotFoundException('Assignment not found or does not belong to your platform');
+        this.logger.error(
+          colors.red(
+            `Assignment not found or does not belong to your platform: ${assignmentId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Assignment not found or does not belong to your platform',
+        );
       }
 
       // Delete in transaction: file first, then database
-      await this.prisma.$transaction(async (tx) => {
-        // Delete assignment file from storage
-        if (assignment.attachmentS3Key) {
-          try {
-            await this.s3Service.deleteFile(assignment.attachmentS3Key);
-            this.logger.log(colors.green(`✅ Deleted assignment file from storage: ${assignment.attachmentS3Key}`));
-          } catch (error) {
-            this.logger.error(colors.yellow(`⚠️ Failed to delete assignment file from storage: ${error.message}`));
-            // Continue with DB deletion even if file deletion fails
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Delete assignment file from storage
+          if (assignment.attachmentS3Key) {
+            try {
+              await this.s3Service.deleteFile(assignment.attachmentS3Key);
+              this.logger.log(
+                colors.green(
+                  `✅ Deleted assignment file from storage: ${assignment.attachmentS3Key}`,
+                ),
+              );
+            } catch (error) {
+              this.logger.error(
+                colors.yellow(
+                  `⚠️ Failed to delete assignment file from storage: ${error.message}`,
+                ),
+              );
+              // Continue with DB deletion even if file deletion fails
+            }
           }
-        }
 
-        // Delete from database
-        await tx.libraryAssignment.delete({
-          where: { id: assignmentId },
-        });
-
-        // Reorder remaining assignments in the same topic (close gaps)
-        const assignmentsToReorder = await tx.libraryAssignment.findMany({
-          where: {
-            topicId: assignment.topicId,
-            platformId: libraryUser.platformId,
-            order: {
-              gt: assignment.order,
-            },
-          },
-          select: {
-            id: true,
-            order: true,
-          },
-          orderBy: {
-            order: 'asc',
-          },
-        });
-
-        // Decrement order for all assignments after the deleted one
-        for (const ass of assignmentsToReorder) {
-          await tx.libraryAssignment.update({
-            where: { id: ass.id },
-            data: { order: ass.order - 1 },
+          // Delete from database
+          await tx.libraryAssignment.delete({
+            where: { id: assignmentId },
           });
-        }
 
-        if (assignmentsToReorder.length > 0) {
-          this.logger.log(colors.cyan(`🔄 Reordered ${assignmentsToReorder.length} assignment(s) after deletion`));
-        }
-      }, {
-        maxWait: 5000,
-        timeout: 15000,
+          // Reorder remaining assignments in the same topic (close gaps)
+          const assignmentsToReorder = await tx.libraryAssignment.findMany({
+            where: {
+              topicId: assignment.topicId,
+              platformId: libraryUser.platformId,
+              order: {
+                gt: assignment.order,
+              },
+            },
+            select: {
+              id: true,
+              order: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          });
+
+          // Decrement order for all assignments after the deleted one
+          for (const ass of assignmentsToReorder) {
+            await tx.libraryAssignment.update({
+              where: { id: ass.id },
+              data: { order: ass.order - 1 },
+            });
+          }
+
+          if (assignmentsToReorder.length > 0) {
+            this.logger.log(
+              colors.cyan(
+                `🔄 Reordered ${assignmentsToReorder.length} assignment(s) after deletion`,
+              ),
+            );
+          }
+        },
+        {
+          maxWait: 5000,
+          timeout: 15000,
+        },
+      );
+
+      this.logger.log(
+        colors.green(`✅ Assignment deleted successfully: ${assignment.title}`),
+      );
+      return new ApiResponse(true, 'Assignment deleted successfully', {
+        id: assignmentId,
+        title: assignment.title,
       });
-
-      this.logger.log(colors.green(`✅ Assignment deleted successfully: ${assignment.title}`));
-      return new ApiResponse(true, 'Assignment deleted successfully', { id: assignmentId, title: assignment.title });
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error deleting assignment: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error deleting assignment: ${error.message}`),
+        error.stack,
+      );
       throw new InternalServerErrorException('Failed to delete assignment');
     }
   }
@@ -1503,7 +2425,9 @@ export class ContentService {
   /**
    * Helper: Get material type from file extension
    */
-  private getMaterialTypeFromExtension(extension: string): 'PDF' | 'DOC' | 'PPT' | 'VIDEO' | 'NOTE' | 'LINK' | 'OTHER' {
+  private getMaterialTypeFromExtension(
+    extension: string,
+  ): 'PDF' | 'DOC' | 'PPT' | 'VIDEO' | 'NOTE' | 'LINK' | 'OTHER' {
     const ext = extension.toLowerCase();
     switch (ext) {
       case 'pdf':
@@ -1518,6 +2442,4 @@ export class ContentService {
         return 'OTHER';
     }
   }
-
 }
-

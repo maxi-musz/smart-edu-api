@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -17,7 +22,9 @@ export class LibraryDevSubjectService {
     color?: string;
     description?: string;
   }): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Creating library subject: ${payload.name}`));
+    this.logger.log(
+      colors.cyan(`[DEV] Creating library subject: ${payload.name}`),
+    );
 
     if (!payload.platformId || !payload.name) {
       throw new BadRequestException('platformId and name are required');
@@ -47,7 +54,9 @@ export class LibraryDevSubjectService {
         },
       });
       if (existingCode) {
-        throw new BadRequestException('Subject code already exists in this platform');
+        throw new BadRequestException(
+          'Subject code already exists in this platform',
+        );
       }
     }
 
@@ -62,11 +71,20 @@ export class LibraryDevSubjectService {
       },
     });
 
-    return new ApiResponse(true, 'Library subject created successfully', created);
+    return new ApiResponse(
+      true,
+      'Library subject created successfully',
+      created,
+    );
   }
 
-  async listSubjects(platformId: string, classId?: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[DEV] Listing library subjects for platform: ${platformId}`));
+  async listSubjects(
+    platformId: string,
+    classId?: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(`[DEV] Listing library subjects for platform: ${platformId}`),
+    );
 
     if (!platformId) {
       throw new BadRequestException('platformId is required');
@@ -80,7 +98,11 @@ export class LibraryDevSubjectService {
       orderBy: { name: 'asc' },
     });
 
-    return new ApiResponse(true, 'Library subjects retrieved successfully', subjects);
+    return new ApiResponse(
+      true,
+      'Library subjects retrieved successfully',
+      subjects,
+    );
   }
 
   async getSubject(id: string): Promise<ApiResponse<any>> {
@@ -98,12 +120,22 @@ export class LibraryDevSubjectService {
       throw new NotFoundException('Library subject not found');
     }
 
-    return new ApiResponse(true, 'Library subject retrieved successfully', subject);
+    return new ApiResponse(
+      true,
+      'Library subject retrieved successfully',
+      subject,
+    );
   }
 
   async updateSubject(
     id: string,
-    payload: { name?: string; code?: string; classId?: string | null; color?: string; description?: string },
+    payload: {
+      name?: string;
+      code?: string;
+      classId?: string | null;
+      color?: string;
+      description?: string;
+    },
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[DEV] Updating library subject: ${id}`));
 
@@ -132,7 +164,9 @@ export class LibraryDevSubjectService {
         },
       });
       if (existingCode) {
-        throw new BadRequestException('Subject code already exists in this platform');
+        throw new BadRequestException(
+          'Subject code already exists in this platform',
+        );
       }
     }
 
@@ -141,13 +175,18 @@ export class LibraryDevSubjectService {
       data: {
         name: payload.name ?? existing.name,
         code: payload.code ?? existing.code,
-        classId: payload.classId === undefined ? existing.classId : payload.classId,
+        classId:
+          payload.classId === undefined ? existing.classId : payload.classId,
         color: payload.color ?? existing.color,
         description: payload.description ?? existing.description,
       },
     });
 
-    return new ApiResponse(true, 'Library subject updated successfully', updated);
+    return new ApiResponse(
+      true,
+      'Library subject updated successfully',
+      updated,
+    );
   }
 
   async deleteSubject(id: string): Promise<ApiResponse<null>> {
@@ -168,5 +207,3 @@ export class LibraryDevSubjectService {
     return new ApiResponse(true, 'Library subject deleted successfully', null);
   }
 }
-
-

@@ -6,4 +6,3 @@ import { DirectorAssessmentsService } from './director-assessments.service';
   exports: [DirectorAssessmentsService],
 })
 export class DirectorAssessmentsModule {}
-

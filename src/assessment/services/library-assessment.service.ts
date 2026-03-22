@@ -1,16 +1,35 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../shared/services/providers/storage.service';
 import { ResponseHelper } from '../../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
-import { CreateNewAssessmentDto, GetAssessmentsQueryDto, UpdateAssessmentDto, SubmitAssessmentDto, DuplicateAssessmentDto, AddQuestionsDto, UpdateQuestionDto } from '../dto';
-import { AssessmentType, Prisma, QuestionType, DifficultyLevel } from '@prisma/client';
+import {
+  CreateNewAssessmentDto,
+  GetAssessmentsQueryDto,
+  UpdateAssessmentDto,
+  SubmitAssessmentDto,
+  DuplicateAssessmentDto,
+  AddQuestionsDto,
+  UpdateQuestionDto,
+} from '../dto';
+import {
+  AssessmentType,
+  Prisma,
+  QuestionType,
+  DifficultyLevel,
+} from '@prisma/client';
 import { StatusAnalytics } from './assessment.types';
 import { AssessmentGradingService } from './assessment-grading.service';
 
 /**
  * Library Assessment Service
- * 
+ *
  * Handles all library-specific assessment operations:
  * - Create library assessments
  * - Get library assessments (list and details)
@@ -39,9 +58,13 @@ export class LibraryAssessmentService {
   async createLibraryAssessment(
     createAssessmentDto: CreateNewAssessmentDto,
     platformId: string,
-    userId: string
+    userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Creating Library Assessment: ${createAssessmentDto.title}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY] Creating Library Assessment: ${createAssessmentDto.title}`,
+      ),
+    );
 
     // Single query to validate platform, subject, and optionally topic
     const librarySubject = await this.prisma.librarySubject.findFirst({
@@ -57,13 +80,25 @@ export class LibraryAssessmentService {
     });
 
     if (!librarySubject) {
-      this.logger.error(colors.red(`Library subject not found: ${createAssessmentDto.subject_id} for platform: ${platformId}`));
-      throw new NotFoundException('Library subject not found or does not belong to your platform');
+      this.logger.error(
+        colors.red(
+          `Library subject not found: ${createAssessmentDto.subject_id} for platform: ${platformId}`,
+        ),
+      );
+      throw new NotFoundException(
+        'Library subject not found or does not belong to your platform',
+      );
     }
 
     if (createAssessmentDto.topic_id && librarySubject.topics?.length === 0) {
-      this.logger.error(colors.red(`Library topic not found: ${createAssessmentDto.topic_id} for subject: ${createAssessmentDto.subject_id}`));
-      throw new NotFoundException('Library topic not found or does not belong to this subject');
+      this.logger.error(
+        colors.red(
+          `Library topic not found: ${createAssessmentDto.topic_id} for subject: ${createAssessmentDto.subject_id}`,
+        ),
+      );
+      throw new NotFoundException(
+        'Library topic not found or does not belong to this subject',
+      );
     }
 
     // Create the library assessment
@@ -76,7 +111,9 @@ export class LibraryAssessmentService {
         title: createAssessmentDto.title,
         description: createAssessmentDto.description,
         instructions: createAssessmentDto.instructions,
-        assessmentType: (createAssessmentDto.assessment_type as AssessmentType) || AssessmentType.CBT,
+        assessmentType:
+          (createAssessmentDto.assessment_type as AssessmentType) ||
+          AssessmentType.CBT,
         gradingType: createAssessmentDto.grading_type || 'AUTOMATIC',
         duration: createAssessmentDto.duration,
         maxAttempts: createAssessmentDto.max_attempts || 1,
@@ -87,8 +124,12 @@ export class LibraryAssessmentService {
         showCorrectAnswers: createAssessmentDto.show_correct_answers || false,
         showFeedback: createAssessmentDto.show_feedback !== false,
         allowReview: createAssessmentDto.allow_review !== false,
-        startDate: createAssessmentDto.start_date ? new Date(createAssessmentDto.start_date) : null,
-        endDate: createAssessmentDto.end_date ? new Date(createAssessmentDto.end_date) : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        startDate: createAssessmentDto.start_date
+          ? new Date(createAssessmentDto.start_date)
+          : null,
+        endDate: createAssessmentDto.end_date
+          ? new Date(createAssessmentDto.end_date)
+          : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
         timeLimit: createAssessmentDto.time_limit,
         autoSubmit: createAssessmentDto.auto_submit || false,
         tags: createAssessmentDto.tags || [],
@@ -108,7 +149,11 @@ export class LibraryAssessmentService {
       },
     });
 
-    this.logger.log(colors.green(`[LIBRARY] Assessment created successfully: ${assessment.id}`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Assessment created successfully: ${assessment.id}`,
+      ),
+    );
     return ResponseHelper.success('Library assessment created successfully', {
       ...assessment,
       assessmentContext: 'library',
@@ -125,9 +170,13 @@ export class LibraryAssessmentService {
    */
   async getAllLibraryAssessments(
     query: GetAssessmentsQueryDto,
-    platformId: string
+    platformId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Fetching library assessments for platform: ${platformId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY] Fetching library assessments for platform: ${platformId}`,
+      ),
+    );
 
     // Build base where clause for LibraryAssessment
     const baseWhere: Prisma.LibraryAssessmentWhereInput = {
@@ -139,7 +188,8 @@ export class LibraryAssessmentService {
     if (query.topic_id) baseWhere.topicId = query.topic_id;
     if (query.status) baseWhere.status = query.status;
     if (query.assessment_type) baseWhere.assessmentType = query.assessment_type;
-    if (query.is_published !== undefined) baseWhere.isPublished = query.is_published;
+    if (query.is_published !== undefined)
+      baseWhere.isPublished = query.is_published;
     if (query.created_by) baseWhere.createdById = query.created_by;
 
     // Apply search filter
@@ -162,7 +212,13 @@ export class LibraryAssessmentService {
         where: baseWhere,
         skip: (query.page! - 1) * query.limit!,
         take: query.limit,
-        orderBy: { [query.sort_by === 'start_date' ? 'startDate' : query.sort_by === 'end_date' ? 'endDate' : query.sort_by!]: query.sort_order },
+        orderBy: {
+          [query.sort_by === 'start_date'
+            ? 'startDate'
+            : query.sort_by === 'end_date'
+              ? 'endDate'
+              : query.sort_by!]: query.sort_order,
+        },
         include: {
           subject: {
             select: { id: true, name: true, code: true },
@@ -201,12 +257,17 @@ export class LibraryAssessmentService {
     statusCounts.forEach((item) => {
       const count = item._count.id;
       statusAnalytics.all += count;
-      statusAnalytics[item.status.toLowerCase() as keyof StatusAnalytics] = count;
+      statusAnalytics[item.status.toLowerCase() as keyof StatusAnalytics] =
+        count;
     });
 
     const totalPages = Math.ceil(total / query.limit!);
 
-    this.logger.log(colors.green(`[LIBRARY] Fetched ${assessments.length} library assessments (page ${query.page}/${totalPages})`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Fetched ${assessments.length} library assessments (page ${query.page}/${totalPages})`,
+      ),
+    );
 
     return ResponseHelper.success('Library assessments fetched successfully', {
       analytics: statusAnalytics,
@@ -225,11 +286,12 @@ export class LibraryAssessmentService {
    * Get library assessment details by ID
    * Returns: assessment info, questions, and attempts
    */
-  async getLibraryAssessmentDetails(
-    assessmentId: string,
-    platformId: string
-  ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Getting library assessment details: ${assessmentId}`));
+  async getLibraryAssessmentDetails(assessmentId: string, platformId: string) {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY] Getting library assessment details: ${assessmentId}`,
+      ),
+    );
 
     // Fetch the library assessment
     const assessment = await this.prisma.libraryAssessment.findFirst({
@@ -260,7 +322,9 @@ export class LibraryAssessmentService {
     });
 
     if (!assessment) {
-      this.logger.error(colors.red(`[LIBRARY] Assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`[LIBRARY] Assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Library assessment not found');
     }
 
@@ -303,7 +367,7 @@ export class LibraryAssessmentService {
 
     // Group attempts by user
     const attemptsByUser = new Map<string, any[]>();
-    attempts.forEach(attempt => {
+    attempts.forEach((attempt) => {
       const odUserId = attempt.user?.id || 'unknown';
       if (!attemptsByUser.has(odUserId)) {
         attemptsByUser.set(odUserId, []);
@@ -312,63 +376,73 @@ export class LibraryAssessmentService {
     });
 
     // Build user submission report
-    const usersWithAttempts = Array.from(attemptsByUser.entries()).map(([odUserId, userAttempts]) => {
-      const firstAttempt = userAttempts[0];
-      const bestAttempt = userAttempts.reduce((best, current) =>
-        (current.percentage || 0) > (best.percentage || 0) ? current : best
-      );
+    const usersWithAttempts = Array.from(attemptsByUser.entries()).map(
+      ([odUserId, userAttempts]) => {
+        const firstAttempt = userAttempts[0];
+        const bestAttempt = userAttempts.reduce((best, current) =>
+          (current.percentage || 0) > (best.percentage || 0) ? current : best,
+        );
 
-      return {
-        user: {
-          id: firstAttempt.user?.id,
-          first_name: firstAttempt.user?.first_name,
-          last_name: firstAttempt.user?.last_name,
-          email: firstAttempt.user?.email,
-          display_picture: firstAttempt.user?.display_picture,
-        },
-        attempts: userAttempts.map(a => ({
-          id: a.id,
-          attemptNumber: a.attemptNumber,
-          status: a.status,
-          startedAt: a.startedAt,
-          submittedAt: a.submittedAt,
-          timeSpent: a.timeSpent,
-          totalScore: a.totalScore,
-          maxScore: a.maxScore,
-          percentage: a.percentage,
-          passed: a.passed,
-          isGraded: a.isGraded,
-          gradedAt: a.gradedAt,
-          gradeLetter: a.gradeLetter,
-        })),
-        totalAttempts: userAttempts.length,
-        bestScore: bestAttempt?.percentage || null,
-        passed: bestAttempt?.passed || false,
-      };
-    });
+        return {
+          user: {
+            id: firstAttempt.user?.id,
+            first_name: firstAttempt.user?.first_name,
+            last_name: firstAttempt.user?.last_name,
+            email: firstAttempt.user?.email,
+            display_picture: firstAttempt.user?.display_picture,
+          },
+          attempts: userAttempts.map((a) => ({
+            id: a.id,
+            attemptNumber: a.attemptNumber,
+            status: a.status,
+            startedAt: a.startedAt,
+            submittedAt: a.submittedAt,
+            timeSpent: a.timeSpent,
+            totalScore: a.totalScore,
+            maxScore: a.maxScore,
+            percentage: a.percentage,
+            passed: a.passed,
+            isGraded: a.isGraded,
+            gradedAt: a.gradedAt,
+            gradeLetter: a.gradeLetter,
+          })),
+          totalAttempts: userAttempts.length,
+          bestScore: bestAttempt?.percentage || null,
+          passed: bestAttempt?.passed || false,
+        };
+      },
+    );
 
     const totalUsers = usersWithAttempts.length;
-    const usersPassed = usersWithAttempts.filter(u => u.passed).length;
+    const usersPassed = usersWithAttempts.filter((u) => u.passed).length;
 
-    this.logger.log(colors.green(`[LIBRARY] Assessment details retrieved: ${questions.length} questions, ${attempts.length} attempts`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Assessment details retrieved: ${questions.length} questions, ${attempts.length} attempts`,
+      ),
+    );
 
-    return ResponseHelper.success('Library assessment details retrieved successfully', {
-      assessment,
-      questions: {
-        total: questions.length,
-        items: questions,
-      },
-      submissions: {
-        summary: {
-          totalUsers,
-          totalAttempts: attempts.length,
-          usersPassed,
-          passRate: totalUsers > 0 ? Math.round((usersPassed / totalUsers) * 100) : 0,
+    return ResponseHelper.success(
+      'Library assessment details retrieved successfully',
+      {
+        assessment,
+        questions: {
+          total: questions.length,
+          items: questions,
         },
-        users: usersWithAttempts,
+        submissions: {
+          summary: {
+            totalUsers,
+            totalAttempts: attempts.length,
+            usersPassed,
+            passRate:
+              totalUsers > 0 ? Math.round((usersPassed / totalUsers) * 100) : 0,
+          },
+          users: usersWithAttempts,
+        },
+        assessmentContext: 'library',
       },
-      assessmentContext: 'library',
-    });
+    );
   }
 
   // ========================================
@@ -382,9 +456,11 @@ export class LibraryAssessmentService {
     assessmentId: string,
     updateDto: UpdateAssessmentDto,
     platformId: string,
-    userId: string
+    userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Updating assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY] Updating assessment: ${assessmentId}`),
+    );
 
     // Fetch existing assessment
     const existingAssessment = await this.prisma.libraryAssessment.findFirst({
@@ -405,21 +481,32 @@ export class LibraryAssessmentService {
     });
 
     if (!existingAssessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
-      throw new NotFoundException('Assessment not found or you do not have permission to update it');
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
+      throw new NotFoundException(
+        'Assessment not found or you do not have permission to update it',
+      );
     }
 
     // Check if assessment is published - cannot update published assessments
     const publishedStatuses = ['PUBLISHED', 'ACTIVE'];
     if (publishedStatuses.includes(existingAssessment.status)) {
-      this.logger.warn(colors.yellow(`Cannot update published library assessment: ${assessmentId} (status: ${existingAssessment.status})`));
+      this.logger.warn(
+        colors.yellow(
+          `Cannot update published library assessment: ${assessmentId} (status: ${existingAssessment.status})`,
+        ),
+      );
       throw new BadRequestException(
-        `Cannot update assessment with status "${existingAssessment.status}". Change status to DRAFT first to make modifications.`
+        `Cannot update assessment with status "${existingAssessment.status}". Change status to DRAFT first to make modifications.`,
       );
     }
 
     // Validate subject_id if being changed (maps to subjectId in library)
-    if (updateDto.subject_id && updateDto.subject_id !== existingAssessment.subjectId) {
+    if (
+      updateDto.subject_id &&
+      updateDto.subject_id !== existingAssessment.subjectId
+    ) {
       const subject = await this.prisma.librarySubject.findFirst({
         where: {
           id: updateDto.subject_id,
@@ -428,14 +515,20 @@ export class LibraryAssessmentService {
       });
 
       if (!subject) {
-        this.logger.error(colors.red(`Library subject not found: ${updateDto.subject_id}`));
+        this.logger.error(
+          colors.red(`Library subject not found: ${updateDto.subject_id}`),
+        );
         throw new NotFoundException('Subject not found in this platform');
       }
     }
 
     // Validate topic_id if being changed (maps to topicId in library)
-    if (updateDto.topic_id && updateDto.topic_id !== existingAssessment.topicId) {
-      const effectiveSubjectId = updateDto.subject_id || existingAssessment.subjectId;
+    if (
+      updateDto.topic_id &&
+      updateDto.topic_id !== existingAssessment.topicId
+    ) {
+      const effectiveSubjectId =
+        updateDto.subject_id || existingAssessment.subjectId;
       const topic = await this.prisma.libraryTopic.findFirst({
         where: {
           id: updateDto.topic_id,
@@ -444,8 +537,12 @@ export class LibraryAssessmentService {
       });
 
       if (!topic) {
-        this.logger.error(colors.red(`Library topic not found: ${updateDto.topic_id}`));
-        throw new NotFoundException('Topic not found or does not belong to the specified subject');
+        this.logger.error(
+          colors.red(`Library topic not found: ${updateDto.topic_id}`),
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to the specified subject',
+        );
       }
     }
 
@@ -454,34 +551,50 @@ export class LibraryAssessmentService {
 
     // Map snake_case DTO fields to camelCase library fields
     const fieldMapping: Record<string, string> = {
-      'subject_id': 'subjectId',
-      'topic_id': 'topicId',
-      'max_attempts': 'maxAttempts',
-      'passing_score': 'passingScore',
-      'total_points': 'totalPoints',
-      'shuffle_questions': 'shuffleQuestions',
-      'shuffle_options': 'shuffleOptions',
-      'show_correct_answers': 'showCorrectAnswers',
-      'show_feedback': 'showFeedback',
-      'allow_review': 'allowReview',
-      'time_limit': 'timeLimit',
-      'grading_type': 'gradingType',
-      'auto_submit': 'autoSubmit',
-      'assessment_type': 'assessmentType',
-      'is_result_released': 'isResultReleased',
-      'student_can_view_grading': 'studentCanViewGrading',
-      'start_date': 'startDate',
-      'end_date': 'endDate',
+      subject_id: 'subjectId',
+      topic_id: 'topicId',
+      max_attempts: 'maxAttempts',
+      passing_score: 'passingScore',
+      total_points: 'totalPoints',
+      shuffle_questions: 'shuffleQuestions',
+      shuffle_options: 'shuffleOptions',
+      show_correct_answers: 'showCorrectAnswers',
+      show_feedback: 'showFeedback',
+      allow_review: 'allowReview',
+      time_limit: 'timeLimit',
+      grading_type: 'gradingType',
+      auto_submit: 'autoSubmit',
+      assessment_type: 'assessmentType',
+      is_result_released: 'isResultReleased',
+      student_can_view_grading: 'studentCanViewGrading',
+      start_date: 'startDate',
+      end_date: 'endDate',
     };
 
     // Copy fields with mapping
     const allowedFields = [
-      'title', 'description', 'instructions', 'subject_id', 'topic_id',
-      'duration', 'max_attempts', 'passing_score', 'total_points',
-      'shuffle_questions', 'shuffle_options', 'show_correct_answers',
-      'show_feedback', 'allow_review', 'time_limit', 'grading_type',
-      'auto_submit', 'tags', 'assessment_type', 'is_result_released',
-      'student_can_view_grading', 'status'
+      'title',
+      'description',
+      'instructions',
+      'subject_id',
+      'topic_id',
+      'duration',
+      'max_attempts',
+      'passing_score',
+      'total_points',
+      'shuffle_questions',
+      'shuffle_options',
+      'show_correct_answers',
+      'show_feedback',
+      'allow_review',
+      'time_limit',
+      'grading_type',
+      'auto_submit',
+      'tags',
+      'assessment_type',
+      'is_result_released',
+      'student_can_view_grading',
+      'status',
     ];
 
     for (const field of allowedFields) {
@@ -501,29 +614,40 @@ export class LibraryAssessmentService {
 
     // Handle status changes
     if (updateDto.status) {
-      const isBeingPublished = ['PUBLISHED', 'ACTIVE'].includes(updateDto.status) && !existingAssessment.isPublished;
+      const isBeingPublished =
+        ['PUBLISHED', 'ACTIVE'].includes(updateDto.status) &&
+        !existingAssessment.isPublished;
 
       if (isBeingPublished) {
         // Validate endDate is not in the past
-        const effectiveEndDate = updateData.endDate ?? existingAssessment.endDate;
+        const effectiveEndDate =
+          updateData.endDate ?? existingAssessment.endDate;
         if (effectiveEndDate && new Date(effectiveEndDate) < new Date()) {
-          this.logger.error(colors.red(`Cannot publish library assessment with past endDate: ${effectiveEndDate}`));
+          this.logger.error(
+            colors.red(
+              `Cannot publish library assessment with past endDate: ${effectiveEndDate}`,
+            ),
+          );
           throw new BadRequestException(
-            'Cannot publish an assessment that has already expired. Please set an end date in the future first.'
+            'Cannot publish an assessment that has already expired. Please set an end date in the future first.',
           );
         }
         updateData.isPublished = true;
         updateData.publishedAt = new Date();
       }
 
-      const isBeingUnpublished = updateDto.status === 'DRAFT' && existingAssessment.isPublished;
+      const isBeingUnpublished =
+        updateDto.status === 'DRAFT' && existingAssessment.isPublished;
       if (isBeingUnpublished) {
         updateData.isPublished = false;
       }
     }
 
     // Don't pass empty/undefined assessmentType to Prisma
-    if (updateData.assessmentType === '' || updateData.assessmentType === undefined) {
+    if (
+      updateData.assessmentType === '' ||
+      updateData.assessmentType === undefined
+    ) {
       delete updateData.assessmentType;
     }
 
@@ -547,7 +671,11 @@ export class LibraryAssessmentService {
       },
     });
 
-    this.logger.log(colors.green(`[LIBRARY] Assessment updated successfully: ${assessmentId}`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Assessment updated successfully: ${assessmentId}`,
+      ),
+    );
 
     return ResponseHelper.success('Assessment updated successfully', {
       assessment: updatedAssessment,
@@ -567,9 +695,11 @@ export class LibraryAssessmentService {
     assessmentId: string,
     platformId: string,
     userId: string,
-    isOwner: boolean = false
+    isOwner: boolean = false,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Fetching assessment questions: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY] Fetching assessment questions: ${assessmentId}`),
+    );
 
     const assessment = await this.prisma.libraryAssessment.findFirst({
       where: {
@@ -587,7 +717,12 @@ export class LibraryAssessmentService {
         questions: {
           include: {
             options: {
-              select: { id: true, optionText: true, isCorrect: true, order: true },
+              select: {
+                id: true,
+                optionText: true,
+                isCorrect: true,
+                order: true,
+              },
               orderBy: { order: 'asc' },
             },
             correctAnswers: {
@@ -603,13 +738,15 @@ export class LibraryAssessmentService {
     });
 
     if (!assessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Assessment not found or not available');
     }
 
     // If owner, show preview with correct answers
     if (isOwner) {
-      const questions = assessment.questions.map(q => ({
+      const questions = assessment.questions.map((q) => ({
         id: q.id,
         question_text: q.questionText,
         question_type: q.questionType,
@@ -621,48 +758,55 @@ export class LibraryAssessmentService {
         is_required: q.isRequired,
         explanation: q.explanation,
         difficulty_level: q.difficultyLevel,
-        options: q.options.map(o => ({
+        options: q.options.map((o) => ({
           id: o.id,
           text: o.optionText,
           is_correct: o.isCorrect,
           order: o.order,
         })),
-        correct_answers: q.correctAnswers.map(ca => ({
+        correct_answers: q.correctAnswers.map((ca) => ({
           id: ca.id,
           answer_text: ca.answerText,
           option_ids: ca.optionIds,
         })),
       }));
 
-      this.logger.log(colors.green(`[LIBRARY PREVIEW] Questions retrieved: ${questions.length}`));
+      this.logger.log(
+        colors.green(
+          `[LIBRARY PREVIEW] Questions retrieved: ${questions.length}`,
+        ),
+      );
 
-      return ResponseHelper.success('Assessment questions retrieved successfully (preview mode)', {
-        assessment: {
-          id: assessment.id,
-          title: assessment.title,
-          description: assessment.description,
-          instructions: assessment.instructions,
-          duration: assessment.duration,
-          timeLimit: assessment.timeLimit,
-          totalPoints: assessment.totalPoints,
-          maxAttempts: assessment.maxAttempts,
-          passingScore: assessment.passingScore,
-          status: assessment.status,
-          isPublished: assessment.isPublished,
-          startDate: assessment.startDate,
-          endDate: assessment.endDate,
-          subject: assessment.subject,
-          createdBy: {
-            id: assessment.createdBy.id,
-            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+      return ResponseHelper.success(
+        'Assessment questions retrieved successfully (preview mode)',
+        {
+          assessment: {
+            id: assessment.id,
+            title: assessment.title,
+            description: assessment.description,
+            instructions: assessment.instructions,
+            duration: assessment.duration,
+            timeLimit: assessment.timeLimit,
+            totalPoints: assessment.totalPoints,
+            maxAttempts: assessment.maxAttempts,
+            passingScore: assessment.passingScore,
+            status: assessment.status,
+            isPublished: assessment.isPublished,
+            startDate: assessment.startDate,
+            endDate: assessment.endDate,
+            subject: assessment.subject,
+            createdBy: {
+              id: assessment.createdBy.id,
+              name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+            },
+            totalAttempts: assessment._count.attempts,
           },
-          totalAttempts: assessment._count.attempts,
+          questions,
+          total_questions: questions.length,
+          isPreview: true,
+          assessmentContext: 'library',
         },
-        questions,
-        total_questions: questions.length,
-        isPreview: true,
-        assessmentContext: 'library',
-      });
+      );
     }
 
     // For regular users taking the assessment
@@ -672,10 +816,12 @@ export class LibraryAssessmentService {
     }
 
     if (assessment.endDate && assessment.endDate < now) {
-      await this.prisma.libraryAssessment.update({
-        where: { id: assessmentId },
-        data: { status: 'CLOSED' },
-      }).catch(() => {});
+      await this.prisma.libraryAssessment
+        .update({
+          where: { id: assessmentId },
+          data: { status: 'CLOSED' },
+        })
+        .catch(() => {});
       throw new BadRequestException('Assessment has expired');
     }
 
@@ -688,12 +834,14 @@ export class LibraryAssessmentService {
     });
 
     if (attemptCount >= assessment.maxAttempts) {
-      throw new ForbiddenException('Maximum attempts reached for this assessment');
+      throw new ForbiddenException(
+        'Maximum attempts reached for this assessment',
+      );
     }
 
     // Format questions (hide correct answers)
-    const questions = assessment.questions.map(q => {
-      let options = q.options.map(o => ({
+    const questions = assessment.questions.map((q) => {
+      let options = q.options.map((o) => ({
         id: o.id,
         text: o.optionText,
         order: o.order,
@@ -717,38 +865,43 @@ export class LibraryAssessmentService {
       };
     });
 
-    const finalQuestions = assessment.shuffleQuestions 
-      ? this.gradingService.shuffleArray(questions) 
+    const finalQuestions = assessment.shuffleQuestions
+      ? this.gradingService.shuffleArray(questions)
       : questions;
 
-    this.logger.log(colors.green(`[LIBRARY] Questions retrieved: ${finalQuestions.length}`));
+    this.logger.log(
+      colors.green(`[LIBRARY] Questions retrieved: ${finalQuestions.length}`),
+    );
 
-    return ResponseHelper.success('Assessment questions retrieved successfully', {
-      assessment: {
-        id: assessment.id,
-        title: assessment.title,
-        description: assessment.description,
-        instructions: assessment.instructions,
-        duration: assessment.duration,
-        timeLimit: assessment.timeLimit,
-        totalPoints: assessment.totalPoints,
-        maxAttempts: assessment.maxAttempts,
-        passingScore: assessment.passingScore,
-        autoSubmit: assessment.autoSubmit,
-        startDate: assessment.startDate,
-        endDate: assessment.endDate,
-        subject: assessment.subject,
-        createdBy: {
-          id: assessment.createdBy.id,
-          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+    return ResponseHelper.success(
+      'Assessment questions retrieved successfully',
+      {
+        assessment: {
+          id: assessment.id,
+          title: assessment.title,
+          description: assessment.description,
+          instructions: assessment.instructions,
+          duration: assessment.duration,
+          timeLimit: assessment.timeLimit,
+          totalPoints: assessment.totalPoints,
+          maxAttempts: assessment.maxAttempts,
+          passingScore: assessment.passingScore,
+          autoSubmit: assessment.autoSubmit,
+          startDate: assessment.startDate,
+          endDate: assessment.endDate,
+          subject: assessment.subject,
+          createdBy: {
+            id: assessment.createdBy.id,
+            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
+          },
         },
+        questions: finalQuestions,
+        total_questions: finalQuestions.length,
+        user_attempts: attemptCount,
+        remaining_attempts: assessment.maxAttempts - attemptCount,
+        assessmentContext: 'library',
       },
-      questions: finalQuestions,
-      total_questions: finalQuestions.length,
-      user_attempts: attemptCount,
-      remaining_attempts: assessment.maxAttempts - attemptCount,
-      assessmentContext: 'library',
-    });
+    );
   }
 
   // ========================================
@@ -762,9 +915,11 @@ export class LibraryAssessmentService {
     assessmentId: string,
     submitDto: SubmitAssessmentDto,
     platformId: string,
-    userId: string
+    userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Submitting assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY] Submitting assessment: ${assessmentId}`),
+    );
 
     // Get the assessment with questions
     const assessment = await this.prisma.libraryAssessment.findFirst({
@@ -786,7 +941,9 @@ export class LibraryAssessmentService {
     });
 
     if (!assessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Assessment not found or not available');
     }
 
@@ -799,18 +956,25 @@ export class LibraryAssessmentService {
     });
 
     if (attemptCount >= assessment.maxAttempts) {
-      this.logger.warn(colors.yellow(`Maximum attempts reached: ${assessmentId}`));
-      throw new ForbiddenException('Maximum attempts reached for this assessment');
+      this.logger.warn(
+        colors.yellow(`Maximum attempts reached: ${assessmentId}`),
+      );
+      throw new ForbiddenException(
+        'Maximum attempts reached for this assessment',
+      );
     }
 
     // Normalize answers
-    const normalizedAnswers = this.gradingService.normalizeAnswers(submitDto.answers);
+    const normalizedAnswers = this.gradingService.normalizeAnswers(
+      submitDto.answers,
+    );
 
     // Grade answers
-    const { gradedAnswers, totalScore, totalPoints } = this.gradingService.gradeLibraryAnswers(
-      normalizedAnswers,
-      assessment.questions
-    );
+    const { gradedAnswers, totalScore, totalPoints } =
+      this.gradingService.gradeLibraryAnswers(
+        normalizedAnswers,
+        assessment.questions,
+      );
 
     // Calculate final scores
     const percentage = totalPoints > 0 ? (totalScore / totalPoints) * 100 : 0;
@@ -828,7 +992,9 @@ export class LibraryAssessmentService {
           attemptNumber: attemptCount + 1,
           status: 'GRADED',
           startedAt: new Date(),
-          submittedAt: submitDto.submission_time ? new Date(submitDto.submission_time) : new Date(),
+          submittedAt: submitDto.submission_time
+            ? new Date(submitDto.submission_time)
+            : new Date(),
           timeSpent: timeSpent,
           totalScore: totalScore,
           maxScore: assessment.totalPoints,
@@ -856,14 +1022,18 @@ export class LibraryAssessmentService {
               pointsEarned: answer.points_earned,
               maxPoints: answer.max_points,
             },
-          })
-        )
+          }),
+        ),
       );
 
       return { attempt, responses };
     });
 
-    this.logger.log(colors.green(`[LIBRARY] Assessment submitted: ${totalScore}/${totalPoints} (${percentage.toFixed(1)}%)`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Assessment submitted: ${totalScore}/${totalPoints} (${percentage.toFixed(1)}%)`,
+      ),
+    );
 
     return ResponseHelper.success('Assessment submitted successfully', {
       attempt_id: result.attempt.id,
@@ -907,9 +1077,11 @@ export class LibraryAssessmentService {
     assessmentId: string,
     duplicateDto: DuplicateAssessmentDto,
     platformId: string,
-    userId: string
+    userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Duplicating assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY] Duplicating assessment: ${assessmentId}`),
+    );
 
     // Fetch source assessment with all questions and options
     const sourceAssessment = await this.prisma.libraryAssessment.findFirst({
@@ -929,7 +1101,9 @@ export class LibraryAssessmentService {
     });
 
     if (!sourceAssessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Assessment not found');
     }
 
@@ -949,7 +1123,8 @@ export class LibraryAssessmentService {
           topicId: sourceAssessment.topicId,
           createdById: userId,
           title: duplicateDto.new_title,
-          description: duplicateDto.new_description || sourceAssessment.description,
+          description:
+            duplicateDto.new_description || sourceAssessment.description,
           instructions: sourceAssessment.instructions,
           assessmentType: sourceAssessment.assessmentType,
           gradingType: sourceAssessment.gradingType,
@@ -957,8 +1132,10 @@ export class LibraryAssessmentService {
           maxAttempts: sourceAssessment.maxAttempts,
           passingScore: sourceAssessment.passingScore,
           totalPoints: sourceAssessment.totalPoints,
-          shuffleQuestions: duplicateDto.shuffle_questions || sourceAssessment.shuffleQuestions,
-          shuffleOptions: duplicateDto.shuffle_options || sourceAssessment.shuffleOptions,
+          shuffleQuestions:
+            duplicateDto.shuffle_questions || sourceAssessment.shuffleQuestions,
+          shuffleOptions:
+            duplicateDto.shuffle_options || sourceAssessment.shuffleOptions,
           showCorrectAnswers: sourceAssessment.showCorrectAnswers,
           showFeedback: sourceAssessment.showFeedback,
           allowReview: sourceAssessment.allowReview,
@@ -1033,7 +1210,7 @@ export class LibraryAssessmentService {
         for (const sourceAnswer of sourceQuestion.correctAnswers) {
           // Map old option IDs to new option IDs
           const newOptionIds = (sourceAnswer.optionIds || []).map(
-            (oldId) => optionIdMap.get(oldId) || oldId
+            (oldId) => optionIdMap.get(oldId) || oldId,
           );
 
           await tx.libraryAssessmentCorrectAnswer.create({
@@ -1055,13 +1232,24 @@ export class LibraryAssessmentService {
         include: {
           subject: { select: { id: true, name: true, code: true } },
           topic: { select: { id: true, title: true } },
-          createdBy: { select: { id: true, first_name: true, last_name: true, email: true } },
+          createdBy: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true,
+            },
+          },
           _count: { select: { questions: true } },
         },
       });
     });
 
-    this.logger.log(colors.green(`[LIBRARY] Assessment duplicated successfully: ${newAssessment!.id}`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Assessment duplicated successfully: ${newAssessment!.id}`,
+      ),
+    );
 
     return ResponseHelper.success('Assessment duplicated successfully', {
       assessment: newAssessment,
@@ -1092,7 +1280,11 @@ export class LibraryAssessmentService {
     platformId: string,
     userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Adding ${addQuestionsDto.questions.length} question(s) to assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY] Adding ${addQuestionsDto.questions.length} question(s) to assessment: ${assessmentId}`,
+      ),
+    );
 
     // 1. Fetch the assessment and verify ownership
     const assessment = await this.prisma.libraryAssessment.findFirst({
@@ -1106,7 +1298,9 @@ export class LibraryAssessmentService {
     });
 
     if (!assessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Assessment not found');
     }
 
@@ -1154,7 +1348,8 @@ export class LibraryAssessmentService {
             minValue: questionDto.min_value ?? null,
             maxValue: questionDto.max_value ?? null,
             explanation: questionDto.explanation ?? null,
-            difficultyLevel: (questionDto.difficulty_level ?? 'MEDIUM') as DifficultyLevel,
+            difficultyLevel: (questionDto.difficulty_level ??
+              'MEDIUM') as DifficultyLevel,
           },
         });
 
@@ -1200,7 +1395,9 @@ export class LibraryAssessmentService {
                 questionId: newQuestion.id,
                 answerText: answerDto.answer_text ?? null,
                 answerNumber: answerDto.answer_number ?? null,
-                answerDate: answerDto.answer_date ? new Date(answerDto.answer_date) : null,
+                answerDate: answerDto.answer_date
+                  ? new Date(answerDto.answer_date)
+                  : null,
                 answerJson: answerDto.answer_json ?? undefined,
               },
             });
@@ -1233,7 +1430,11 @@ export class LibraryAssessmentService {
       return results;
     });
 
-    this.logger.log(colors.green(`[LIBRARY] Successfully added ${createdQuestions.length} question(s) to assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.green(
+        `[LIBRARY] Successfully added ${createdQuestions.length} question(s) to assessment: ${assessmentId}`,
+      ),
+    );
 
     return ResponseHelper.success('Questions added successfully', {
       assessment_id: assessmentId,
@@ -1251,13 +1452,23 @@ export class LibraryAssessmentService {
    * Validates an image file (type and size)
    */
   private validateImageFile(file: Express.Multer.File): void {
-    const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
     if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException(`Invalid image file type: ${file.originalname}. Allowed: JPEG, PNG, GIF, WEBP`);
+      throw new BadRequestException(
+        `Invalid image file type: ${file.originalname}. Allowed: JPEG, PNG, GIF, WEBP`,
+      );
     }
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      throw new BadRequestException(`Image file ${file.originalname} exceeds 5MB limit`);
+      throw new BadRequestException(
+        `Image file ${file.originalname} exceeds 5MB limit`,
+      );
     }
   }
 
@@ -1277,7 +1488,11 @@ export class LibraryAssessmentService {
     const uploadedKeys: string[] = [];
 
     try {
-      this.logger.log(colors.cyan(`[LIBRARY] Creating question with images for assessment: ${assessmentId}`));
+      this.logger.log(
+        colors.cyan(
+          `[LIBRARY] Creating question with images for assessment: ${assessmentId}`,
+        ),
+      );
 
       // Parse the JSON question data
       let questionData: any;
@@ -1299,49 +1514,87 @@ export class LibraryAssessmentService {
       });
 
       if (!assessment) {
-        throw new NotFoundException('Assessment not found or you do not have access to it');
+        throw new NotFoundException(
+          'Assessment not found or you do not have access to it',
+        );
       }
 
       // Check assessment status
-      if (['PUBLISHED', 'ACTIVE', 'CLOSED', 'ARCHIVED'].includes(assessment.status)) {
-        throw new BadRequestException('Cannot add questions to a published, active, closed, or archived assessment');
+      if (
+        ['PUBLISHED', 'ACTIVE', 'CLOSED', 'ARCHIVED'].includes(
+          assessment.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Cannot add questions to a published, active, closed, or archived assessment',
+        );
       }
 
       const s3Folder = `assessment-images/platforms/${platformId}/assessments/${assessmentId}`;
 
       // Upload question image if provided
       if (questionImage) {
-        this.logger.log(colors.blue(`[LIBRARY] 📤 Uploading question image: ${questionImage.originalname}`));
+        this.logger.log(
+          colors.blue(
+            `[LIBRARY] 📤 Uploading question image: ${questionImage.originalname}`,
+          ),
+        );
         this.validateImageFile(questionImage);
 
         const fileName = `question_${Date.now()}_${questionImage.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        const uploadResult = await this.storageService.uploadFile(questionImage, s3Folder, fileName);
+        const uploadResult = await this.storageService.uploadFile(
+          questionImage,
+          s3Folder,
+          fileName,
+        );
         uploadedKeys.push(uploadResult.key);
 
         questionData.image_url = uploadResult.url;
         questionData.image_s3_key = uploadResult.key;
-        this.logger.log(colors.green(`[LIBRARY] ✅ Question image uploaded: ${uploadResult.key}`));
+        this.logger.log(
+          colors.green(
+            `[LIBRARY] ✅ Question image uploaded: ${uploadResult.key}`,
+          ),
+        );
       }
 
       // Upload option images if provided
       if (optionImages.length > 0 && questionData.options?.length) {
         for (let i = 0; i < optionImages.length; i++) {
           const optFile = optionImages[i];
-          this.logger.log(colors.blue(`[LIBRARY] 📤 Uploading option image [${i}]: ${optFile.originalname}`));
+          this.logger.log(
+            colors.blue(
+              `[LIBRARY] 📤 Uploading option image [${i}]: ${optFile.originalname}`,
+            ),
+          );
           this.validateImageFile(optFile);
 
           const fileName = `option_${Date.now()}_${i}_${optFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-          const uploadResult = await this.storageService.uploadFile(optFile, s3Folder, fileName);
+          const uploadResult = await this.storageService.uploadFile(
+            optFile,
+            s3Folder,
+            fileName,
+          );
           uploadedKeys.push(uploadResult.key);
 
           // Match option by imageIndex field
-          const matchingOption = questionData.options.find((opt: any) => opt.imageIndex === i);
+          const matchingOption = questionData.options.find(
+            (opt: any) => opt.imageIndex === i,
+          );
           if (matchingOption) {
             matchingOption.image_url = uploadResult.url;
             matchingOption.image_s3_key = uploadResult.key;
-            this.logger.log(colors.green(`[LIBRARY] ✅ Option image [${i}] uploaded and matched`));
+            this.logger.log(
+              colors.green(
+                `[LIBRARY] ✅ Option image [${i}] uploaded and matched`,
+              ),
+            );
           } else {
-            this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Option image [${i}] uploaded but no option has imageIndex: ${i}`));
+            this.logger.warn(
+              colors.yellow(
+                `[LIBRARY] ⚠️ Option image [${i}] uploaded but no option has imageIndex: ${i}`,
+              ),
+            );
           }
         }
       }
@@ -1349,27 +1602,48 @@ export class LibraryAssessmentService {
       // Wrap question data in AddQuestionsDto format and delegate to existing method
       try {
         const addQuestionsDto: AddQuestionsDto = { questions: [questionData] };
-        const result = await this.addLibraryAssessmentQuestions(assessmentId, addQuestionsDto, platformId, userId);
+        const result = await this.addLibraryAssessmentQuestions(
+          assessmentId,
+          addQuestionsDto,
+          platformId,
+          userId,
+        );
 
-        this.logger.log(colors.green(`[LIBRARY] ✅ Question created successfully with ${uploadedKeys.length} image(s)`));
+        this.logger.log(
+          colors.green(
+            `[LIBRARY] ✅ Question created successfully with ${uploadedKeys.length} image(s)`,
+          ),
+        );
         return result;
       } catch (questionError) {
         // Rollback: delete ALL uploaded images if question creation failed
         if (uploadedKeys.length > 0) {
-          this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Question creation failed. Rolling back ${uploadedKeys.length} image(s)`));
+          this.logger.warn(
+            colors.yellow(
+              `[LIBRARY] ⚠️ Question creation failed. Rolling back ${uploadedKeys.length} image(s)`,
+            ),
+          );
           for (const key of uploadedKeys) {
             try {
               await this.storageService.deleteFile(key);
               this.logger.log(colors.green(`[LIBRARY] ✅ Rolled back: ${key}`));
             } catch (deleteError) {
-              this.logger.error(colors.red(`[LIBRARY] ❌ Failed to rollback: ${key} - ${deleteError.message}`));
+              this.logger.error(
+                colors.red(
+                  `[LIBRARY] ❌ Failed to rollback: ${key} - ${deleteError.message}`,
+                ),
+              );
             }
           }
         }
         throw questionError;
       }
     } catch (error) {
-      this.logger.error(colors.red(`[LIBRARY] ❌ Error in addQuestionWithImage: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `[LIBRARY] ❌ Error in addQuestionWithImage: ${error.message}`,
+        ),
+      );
       throw error;
     }
   }
@@ -1380,13 +1654,13 @@ export class LibraryAssessmentService {
 
   /**
    * Update a question in a library assessment (partial update)
-   * 
+   *
    * Supports updating all question properties:
    * - Question text, type, points, difficulty level
    * - Media (images, audio, video) - old media is automatically deleted from storage
    * - Options (MCQ/TRUE_FALSE) - can replace all options or update existing ones
    * - Correct answers (non-MCQ types) - can update answer definitions
-   * 
+   *
    * @param assessmentId - Assessment ID
    * @param questionId - Question ID to update
    * @param updateQuestionDto - Partial question data to update
@@ -1400,7 +1674,11 @@ export class LibraryAssessmentService {
     platformId: string,
     userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Updating question: ${questionId} in assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY] Updating question: ${questionId} in assessment: ${assessmentId}`,
+      ),
+    );
 
     // 1. Fetch the assessment and verify ownership
     const assessment = await this.prisma.libraryAssessment.findFirst({
@@ -1411,7 +1689,9 @@ export class LibraryAssessmentService {
     });
 
     if (!assessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Assessment not found');
     }
 
@@ -1448,7 +1728,8 @@ export class LibraryAssessmentService {
         updateData.questionText = updateQuestionDto.question_text;
       }
       if (updateQuestionDto.question_type !== undefined) {
-        updateData.questionType = updateQuestionDto.question_type as QuestionType;
+        updateData.questionType =
+          updateQuestionDto.question_type as QuestionType;
       }
       if (updateQuestionDto.order !== undefined) {
         updateData.order = updateQuestionDto.order;
@@ -1469,9 +1750,17 @@ export class LibraryAssessmentService {
       if (questionImageUpdateRequested && question.imageS3Key) {
         try {
           await this.storageService.deleteFile(question.imageS3Key);
-          this.logger.log(colors.green(`[LIBRARY] ✅ Deleted old question image: ${question.imageS3Key}`));
+          this.logger.log(
+            colors.green(
+              `[LIBRARY] ✅ Deleted old question image: ${question.imageS3Key}`,
+            ),
+          );
         } catch (error) {
-          this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Failed to delete old question image: ${question.imageS3Key}`));
+          this.logger.warn(
+            colors.yellow(
+              `[LIBRARY] ⚠️ Failed to delete old question image: ${question.imageS3Key}`,
+            ),
+          );
         }
       }
 
@@ -1488,7 +1777,8 @@ export class LibraryAssessmentService {
         updateData.videoUrl = updateQuestionDto.video_url;
       }
       if (updateQuestionDto.allow_multiple_attempts !== undefined) {
-        updateData.allowMultipleAttempts = updateQuestionDto.allow_multiple_attempts;
+        updateData.allowMultipleAttempts =
+          updateQuestionDto.allow_multiple_attempts;
       }
       if (updateQuestionDto.show_hint !== undefined) {
         updateData.showHint = updateQuestionDto.show_hint;
@@ -1512,7 +1802,8 @@ export class LibraryAssessmentService {
         updateData.explanation = updateQuestionDto.explanation;
       }
       if (updateQuestionDto.difficulty_level !== undefined) {
-        updateData.difficultyLevel = updateQuestionDto.difficulty_level as DifficultyLevel;
+        updateData.difficultyLevel =
+          updateQuestionDto.difficulty_level as DifficultyLevel;
       }
 
       // Update the question
@@ -1524,7 +1815,9 @@ export class LibraryAssessmentService {
       // 4a. Smart merge/update options if provided
       if (updateQuestionDto.options !== undefined) {
         if (updateQuestionDto.options.length === 0) {
-          throw new BadRequestException('options cannot be empty when provided');
+          throw new BadRequestException(
+            'options cannot be empty when provided',
+          );
         }
 
         const correctOptionIds: string[] = [];
@@ -1534,9 +1827,13 @@ export class LibraryAssessmentService {
 
           if (optDto.id) {
             // UPDATE existing option (only provided fields)
-            const existingOption = question.options.find(opt => opt.id === optDto.id);
+            const existingOption = question.options.find(
+              (opt) => opt.id === optDto.id,
+            );
             if (!existingOption) {
-              throw new BadRequestException(`Option with id ${optDto.id} not found in this question`);
+              throw new BadRequestException(
+                `Option with id ${optDto.id} not found in this question`,
+              );
             }
 
             const updateOptionData: any = {};
@@ -1561,12 +1858,25 @@ export class LibraryAssessmentService {
             // Handle image updates (only if new image is provided)
             if (optDto.image_url !== undefined) {
               // Delete old image if it's being replaced with a different one
-              if (existingOption.imageS3Key && optDto.image_s3_key !== existingOption.imageS3Key) {
+              if (
+                existingOption.imageS3Key &&
+                optDto.image_s3_key !== existingOption.imageS3Key
+              ) {
                 try {
-                  await this.storageService.deleteFile(existingOption.imageS3Key);
-                  this.logger.log(colors.green(`[LIBRARY] ✅ Deleted old option image: ${existingOption.imageS3Key}`));
+                  await this.storageService.deleteFile(
+                    existingOption.imageS3Key,
+                  );
+                  this.logger.log(
+                    colors.green(
+                      `[LIBRARY] ✅ Deleted old option image: ${existingOption.imageS3Key}`,
+                    ),
+                  );
                 } catch (error) {
-                  this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Failed to delete old option image: ${existingOption.imageS3Key}`));
+                  this.logger.warn(
+                    colors.yellow(
+                      `[LIBRARY] ⚠️ Failed to delete old option image: ${existingOption.imageS3Key}`,
+                    ),
+                  );
                 }
               }
               updateOptionData.imageUrl = optDto.image_url;
@@ -1579,19 +1889,25 @@ export class LibraryAssessmentService {
             });
 
             // Track correct options (use updated or existing is_correct value)
-            const isCorrect = optDto.is_correct !== undefined ? optDto.is_correct : existingOption.isCorrect;
+            const isCorrect =
+              optDto.is_correct !== undefined
+                ? optDto.is_correct
+                : existingOption.isCorrect;
             if (isCorrect) {
               correctOptionIds.push(updatedOption.id);
             }
-
           } else {
             // CREATE new option
             const optionText = optDto.option_text ?? '';
             if (optionText === '') {
-              throw new BadRequestException('option_text is required when creating new options');
+              throw new BadRequestException(
+                'option_text is required when creating new options',
+              );
             }
             if (optDto.is_correct === undefined) {
-              throw new BadRequestException('is_correct is required when creating new options');
+              throw new BadRequestException(
+                'is_correct is required when creating new options',
+              );
             }
 
             const newOption = await tx.libraryAssessmentOption.create({
@@ -1644,7 +1960,9 @@ export class LibraryAssessmentService {
                 questionId: questionId,
                 answerText: answerDto.answer_text ?? null,
                 answerNumber: answerDto.answer_number ?? null,
-                answerDate: answerDto.answer_date ? new Date(answerDto.answer_date) : null,
+                answerDate: answerDto.answer_date
+                  ? new Date(answerDto.answer_date)
+                  : null,
                 answerJson: answerDto.answer_json ?? undefined,
               },
             });
@@ -1675,7 +1993,9 @@ export class LibraryAssessmentService {
       return fullQuestion;
     });
 
-    this.logger.log(colors.green(`[LIBRARY] ✅ Successfully updated question: ${questionId}`));
+    this.logger.log(
+      colors.green(`[LIBRARY] ✅ Successfully updated question: ${questionId}`),
+    );
 
     return ResponseHelper.success('Question updated successfully', {
       assessment_id: assessmentId,
@@ -1689,13 +2009,13 @@ export class LibraryAssessmentService {
 
   /**
    * Update a question with new image uploads (multipart)
-   * 
+   *
    * Handles:
    * - Uploading new question image
    * - Uploading new option images
    * - Deleting old images from S3
    * - Updating question with new image URLs
-   * 
+   *
    * @param assessmentId - Assessment ID
    * @param questionId - Question ID to update
    * @param updateQuestionDto - Update data
@@ -1715,7 +2035,9 @@ export class LibraryAssessmentService {
     optionImageUpdates?: Array<{ optionId: string; oldS3Key?: string }>,
     newOptionImages?: Express.Multer.File[],
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Updating question with images: ${questionId}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY] Updating question with images: ${questionId}`),
+    );
 
     const uploadedFiles: string[] = []; // Track uploaded S3 keys for rollback
 
@@ -1723,7 +2045,10 @@ export class LibraryAssessmentService {
       // 1. Handle question image upload if provided
       if (newQuestionImage) {
         const timestamp = Date.now();
-        const sanitizedFilename = newQuestionImage.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const sanitizedFilename = newQuestionImage.originalname.replace(
+          /[^a-zA-Z0-9._-]/g,
+          '_',
+        );
         const s3Folder = `assessment-images/platforms/${platformId}/assessments/${assessmentId}`;
         const fileName = `question_${timestamp}_${sanitizedFilename}`;
 
@@ -1738,10 +2063,20 @@ export class LibraryAssessmentService {
         // Delete old question image if it exists
         if (updateQuestionDto.image_s3_key) {
           try {
-            await this.storageService.deleteFile(updateQuestionDto.image_s3_key);
-            this.logger.log(colors.green(`[LIBRARY] ✅ Deleted old question image: ${updateQuestionDto.image_s3_key}`));
+            await this.storageService.deleteFile(
+              updateQuestionDto.image_s3_key,
+            );
+            this.logger.log(
+              colors.green(
+                `[LIBRARY] ✅ Deleted old question image: ${updateQuestionDto.image_s3_key}`,
+              ),
+            );
           } catch (error) {
-            this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Failed to delete old question image: ${updateQuestionDto.image_s3_key}`));
+            this.logger.warn(
+              colors.yellow(
+                `[LIBRARY] ⚠️ Failed to delete old question image: ${updateQuestionDto.image_s3_key}`,
+              ),
+            );
           }
         }
 
@@ -1752,7 +2087,9 @@ export class LibraryAssessmentService {
       // 2. Handle option image uploads if provided
       if (optionImageUpdates && newOptionImages && newOptionImages.length > 0) {
         if (optionImageUpdates.length !== newOptionImages.length) {
-          throw new BadRequestException('Mismatch between optionImageUpdates and newOptionImages count');
+          throw new BadRequestException(
+            'Mismatch between optionImageUpdates and newOptionImages count',
+          );
         }
 
         // Ensure options array exists in the DTO
@@ -1765,7 +2102,10 @@ export class LibraryAssessmentService {
           const imageFile = newOptionImages[i];
 
           const timestamp = Date.now();
-          const sanitizedFilename = imageFile.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const sanitizedFilename = imageFile.originalname.replace(
+            /[^a-zA-Z0-9._-]/g,
+            '_',
+          );
           const s3Folder = `assessment-images/platforms/${platformId}/assessments/${assessmentId}`;
           const fileName = `option_${timestamp}_${i}_${sanitizedFilename}`;
 
@@ -1781,14 +2121,24 @@ export class LibraryAssessmentService {
           if (oldS3Key) {
             try {
               await this.storageService.deleteFile(oldS3Key);
-              this.logger.log(colors.green(`[LIBRARY] ✅ Deleted old option image: ${oldS3Key}`));
+              this.logger.log(
+                colors.green(
+                  `[LIBRARY] ✅ Deleted old option image: ${oldS3Key}`,
+                ),
+              );
             } catch (error) {
-              this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Failed to delete old option image: ${oldS3Key}`));
+              this.logger.warn(
+                colors.yellow(
+                  `[LIBRARY] ⚠️ Failed to delete old option image: ${oldS3Key}`,
+                ),
+              );
             }
           }
 
           // Find or create the option update in the DTO
-          let optionUpdate = updateQuestionDto.options.find(opt => opt.id === optionId);
+          let optionUpdate = updateQuestionDto.options.find(
+            (opt) => opt.id === optionId,
+          );
           if (!optionUpdate) {
             optionUpdate = { id: optionId };
             updateQuestionDto.options.push(optionUpdate);
@@ -1808,19 +2158,30 @@ export class LibraryAssessmentService {
         userId,
       );
 
-      this.logger.log(colors.green(`[LIBRARY] ✅ Successfully updated question with images: ${questionId}`));
+      this.logger.log(
+        colors.green(
+          `[LIBRARY] ✅ Successfully updated question with images: ${questionId}`,
+        ),
+      );
       return result;
-
     } catch (error) {
       // Rollback: Delete all uploaded files
-      this.logger.error(colors.red(`[LIBRARY] ❌ Error updating question with images, rolling back...`));
-      
+      this.logger.error(
+        colors.red(
+          `[LIBRARY] ❌ Error updating question with images, rolling back...`,
+        ),
+      );
+
       for (const s3Key of uploadedFiles) {
         try {
           await this.storageService.deleteFile(s3Key);
-          this.logger.log(colors.yellow(`[LIBRARY] 🔙 Rolled back uploaded file: ${s3Key}`));
+          this.logger.log(
+            colors.yellow(`[LIBRARY] 🔙 Rolled back uploaded file: ${s3Key}`),
+          );
         } catch (rollbackError) {
-          this.logger.warn(colors.red(`[LIBRARY] ⚠️ Failed to rollback file: ${s3Key}`));
+          this.logger.warn(
+            colors.red(`[LIBRARY] ⚠️ Failed to rollback file: ${s3Key}`),
+          );
         }
       }
 
@@ -1834,14 +2195,14 @@ export class LibraryAssessmentService {
 
   /**
    * Delete a question from a library assessment
-   * 
+   *
    * Handles cleanup of:
    * - Question record and all related options
    * - All media (images, audio, video) from storage
    * - All correct answer records
    * - All user responses for this question
    * - Total points recalculation
-   * 
+   *
    * @param assessmentId - Assessment ID
    * @param questionId - Question ID to delete
    * @param platformId - Platform ID for access control
@@ -1853,7 +2214,11 @@ export class LibraryAssessmentService {
     platformId: string,
     userId: string,
   ) {
-    this.logger.log(colors.cyan(`[LIBRARY] Deleting question: ${questionId} from assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY] Deleting question: ${questionId} from assessment: ${assessmentId}`,
+      ),
+    );
 
     // 1. Fetch the assessment and verify ownership
     const assessment = await this.prisma.libraryAssessment.findFirst({
@@ -1864,7 +2229,9 @@ export class LibraryAssessmentService {
     });
 
     if (!assessment) {
-      this.logger.error(colors.red(`Library assessment not found: ${assessmentId}`));
+      this.logger.error(
+        colors.red(`Library assessment not found: ${assessmentId}`),
+      );
       throw new NotFoundException('Assessment not found');
     }
 
@@ -1935,9 +2302,15 @@ export class LibraryAssessmentService {
       for (const key of mediaToDelete) {
         try {
           await this.storageService.deleteFile(key);
-          this.logger.log(colors.green(`[LIBRARY] ✅ Deleted media file: ${key}`));
+          this.logger.log(
+            colors.green(`[LIBRARY] ✅ Deleted media file: ${key}`),
+          );
         } catch (error) {
-          this.logger.warn(colors.yellow(`[LIBRARY] ⚠️ Failed to delete media file: ${key} - ${error.message}`));
+          this.logger.warn(
+            colors.yellow(
+              `[LIBRARY] ⚠️ Failed to delete media file: ${key} - ${error.message}`,
+            ),
+          );
         }
       }
 
@@ -1953,7 +2326,9 @@ export class LibraryAssessmentService {
       });
     });
 
-    this.logger.log(colors.green(`[LIBRARY] ✅ Successfully deleted question: ${questionId}`));
+    this.logger.log(
+      colors.green(`[LIBRARY] ✅ Successfully deleted question: ${questionId}`),
+    );
 
     return ResponseHelper.success('Question deleted successfully', {
       assessment_id: assessmentId,

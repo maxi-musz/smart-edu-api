@@ -1,4 +1,14 @@
-import { Controller, Get, Post, UseGuards, Request, HttpCode, HttpStatus, UseInterceptors, UploadedFile } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+} from '@nestjs/common';
 import { UserService } from './user.service';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtGuard } from '../school/auth/guard';
@@ -45,7 +55,7 @@ export class UserController {
   @UpdateProfilePictureDocs.response404
   async updateProfilePicture(
     @Request() req: any,
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile() file: Express.Multer.File,
   ) {
     return this.userService.updateProfilePicture(req.user, file);
   }

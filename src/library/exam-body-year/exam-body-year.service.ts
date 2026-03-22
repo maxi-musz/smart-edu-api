@@ -1,6 +1,14 @@
-import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateLibraryExamBodyYearDto, UpdateLibraryExamBodyYearDto } from './dto';
+import {
+  CreateLibraryExamBodyYearDto,
+  UpdateLibraryExamBodyYearDto,
+} from './dto';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
 
@@ -11,9 +19,13 @@ export class LibraryExamBodyYearService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(examBodyId: string, createDto: CreateLibraryExamBodyYearDto) {
-    this.logger.log(colors.cyan(`[LIBRARY EXAM BODY] Creating year: ${createDto.year}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY EXAM BODY] Creating year: ${createDto.year}`),
+    );
 
-    const examBody = await this.prisma.examBody.findUnique({ where: { id: examBodyId } });
+    const examBody = await this.prisma.examBody.findUnique({
+      where: { id: examBodyId },
+    });
     if (!examBody) {
       throw new NotFoundException('Exam body not found');
     }
@@ -23,7 +35,9 @@ export class LibraryExamBodyYearService {
     });
 
     if (existing) {
-      throw new ConflictException(`Year "${createDto.year}" already exists for this exam body`);
+      throw new ConflictException(
+        `Year "${createDto.year}" already exists for this exam body`,
+      );
     }
 
     // Auto-calculate order if not provided
@@ -82,14 +96,20 @@ export class LibraryExamBodyYearService {
   async update(id: string, updateDto: UpdateLibraryExamBodyYearDto) {
     this.logger.log(colors.cyan(`[LIBRARY EXAM BODY] Updating year: ${id}`));
 
-    const existing = await this.prisma.examBodyYear.findUnique({ where: { id } });
+    const existing = await this.prisma.examBodyYear.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Year not found');
     }
 
     if (updateDto.year) {
       const conflict = await this.prisma.examBodyYear.findFirst({
-        where: { examBodyId: existing.examBodyId, year: updateDto.year, id: { not: id } },
+        where: {
+          examBodyId: existing.examBodyId,
+          year: updateDto.year,
+          id: { not: id },
+        },
       });
       if (conflict) {
         throw new ConflictException(`Year "${updateDto.year}" already exists`);
@@ -100,7 +120,9 @@ export class LibraryExamBodyYearService {
       where: { id },
       data: {
         ...updateDto,
-        startDate: updateDto.startDate ? new Date(updateDto.startDate) : undefined,
+        startDate: updateDto.startDate
+          ? new Date(updateDto.startDate)
+          : undefined,
         endDate: updateDto.endDate ? new Date(updateDto.endDate) : undefined,
       },
       include: { examBody: true },

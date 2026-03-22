@@ -1,19 +1,23 @@
-import * as nodemailer from "nodemailer";
-import * as colors from "colors";
-import { IEmailProvider, SendEmailOptions } from "./email-provider.interface";
+import * as nodemailer from 'nodemailer';
+import * as colors from 'colors';
+import { IEmailProvider, SendEmailOptions } from './email-provider.interface';
 
 export class GmailProvider implements IEmailProvider {
   private transporter: nodemailer.Transporter;
 
   constructor() {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-      throw new Error("Gmail SMTP credentials missing in environment variables");
+      throw new Error(
+        'Gmail SMTP credentials missing in environment variables',
+      );
     }
 
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
       host: process.env.GOOGLE_SMTP_HOST,
-      port: process.env.GOOGLE_SMTP_PORT ? parseInt(process.env.GOOGLE_SMTP_PORT) : 587,
+      port: process.env.GOOGLE_SMTP_PORT
+        ? parseInt(process.env.GOOGLE_SMTP_PORT)
+        : 587,
       secure: false,
       auth: {
         user: process.env.EMAIL_USER,
@@ -24,8 +28,9 @@ export class GmailProvider implements IEmailProvider {
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
     try {
-      const fromAddress = options.from?.address || process.env.EMAIL_USER as string;
-      const fromName = options.from?.name || "Smart Edu Hub";
+      const fromAddress =
+        options.from?.address || (process.env.EMAIL_USER as string);
+      const fromName = options.from?.name || 'Smart Edu Hub';
 
       const mailOptions: nodemailer.SendMailOptions = {
         from: {
@@ -35,7 +40,7 @@ export class GmailProvider implements IEmailProvider {
         to: options.to,
         subject: options.subject,
         html: options.html,
-        attachments: options.attachments?.map(att => ({
+        attachments: options.attachments?.map((att) => ({
           filename: att.filename,
           content: att.content,
           contentType: att.contentType || 'application/octet-stream',
@@ -45,9 +50,8 @@ export class GmailProvider implements IEmailProvider {
       await this.transporter.sendMail(mailOptions);
       console.log(colors.green(`Email sent to ${options.to} via Gmail`));
     } catch (error) {
-      console.log(colors.red("Error sending email via Gmail: "), error);
+      console.log(colors.red('Error sending email via Gmail: '), error);
       throw new Error(`Error sending email via Gmail: ${error.message}`);
     }
   }
 }
-

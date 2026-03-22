@@ -16,7 +16,7 @@ import { LibraryElevatedGuard } from './guard/library-elevated.guard';
       useFactory: async (config: ConfigService) => {
         const secret = config.get('JWT_SECRET');
         const expiresIn = config.get('JWT_EXPIRES_IN') || '7d';
-        
+
         return {
           secret,
           signOptions: {
@@ -24,13 +24,22 @@ import { LibraryElevatedGuard } from './guard/library-elevated.guard';
           },
         };
       },
-      inject: [ConfigService]
-    })
+      inject: [ConfigService],
+    }),
   ],
   controllers: [LibraryAuthController],
-  providers: [LibraryAuthService, LibraryJwtStrategy, LibraryJwtGuard, LibraryOwnerGuard, LibraryElevatedGuard],
-  exports: [LibraryAuthService, LibraryJwtGuard, LibraryOwnerGuard, LibraryElevatedGuard],
+  providers: [
+    LibraryAuthService,
+    LibraryJwtStrategy,
+    LibraryJwtGuard,
+    LibraryOwnerGuard,
+    LibraryElevatedGuard,
+  ],
+  exports: [
+    LibraryAuthService,
+    LibraryJwtGuard,
+    LibraryOwnerGuard,
+    LibraryElevatedGuard,
+  ],
 })
 export class LibraryAuthModule {}
-
-

@@ -1,20 +1,20 @@
 // mail/email-templates.ts
 
 export const onboardingSchoolAdminNotificationTemplate = (payload: {
-    school_name: string;
-    school_email: string;
-    school_phone: string;
-    school_address: string;
-    school_type: string;
-    school_ownership: string;
-    documents: {
-      cac: string | null;
-      utility_bill: string | null;
-      tax_clearance: string | null;
-    };
-    defaultPassword: string | null
-  }) => {
-    return `
+  school_name: string;
+  school_email: string;
+  school_phone: string;
+  school_address: string;
+  school_type: string;
+  school_ownership: string;
+  documents: {
+    cac: string | null;
+    utility_bill: string | null;
+    tax_clearance: string | null;
+  };
+  defaultPassword: string | null;
+}) => {
+  return `
       <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
         <h2 style="color: #0f172a;">📥 New School Onboarding Notification</h2>
         <p>A new school has just onboarded on the platform. Here are the details:</p>
@@ -39,5 +39,4 @@ export const onboardingSchoolAdminNotificationTemplate = (payload: {
         <p style="margin-top: 30px;">🚀 Time to review and approve the new registration.</p>
       </div>
     `;
-  };
-  
+};

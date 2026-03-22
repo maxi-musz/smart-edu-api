@@ -15,7 +15,9 @@ import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import { MulterModule } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { diskStorage } from 'multer';
+import * as os from 'os';
+import * as path from 'path';
 import { UserModule } from './user/user.module';
 import { AiChatLatestModule } from './ai-chat-latest/ai-chat-latest.module';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
@@ -27,8 +29,6 @@ import { SchoolAccessControlModule } from './school-access-control/school-access
 import { ResultModule } from './result/result.module';
 import { CloudFrontModule } from './shared/services/cloudfront.module';
 import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
-import { AssessmentModule } from './assessment/assessment.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -38,11 +38,20 @@ import { AssessmentModule } from './assessment/assessment.module';
       validationSchema: envValidationSchema,
     }),
     MulterModule.register({
-      storage: memoryStorage(),
+      storage: diskStorage({
+        destination: path.join(os.tmpdir(), 'smart-edu-uploads'),
+        filename: (_req, file, cb) => {
+          const uniqueSuffix = `${Date.now()}_${Math.round(Math.random() * 1e9)}`;
+          cb(null, `${uniqueSuffix}_${file.originalname}`);
+        },
+      }),
+      limits: {
+        fileSize: 600 * 1024 * 1024, // 600MB hard limit
+      },
     }),
-    HelloModule, 
-    AdminModule, 
-    SchoolModule, 
+    HelloModule,
+    AdminModule,
+    SchoolModule,
     AcademicSessionModule,
     PushNotificationsModule,
     SchedulesModule,
@@ -59,7 +68,6 @@ import { AssessmentModule } from './assessment/assessment.module';
     LibraryAccessControlModule,
     SchoolAccessControlModule,
     ResultModule,
-    AssessmentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -67,8 +75,6 @@ import { AssessmentModule } from './assessment/assessment.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // Apply request logger to all routes
-    consumer
-      .apply(RequestLoggerMiddleware)
-      .forRoutes('*');
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
   }
 }

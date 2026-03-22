@@ -4,7 +4,7 @@ import { IsEnum, IsOptional, IsBoolean } from 'class-validator';
 
 /**
  * Assessment status enumeration
- * 
+ *
  * Note: Users cannot update assessments that are PUBLISHED or ACTIVE.
  * To make changes, the assessment must first be moved back to DRAFT status.
  */
@@ -13,15 +13,15 @@ export enum AssessmentStatus {
   PUBLISHED = 'PUBLISHED',
   ACTIVE = 'ACTIVE',
   CLOSED = 'CLOSED',
-  ARCHIVED = 'ARCHIVED'
+  ARCHIVED = 'ARCHIVED',
 }
 
 /**
  * DTO for updating an assessment
- * 
+ *
  * Uses PartialType to make all CreateNewAssessmentDto fields optional.
  * Only the fields that are provided will be updated (PATCH behavior).
- * 
+ *
  * **Important Restrictions:**
  * - Cannot update assessments with status PUBLISHED or ACTIVE
  * - To modify a published assessment, first change status to DRAFT
@@ -37,16 +37,17 @@ export class UpdateAssessmentDto extends PartialType(CreateNewAssessmentDto) {
     - Changing from PUBLISHED/ACTIVE to DRAFT will set is_published=false
     `,
     enum: AssessmentStatus,
-    example: AssessmentStatus.DRAFT
+    example: AssessmentStatus.DRAFT,
   })
   @IsEnum(AssessmentStatus)
   @IsOptional()
   status?: AssessmentStatus;
 
   @ApiPropertyOptional({
-    description: 'Whether the assessment results have been released to students',
+    description:
+      'Whether the assessment results have been released to students',
     example: false,
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -55,7 +56,7 @@ export class UpdateAssessmentDto extends PartialType(CreateNewAssessmentDto) {
   @ApiPropertyOptional({
     description: 'Whether students can view their grading details',
     example: true,
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()

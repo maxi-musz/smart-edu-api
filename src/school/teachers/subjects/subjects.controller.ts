@@ -64,7 +64,11 @@ export class SubjectsController {
     @GetUser() user: any,
     @Query() query: ComprehensiveSubjectQueryDto,
   ): Promise<ComprehensiveSubjectResponseDto> {
-    return this.subjectsService.getComprehensiveSubjectById(id, user.school_id, query);
+    return this.subjectsService.getComprehensiveSubjectById(
+      id,
+      user.school_id,
+      query,
+    );
   }
 
   @Patch(':id')
@@ -73,7 +77,11 @@ export class SubjectsController {
     @Body() updateSubjectDto: UpdateSubjectDto,
     @GetUser() user: any,
   ): Promise<SubjectResponseDto> {
-    return this.subjectsService.updateSubject(id, updateSubjectDto, user.school_id);
+    return this.subjectsService.updateSubject(
+      id,
+      updateSubjectDto,
+      user.school_id,
+    );
   }
 
   @Delete(':id')
@@ -117,6 +125,9 @@ export class SubjectsController {
     @Param('id') subjectId: string,
     @GetUser() user: any,
   ): Promise<any[]> {
-    return this.subjectsService.getTeachersForSubject(subjectId, user.school_id);
+    return this.subjectsService.getTeachersForSubject(
+      subjectId,
+      user.school_id,
+    );
   }
 }

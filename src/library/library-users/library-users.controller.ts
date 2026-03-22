@@ -18,7 +18,12 @@ import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { LibraryElevatedGuard } from '../library-auth/guard/library-elevated.guard';
 import { LibraryOwnerGuard } from '../library-auth/guard/library-owner.guard';
-import { CreateLibraryUserDto, UpdateLibraryUserDto, LibraryDashboardQueryDto, UpdatePermissionDto } from './dto';
+import {
+  CreateLibraryUserDto,
+  UpdateLibraryUserDto,
+  LibraryDashboardQueryDto,
+  UpdatePermissionDto,
+} from './dto';
 
 @ApiTags('Library - Users (elevated)')
 @Controller('library/users')
@@ -32,9 +37,13 @@ export class LibraryUsersController {
   @HttpCode(HttpStatus.OK)
   @ApiResponse({ status: 200, description: 'Library users dashboard' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getDashboard(@Request() req: any, @Query() query: LibraryDashboardQueryDto) {
+  async getDashboard(
+    @Request() req: any,
+    @Query() query: LibraryDashboardQueryDto,
+  ) {
     const platformId = req.user?.platform_id;
-    if (!platformId) throw new UnauthorizedException('Library authentication required');
+    if (!platformId)
+      throw new UnauthorizedException('Library authentication required');
     return this.libraryUsersService.getDashboard(platformId, query);
   }
 
@@ -54,7 +63,10 @@ export class LibraryUsersController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryOwnerGuard)
   @ApiResponse({ status: 200, description: 'Upload analytics' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions (admin/manager only)' })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions (admin/manager only)',
+  })
   async getUploadAnalytics(@Request() req: any) {
     const platformId = req.libraryUser.platformId;
     return this.libraryUsersService.getUploadAnalytics(platformId);
@@ -64,8 +76,14 @@ export class LibraryUsersController {
   @Get('available-permissions')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryOwnerGuard)
-  @ApiResponse({ status: 200, description: 'List of available permission definitions' })
-  @ApiResponse({ status: 403, description: 'Insufficient permissions (admin/manager only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of available permission definitions',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions (admin/manager only)',
+  })
   async getAvailablePermissions() {
     return this.libraryUsersService.getAvailablePermissions();
   }
@@ -86,7 +104,10 @@ export class LibraryUsersController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(LibraryElevatedGuard)
   @ApiResponse({ status: 201, description: 'Library user created' })
-  @ApiResponse({ status: 400, description: 'Bad Request (e.g. email already exists)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request (e.g. email already exists)',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async create(@Request() req: any, @Body() dto: CreateLibraryUserDto) {
     const platformId = req.libraryUser.platformId;
@@ -98,13 +119,29 @@ export class LibraryUsersController {
   @Patch(':id/permissions')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryElevatedGuard)
-  @ApiResponse({ status: 200, description: 'Permission updated (added or removed)' })
-  @ApiResponse({ status: 400, description: 'Bad Request (invalid action, permission not in catalog, already present, or not present)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Permission updated (added or removed)',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad Request (invalid action, permission not in catalog, already present, or not present)',
+  })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async updatePermission(@Request() req: any, @Param('id') id: string, @Body() dto: UpdatePermissionDto) {
+  async updatePermission(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdatePermissionDto,
+  ) {
     const platformId = req.libraryUser.platformId;
-    return this.libraryUsersService.updatePermission(platformId, id, dto.action, dto.permissionCode);
+    return this.libraryUsersService.updatePermission(
+      platformId,
+      id,
+      dto.action,
+      dto.permissionCode,
+    );
   }
 
   /** Update a library user (elevated only). Send only the fields to update (e.g. { "permissions": ["manage_library_users"], "permissionLevel": 10 }). Also accepts { "data": { ... } } wrapper. */
@@ -114,12 +151,23 @@ export class LibraryUsersController {
   @ApiResponse({ status: 200, description: 'Library user updated' })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+  async update(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
     const platformId = req.libraryUser.platformId;
     const raw = body?.data && typeof body.data === 'object' ? body.data : body;
     const allowedKeys = [
-      'email', 'password', 'first_name', 'last_name', 'phone_number',
-      'role', 'userType', 'permissions', 'permissionLevel',
+      'email',
+      'password',
+      'first_name',
+      'last_name',
+      'phone_number',
+      'role',
+      'userType',
+      'permissions',
+      'permissionLevel',
     ] as const;
     const dto = allowedKeys.reduce((acc, key) => {
       if (raw[key] !== undefined) acc[key] = raw[key];

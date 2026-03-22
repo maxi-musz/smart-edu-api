@@ -14,8 +14,15 @@ export class ExploreAiBooksService {
    * Fetch AI book landing page data
    * Returns books with filtering, search, pagination, classes with counts, and platform info
    */
-  async fetchAiBookLandingPageData(user: any, queryDto: QueryAiBooksDto): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[EXPLORE AI BOOKS] Fetching landing page data for user: ${user.email || user.sub}`));
+  async fetchAiBookLandingPageData(
+    user: any,
+    queryDto: QueryAiBooksDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[EXPLORE AI BOOKS] Fetching landing page data for user: ${user.email || user.sub}`,
+      ),
+    );
 
     try {
       // Get the first library platform created (by createdAt)
@@ -136,12 +143,14 @@ export class ExploreAiBooksService {
 
       // Format response data
       const responseData = {
-        platform: firstPlatform ? {
-          id: firstPlatform.id,
-          name: firstPlatform.name,
-          slug: firstPlatform.slug,
-          description: firstPlatform.description,
-        } : null,
+        platform: firstPlatform
+          ? {
+              id: firstPlatform.id,
+              name: firstPlatform.name,
+              slug: firstPlatform.slug,
+              description: firstPlatform.description,
+            }
+          : null,
         books: books.map((book: any) => ({
           id: book.id,
           title: book.title,
@@ -169,11 +178,21 @@ export class ExploreAiBooksService {
         },
       };
 
-      this.logger.log(colors.green(`✅ Successfully fetched landing page data: ${totalItems} books, ${classesWithCounts.length} classes`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully fetched landing page data: ${totalItems} books, ${classesWithCounts.length} classes`,
+        ),
+      );
 
-      return new ApiResponse(true, 'AI book landing page data fetched successfully', responseData);
+      return new ApiResponse(
+        true,
+        'AI book landing page data fetched successfully',
+        responseData,
+      );
     } catch (error: any) {
-      this.logger.error(colors.red(`❌ Error fetching landing page data: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching landing page data: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -183,7 +202,11 @@ export class ExploreAiBooksService {
    * Works for all authenticated users
    */
   async getBookChapters(user: any, bookId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[EXPLORE AI BOOKS] Fetching chapters for book: ${bookId} by user: ${user.email || user.sub}`));
+    this.logger.log(
+      colors.cyan(
+        `[EXPLORE AI BOOKS] Fetching chapters for book: ${bookId} by user: ${user.email || user.sub}`,
+      ),
+    );
 
     try {
       // Try to get platformId from library user (optional - works for all users)
@@ -215,7 +238,9 @@ export class ExploreAiBooksService {
       });
 
       if (!material) {
-        this.logger.error(colors.red(`Book not found or not available: ${bookId}`));
+        this.logger.error(
+          colors.red(`Book not found or not available: ${bookId}`),
+        );
         throw new NotFoundException('Book not found or not available');
       }
 
@@ -232,50 +257,62 @@ export class ExploreAiBooksService {
       }
 
       // Fetch chapters
-      const chapters = await this.prisma.libraryGeneralMaterialChapter.findMany({
-        where: chapterWhere,        
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          pageStart: true,
-          pageEnd: true,
-          order: true,
-          isAiEnabled: true,
-          isProcessed: true,
-          chunkCount: true,
-          createdAt: true,
-          updatedAt: true,
-          files: {
-            select: {
-              id: true,
-              fileName: true,
-              fileType: true,
-              url: true,
-              sizeBytes: true,
-              title: true,
-              description: true,
-              order: true,
-              createdAt: true,
-            },
-            orderBy: {
-              order: 'asc',
+      const chapters = await this.prisma.libraryGeneralMaterialChapter.findMany(
+        {
+          where: chapterWhere,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            pageStart: true,
+            pageEnd: true,
+            order: true,
+            isAiEnabled: true,
+            isProcessed: true,
+            chunkCount: true,
+            createdAt: true,
+            updatedAt: true,
+            files: {
+              select: {
+                id: true,
+                fileName: true,
+                fileType: true,
+                url: true,
+                sizeBytes: true,
+                title: true,
+                description: true,
+                order: true,
+                createdAt: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
             },
           },
+          orderBy: {
+            order: 'asc',
+          },
         },
-        orderBy: {
-          order: 'asc',
-        },
-      });
+      );
 
-      this.logger.log(colors.green(`✅ Successfully fetched ${chapters.length} chapters for book: ${bookId}`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully fetched ${chapters.length} chapters for book: ${bookId}`,
+        ),
+      );
 
-      return new ApiResponse(true, 'Book chapters retrieved successfully', chapters);
+      return new ApiResponse(
+        true,
+        'Book chapters retrieved successfully',
+        chapters,
+      );
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching book chapters: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching book chapters: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -284,8 +321,16 @@ export class ExploreAiBooksService {
    * Get a single chapter for a book
    * Works for all authenticated users
    */
-  async getBookChapter(user: any, bookId: string, chapterId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[EXPLORE AI BOOKS] Fetching chapter ${chapterId} for book: ${bookId} by user: ${user.email || user.sub}`));
+  async getBookChapter(
+    user: any,
+    bookId: string,
+    chapterId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[EXPLORE AI BOOKS] Fetching chapter ${chapterId} for book: ${bookId} by user: ${user.email || user.sub}`,
+      ),
+    );
 
     try {
       // Try to get platformId from library user (optional - works for all users)
@@ -317,7 +362,9 @@ export class ExploreAiBooksService {
       });
 
       if (!material) {
-        this.logger.error(colors.red(`Book not found or not available: ${bookId}`));
+        this.logger.error(
+          colors.red(`Book not found or not available: ${bookId}`),
+        );
         throw new NotFoundException('Book not found or not available');
       }
 
@@ -333,52 +380,62 @@ export class ExploreAiBooksService {
       }
 
       // Fetch chapter
-      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst({
-        where: chapterWhere,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          pageStart: true,
-          pageEnd: true,
-          order: true,
-          isAiEnabled: true,
-          isProcessed: true,
-          chunkCount: true,
-          createdAt: true,
-          updatedAt: true,
-          files: {
-            select: {
-              id: true,
-              fileName: true,
-              fileType: true,
-              url: true,
-              sizeBytes: true,
-              title: true,
-              description: true,
-              order: true,
-              createdAt: true,
-            },
-            orderBy: {
-              order: 'asc',
+      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst(
+        {
+          where: chapterWhere,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            pageStart: true,
+            pageEnd: true,
+            order: true,
+            isAiEnabled: true,
+            isProcessed: true,
+            chunkCount: true,
+            createdAt: true,
+            updatedAt: true,
+            files: {
+              select: {
+                id: true,
+                fileName: true,
+                fileType: true,
+                url: true,
+                sizeBytes: true,
+                title: true,
+                description: true,
+                order: true,
+                createdAt: true,
+              },
+              orderBy: {
+                order: 'asc',
+              },
             },
           },
         },
-      });
+      );
 
       if (!chapter) {
-        this.logger.error(colors.red(`Chapter not found: ${chapterId} for book: ${bookId}`));
+        this.logger.error(
+          colors.red(`Chapter not found: ${chapterId} for book: ${bookId}`),
+        );
         throw new NotFoundException('Chapter not found');
       }
 
-      this.logger.log(colors.green(`✅ Successfully fetched chapter ${chapterId} for book: ${bookId}`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully fetched chapter ${chapterId} for book: ${bookId}`,
+        ),
+      );
 
       return new ApiResponse(true, 'Chapter retrieved successfully', chapter);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(colors.red(`❌ Error fetching chapter: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching chapter: ${error.message}`),
+      );
       throw error;
     }
   }

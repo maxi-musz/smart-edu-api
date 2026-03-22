@@ -16,7 +16,8 @@ export const CreateLibraryClassDevDocs = {
 export const ListLibraryClassDevDocs = {
   operation: ApiOperation({
     summary: 'List library classes (developer only)',
-    description: 'Fetch all canonical library classes available in the public library.',
+    description:
+      'Fetch all canonical library classes available in the public library.',
   }),
   response200: ApiResponse({
     status: 200,
@@ -27,7 +28,8 @@ export const ListLibraryClassDevDocs = {
 export const GetLibraryClassDevDocs = {
   operation: ApiOperation({
     summary: 'Get a single library class (developer only)',
-    description: 'Fetch a library class by its ID, including attached subjects.',
+    description:
+      'Fetch a library class by its ID, including attached subjects.',
   }),
   response200: ApiResponse({
     status: 200,
@@ -56,5 +58,3 @@ export const DeleteLibraryClassDevDocs = {
     description: 'Library class deleted successfully',
   }),
 };
-
-

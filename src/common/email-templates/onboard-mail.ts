@@ -1,20 +1,20 @@
 // email-templates.ts
 
 export const onboardingMailTemplate = (payload: {
-    school_name: string;
-    school_email: string;
-    school_phone: string;
-    school_address: string;
-    school_type: string;
-    school_ownership: string;
-    documents: {
-        cac?: string | null;
-        utility_bill?: string | null;
-        tax_clearance?: string | null;
-    };
-    defaultPassword?: string
-  }): string => {
-    return `
+  school_name: string;
+  school_email: string;
+  school_phone: string;
+  school_address: string;
+  school_type: string;
+  school_ownership: string;
+  documents: {
+    cac?: string | null;
+    utility_bill?: string | null;
+    tax_clearance?: string | null;
+  };
+  defaultPassword?: string;
+}): string => {
+  return `
       <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; color: #333;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
           <div style="padding: 20px; border-bottom: 1px solid #eee; background-color: #4f46e5; color: white;">
@@ -48,9 +48,9 @@ export const onboardingMailTemplate = (payload: {
   
             <p style="margin-top: 20px;"><strong>Uploaded Documents:</strong></p>
             <ul>
-              <li>CAC: ${payload.documents.cac || "Not provided"}</li>
-              <li>Utility Bill: ${payload.documents.utility_bill || "Not provided"}</li>
-              <li>Tax Clearance: ${payload.documents.tax_clearance || "Not provided"}</li>
+              <li>CAC: ${payload.documents.cac || 'Not provided'}</li>
+              <li>Utility Bill: ${payload.documents.utility_bill || 'Not provided'}</li>
+              <li>Tax Clearance: ${payload.documents.tax_clearance || 'Not provided'}</li>
             </ul>
   
             <p style="margin-top: 20px;">Your details are now awaiting approval, kindly wait for some hours while our support team verifies your document. Upon successful verification you will be send your credwentials to access the platform.</p>
@@ -63,5 +63,4 @@ export const onboardingMailTemplate = (payload: {
         </div>
       </div>
     `;
-  };
-  
+};

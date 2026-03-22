@@ -11,4 +11,3 @@ import { StorageModule } from '../../shared/services/providers/storage.module';
   exports: [ExamBodySubjectService],
 })
 export class ExamBodySubjectModule {}
-

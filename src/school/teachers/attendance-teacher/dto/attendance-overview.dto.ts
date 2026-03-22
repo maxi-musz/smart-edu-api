@@ -39,15 +39,24 @@ export class AcademicSessionInfoDto {
   @ApiProperty({ example: '2024-01-15', description: 'Current date' })
   current_date: string;
 
-  @ApiProperty({ example: true, description: 'Whether this is the current active session' })
+  @ApiProperty({
+    example: true,
+    description: 'Whether this is the current active session',
+  })
   is_current: boolean;
 }
 
 export class AttendanceOverviewDto {
-  @ApiProperty({ type: [ClassInfoDto], description: 'Classes managed by teacher' })
+  @ApiProperty({
+    type: [ClassInfoDto],
+    description: 'Classes managed by teacher',
+  })
   classes_managing: ClassInfoDto[];
 
-  @ApiProperty({ type: [AcademicSessionInfoDto], description: 'Available academic sessions' })
+  @ApiProperty({
+    type: [AcademicSessionInfoDto],
+    description: 'Available academic sessions',
+  })
   academic_sessions: AcademicSessionInfoDto[];
 }
 
@@ -55,9 +64,15 @@ export class AttendanceOverviewResponseDto {
   @ApiProperty({ example: true, description: 'Success status' })
   success: boolean;
 
-  @ApiProperty({ example: 'Attendance overview retrieved successfully', description: 'Response message' })
+  @ApiProperty({
+    example: 'Attendance overview retrieved successfully',
+    description: 'Response message',
+  })
   message: string;
 
-  @ApiProperty({ type: AttendanceOverviewDto, description: 'Attendance overview data' })
+  @ApiProperty({
+    type: AttendanceOverviewDto,
+    description: 'Attendance overview data',
+  })
   data: AttendanceOverviewDto;
 }

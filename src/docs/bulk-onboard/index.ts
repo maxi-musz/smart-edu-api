@@ -1,2 +1,2 @@
 // Export bulk-onboard documentation
-export * from './bulk-onboard.docs'; 
+export * from './bulk-onboard.docs';

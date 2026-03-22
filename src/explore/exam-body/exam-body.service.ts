@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { SubmitExamBodyAssessmentDto } from './dto/submit-assessment.dto';
@@ -41,7 +47,11 @@ export class ExploreExamBodyService {
       orderBy: { name: 'asc' },
     });
 
-    return new ApiResponse(true, 'Exam bodies retrieved successfully', examBodies);
+    return new ApiResponse(
+      true,
+      'Exam bodies retrieved successfully',
+      examBodies,
+    );
   }
 
   // Get a single exam body with subjects and years
@@ -83,7 +93,9 @@ export class ExploreExamBodyService {
 
   // Get subjects for an exam body
   async getSubjects(examBodyId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`📚 Fetching subjects for exam body: ${examBodyId}`));
+    this.logger.log(
+      colors.cyan(`📚 Fetching subjects for exam body: ${examBodyId}`),
+    );
 
     const examBody = await this.prisma.examBody.findUnique({
       where: { id: examBodyId, status: 'active' },
@@ -114,7 +126,9 @@ export class ExploreExamBodyService {
 
   // Get years for an exam body
   async getYears(examBodyId: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`📚 Fetching years for exam body: ${examBodyId}`));
+    this.logger.log(
+      colors.cyan(`📚 Fetching years for exam body: ${examBodyId}`),
+    );
 
     const examBody = await this.prisma.examBody.findUnique({
       where: { id: examBodyId, status: 'active' },
@@ -224,10 +238,16 @@ export class ExploreExamBodyService {
     });
 
     this.logger.log(
-      colors.green(`📚 Assessments returned: ${assessments.length} for exam body ${examBodyId}`),
+      colors.green(
+        `📚 Assessments returned: ${assessments.length} for exam body ${examBodyId}`,
+      ),
     );
 
-    return new ApiResponse(true, 'Assessments retrieved successfully', assessments);
+    return new ApiResponse(
+      true,
+      'Assessments retrieved successfully',
+      assessments,
+    );
   }
 
   // Get questions for an assessment (WITHOUT correct answers)
@@ -332,14 +352,22 @@ export class ExploreExamBodyService {
       });
 
       // Handle maxAttempts: null means unlimited
-      if (assessment.maxAttempts !== null && attemptCount >= assessment.maxAttempts) {
-        throw new ForbiddenException('No attempts remaining for this assessment');
+      if (
+        assessment.maxAttempts !== null &&
+        attemptCount >= assessment.maxAttempts
+      ) {
+        throw new ForbiddenException(
+          'No attempts remaining for this assessment',
+        );
       }
 
       const attemptNumber = attemptCount + 1;
 
       // Calculate total points from questions
-      const maxScore = assessment.questions.reduce((sum, q) => sum + q.points, 0);
+      const maxScore = assessment.questions.reduce(
+        (sum, q) => sum + q.points,
+        0,
+      );
 
       // Grade each response
       const gradedResponses: any[] = [];
@@ -512,7 +540,9 @@ export class ExploreExamBodyService {
     assessmentId?: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(
-      colors.cyan(`📊 Fetching attempts for user: ${user.sub}${assessmentId ? ` (assessment: ${assessmentId})` : ''}`),
+      colors.cyan(
+        `📊 Fetching attempts for user: ${user.sub}${assessmentId ? ` (assessment: ${assessmentId})` : ''}`,
+      ),
     );
 
     const where: any = {
@@ -560,7 +590,9 @@ export class ExploreExamBodyService {
     attemptId: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(
-      colors.cyan(`📊 Fetching attempt results: ${attemptId} for user: ${user.sub}`),
+      colors.cyan(
+        `📊 Fetching attempt results: ${attemptId} for user: ${user.sub}`,
+      ),
     );
     this.logger.log(colors.yellow(`👤 User ID: ${user.sub}`));
     this.logger.log(colors.yellow(`🆔 Attempt ID: ${attemptId}`));
@@ -636,11 +668,19 @@ export class ExploreExamBodyService {
       throw new NotFoundException('Attempt not found');
     }
 
-    this.logger.log(colors.blue(`✅ Attempt found - User ID: ${attempt.userId}, Requested by: ${user.sub}`));
+    this.logger.log(
+      colors.blue(
+        `✅ Attempt found - User ID: ${attempt.userId}, Requested by: ${user.sub}`,
+      ),
+    );
 
     // Verify user owns this attempt
     if (attempt.userId !== user.sub) {
-      this.logger.error(colors.red(`❌ Access denied - Attempt belongs to user ${attempt.userId}, but requested by ${user.sub}`));
+      this.logger.error(
+        colors.red(
+          `❌ Access denied - Attempt belongs to user ${attempt.userId}, but requested by ${user.sub}`,
+        ),
+      );
       throw new ForbiddenException('You do not have access to this attempt');
     }
 
@@ -698,10 +738,10 @@ export class ExploreExamBodyService {
         totalQuestions: attempt.responses.length,
         correctAnswers: attempt.responses.filter((r) => r.isCorrect === true)
           .length,
-        incorrectAnswers: attempt.responses.filter(
-          (r) => r.isCorrect === false,
-        ).length,
-        unanswered: attempt.responses.filter((r) => r.isCorrect === null).length,
+        incorrectAnswers: attempt.responses.filter((r) => r.isCorrect === false)
+          .length,
+        unanswered: attempt.responses.filter((r) => r.isCorrect === null)
+          .length,
         totalScore: attempt.totalScore,
         maxScore: attempt.maxScore,
         percentage: attempt.percentage,
@@ -712,21 +752,45 @@ export class ExploreExamBodyService {
 
     this.logger.log(colors.green(`✅ Attempt results prepared:`));
     this.logger.log(colors.cyan(`   - Attempt ID: ${data.attempt.id}`));
-    this.logger.log(colors.cyan(`   - Score: ${data.results.totalScore}/${data.results.maxScore} (${data.results.percentage}%)`));
+    this.logger.log(
+      colors.cyan(
+        `   - Score: ${data.results.totalScore}/${data.results.maxScore} (${data.results.percentage}%)`,
+      ),
+    );
     this.logger.log(colors.cyan(`   - Questions: ${data.questions.length}`));
-    this.logger.log(colors.cyan(`   - Time Spent: ${data.attempt.timeSpent} seconds`));
+    this.logger.log(
+      colors.cyan(`   - Time Spent: ${data.attempt.timeSpent} seconds`),
+    );
     this.logger.log(colors.cyan(`   - Status: ${data.attempt.status}`));
-    
-    const response = new ApiResponse(true, 'Attempt results retrieved successfully', data);
-    
-    this.logger.log(colors.magenta('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
-    this.logger.log(colors.magenta('📤 COMPLETE RESPONSE BEING SENT TO FRONTEND:'));
-    this.logger.log(colors.yellow(JSON.stringify({
-      success: response.success,
-      message: response.message,
-      data: response.data
-    }, null, 2)));
-    this.logger.log(colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
+
+    const response = new ApiResponse(
+      true,
+      'Attempt results retrieved successfully',
+      data,
+    );
+
+    this.logger.log(
+      colors.magenta('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'),
+    );
+    this.logger.log(
+      colors.magenta('📤 COMPLETE RESPONSE BEING SENT TO FRONTEND:'),
+    );
+    this.logger.log(
+      colors.yellow(
+        JSON.stringify(
+          {
+            success: response.success,
+            message: response.message,
+            data: response.data,
+          },
+          null,
+          2,
+        ),
+      ),
+    );
+    this.logger.log(
+      colors.magenta('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'),
+    );
 
     return response;
   }
@@ -751,7 +815,11 @@ export class ExploreExamBodyService {
     switch (questionType) {
       case 'MULTIPLE_CHOICE_SINGLE':
       case 'TRUE_FALSE':
-        return this.gradeMultipleChoiceSingle(question, correctAnswer, response);
+        return this.gradeMultipleChoiceSingle(
+          question,
+          correctAnswer,
+          response,
+        );
 
       case 'MULTIPLE_CHOICE_MULTIPLE':
         return this.gradeMultipleChoiceMultiple(
@@ -781,7 +849,11 @@ export class ExploreExamBodyService {
     }
   }
 
-  private gradeMultipleChoiceSingle(question: any, correctAnswer: any, response: any) {
+  private gradeMultipleChoiceSingle(
+    question: any,
+    correctAnswer: any,
+    response: any,
+  ) {
     if (!correctAnswer?.optionIds || correctAnswer.optionIds.length === 0) {
       return {
         isCorrect: null,
@@ -804,7 +876,11 @@ export class ExploreExamBodyService {
     };
   }
 
-  private gradeMultipleChoiceMultiple(question: any, correctAnswer: any, response: any) {
+  private gradeMultipleChoiceMultiple(
+    question: any,
+    correctAnswer: any,
+    response: any,
+  ) {
     if (!correctAnswer?.optionIds || correctAnswer.optionIds.length === 0) {
       return {
         isCorrect: null,
@@ -854,7 +930,10 @@ export class ExploreExamBodyService {
   }
 
   private gradeNumeric(question: any, correctAnswer: any, response: any) {
-    if (correctAnswer.answerNumber === null || correctAnswer.answerNumber === undefined) {
+    if (
+      correctAnswer.answerNumber === null ||
+      correctAnswer.answerNumber === undefined
+    ) {
       return {
         isCorrect: null,
         pointsEarned: 0,

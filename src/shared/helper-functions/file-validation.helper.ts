@@ -7,15 +7,21 @@ export interface FileValidationResult {
 export class FileValidationHelper {
   // Allowed material file types
   private static readonly ALLOWED_MATERIAL_TYPES = [
-    'application/pdf',                    // PDF
-    'application/msword',                 // DOC
+    'application/pdf', // PDF
+    'application/msword', // DOC
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
-    'application/vnd.ms-powerpoint',      // PPT
+    'application/vnd.ms-powerpoint', // PPT
     'application/vnd.openxmlformats-officedocument.presentationml.presentation', // PPTX
   ];
 
   // Allowed file extensions
-  private static readonly ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx'];
+  private static readonly ALLOWED_EXTENSIONS = [
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.ppt',
+    '.pptx',
+  ];
 
   // Allowed image MIME types
   private static readonly ALLOWED_IMAGE_TYPES = [
@@ -27,7 +33,13 @@ export class FileValidationHelper {
   ];
 
   // Allowed image extensions
-  private static readonly ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  private static readonly ALLOWED_IMAGE_EXTENSIONS = [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+  ];
 
   // Max file size in bytes (300MB)
   private static readonly MAX_FILE_SIZE = 300 * 1024 * 1024;
@@ -43,7 +55,7 @@ export class FileValidationHelper {
     if (!file) {
       return {
         isValid: false,
-        error: 'No file provided'
+        error: 'No file provided',
       };
     }
 
@@ -52,7 +64,7 @@ export class FileValidationHelper {
       const maxSizeMB = this.MAX_FILE_SIZE / (1024 * 1024);
       return {
         isValid: false,
-        error: `File size exceeds maximum allowed size of ${maxSizeMB}MB`
+        error: `File size exceeds maximum allowed size of ${maxSizeMB}MB`,
       };
     }
 
@@ -60,7 +72,7 @@ export class FileValidationHelper {
     if (!this.ALLOWED_MATERIAL_TYPES.includes(file.mimetype)) {
       return {
         isValid: false,
-        error: `File type not allowed. Allowed types: ${this.ALLOWED_EXTENSIONS.join(', ')}`
+        error: `File type not allowed. Allowed types: ${this.ALLOWED_EXTENSIONS.join(', ')}`,
       };
     }
 
@@ -69,7 +81,7 @@ export class FileValidationHelper {
     if (!this.ALLOWED_EXTENSIONS.includes(fileExtension.toLowerCase())) {
       return {
         isValid: false,
-        error: `File extension not allowed. Allowed extensions: ${this.ALLOWED_EXTENSIONS.join(', ')}`
+        error: `File extension not allowed. Allowed extensions: ${this.ALLOWED_EXTENSIONS.join(', ')}`,
       };
     }
 
@@ -78,7 +90,7 @@ export class FileValidationHelper {
 
     return {
       isValid: true,
-      fileType
+      fileType,
     };
   }
 
@@ -159,11 +171,11 @@ export class FileValidationHelper {
    */
   static formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 Bytes';
-    
+
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
+
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }

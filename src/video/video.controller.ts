@@ -1,5 +1,20 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+} from '@nestjs/swagger';
 import { VideoService } from './video.service';
 import { UniversalJwtGuard } from './guards/universal-jwt.guard';
 import { TrackWatchProgressDto } from './dto/track-watch-progress.dto';
@@ -24,7 +39,8 @@ export class VideoController {
   })
   @ApiParam({
     name: 'videoId',
-    description: 'Video ID (works for both LibraryVideoLesson and VideoContent)',
+    description:
+      'Video ID (works for both LibraryVideoLesson and VideoContent)',
     example: 'video-uuid-123',
   })
   @ApiResponse({
@@ -67,4 +83,3 @@ export class VideoController {
     return this.videoService.trackWatchProgress(req.user, videoId, watchData);
   }
 }
-

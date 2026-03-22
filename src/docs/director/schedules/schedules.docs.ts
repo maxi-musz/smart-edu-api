@@ -1,10 +1,15 @@
-import { ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 
 // Time Slot Management Documentation
 export const CreateTimeSlotDocs = {
   operation: ApiOperation({
     summary: 'Create a new time slot',
-    description: 'Create a new time slot for the school timetable'
+    description: 'Create a new time slot for the school timetable',
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   responses: [
@@ -15,7 +20,10 @@ export const CreateTimeSlotDocs = {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Time slot created successfully' },
+          message: {
+            type: 'string',
+            example: 'Time slot created successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -24,28 +32,28 @@ export const CreateTimeSlotDocs = {
               endTime: { type: 'string', example: '10:30' },
               label: { type: 'string', example: 'First Period' },
               order: { type: 'number', example: 1 },
-              school_id: { type: 'string', example: 'school-uuid' }
-            }
+              school_id: { type: 'string', example: 'school-uuid' },
+            },
           },
-          statusCode: { type: 'number', example: 201 }
-        }
-      }
+          statusCode: { type: 'number', example: 201 },
+        },
+      },
     }),
     ApiResponse({
       status: 400,
-      description: 'Bad request - Invalid data provided'
+      description: 'Bad request - Invalid data provided',
     }),
     ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
-    })
-  ]
+      description: 'Unauthorized - Invalid or missing JWT token',
+    }),
+  ],
 };
 
 export const GetTimeSlotsDocs = {
   operation: ApiOperation({
     summary: 'Get all time slots',
-    description: 'Fetch all time slots for the authenticated director\'s school'
+    description: "Fetch all time slots for the authenticated director's school",
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   responses: [
@@ -56,7 +64,10 @@ export const GetTimeSlotsDocs = {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Time slots fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Time slots fetched successfully',
+          },
           data: {
             type: 'array',
             items: {
@@ -67,31 +78,31 @@ export const GetTimeSlotsDocs = {
                 endTime: { type: 'string', example: '10:30' },
                 label: { type: 'string', example: 'First Period' },
                 order: { type: 'number', example: 1 },
-                isActive: { type: 'boolean', example: true }
-              }
-            }
+                isActive: { type: 'boolean', example: true },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     }),
     ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
-    })
-  ]
+      description: 'Unauthorized - Invalid or missing JWT token',
+    }),
+  ],
 };
 
 export const UpdateTimeSlotDocs = {
   operation: ApiOperation({
     summary: 'Update a time slot',
-    description: 'Update an existing time slot for the school timetable'
+    description: 'Update an existing time slot for the school timetable',
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   param: ApiParam({
     name: 'id',
     description: 'Time slot ID',
-    example: 'timeslot-uuid'
+    example: 'timeslot-uuid',
   }),
   responses: [
     ApiResponse({
@@ -101,7 +112,10 @@ export const UpdateTimeSlotDocs = {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Time slot updated successfully' },
+          message: {
+            type: 'string',
+            example: 'Time slot updated successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -110,38 +124,38 @@ export const UpdateTimeSlotDocs = {
               endTime: { type: 'string', example: '10:30' },
               label: { type: 'string', example: 'First Period' },
               order: { type: 'number', example: 1 },
-              isActive: { type: 'boolean', example: true }
-            }
+              isActive: { type: 'boolean', example: true },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     }),
     ApiResponse({
       status: 400,
-      description: 'Bad request - Invalid data provided'
+      description: 'Bad request - Invalid data provided',
     }),
     ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
+      description: 'Unauthorized - Invalid or missing JWT token',
     }),
     ApiResponse({
       status: 404,
-      description: 'Time slot not found'
-    })
-  ]
+      description: 'Time slot not found',
+    }),
+  ],
 };
 
 export const DeleteTimeSlotDocs = {
   operation: ApiOperation({
     summary: 'Delete a time slot',
-    description: 'Delete an existing time slot from the school timetable'
+    description: 'Delete an existing time slot from the school timetable',
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   param: ApiParam({
     name: 'id',
     description: 'Time slot ID',
-    example: 'timeslot-uuid'
+    example: 'timeslot-uuid',
   }),
   responses: [
     ApiResponse({
@@ -151,27 +165,30 @@ export const DeleteTimeSlotDocs = {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Time slot deleted successfully' },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'Time slot deleted successfully',
+          },
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     }),
     ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
+      description: 'Unauthorized - Invalid or missing JWT token',
     }),
     ApiResponse({
       status: 404,
-      description: 'Time slot not found'
-    })
-  ]
+      description: 'Time slot not found',
+    }),
+  ],
 };
 
 // Timetable Documentation
 export const GetTimetableDocs = {
   operation: ApiOperation({
     summary: 'Get timetable schedules',
-    description: 'Fetch timetable schedules for a specific class'
+    description: 'Fetch timetable schedules for a specific class',
   }),
   responses: [
     ApiResponse({
@@ -181,7 +198,10 @@ export const GetTimetableDocs = {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Timetable schedules fetched successfully' },
+          message: {
+            type: 'string',
+            example: 'Timetable schedules fetched successfully',
+          },
           data: {
             type: 'array',
             items: {
@@ -193,25 +213,25 @@ export const GetTimetableDocs = {
                 teacher_id: { type: 'string', example: 'teacher-uuid' },
                 day_of_week: { type: 'string', example: 'MONDAY' },
                 room: { type: 'string', example: 'Room 101' },
-                notes: { type: 'string', example: 'Bring textbooks' }
-              }
-            }
+                notes: { type: 'string', example: 'Bring textbooks' },
+              },
+            },
           },
-          statusCode: { type: 'number', example: 200 }
-        }
-      }
+          statusCode: { type: 'number', example: 200 },
+        },
+      },
     }),
     ApiResponse({
       status: 400,
-      description: 'Bad request - Invalid data provided'
-    })
-  ]
+      description: 'Bad request - Invalid data provided',
+    }),
+  ],
 };
 
 export const CreateTimetableDocs = {
   operation: ApiOperation({
     summary: 'Create a timetable entry',
-    description: 'Add a new schedule entry to the school timetable'
+    description: 'Add a new schedule entry to the school timetable',
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   responses: [
@@ -222,7 +242,10 @@ export const CreateTimetableDocs = {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Timetable entry created successfully' },
+          message: {
+            type: 'string',
+            example: 'Timetable entry created successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -232,20 +255,20 @@ export const CreateTimetableDocs = {
               teacher_id: { type: 'string', example: 'teacher-uuid' },
               day_of_week: { type: 'string', example: 'MONDAY' },
               room: { type: 'string', example: 'Room 101' },
-              notes: { type: 'string', example: 'Bring textbooks' }
-            }
+              notes: { type: 'string', example: 'Bring textbooks' },
+            },
           },
-          statusCode: { type: 'number', example: 201 }
-        }
-      }
+          statusCode: { type: 'number', example: 201 },
+        },
+      },
     }),
     ApiResponse({
       status: 400,
-      description: 'Bad request - Invalid data provided'
+      description: 'Bad request - Invalid data provided',
     }),
     ApiResponse({
       status: 401,
-      description: 'Unauthorized - Invalid or missing JWT token'
-    })
-  ]
-}; 
+      description: 'Unauthorized - Invalid or missing JWT token',
+    }),
+  ],
+};

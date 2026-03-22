@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../shared/services/providers/storage.service';
 import { CreateExamBodyDto, UpdateExamBodyDto } from './dto';
@@ -24,9 +30,18 @@ export class ExamBodyService {
       }
 
       // Validate file type (images only)
-      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+      ];
       if (!allowedMimeTypes.includes(iconFile.mimetype)) {
-        throw new BadRequestException('Invalid icon file type. Allowed types: JPEG, PNG, GIF, WEBP, SVG');
+        throw new BadRequestException(
+          'Invalid icon file type. Allowed types: JPEG, PNG, GIF, WEBP, SVG',
+        );
       }
 
       // Validate file size (max 2MB for icons)
@@ -41,16 +56,15 @@ export class ExamBodyService {
       // Check if name or code already exists
       const existing = await this.prisma.examBody.findFirst({
         where: {
-          OR: [
-            { name: createDto.name },
-            { code: code },
-          ],
+          OR: [{ name: createDto.name }, { code: code }],
         },
       });
 
       if (existing) {
         const field = existing.name === createDto.name ? 'name' : 'code';
-        throw new ConflictException(`Exam body with ${field} "${field === 'name' ? createDto.name : code}" already exists`);
+        throw new ConflictException(
+          `Exam body with ${field} "${field === 'name' ? createDto.name : code}" already exists`,
+        );
       }
 
       // Upload icon
@@ -58,14 +72,26 @@ export class ExamBodyService {
       try {
         const folder = `exam-bodies/icons`;
         const fileName = `${code}_${Date.now()}_${iconFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        
-        this.logger.log(colors.cyan(`📤 Uploading icon: ${iconFile.originalname}`));
-        uploadResult = await this.storageService.uploadFile(iconFile, folder, fileName);
-        
-        this.logger.log(colors.green(`✅ Icon uploaded successfully: ${uploadResult.url}`));
+
+        this.logger.log(
+          colors.cyan(`📤 Uploading icon: ${iconFile.originalname}`),
+        );
+        uploadResult = await this.storageService.uploadFile(
+          iconFile,
+          folder,
+          fileName,
+        );
+
+        this.logger.log(
+          colors.green(`✅ Icon uploaded successfully: ${uploadResult.url}`),
+        );
       } catch (uploadError: any) {
-        this.logger.error(colors.red(`❌ Failed to upload icon: ${uploadError.message}`));
-        throw new BadRequestException(`Failed to upload icon: ${uploadError.message}`);
+        this.logger.error(
+          colors.red(`❌ Failed to upload icon: ${uploadError.message}`),
+        );
+        throw new BadRequestException(
+          `Failed to upload icon: ${uploadError.message}`,
+        );
       }
 
       // Create exam body with icon URL and auto-generated code
@@ -78,26 +104,42 @@ export class ExamBodyService {
             logoUrl: uploadResult.url,
           },
         });
-        
-        this.logger.log(colors.green(`✅ Exam body created: ${examBody.name} (ID: ${examBody.id})`));
+
+        this.logger.log(
+          colors.green(
+            `✅ Exam body created: ${examBody.name} (ID: ${examBody.id})`,
+          ),
+        );
       } catch (dbError: any) {
         // Database operation failed - clean up uploaded icon
-        this.logger.error(colors.red(`❌ Database error after icon upload. Cleaning up uploaded icon...`));
-        
+        this.logger.error(
+          colors.red(
+            `❌ Database error after icon upload. Cleaning up uploaded icon...`,
+          ),
+        );
+
         try {
           await this.storageService.deleteFile(uploadResult.key);
-          this.logger.log(colors.yellow(`🗑️  Uploaded icon deleted: ${uploadResult.key}`));
+          this.logger.log(
+            colors.yellow(`🗑️  Uploaded icon deleted: ${uploadResult.key}`),
+          );
         } catch (deleteError: any) {
-          this.logger.error(colors.red(`❌ Failed to delete uploaded icon: ${deleteError.message}`));
+          this.logger.error(
+            colors.red(
+              `❌ Failed to delete uploaded icon: ${deleteError.message}`,
+            ),
+          );
           // Continue to throw the original DB error even if cleanup fails
         }
-        
+
         throw dbError;
       }
 
       return ResponseHelper.success('Exam body created successfully', examBody);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error creating exam body: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error creating exam body: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -112,10 +154,17 @@ export class ExamBodyService {
         },
       });
 
-      this.logger.log(colors.green(`✅ Found ${examBodies.length} exam bodies`));
-      return ResponseHelper.success('Exam bodies retrieved successfully', examBodies);
+      this.logger.log(
+        colors.green(`✅ Found ${examBodies.length} exam bodies`),
+      );
+      return ResponseHelper.success(
+        'Exam bodies retrieved successfully',
+        examBodies,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching exam bodies: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching exam bodies: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -133,14 +182,23 @@ export class ExamBodyService {
       }
 
       this.logger.log(colors.green(`✅ Exam body found: ${examBody.name}`));
-      return ResponseHelper.success('Exam body retrieved successfully', examBody);
+      return ResponseHelper.success(
+        'Exam body retrieved successfully',
+        examBody,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching exam body: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching exam body: ${error.message}`),
+      );
       throw error;
     }
   }
 
-  async update(id: string, updateDto: UpdateExamBodyDto, iconFile?: Express.Multer.File) {
+  async update(
+    id: string,
+    updateDto: UpdateExamBodyDto,
+    iconFile?: Express.Multer.File,
+  ) {
     this.logger.log(colors.cyan(`📝 Updating exam body: ${id}`));
 
     try {
@@ -171,7 +229,9 @@ export class ExamBodyService {
 
         if (conflict) {
           const field = conflict.name === updateDto.name ? 'name' : 'code';
-          throw new ConflictException(`Exam body with ${field} "${updateDto[field]}" already exists`);
+          throw new ConflictException(
+            `Exam body with ${field} "${updateDto[field]}" already exists`,
+          );
         }
       }
 
@@ -179,9 +239,18 @@ export class ExamBodyService {
       let newUploadResult: { url: string; key: string } | undefined;
       if (iconFile) {
         // Validate file type
-        const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'image/svg+xml',
+        ];
         if (!allowedMimeTypes.includes(iconFile.mimetype)) {
-          throw new BadRequestException('Invalid icon file type. Allowed types: JPEG, PNG, GIF, WEBP, SVG');
+          throw new BadRequestException(
+            'Invalid icon file type. Allowed types: JPEG, PNG, GIF, WEBP, SVG',
+          );
         }
 
         // Validate file size (max 2MB)
@@ -193,14 +262,28 @@ export class ExamBodyService {
         try {
           const folder = `exam-bodies/icons`;
           const fileName = `${existing.code}_${Date.now()}_${iconFile.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-          
-          this.logger.log(colors.cyan(`📤 Uploading new icon: ${iconFile.originalname}`));
-          newUploadResult = await this.storageService.uploadFile(iconFile, folder, fileName);
-          
-          this.logger.log(colors.green(`✅ New icon uploaded successfully: ${newUploadResult.url}`));
+
+          this.logger.log(
+            colors.cyan(`📤 Uploading new icon: ${iconFile.originalname}`),
+          );
+          newUploadResult = await this.storageService.uploadFile(
+            iconFile,
+            folder,
+            fileName,
+          );
+
+          this.logger.log(
+            colors.green(
+              `✅ New icon uploaded successfully: ${newUploadResult.url}`,
+            ),
+          );
         } catch (uploadError: any) {
-          this.logger.error(colors.red(`❌ Failed to upload icon: ${uploadError.message}`));
-          throw new BadRequestException(`Failed to upload icon: ${uploadError.message}`);
+          this.logger.error(
+            colors.red(`❌ Failed to upload icon: ${uploadError.message}`),
+          );
+          throw new BadRequestException(
+            `Failed to upload icon: ${uploadError.message}`,
+          );
         }
       }
 
@@ -214,28 +297,42 @@ export class ExamBodyService {
             ...(newUploadResult && { logoUrl: newUploadResult.url }),
           },
         });
-        
+
         this.logger.log(colors.green(`✅ Exam body updated: ${examBody.name}`));
       } catch (dbError: any) {
         // Database operation failed - clean up newly uploaded icon if exists
         if (newUploadResult) {
-          this.logger.error(colors.red(`❌ Database error after icon upload. Cleaning up uploaded icon...`));
-          
+          this.logger.error(
+            colors.red(
+              `❌ Database error after icon upload. Cleaning up uploaded icon...`,
+            ),
+          );
+
           try {
             await this.storageService.deleteFile(newUploadResult.key);
-            this.logger.log(colors.yellow(`🗑️  Uploaded icon deleted: ${newUploadResult.key}`));
+            this.logger.log(
+              colors.yellow(
+                `🗑️  Uploaded icon deleted: ${newUploadResult.key}`,
+              ),
+            );
           } catch (deleteError: any) {
-            this.logger.error(colors.red(`❌ Failed to delete uploaded icon: ${deleteError.message}`));
+            this.logger.error(
+              colors.red(
+                `❌ Failed to delete uploaded icon: ${deleteError.message}`,
+              ),
+            );
             // Continue to throw the original DB error even if cleanup fails
           }
         }
-        
+
         throw dbError;
       }
 
       return ResponseHelper.success('Exam body updated successfully', examBody);
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error updating exam body: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error updating exam body: ${error.message}`),
+      );
       throw error;
     }
   }
@@ -259,14 +356,18 @@ export class ExamBodyService {
       this.logger.log(colors.green(`✅ Exam body deleted: ${examBody.name}`));
       return ResponseHelper.success('Exam body deleted successfully', { id });
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error deleting exam body: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error deleting exam body: ${error.message}`),
+      );
       throw error;
     }
   }
 
   private generateCode(name: string): string {
     // Convert to uppercase and replace spaces with underscores
-    return name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+    return name
+      .toUpperCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^A-Z0-9_]/g, '');
   }
 }
-

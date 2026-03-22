@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExploreAssessmentService } from './explore.assessment.service';
 import { JwtGuard } from '../school/auth/guard';
@@ -33,10 +42,7 @@ export class ExploreAssessmentController {
     @Request() req: any,
     @Param('attemptId') attemptId: string,
   ) {
-    return this.exploreAssessmentService.getAttemptResults(
-      req.user,
-      attemptId,
-    );
+    return this.exploreAssessmentService.getAttemptResults(req.user, attemptId);
   }
 
   @Get(':assessmentId')
@@ -45,10 +51,7 @@ export class ExploreAssessmentController {
     @Request() req: any,
     @Param('assessmentId') assessmentId: string,
   ) {
-    return this.exploreAssessmentService.getAssessment(
-      req.user,
-      assessmentId,
-    );
+    return this.exploreAssessmentService.getAssessment(req.user, assessmentId);
   }
 
   @Get(':assessmentId/questions')
@@ -77,4 +80,3 @@ export class ExploreAssessmentController {
     );
   }
 }
-

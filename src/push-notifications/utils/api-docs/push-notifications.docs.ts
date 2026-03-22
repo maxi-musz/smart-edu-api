@@ -9,8 +9,9 @@ export class PushNotificationsDocs {
   static get registerDeviceOperation() {
     return {
       summary: 'Register device for push notifications',
-      description: 'Register a device token to receive push notifications. This should be called when the app starts or when the user logs in.',
-      tags: ['Push Notifications']
+      description:
+        'Register a device token to receive push notifications. This should be called when the app starts or when the user logs in.',
+      tags: ['Push Notifications'],
     };
   }
 
@@ -22,12 +23,15 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Device registered successfully' },
+          message: {
+            type: 'string',
+            example: 'Device registered successfully',
+          },
           data: {
-            $ref: '#/components/schemas/DeviceTokenResponseDto'
-          }
-        }
-      }
+            $ref: '#/components/schemas/DeviceTokenResponseDto',
+          },
+        },
+      },
     };
   }
 
@@ -39,10 +43,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'User not found or invalid school data' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'User not found or invalid school data',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -54,10 +61,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'Failed to register device: Database error' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'Failed to register device: Database error',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -65,8 +75,9 @@ export class PushNotificationsDocs {
   static get unregisterDeviceOperation() {
     return {
       summary: 'Unregister device from push notifications',
-      description: 'Unregister a device token to stop receiving push notifications. This should be called when the user logs out.',
-      tags: ['Push Notifications']
+      description:
+        'Unregister a device token to stop receiving push notifications. This should be called when the user logs out.',
+      tags: ['Push Notifications'],
     };
   }
 
@@ -78,10 +89,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Device unregistered successfully' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'Device unregistered successfully',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -93,10 +107,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'User not found or invalid school data' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'User not found or invalid school data',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -109,9 +126,9 @@ export class PushNotificationsDocs {
         properties: {
           success: { type: 'boolean', example: false },
           message: { type: 'string', example: 'Device token not found' },
-          data: { type: 'null', example: null }
-        }
-      }
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -123,10 +140,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'Failed to unregister device: Database error' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'Failed to unregister device: Database error',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -134,8 +154,9 @@ export class PushNotificationsDocs {
   static get sendPushOperation() {
     return {
       summary: 'Send push notification to specific users',
-      description: 'Send a push notification to specific users. This endpoint is typically used by administrators or for testing.',
-      tags: ['Push Notifications']
+      description:
+        'Send a push notification to specific users. This endpoint is typically used by administrators or for testing.',
+      tags: ['Push Notifications'],
     };
   }
 
@@ -147,7 +168,10 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: true },
-          message: { type: 'string', example: 'Push notification sent successfully' },
+          message: {
+            type: 'string',
+            example: 'Push notification sent successfully',
+          },
           data: {
             type: 'object',
             properties: {
@@ -162,16 +186,19 @@ export class PushNotificationsDocs {
                       type: 'object',
                       properties: {
                         status: { type: 'string', example: 'ok' },
-                        id: { type: 'string', example: 'ExponentPushToken[...]' }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                        id: {
+                          type: 'string',
+                          example: 'ExponentPushToken[...]',
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     };
   }
 
@@ -183,10 +210,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'User not found or invalid school data' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'User not found or invalid school data',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 
@@ -198,10 +228,13 @@ export class PushNotificationsDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'Failed to send push notification: Expo API error' },
-          data: { type: 'null', example: null }
-        }
-      }
+          message: {
+            type: 'string',
+            example: 'Failed to send push notification: Expo API error',
+          },
+          data: { type: 'null', example: null },
+        },
+      },
     };
   }
 }

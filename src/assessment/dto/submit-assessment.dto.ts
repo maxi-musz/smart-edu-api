@@ -17,7 +17,7 @@ import { Type } from 'class-transformer';
 export class AnswerDto {
   @ApiProperty({
     description: 'Question ID',
-    example: 'question_abc123'
+    example: 'question_abc123',
   })
   @IsString()
   @IsNotEmpty()
@@ -26,7 +26,16 @@ export class AnswerDto {
   @ApiPropertyOptional({
     description: 'Question type',
     example: 'MULTIPLE_CHOICE',
-    enum: ['MULTIPLE_CHOICE', 'MULTIPLE_CHOICE_SINGLE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'ESSAY', 'NUMERIC', 'DATE', 'SHORT_ANSWER']
+    enum: [
+      'MULTIPLE_CHOICE',
+      'MULTIPLE_CHOICE_SINGLE',
+      'TRUE_FALSE',
+      'FILL_IN_BLANK',
+      'ESSAY',
+      'NUMERIC',
+      'DATE',
+      'SHORT_ANSWER',
+    ],
   })
   @IsString()
   @IsOptional()
@@ -35,7 +44,7 @@ export class AnswerDto {
   @ApiPropertyOptional({
     description: 'Selected option IDs for multiple choice questions',
     example: ['option_1', 'option_2'],
-    type: [String]
+    type: [String],
   })
   @IsArray()
   @IsString({ each: true })
@@ -43,8 +52,9 @@ export class AnswerDto {
   selected_options?: string[];
 
   @ApiPropertyOptional({
-    description: 'Single answer (alternative to selected_options for single choice)',
-    example: 'option_1'
+    description:
+      'Single answer (alternative to selected_options for single choice)',
+    example: 'option_1',
   })
   @IsString()
   @IsOptional()
@@ -52,7 +62,7 @@ export class AnswerDto {
 
   @ApiPropertyOptional({
     description: 'Text answer for essay, fill-in-blank, short answer questions',
-    example: 'The answer is 42'
+    example: 'The answer is 42',
   })
   @IsString()
   @IsOptional()
@@ -65,7 +75,7 @@ export class AnswerDto {
 export class DeviceInfoDto {
   @ApiPropertyOptional({
     description: 'Device type',
-    example: 'mobile'
+    example: 'mobile',
   })
   @IsString()
   @IsOptional()
@@ -73,7 +83,7 @@ export class DeviceInfoDto {
 
   @ApiPropertyOptional({
     description: 'Operating system',
-    example: 'iOS 17.2'
+    example: 'iOS 17.2',
   })
   @IsString()
   @IsOptional()
@@ -81,7 +91,7 @@ export class DeviceInfoDto {
 
   @ApiPropertyOptional({
     description: 'App version',
-    example: '2.5.0'
+    example: '2.5.0',
   })
   @IsString()
   @IsOptional()
@@ -89,7 +99,7 @@ export class DeviceInfoDto {
 
   @ApiPropertyOptional({
     description: 'Browser (for web)',
-    example: 'Chrome 121'
+    example: 'Chrome 121',
   })
   @IsString()
   @IsOptional()
@@ -102,7 +112,7 @@ export class DeviceInfoDto {
 export class SubmitAssessmentDto {
   @ApiProperty({
     description: 'Array of answers for each question',
-    type: [AnswerDto]
+    type: [AnswerDto],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -111,7 +121,7 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Submission timestamp (ISO string)',
-    example: '2026-02-23T14:30:00.000Z'
+    example: '2026-02-23T14:30:00.000Z',
   })
   @IsDateString()
   @IsOptional()
@@ -119,7 +129,7 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Time taken to complete in seconds',
-    example: 1800
+    example: 1800,
   })
   @IsNumber()
   @IsOptional()
@@ -127,7 +137,7 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Total number of questions',
-    example: 20
+    example: 20,
   })
   @IsNumber()
   @IsOptional()
@@ -135,7 +145,7 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Number of questions answered',
-    example: 18
+    example: 18,
   })
   @IsNumber()
   @IsOptional()
@@ -143,7 +153,7 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Number of questions skipped',
-    example: 2
+    example: 2,
   })
   @IsNumber()
   @IsOptional()
@@ -151,15 +161,16 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Total points possible (from frontend tracking)',
-    example: 100
+    example: 100,
   })
   @IsNumber()
   @IsOptional()
   total_points_possible?: number;
 
   @ApiPropertyOptional({
-    description: 'Total points earned (frontend calculation, will be re-calculated on backend)',
-    example: 85
+    description:
+      'Total points earned (frontend calculation, will be re-calculated on backend)',
+    example: 85,
   })
   @IsNumber()
   @IsOptional()
@@ -168,7 +179,7 @@ export class SubmitAssessmentDto {
   @ApiPropertyOptional({
     description: 'Submission status',
     example: 'COMPLETED',
-    enum: ['COMPLETED', 'TIMED_OUT', 'AUTO_SUBMITTED']
+    enum: ['COMPLETED', 'TIMED_OUT', 'AUTO_SUBMITTED'],
   })
   @IsString()
   @IsOptional()
@@ -176,7 +187,7 @@ export class SubmitAssessmentDto {
 
   @ApiPropertyOptional({
     description: 'Device information for tracking',
-    type: DeviceInfoDto
+    type: DeviceInfoDto,
   })
   @IsObject()
   @ValidateNested()

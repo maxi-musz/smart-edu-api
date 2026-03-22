@@ -19,7 +19,8 @@ export class UpdateLibrarySubjectDevDto {
   code?: string;
 
   @ApiPropertyOptional({
-    description: 'Updated library class ID to group this subject under (or null to detach)',
+    description:
+      'Updated library class ID to group this subject under (or null to detach)',
     example: 'clibclass1234567890abcdef',
   })
   @IsOptional()
@@ -42,5 +43,3 @@ export class UpdateLibrarySubjectDevDto {
   @IsString()
   description?: string;
 }
-
-

@@ -36,7 +36,10 @@ export class CreateSubjectDto {
 
   @ApiPropertyOptional({
     description: 'Thumbnail image for the subject',
-    example: { secure_url: 'https://example.com/image.jpg', public_id: 'image_id' },
+    example: {
+      secure_url: 'https://example.com/image.jpg',
+      public_id: 'image_id',
+    },
   })
   @IsOptional()
   thumbnail?: any;

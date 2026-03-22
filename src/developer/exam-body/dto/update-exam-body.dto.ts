@@ -29,7 +29,8 @@ export class UpdateExamBodyDto {
 
   @ApiPropertyOptional({
     description: 'Description of the examination body',
-    example: 'The West African Examinations Council conducts standardized examinations...',
+    example:
+      'The West African Examinations Council conducts standardized examinations...',
   })
   @IsString()
   @IsOptional()
@@ -60,4 +61,3 @@ export class UpdateExamBodyDto {
   @IsOptional()
   status?: ExamBodyStatus;
 }
-

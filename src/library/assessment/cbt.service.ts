@@ -24,7 +24,10 @@ export class CBTService {
   /**
    * Create a new CBT Assessment (automatically sets assessmentType to 'CBT')
    */
-  async createCBT(createCBTDto: CreateLibraryCBTDto, user: any): Promise<ApiResponse<any>> {
+  async createCBT(
+    createCBTDto: CreateLibraryCBTDto,
+    user: any,
+  ): Promise<ApiResponse<any>> {
     // Determine scope: topic > chapter > subject
     let scopeInfo = '';
     if (createCBTDto.topicId) {
@@ -34,16 +37,23 @@ export class CBTService {
     } else {
       scopeInfo = `for subject: ${createCBTDto.subjectId}`;
     }
-    
-    this.logger.log(colors.cyan(`[LIBRARY CBT] Creating new CBT: ${createCBTDto.title} ${scopeInfo} for user: ${user.email}`));
-    
+
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CBT] Creating new CBT: ${createCBTDto.title} ${scopeInfo} for user: ${user.email}`,
+      ),
+    );
+
     // Convert CBT DTO to Assessment DTO and force assessmentType to 'CBT'
     const createAssessmentDto = {
       ...createCBTDto,
       assessmentType: 'CBT', // Force CBT type
     };
 
-    return await this.assessmentService.createAssessment(createAssessmentDto, user);
+    return await this.assessmentService.createAssessment(
+      createAssessmentDto,
+      user,
+    );
   }
 
   /**
@@ -54,7 +64,11 @@ export class CBTService {
     imageFile: Express.Multer.File,
     userId: string,
   ): Promise<ApiResponse<any>> {
-    return await this.assessmentService.uploadQuestionImage(assessmentId, imageFile, userId);
+    return await this.assessmentService.uploadQuestionImage(
+      assessmentId,
+      imageFile,
+      userId,
+    );
   }
 
   /**
@@ -66,23 +80,41 @@ export class CBTService {
     userId: string,
     imageFile?: Express.Multer.File,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CBT] Creating question in CBT: ${assessmentId}`));
-    
+    this.logger.log(
+      colors.cyan(`[LIBRARY CBT] Creating question in CBT: ${assessmentId}`),
+    );
+
     if (imageFile) {
-      this.logger.log(colors.cyan(`Image file attached: ${imageFile.originalname} (${(imageFile.size / 1024).toFixed(2)} KB)`));
+      this.logger.log(
+        colors.cyan(
+          `Image file attached: ${imageFile.originalname} (${(imageFile.size / 1024).toFixed(2)} KB)`,
+        ),
+      );
     }
-    
+
     // Convert question field names from camelCase to snake_case for service compatibility
-    const serviceQuestionDto = this.convertQuestionDtoToServiceFormat(createQuestionDto);
-    
-    return await this.assessmentService.createQuestion(assessmentId, serviceQuestionDto, userId, imageFile);
+    const serviceQuestionDto =
+      this.convertQuestionDtoToServiceFormat(createQuestionDto);
+
+    return await this.assessmentService.createQuestion(
+      assessmentId,
+      serviceQuestionDto,
+      userId,
+      imageFile,
+    );
   }
 
   /**
    * Get all questions for a CBT
    */
-  async getQuestions(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
-    return await this.assessmentService.getAssessmentQuestions(assessmentId, userId);
+  async getQuestions(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
+    return await this.assessmentService.getAssessmentQuestions(
+      assessmentId,
+      userId,
+    );
   }
 
   /**
@@ -95,11 +127,17 @@ export class CBTService {
     userId: string,
     imageFile?: Express.Multer.File,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CBT] Updating question ${questionId} in CBT: ${assessmentId}`));
-    
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY CBT] Updating question ${questionId} in CBT: ${assessmentId}`,
+      ),
+    );
+
     // Convert question field names from camelCase to snake_case for service compatibility
-    const serviceQuestionDto = this.convertQuestionDtoToServiceFormat(updateQuestionDto as any);
-    
+    const serviceQuestionDto = this.convertQuestionDtoToServiceFormat(
+      updateQuestionDto as any,
+    );
+
     return await this.assessmentService.updateQuestion(
       assessmentId,
       questionId,
@@ -117,8 +155,14 @@ export class CBTService {
     imageS3Key: string,
     userId: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CBT] Deleting orphaned image: ${imageS3Key}`));
-    return await this.assessmentService.deleteOrphanedImage(assessmentId, imageS3Key, userId);
+    this.logger.log(
+      colors.cyan(`[LIBRARY CBT] Deleting orphaned image: ${imageS3Key}`),
+    );
+    return await this.assessmentService.deleteOrphanedImage(
+      assessmentId,
+      imageS3Key,
+      userId,
+    );
   }
 
   /**
@@ -129,7 +173,11 @@ export class CBTService {
     questionId: string,
     userId: string,
   ): Promise<ApiResponse<any>> {
-    return await this.assessmentService.deleteQuestionImage(assessmentId, questionId, userId);
+    return await this.assessmentService.deleteQuestionImage(
+      assessmentId,
+      questionId,
+      userId,
+    );
   }
 
   /**
@@ -140,7 +188,11 @@ export class CBTService {
     questionId: string,
     userId: string,
   ): Promise<ApiResponse<any>> {
-    return await this.assessmentService.deleteQuestion(assessmentId, questionId, userId);
+    return await this.assessmentService.deleteQuestion(
+      assessmentId,
+      questionId,
+      userId,
+    );
   }
 
   /**
@@ -152,41 +204,60 @@ export class CBTService {
     userId: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(colors.cyan(`[LIBRARY CBT] Updating CBT: ${assessmentId}`));
-    
+
     // Ensure assessmentType remains 'CBT' if it's being set
     const updateAssessmentDto = {
       ...updateCBTDto,
       assessmentType: 'CBT', // Force CBT type
     };
 
-    return await this.assessmentService.updateAssessment(assessmentId, updateAssessmentDto, userId);
+    return await this.assessmentService.updateAssessment(
+      assessmentId,
+      updateAssessmentDto,
+      userId,
+    );
   }
 
   /**
    * Delete a CBT
    */
-  async deleteCBT(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async deleteCBT(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     return await this.assessmentService.deleteAssessment(assessmentId, userId);
   }
 
   /**
    * Publish a CBT
    */
-  async publishCBT(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async publishCBT(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     return await this.assessmentService.publishAssessment(assessmentId, userId);
   }
 
   /**
    * Unpublish a CBT
    */
-  async unpublishCBT(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
-    return await this.assessmentService.unpublishAssessment(assessmentId, userId);
+  async unpublishCBT(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
+    return await this.assessmentService.unpublishAssessment(
+      assessmentId,
+      userId,
+    );
   }
 
   /**
    * Get a CBT by ID
    */
-  async getCBTById(assessmentId: string, userId: string): Promise<ApiResponse<any>> {
+  async getCBTById(
+    assessmentId: string,
+    userId: string,
+  ): Promise<ApiResponse<any>> {
     return await this.assessmentService.getAssessmentById(assessmentId, userId);
   }
 
@@ -195,13 +266,22 @@ export class CBTService {
    */
   async listCBTs(
     user: any,
-    filters?: { subjectId?: string; chapterId?: string; topicId?: string; status?: string },
+    filters?: {
+      subjectId?: string;
+      chapterId?: string;
+      topicId?: string;
+      status?: string;
+    },
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY CBT] Listing CBTs for user: ${user.email}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY CBT] Listing CBTs for user: ${user.email}`),
+    );
     if (filters) {
-      this.logger.log(colors.cyan(`[LIBRARY CBT] Filters: ${JSON.stringify(filters)}`));
+      this.logger.log(
+        colors.cyan(`[LIBRARY CBT] Filters: ${JSON.stringify(filters)}`),
+      );
     }
-    
+
     try {
       // Get the library user to ensure they exist and get their platform
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
@@ -301,11 +381,18 @@ export class CBTService {
         },
       });
 
-      const filterSummary = filters 
-        ? ` (filtered by: ${Object.entries(filters).filter(([_, v]) => v).map(([k, v]) => `${k}=${v}`).join(', ')})`
+      const filterSummary = filters
+        ? ` (filtered by: ${Object.entries(filters)
+            .filter(([_, v]) => v)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ')})`
         : '';
-      
-      this.logger.log(colors.green(`Successfully retrieved ${assessments.length} CBT assessments${filterSummary}`));
+
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved ${assessments.length} CBT assessments${filterSummary}`,
+        ),
+      );
 
       const responseData = {
         assessments,
@@ -313,13 +400,20 @@ export class CBTService {
         filters: filters || {},
       };
 
-      return new ApiResponse(true, 'CBT assessments retrieved successfully', responseData);
+      return new ApiResponse(
+        true,
+        'CBT assessments retrieved successfully',
+        responseData,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error listing CBTs: ${error.message}`), error.stack);
+      this.logger.error(
+        colors.red(`Error listing CBTs: ${error.message}`),
+        error.stack,
+      );
       throw error;
     }
   }
@@ -390,4 +484,3 @@ export class CBTService {
     return converted;
   }
 }
-

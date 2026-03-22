@@ -1,8 +1,37 @@
-import { Controller, Post, Get, Patch, Delete, Body, Query, Param, UseGuards, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiQuery, ApiParam, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiQuery,
+  ApiParam,
+  ApiConsumes,
+} from '@nestjs/swagger';
 import { AssessmentService } from './assessment.service';
-import { CreateNewAssessmentDto, GetAssessmentsQueryDto, UpdateAssessmentDto, SubmitAssessmentDto, DuplicateAssessmentDto, AddQuestionsDto, UpdateQuestionDto } from './dto';
+import {
+  CreateNewAssessmentDto,
+  GetAssessmentsQueryDto,
+  UpdateAssessmentDto,
+  SubmitAssessmentDto,
+  DuplicateAssessmentDto,
+  AddQuestionsDto,
+  UpdateQuestionDto,
+} from './dto';
 import { UnifiedJwtGuard } from './guards';
 import { GetUser } from '../school/auth/decorator/get-user-decorator';
 
@@ -19,7 +48,7 @@ export class AssessmentController {
   // Protected: School Directors, Admins, Teachers, Library Owners
   // ============================================================
   @Post('createnewassessment')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Create a new Assessment (Unified Endpoint)',
     description: `
       This unified endpoint handles assessment creation for all user types:
@@ -37,18 +66,27 @@ export class AssessmentController {
       - Teachers must be assigned to the subject
       
       The endpoint automatically detects user type based on JWT token.
-    `
+    `,
   })
   @ApiResponse({ status: 201, description: 'Assessment created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User does not have access to topic/subject' })
-  @ApiResponse({ status: 404, description: 'Not found - Topic, subject, or user not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have access to topic/subject',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Topic, subject, or user not found',
+  })
   @ApiBody({ type: CreateNewAssessmentDto })
   async createNewAssessment(
     @Body() createAssessmentDto: CreateNewAssessmentDto,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
-    return this.assessmentService.createNewAssessment(createAssessmentDto, user);
+    return this.assessmentService.createNewAssessment(
+      createAssessmentDto,
+      user,
+    );
   }
 
   // ============================================================
@@ -85,14 +123,17 @@ export class AssessmentController {
       - is_published: Filter by published state
       - created_by: Filter by creator (for directors/admins)
       - search: Search in title/description
-    `
+    `,
   })
   @ApiResponse({ status: 200, description: 'Assessments fetched successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid filters or no active session' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid filters or no active session',
+  })
   @ApiResponse({ status: 404, description: 'Not found - User not found' })
   async getAllAssessments(
     @Query() query: GetAssessmentsQueryDto,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
     return this.assessmentService.getAllAssessments(query, user);
   }
@@ -119,16 +160,25 @@ export class AssessmentController {
       **Response varies by role:**
       - Teachers/Directors: Full assessment info, all questions with answers, all student submissions
       - Students: Assessment info, questions (answers hidden unless allowed), own attempts only
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment details retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment details retrieved successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request - No active session' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User does not have access to this assessment' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have access to this assessment',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Assessment or user not found',
+  })
   async getAssessmentDetails(
     @Param('id') assessmentId: string,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
     return this.assessmentService.getAssessmentDetails(assessmentId, user);
   }
@@ -161,20 +211,35 @@ export class AssessmentController {
       - Changing status to PUBLISHED/ACTIVE sets is_published=true and published_at timestamp
       - Changing from PUBLISHED/ACTIVE to DRAFT sets is_published=false
       - Cannot publish an assessment with an end_date in the past
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiBody({ type: UpdateAssessmentDto })
   @ApiResponse({ status: 200, description: 'Assessment updated successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Cannot update published assessment or invalid data' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User does not have access to update this assessment' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - Cannot update published assessment or invalid data',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden - User does not have access to update this assessment',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Assessment or user not found',
+  })
   async updateAssessment(
     @Param('id') assessmentId: string,
     @Body() updateAssessmentDto: UpdateAssessmentDto,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
-    return this.assessmentService.updateAssessment(assessmentId, updateAssessmentDto, user);
+    return this.assessmentService.updateAssessment(
+      assessmentId,
+      updateAssessmentDto,
+      user,
+    );
   }
 
   // ============================================================
@@ -206,16 +271,28 @@ export class AssessmentController {
       - Current attempt count and remaining attempts
       
       **Note:** Questions may be shuffled if shuffle_questions is enabled on the assessment.
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
-  @ApiResponse({ status: 200, description: 'Assessment questions retrieved successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Assessment not available or expired' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Maximum attempts reached or access denied' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment questions retrieved successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Assessment not available or expired',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Maximum attempts reached or access denied',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Assessment or user not found',
+  })
   async getAssessmentQuestions(
     @Param('id') assessmentId: string,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
     return this.assessmentService.getAssessmentQuestions(assessmentId, user);
   }
@@ -252,20 +329,37 @@ export class AssessmentController {
       - Attempt ID and score details
       - Per-question breakdown with is_correct flags
       - Grade letter and pass/fail status
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiBody({ type: SubmitAssessmentDto })
-  @ApiResponse({ status: 200, description: 'Assessment submitted successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Assessment not available, expired, or invalid data' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Maximum attempts reached or access denied' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment submitted successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - Assessment not available, expired, or invalid data',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Maximum attempts reached or access denied',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Assessment or user not found',
+  })
   async submitAssessment(
     @Param('id') assessmentId: string,
     @Body() submitDto: SubmitAssessmentDto,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
-    return this.assessmentService.submitAssessment(assessmentId, submitDto, user);
+    return this.assessmentService.submitAssessment(
+      assessmentId,
+      submitDto,
+      user,
+    );
   }
 
   // ============================================================
@@ -301,20 +395,34 @@ export class AssessmentController {
       - **Student:** Cannot duplicate assessments
       
       **Note:** The duplicated assessment gets a new ID and belongs to the current user.
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Source Assessment ID to duplicate' })
   @ApiBody({ type: DuplicateAssessmentDto })
-  @ApiResponse({ status: 201, description: 'Assessment duplicated successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Assessment duplicated successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request - Invalid data' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User does not have access to duplicate this assessment' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden - User does not have access to duplicate this assessment',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Assessment or user not found',
+  })
   async duplicateAssessment(
     @Param('id') assessmentId: string,
     @Body() duplicateDto: DuplicateAssessmentDto,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
-    return this.assessmentService.duplicateAssessment(assessmentId, duplicateDto, user);
+    return this.assessmentService.duplicateAssessment(
+      assessmentId,
+      duplicateDto,
+      user,
+    );
   }
 
   // ============================================================
@@ -350,20 +458,33 @@ export class AssessmentController {
       - Students cannot add questions
       
       **Total Points:** The assessment's total_points is automatically recalculated.
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID to add questions to' })
   @ApiBody({ type: AddQuestionsDto })
   @ApiResponse({ status: 201, description: 'Questions added successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Assessment is published or invalid data' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User does not have access' })
-  @ApiResponse({ status: 404, description: 'Not found - Assessment or user not found' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Assessment is published or invalid data',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have access',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - Assessment or user not found',
+  })
   async addQuestions(
     @Param('id') assessmentId: string,
     @Body() addQuestionsDto: AddQuestionsDto,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
-    return this.assessmentService.addQuestions(assessmentId, addQuestionsDto, user);
+    return this.assessmentService.addQuestions(
+      assessmentId,
+      addQuestionsDto,
+      user,
+    );
   }
 
   // ============================================================
@@ -389,22 +510,36 @@ export class AssessmentController {
       **Restrictions:**
       - Cannot update questions in PUBLISHED or ACTIVE assessments
       - Students cannot update questions
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiParam({ name: 'questionId', description: 'Question ID' })
   @ApiBody({ type: UpdateQuestionDto })
   @ApiResponse({ status: 200, description: 'Question updated successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - assessment status or invalid payload' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user does not have access' })
-  @ApiResponse({ status: 404, description: 'Not found - assessment or question not found' })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - assessment status or invalid payload',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user does not have access',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - assessment or question not found',
+  })
   async updateQuestion(
     @Param('id') assessmentId: string,
     @Param('questionId') questionId: string,
     @Body() updateQuestionDto: UpdateQuestionDto,
     @GetUser() user: any,
   ) {
-    return this.assessmentService.updateQuestion(assessmentId, questionId, updateQuestionDto, user);
+    return this.assessmentService.updateQuestion(
+      assessmentId,
+      questionId,
+      updateQuestionDto,
+      user,
+    );
   }
 
   // ============================================================
@@ -456,19 +591,32 @@ export class AssessmentController {
       **Restrictions:**
       - Cannot update questions in PUBLISHED or ACTIVE assessments
       - Students cannot update questions
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiParam({ name: 'questionId', description: 'Question ID' })
-  @ApiResponse({ status: 200, description: 'Question updated successfully with new images' })
-  @ApiResponse({ status: 400, description: 'Bad request - invalid files or assessment status' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user does not have access' })
-  @ApiResponse({ status: 404, description: 'Not found - assessment or question not found' })
+  @ApiResponse({
+    status: 200,
+    description: 'Question updated successfully with new images',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - invalid files or assessment status',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user does not have access',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - assessment or question not found',
+  })
   async updateQuestionWithImage(
     @Param('id') assessmentId: string,
     @Param('questionId') questionId: string,
     @GetUser() user: any,
-    @UploadedFiles() files: {
+    @UploadedFiles()
+    files: {
       newQuestionImage?: Express.Multer.File[];
       newOptionImages?: Express.Multer.File[];
     },
@@ -478,11 +626,11 @@ export class AssessmentController {
   ) {
     // Parse questionData JSON
     let updateQuestionDto: UpdateQuestionDto;
-    
+
     if (!questionDataStr) {
       throw new Error('questionData field is required');
     }
-    
+
     try {
       updateQuestionDto = JSON.parse(questionDataStr);
     } catch (error) {
@@ -495,7 +643,9 @@ export class AssessmentController {
     }
 
     // Parse optionImageUpdates JSON
-    let optionImageUpdates: Array<{ optionId: string; oldS3Key?: string }> | undefined;
+    let optionImageUpdates:
+      | Array<{ optionId: string; oldS3Key?: string }>
+      | undefined;
     if (optionImageUpdatesStr) {
       try {
         optionImageUpdates = JSON.parse(optionImageUpdatesStr);
@@ -509,20 +659,36 @@ export class AssessmentController {
     const newOptionImages = files?.newOptionImages;
 
     if (newQuestionImage) {
-      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+      ];
       if (!allowedMimeTypes.includes(newQuestionImage.mimetype)) {
-        throw new Error(`Invalid image file type: ${newQuestionImage.originalname}. Allowed: JPEG, PNG, GIF, WEBP`);
+        throw new Error(
+          `Invalid image file type: ${newQuestionImage.originalname}. Allowed: JPEG, PNG, GIF, WEBP`,
+        );
       }
       if (newQuestionImage.size > 5 * 1024 * 1024) {
-        throw new Error(`Image file ${newQuestionImage.originalname} exceeds 5MB limit`);
+        throw new Error(
+          `Image file ${newQuestionImage.originalname} exceeds 5MB limit`,
+        );
       }
     }
 
     if (newOptionImages && newOptionImages.length > 0) {
-      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+      ];
       for (const img of newOptionImages) {
         if (!allowedMimeTypes.includes(img.mimetype)) {
-          throw new Error(`Invalid image file type: ${img.originalname}. Allowed: JPEG, PNG, GIF, WEBP`);
+          throw new Error(
+            `Invalid image file type: ${img.originalname}. Allowed: JPEG, PNG, GIF, WEBP`,
+          );
         }
         if (img.size > 5 * 1024 * 1024) {
           throw new Error(`Image file ${img.originalname} exceeds 5MB limit`);
@@ -558,20 +724,30 @@ export class AssessmentController {
       **Restrictions:**
       - Cannot delete questions from PUBLISHED or ACTIVE assessments
       - Students cannot delete questions
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiParam({ name: 'questionId', description: 'Question ID' })
   @ApiResponse({ status: 200, description: 'Question deleted successfully' })
   @ApiResponse({ status: 400, description: 'Bad request - assessment status' })
-  @ApiResponse({ status: 403, description: 'Forbidden - user does not have access' })
-  @ApiResponse({ status: 404, description: 'Not found - assessment or question not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user does not have access',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not found - assessment or question not found',
+  })
   async deleteQuestion(
     @Param('id') assessmentId: string,
     @Param('questionId') questionId: string,
     @GetUser() user: any,
   ) {
-    return this.assessmentService.deleteQuestion(assessmentId, questionId, user);
+    return this.assessmentService.deleteQuestion(
+      assessmentId,
+      questionId,
+      user,
+    );
   }
 
   // ============================================================
@@ -584,10 +760,12 @@ export class AssessmentController {
   //   - Students cannot add questions
   // ============================================================
   @Post(':id/questions/with-image')
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: 'image', maxCount: 1 },
-    { name: 'optionImages', maxCount: 10 },
-  ]))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'optionImages', maxCount: 10 },
+    ]),
+  )
   @ApiOperation({
     summary: 'Add Question with Images (Atomic Operation)',
     description: `
@@ -627,45 +805,68 @@ export class AssessmentController {
       - **School Director/Admin:** Can add to any assessment in their school
       - **Teacher:** Can add to their own assessments
       - **Student:** Cannot add questions
-    `
+    `,
   })
   @ApiParam({ name: 'id', description: 'Assessment ID' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: 'Question image, option images, and question data as JSON string',
+    description:
+      'Question image, option images, and question data as JSON string',
     schema: {
       type: 'object',
       properties: {
         image: {
           type: 'string',
           format: 'binary',
-          description: 'Question image file (JPEG, PNG, GIF, WEBP, max 5MB) - optional',
+          description:
+            'Question image file (JPEG, PNG, GIF, WEBP, max 5MB) - optional',
         },
         optionImages: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
-          description: 'Option image files (JPEG, PNG, GIF, WEBP, max 5MB each) - optional, matched by imageIndex in questionData options',
+          description:
+            'Option image files (JPEG, PNG, GIF, WEBP, max 5MB each) - optional, matched by imageIndex in questionData options',
         },
         questionData: {
           type: 'string',
-          description: 'JSON string with question data (question_text, question_type, points, options with optional imageIndex, etc.)',
+          description:
+            'JSON string with question data (question_text, question_type, points, options with optional imageIndex, etc.)',
         },
       },
       required: ['questionData'],
     },
   })
-  @ApiResponse({ status: 201, description: 'Question created successfully with images' })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid JSON, image type, or assessment status' })
-  @ApiResponse({ status: 403, description: 'Forbidden - User does not have access' })
+  @ApiResponse({
+    status: 201,
+    description: 'Question created successfully with images',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - Invalid JSON, image type, or assessment status',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User does not have access',
+  })
   @ApiResponse({ status: 404, description: 'Not found - Assessment not found' })
   async addQuestionWithImage(
     @Param('id') assessmentId: string,
-    @UploadedFiles() files: { image?: Express.Multer.File[], optionImages?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: {
+      image?: Express.Multer.File[];
+      optionImages?: Express.Multer.File[];
+    },
     @Body('questionData') questionDataString: string,
-    @GetUser() user: any
+    @GetUser() user: any,
   ) {
     const questionImage = files?.image?.[0];
     const optionImages = files?.optionImages || [];
-    return this.assessmentService.addQuestionWithImage(assessmentId, questionDataString, questionImage, optionImages, user);
+    return this.assessmentService.addQuestionWithImage(
+      assessmentId,
+      questionDataString,
+      questionImage,
+      optionImages,
+      user,
+    );
   }
 }

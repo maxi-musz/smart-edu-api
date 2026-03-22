@@ -19,5 +19,3 @@ export class UpdateLibraryClassDevDto {
   @Min(1)
   order?: number;
 }
-
-

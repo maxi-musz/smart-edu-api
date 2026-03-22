@@ -21,7 +21,7 @@ export interface IStorageProvider {
     file: Express.Multer.File,
     folder: string,
     fileName?: string,
-    onProgress?: (loadedBytes: number, totalBytes?: number) => void
+    onProgress?: (loadedBytes: number, totalBytes?: number) => void,
   ): Promise<StorageUploadResult>;
 
   /**
@@ -43,4 +43,3 @@ export interface IStorageProvider {
    */
   getFileUrl(key: string): string;
 }
-

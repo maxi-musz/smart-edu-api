@@ -1,9 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsBoolean, IsOptional, IsNotEmpty, MinLength, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsBoolean,
+  IsOptional,
+  IsNotEmpty,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 /**
  * DTO for duplicating an existing assessment
- * 
+ *
  * This allows users to create a copy of an existing assessment with optional
  * shuffling of questions and/or options.
  */
@@ -21,7 +28,8 @@ export class DuplicateAssessmentDto {
   new_title: string;
 
   @ApiPropertyOptional({
-    description: 'If true, shuffles the order of questions in the new assessment',
+    description:
+      'If true, shuffles the order of questions in the new assessment',
     example: true,
     default: false,
   })
@@ -30,7 +38,8 @@ export class DuplicateAssessmentDto {
   shuffle_questions?: boolean;
 
   @ApiPropertyOptional({
-    description: 'If true, shuffles the order of options for each question in the new assessment',
+    description:
+      'If true, shuffles the order of options for each question in the new assessment',
     example: true,
     default: false,
   })
@@ -39,7 +48,8 @@ export class DuplicateAssessmentDto {
   shuffle_options?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Optional description for the new assessment. If not provided, copies from original.',
+    description:
+      'Optional description for the new assessment. If not provided, copies from original.',
     example: 'Updated version of the mathematics assessment',
   })
   @IsOptional()

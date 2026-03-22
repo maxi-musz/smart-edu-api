@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { S3Module } from '../../shared/services/s3.module';
-import { 
+import {
   TextExtractionService,
   DocumentChunkingService,
   EmbeddingService,

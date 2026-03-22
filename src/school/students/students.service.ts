@@ -4,22 +4,34 @@ import { ApiResponse } from '../../shared/helper-functions/response';
 import { DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
 import { formatDate } from 'src/shared/helper-functions/formatter';
-import { StudentAttendanceDto, StudentAttendanceSummaryDto, StudentAttendanceRecordDto, StudentAttendanceExtendedDto, AcademicSessionDto } from '../teachers/attendance-teacher/dto/student-attendance.dto';
+import {
+  StudentAttendanceDto,
+  StudentAttendanceSummaryDto,
+  StudentAttendanceRecordDto,
+  StudentAttendanceExtendedDto,
+  AcademicSessionDto,
+} from '../teachers/attendance-teacher/dto/student-attendance.dto';
 
 @Injectable()
 export class StudentsService {
   private readonly logger = new Logger(StudentsService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Get current DayOfWeek enum string
    */
   private getCurrentDayOfWeek(): DayOfWeek {
     const dayIndex = new Date().getDay();
-    const days: DayOfWeek[] = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY];
+    const days: DayOfWeek[] = [
+      DayOfWeek.SUNDAY,
+      DayOfWeek.MONDAY,
+      DayOfWeek.TUESDAY,
+      DayOfWeek.WEDNESDAY,
+      DayOfWeek.THURSDAY,
+      DayOfWeek.FRIDAY,
+      DayOfWeek.SATURDAY,
+    ];
     return days[dayIndex];
   }
 
@@ -27,7 +39,15 @@ export class StudentsService {
    * Get next day
    */
   private getNextDay(currentDay: DayOfWeek): DayOfWeek {
-    const days: DayOfWeek[] = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY];
+    const days: DayOfWeek[] = [
+      DayOfWeek.SUNDAY,
+      DayOfWeek.MONDAY,
+      DayOfWeek.TUESDAY,
+      DayOfWeek.WEDNESDAY,
+      DayOfWeek.THURSDAY,
+      DayOfWeek.FRIDAY,
+      DayOfWeek.SATURDAY,
+    ];
     const currentIndex = days.indexOf(currentDay);
     const nextIndex = (currentIndex + 1) % 7;
     return days[nextIndex];
@@ -37,7 +57,15 @@ export class StudentsService {
    * Get day after next
    */
   private getDayAfterNext(currentDay: DayOfWeek): DayOfWeek {
-    const days: DayOfWeek[] = [DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY];
+    const days: DayOfWeek[] = [
+      DayOfWeek.SUNDAY,
+      DayOfWeek.MONDAY,
+      DayOfWeek.TUESDAY,
+      DayOfWeek.WEDNESDAY,
+      DayOfWeek.THURSDAY,
+      DayOfWeek.FRIDAY,
+      DayOfWeek.SATURDAY,
+    ];
     const currentIndex = days.indexOf(currentDay);
     const dayAfterNextIndex = (currentIndex + 2) % 7;
     return days[dayAfterNextIndex];
@@ -48,12 +76,14 @@ export class StudentsService {
    * @param user - User object with sub and email
    */
   async getStudentDashboard(user: any) {
-    this.logger.log(colors.cyan(`Fetching student dashboard for:js ${JSON.stringify(user)}`));
+    this.logger.log(
+      colors.cyan(`Fetching student dashboard for:js ${JSON.stringify(user)}`),
+    );
 
     const full_user = await this.prisma.user.findUnique({
       where: {
-        id: user.sub
-      }
+        id: user.sub,
+      },
     });
 
     if (!full_user) {
@@ -65,8 +95,16 @@ export class StudentsService {
 
     // Check if user has student role
     if (full_user.role !== 'student') {
-      this.logger.error(colors.red(`User ${full_user.email} has role '${full_user.role}', expected 'student'`));
-      return new ApiResponse(false, 'Access denied. Student role required.', null);
+      this.logger.error(
+        colors.red(
+          `User ${full_user.email} has role '${full_user.role}', expected 'student'`,
+        ),
+      );
+      return new ApiResponse(
+        false,
+        'Access denied. Student role required.',
+        null,
+      );
     }
 
     try {
@@ -74,7 +112,7 @@ export class StudentsService {
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: full_user.school_id
+          school_id: full_user.school_id,
         },
         include: {
           user: {
@@ -83,14 +121,14 @@ export class StudentsService {
               first_name: true,
               last_name: true,
               email: true,
-              display_picture: true
-            }
+              display_picture: true,
+            },
           },
           school: {
             select: {
               id: true,
-              school_name: true
-            }
+              school_name: true,
+            },
           },
           academicSession: {
             select: {
@@ -98,29 +136,39 @@ export class StudentsService {
               academic_year: true,
               term: true,
               start_date: true,
-              end_date: true
-            }
-          }
-        }
+              end_date: true,
+            },
+          },
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
-      this.logger.log(colors.green(`✅ Student found: ${student.user.first_name} ${student.user.last_name}`));
+      this.logger.log(
+        colors.green(
+          `✅ Student found: ${student.user.first_name} ${student.user.last_name}`,
+        ),
+      );
 
       // Get current academic session
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        return new ApiResponse(false, 'No current academic session found', null);
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class information (if enrolled)
@@ -134,12 +182,12 @@ export class StudentsService {
                 id: true,
                 first_name: true,
                 last_name: true,
-                display_picture: true
-              }
+                display_picture: true,
+              },
             },
             subjects: {
               where: {
-                academic_session_id: currentSession.id
+                academic_session_id: currentSession.id,
               },
               include: {
                 teacherSubjects: {
@@ -149,43 +197,53 @@ export class StudentsService {
                         id: true,
                         first_name: true,
                         last_name: true,
-                        display_picture: true
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+                        display_picture: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         });
 
         if (studentClass) {
           this.logger.log(colors.green(`✅ Class found: ${studentClass.name}`));
         } else {
-          this.logger.warn(colors.yellow(`⚠️ Class ID exists but class not found: ${student.current_class_id}`));
+          this.logger.warn(
+            colors.yellow(
+              `⚠️ Class ID exists but class not found: ${student.current_class_id}`,
+            ),
+          );
         }
       } else {
-        this.logger.warn(colors.yellow(`⚠️ Student not enrolled in any class yet`));
+        this.logger.warn(
+          colors.yellow(`⚠️ Student not enrolled in any class yet`),
+        );
       }
 
       // Get subjects enrolled with teacher info
-      const subjectsEnrolled = studentClass?.subjects?.map(subject => {
-        const teacherSubject = subject.teacherSubjects[0];
-        return {
-          id: subject.id,
-          name: subject.name,
-          code: subject.code,
-          color: subject.color,
-          teacher: teacherSubject ? {
-            id: teacherSubject.teacher.id,
-            name: `${teacherSubject.teacher.first_name} ${teacherSubject.teacher.last_name}`,
-            display_picture: teacherSubject.teacher.display_picture
-          } : null
-        };
-      }) || [];
+      const subjectsEnrolled =
+        studentClass?.subjects?.map((subject) => {
+          const teacherSubject = subject.teacherSubjects[0];
+          return {
+            id: subject.id,
+            name: subject.name,
+            code: subject.code,
+            color: subject.color,
+            teacher: teacherSubject
+              ? {
+                  id: teacherSubject.teacher.id,
+                  name: `${teacherSubject.teacher.first_name} ${teacherSubject.teacher.last_name}`,
+                  display_picture: teacherSubject.teacher.display_picture,
+                }
+              : null,
+          };
+        }) || [];
 
       // Get pending assessments only for subjects the student is enrolled in (same scope as GET /assessment list)
-      const classSubjectIds = studentClass?.subjects?.map((s: { id: string }) => s.id) ?? [];
+      const classSubjectIds =
+        studentClass?.subjects?.map((s: { id: string }) => s.id) ?? [];
       const pendingAssessments =
         classSubjectIds.length === 0
           ? []
@@ -200,40 +258,37 @@ export class StudentsService {
                   {
                     OR: [
                       { start_date: null },
-                      { start_date: { lte: new Date() } }
-                    ]
+                      { start_date: { lte: new Date() } },
+                    ],
                   },
                   {
-                    OR: [
-                      { end_date: null },
-                      { end_date: { gte: new Date() } }
-                    ]
-                  }
-                ]
+                    OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+                  },
+                ],
               },
               include: {
                 subject: {
                   select: {
                     id: true,
                     name: true,
-                    code: true
-                  }
+                    code: true,
+                  },
                 },
                 _count: {
                   select: {
                     attempts: {
                       where: {
-                        student_id: user.sub
-                      }
-                    }
-                  }
-                }
-              }
+                        student_id: user.sub,
+                      },
+                    },
+                  },
+                },
+              },
             });
 
       // Filter assessments where student hasn't reached max attempts
-      const availableAssessments = pendingAssessments.filter(assessment => 
-        assessment._count.attempts < assessment.max_attempts
+      const availableAssessments = pendingAssessments.filter(
+        (assessment) => assessment._count.attempts < assessment.max_attempts,
       );
 
       // Get current day and next two days for schedule
@@ -242,67 +297,68 @@ export class StudentsService {
       const dayAfterNext = this.getDayAfterNext(currentDay);
 
       // Get class schedule for next 3 days (only if student is enrolled in a class)
-      const classSchedule = student.current_class_id ? await this.prisma.timetableEntry.findMany({
-        where: {
-          class_id: student.current_class_id,
-          day_of_week: {
-            in: [currentDay, nextDay, dayAfterNext]
-          },
-          isActive: true,
-          academic_session_id: currentSession.id
-        },
-        include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              color: true
-            }
-          },
-          teacher: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true
-            }
-          },
-          timeSlot: {
-            select: {
-              id: true,
-              startTime: true,
-              endTime: true,
-              label: true,
-              order: true
-            }
-          }
-        },
-        orderBy: [
-          { day_of_week: 'asc' },
-          { timeSlot: { order: 'asc' } }
-        ]
-      }) : [];
+      const classSchedule = student.current_class_id
+        ? await this.prisma.timetableEntry.findMany({
+            where: {
+              class_id: student.current_class_id,
+              day_of_week: {
+                in: [currentDay, nextDay, dayAfterNext],
+              },
+              isActive: true,
+              academic_session_id: currentSession.id,
+            },
+            include: {
+              subject: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                  color: true,
+                },
+              },
+              teacher: {
+                select: {
+                  id: true,
+                  first_name: true,
+                  last_name: true,
+                },
+              },
+              timeSlot: {
+                select: {
+                  id: true,
+                  startTime: true,
+                  endTime: true,
+                  label: true,
+                  order: true,
+                },
+              },
+            },
+            orderBy: [{ day_of_week: 'asc' }, { timeSlot: { order: 'asc' } }],
+          })
+        : [];
 
       // Format schedule by day
       const formatDaySchedule = (day: DayOfWeek) => {
-        const dayEntries = classSchedule.filter(entry => entry.day_of_week === day);
-        return dayEntries.map(entry => ({
+        const dayEntries = classSchedule.filter(
+          (entry) => entry.day_of_week === day,
+        );
+        return dayEntries.map((entry) => ({
           subject: {
             id: entry.subject.id,
             name: entry.subject.name,
             code: entry.subject.code,
-            color: entry.subject.color
+            color: entry.subject.color,
           },
           teacher: {
             id: entry.teacher.id,
-            name: `${entry.teacher.first_name} ${entry.teacher.last_name}`
+            name: `${entry.teacher.first_name} ${entry.teacher.last_name}`,
           },
           time: {
             from: entry.timeSlot.startTime,
             to: entry.timeSlot.endTime,
-            label: entry.timeSlot.label
+            label: entry.timeSlot.label,
           },
-          room: entry.room
+          room: entry.room,
         }));
       };
 
@@ -311,10 +367,7 @@ export class StudentsService {
         where: {
           school_id: student.school_id,
           academic_session_id: currentSession.id,
-          OR: [
-            { type: 'all' },
-            { type: 'students' }
-          ]
+          OR: [{ type: 'all' }, { type: 'students' }],
         },
         select: {
           id: true,
@@ -322,12 +375,12 @@ export class StudentsService {
           description: true,
           type: true,
           comingUpOn: true,
-          createdAt: true
+          createdAt: true,
         },
         orderBy: {
-          createdAt: 'desc'
+          createdAt: 'desc',
         },
-        take: 5
+        take: 5,
       });
 
       // Get current date and time
@@ -341,59 +394,69 @@ export class StudentsService {
             academic_year: currentSession.academic_year,
             term: currentSession.term,
             start_date: currentSession.start_date,
-            end_date: currentSession.end_date
+            end_date: currentSession.end_date,
           },
-          student_class: studentClass ? {
-            id: studentClass.id,
-            name: studentClass.name
-          } : null,
-          class_teacher: studentClass ? {
-            id: studentClass.classTeacher?.id,
-            name: studentClass.classTeacher ? 
-              `${studentClass.classTeacher.first_name} ${studentClass.classTeacher.last_name}` : null,
-            display_picture: studentClass.classTeacher?.display_picture
-          } : null,
+          student_class: studentClass
+            ? {
+                id: studentClass.id,
+                name: studentClass.name,
+              }
+            : null,
+          class_teacher: studentClass
+            ? {
+                id: studentClass.classTeacher?.id,
+                name: studentClass.classTeacher
+                  ? `${studentClass.classTeacher.first_name} ${studentClass.classTeacher.last_name}`
+                  : null,
+                display_picture: studentClass.classTeacher?.display_picture,
+              }
+            : null,
           student: {
             id: student.user.id,
             name: `${student.user.first_name} ${student.user.last_name}`,
             email: student.user.email,
-            display_picture: student.user.display_picture
+            display_picture: student.user.display_picture,
           },
           current_date: currentDate,
-          current_time: currentTime
+          current_time: currentTime,
         },
         stats: {
           total_subjects: subjectsEnrolled.length,
-          pending_assessments: availableAssessments.length
+          pending_assessments: availableAssessments.length,
         },
         subjects_enrolled: subjectsEnrolled,
         class_schedule: {
           today: {
             day: currentDay,
-            schedule: formatDaySchedule(currentDay)
+            schedule: formatDaySchedule(currentDay),
           },
           tomorrow: {
             day: nextDay,
-            schedule: formatDaySchedule(nextDay)
+            schedule: formatDaySchedule(nextDay),
           },
           day_after_tomorrow: {
             day: dayAfterNext,
-            schedule: formatDaySchedule(dayAfterNext)
-          }
+            schedule: formatDaySchedule(dayAfterNext),
+          },
         },
-        notifications: notifications
+        notifications: notifications,
       };
 
-      this.logger.log(colors.green(`Student dashboard fetched successfully for: ${user.email}`));
+      this.logger.log(
+        colors.green(
+          `Student dashboard fetched successfully for: ${user.email}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Student dashboard fetched successfully',
-        dashboardData
+        dashboardData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching student dashboard: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching student dashboard: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch student dashboard', null);
     }
   }
@@ -405,12 +468,14 @@ export class StudentsService {
    * @param limit - Number of items per page
    */
   async getStudentSubjects(user: any, page: number = 1, limit: number = 10) {
-    this.logger.log(colors.cyan(`Fetching subjects for student: ${user.email}`));
+    this.logger.log(
+      colors.cyan(`Fetching subjects for student: ${user.email}`),
+    );
 
     const full_user = await this.prisma.user.findUnique({
       where: {
-        id: user.sub
-      }
+        id: user.sub,
+      },
     });
 
     if (!full_user) {
@@ -420,8 +485,16 @@ export class StudentsService {
 
     // Check if user has student role
     if (full_user.role !== 'student') {
-      this.logger.error(colors.red(`User ${full_user.email} has role '${full_user.role}', expected 'student'`));
-      return new ApiResponse(false, 'Access denied. Student role required.', null);
+      this.logger.error(
+        colors.red(
+          `User ${full_user.email} has role '${full_user.role}', expected 'student'`,
+        ),
+      );
+      return new ApiResponse(
+        false,
+        'Access denied. Student role required.',
+        null,
+      );
     }
 
     try {
@@ -429,12 +502,14 @@ export class StudentsService {
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: full_user.school_id
-        }
+          school_id: full_user.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -442,17 +517,21 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        return new ApiResponse(false, 'No current academic session found', null);
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class
       const studentClass = await this.prisma.class.findUnique({
-        where: { id: student.current_class_id || undefined }
+        where: { id: student.current_class_id || undefined },
       });
 
       if (!studentClass) {
@@ -475,33 +554,33 @@ export class StudentsService {
             where: {
               class_id: studentClass.id,
               academic_session_id: currentSession.id,
-              isActive: true
+              isActive: true,
             },
             include: {
               timeSlot: {
                 select: {
                   startTime: true,
-                  endTime: true
-                }
+                  endTime: true,
+                },
               },
               class: {
                 select: {
                   id: true,
                   name: true,
-                  classId: true
-                }
-              }
-            }
+                  classId: true,
+                },
+              },
+            },
           },
           Class: {
             where: {
-              id: studentClass.id
+              id: studentClass.id,
             },
             select: {
               id: true,
               name: true,
-              classId: true
-            }
+              classId: true,
+            },
           },
           topics: {
             include: {
@@ -509,17 +588,17 @@ export class StudentsService {
                 select: {
                   videoContent: true,
                   pdfMaterial: true,
-                  assignments: true
-                }
-              }
-            }
-          }
+                  assignments: true,
+                },
+              },
+            },
+          },
         },
         skip,
         take: limit,
         orderBy: {
-          name: 'asc'
-        }
+          name: 'asc',
+        },
       });
 
       // Get total count for pagination
@@ -528,18 +607,18 @@ export class StudentsService {
           schoolId: student.school_id,
           academic_session_id: currentSession.id,
           classId: studentClass.id, // Only subjects directly assigned to the student's class
-        }
+        },
       });
 
       // Format subjects data
-      const formattedSubjects = subjects.map(subject => ({
+      const formattedSubjects = subjects.map((subject) => ({
         id: subject.id,
         name: subject.name,
         code: subject.code,
         color: subject.color,
         description: subject.description || `Learn ${subject.name}`,
         thumbnail: subject.thumbnail,
-        timetableEntries: subject.timetableEntries.map(entry => ({
+        timetableEntries: subject.timetableEntries.map((entry) => ({
           id: entry.id,
           day_of_week: entry.day_of_week,
           startTime: entry.timeSlot.startTime,
@@ -548,27 +627,49 @@ export class StudentsService {
           class: {
             id: entry.class.id,
             name: entry.class.name,
-            classId: entry.class.classId
-          }
+            classId: entry.class.classId,
+          },
         })),
-        classesTakingSubject: subject.Class ? [{
-          id: subject.Class.id,
-          name: subject.Class.name,
-          classId: subject.Class.classId
-        }] : [],
+        classesTakingSubject: subject.Class
+          ? [
+              {
+                id: subject.Class.id,
+                name: subject.Class.name,
+                classId: subject.Class.classId,
+              },
+            ]
+          : [],
         contentCounts: {
-          totalVideos: subject.topics.reduce((sum, topic) => sum + topic._count.videoContent, 0),
-          totalMaterials: subject.topics.reduce((sum, topic) => sum + topic._count.pdfMaterial, 0),
-          totalAssignments: subject.topics.reduce((sum, topic) => sum + topic._count.assignments, 0)
+          totalVideos: subject.topics.reduce(
+            (sum, topic) => sum + topic._count.videoContent,
+            0,
+          ),
+          totalMaterials: subject.topics.reduce(
+            (sum, topic) => sum + topic._count.pdfMaterial,
+            0,
+          ),
+          totalAssignments: subject.topics.reduce(
+            (sum, topic) => sum + topic._count.assignments,
+            0,
+          ),
         },
         createdAt: subject.createdAt,
-        updatedAt: subject.updatedAt
+        updatedAt: subject.updatedAt,
       }));
 
       // Calculate total stats
-      const totalVideos = formattedSubjects.reduce((sum, subject) => sum + subject.contentCounts.totalVideos, 0);
-      const totalMaterials = formattedSubjects.reduce((sum, subject) => sum + subject.contentCounts.totalMaterials, 0);
-      const totalAssignments = formattedSubjects.reduce((sum, subject) => sum + subject.contentCounts.totalAssignments, 0);
+      const totalVideos = formattedSubjects.reduce(
+        (sum, subject) => sum + subject.contentCounts.totalVideos,
+        0,
+      );
+      const totalMaterials = formattedSubjects.reduce(
+        (sum, subject) => sum + subject.contentCounts.totalMaterials,
+        0,
+      );
+      const totalAssignments = formattedSubjects.reduce(
+        (sum, subject) => sum + subject.contentCounts.totalAssignments,
+        0,
+      );
 
       // Calculate pagination info
       const totalPages = Math.ceil(totalSubjects / limit);
@@ -581,12 +682,12 @@ export class StudentsService {
           totalSubjects,
           totalVideos,
           totalMaterials,
-          totalAssignments
+          totalAssignments,
         },
         academicSession: {
           id: currentSession.id,
           academic_year: currentSession.academic_year,
-          term: currentSession.term
+          term: currentSession.term,
         },
         pagination: {
           page,
@@ -594,20 +695,25 @@ export class StudentsService {
           total: totalSubjects,
           totalPages,
           hasNext,
-          hasPrev
-        }
+          hasPrev,
+        },
       };
 
-      this.logger.log(colors.green(`Student subjects fetched successfully: ${formattedSubjects.length} subjects`));
+      this.logger.log(
+        colors.green(
+          `Student subjects fetched successfully: ${formattedSubjects.length} subjects`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Student subjects fetched successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching student subjects: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching student subjects: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch student subjects', null);
     }
   }
@@ -619,13 +725,22 @@ export class StudentsService {
    * @param page - Page number for pagination
    * @param limit - Number of items per page
    */
-  async getStudentSubjectDetails(user: any, subjectId: string, page: number = 1, limit: number = 10) {
-    this.logger.log(colors.cyan(`Fetching subject details for student: ${user.email}, subject: ${subjectId}`));
+  async getStudentSubjectDetails(
+    user: any,
+    subjectId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    this.logger.log(
+      colors.cyan(
+        `Fetching subject details for student: ${user.email}, subject: ${subjectId}`,
+      ),
+    );
 
     const full_user = await this.prisma.user.findUnique({
       where: {
-        id: user.sub
-      }
+        id: user.sub,
+      },
     });
 
     if (!full_user) {
@@ -635,8 +750,16 @@ export class StudentsService {
 
     // Check if user has student role
     if (full_user.role !== 'student') {
-      this.logger.error(colors.red(`User ${full_user.email} has role '${full_user.role}', expected 'student'`));
-      return new ApiResponse(false, 'Access denied. Student role required.', null);
+      this.logger.error(
+        colors.red(
+          `User ${full_user.email} has role '${full_user.role}', expected 'student'`,
+        ),
+      );
+      return new ApiResponse(
+        false,
+        'Access denied. Student role required.',
+        null,
+      );
     }
 
     try {
@@ -644,12 +767,14 @@ export class StudentsService {
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: full_user.school_id
-        }
+          school_id: full_user.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -657,17 +782,21 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        return new ApiResponse(false, 'No current academic session found', null);
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class
       const studentClass = await this.prisma.class.findUnique({
-        where: { id: student.current_class_id || undefined }
+        where: { id: student.current_class_id || undefined },
       });
 
       if (!studentClass) {
@@ -680,28 +809,32 @@ export class StudentsService {
           id: subjectId,
           schoolId: student.school_id,
           academic_session_id: currentSession.id,
-          classId: studentClass.id
+          classId: studentClass.id,
         },
         include: {
           school: {
             select: {
               id: true,
-              school_name: true
-            }
+              school_name: true,
+            },
           },
           academicSession: {
             select: {
               id: true,
               academic_year: true,
-              term: true
-            }
-          }
-        }
+              term: true,
+            },
+          },
+        },
       });
 
       if (!subject) {
         this.logger.error(colors.red(`Subject not found: ${subjectId}`));
-        return new ApiResponse(false, 'Subject not found or access denied', null);
+        return new ApiResponse(
+          false,
+          'Subject not found or access denied',
+          null,
+        );
       }
 
       // Calculate pagination
@@ -713,7 +846,7 @@ export class StudentsService {
           subject_id: subjectId,
           school_id: student.school_id,
           academic_session_id: currentSession.id,
-          is_active: true
+          is_active: true,
         },
         include: {
           videoContent: {
@@ -728,8 +861,8 @@ export class StudentsService {
               views: true,
               status: true,
               createdAt: true,
-              updatedAt: true
-            }
+              updatedAt: true,
+            },
           },
           pdfMaterial: {
             select: {
@@ -742,12 +875,12 @@ export class StudentsService {
               downloads: true,
               status: true,
               createdAt: true,
-              updatedAt: true
-            }
+              updatedAt: true,
+            },
           },
           assignments: {
             where: {
-              is_published: true
+              is_published: true,
             },
             select: {
               id: true,
@@ -756,13 +889,13 @@ export class StudentsService {
               due_date: true,
               max_score: true,
               status: true,
-              createdAt: true
-            }
+              createdAt: true,
+            },
           },
           assessments: {
             where: {
               status: 'PUBLISHED',
-              is_published: true
+              is_published: true,
             },
             select: {
               id: true,
@@ -772,15 +905,15 @@ export class StudentsService {
               max_attempts: true,
               passing_score: true,
               status: true,
-              createdAt: true
-            }
-          }
+              createdAt: true,
+            },
+          },
         },
         orderBy: {
-          order: 'asc'
+          order: 'asc',
         },
         skip,
-        take: limit
+        take: limit,
       });
 
       // Get total topics count
@@ -789,8 +922,8 @@ export class StudentsService {
           subject_id: subjectId,
           school_id: student.school_id,
           academic_session_id: currentSession.id,
-          is_active: true
-        }
+          is_active: true,
+        },
       });
 
       // Calculate content stats
@@ -800,9 +933,9 @@ export class StudentsService {
             subject_id: subjectId,
             school_id: student.school_id,
             academic_session_id: currentSession.id,
-            is_active: true
-          }
-        }
+            is_active: true,
+          },
+        },
       });
 
       const totalMaterials = await this.prisma.pDFMaterial.count({
@@ -811,9 +944,9 @@ export class StudentsService {
             subject_id: subjectId,
             school_id: student.school_id,
             academic_session_id: currentSession.id,
-            is_active: true
-          }
-        }
+            is_active: true,
+          },
+        },
       });
 
       const totalAssignments = await this.prisma.assignment.count({
@@ -822,10 +955,10 @@ export class StudentsService {
             subject_id: subjectId,
             school_id: student.school_id,
             academic_session_id: currentSession.id,
-            is_active: true
+            is_active: true,
           },
-          is_published: true
-        }
+          is_published: true,
+        },
       });
 
       const totalQuizzes = await this.prisma.assessment.count({
@@ -834,19 +967,19 @@ export class StudentsService {
           school_id: student.school_id,
           academic_session_id: currentSession.id,
           status: 'PUBLISHED',
-          is_published: true
-        }
+          is_published: true,
+        },
       });
 
       // Format topics data
-      const formattedTopics = topics.map(topic => ({
+      const formattedTopics = topics.map((topic) => ({
         id: topic.id,
         title: topic.title,
         description: topic.description || '',
         instructions: topic.instructions || '',
         order: topic.order,
         status: topic.is_active ? 'active' : 'inactive',
-        videos: topic.videoContent.map(video => ({
+        videos: topic.videoContent.map((video) => ({
           id: video.id,
           title: video.title,
           description: video.description,
@@ -856,9 +989,9 @@ export class StudentsService {
           size: video.size || '0 MB',
           views: video.views || 0,
           status: video.status || 'published',
-          uploadedAt: video.createdAt
+          uploadedAt: video.createdAt,
         })),
-        materials: topic.pdfMaterial.map(material => ({
+        materials: topic.pdfMaterial.map((material) => ({
           id: material.id,
           title: material.title,
           description: material.description,
@@ -867,18 +1000,18 @@ export class StudentsService {
           size: material.size || '0 MB',
           downloads: material.downloads || 0,
           status: material.status || 'published',
-          uploadedAt: material.createdAt
+          uploadedAt: material.createdAt,
         })),
-        assignments: topic.assignments.map(assignment => ({
+        assignments: topic.assignments.map((assignment) => ({
           id: assignment.id,
           title: assignment.title,
           description: assignment.description,
           dueDate: assignment.due_date,
           maxScore: assignment.max_score,
           status: assignment.status,
-          createdAt: assignment.createdAt
+          createdAt: assignment.createdAt,
         })),
-        assessments: topic.assessments.map(quiz => ({
+        assessments: topic.assessments.map((quiz) => ({
           id: quiz.id,
           title: quiz.title,
           description: quiz.description,
@@ -886,10 +1019,10 @@ export class StudentsService {
           maxAttempts: quiz.max_attempts,
           passingScore: quiz.passing_score,
           status: quiz.status,
-          createdAt: quiz.createdAt
+          createdAt: quiz.createdAt,
         })),
         createdAt: topic.createdAt,
-        updatedAt: topic.updatedAt
+        updatedAt: topic.updatedAt,
       }));
 
       // Calculate pagination info
@@ -908,7 +1041,7 @@ export class StudentsService {
           school: subject.school,
           academicSession: subject.academicSession,
           createdAt: subject.createdAt,
-          updatedAt: subject.updatedAt
+          updatedAt: subject.updatedAt,
         },
         topics: formattedTopics,
         stats: {
@@ -916,7 +1049,7 @@ export class StudentsService {
           totalVideos,
           totalMaterials,
           totalAssignments,
-          totalQuizzes
+          totalQuizzes,
         },
         pagination: {
           page,
@@ -924,20 +1057,25 @@ export class StudentsService {
           total: totalTopics,
           totalPages,
           hasNext,
-          hasPrev
-        }
+          hasPrev,
+        },
       };
 
-      this.logger.log(colors.green(`Subject details fetched successfully: ${formattedTopics.length} topics`));
+      this.logger.log(
+        colors.green(
+          `Subject details fetched successfully: ${formattedTopics.length} topics`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Subject details fetched successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching subject details: ${error.message}`));
+      this.logger.error(
+        colors.red(`Error fetching subject details: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch subject details', null);
     }
   }
@@ -948,31 +1086,49 @@ export class StudentsService {
    * @param topicId - Topic ID
    */
   async getTopicContent(user: any, topicId: string) {
-    this.logger.log(colors.cyan(`[Student Service]🔄 Starting to fetch content for topic: ${topicId}`));
-    
+    this.logger.log(
+      colors.cyan(
+        `[Student Service]🔄 Starting to fetch content for topic: ${topicId}`,
+      ),
+    );
+
     try {
       // Fetch user from database to get school_id
-      this.logger.log(colors.blue(`📋 Fetching user details for topic content...`));
+      this.logger.log(
+        colors.blue(`📋 Fetching user details for topic content...`),
+      );
       const dbUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!dbUser) {
-        this.logger.error(colors.red(`❌ User not found for topic content fetch`));
+        this.logger.error(
+          colors.red(`❌ User not found for topic content fetch`),
+        );
         return new ApiResponse(false, 'User not found', null);
       }
 
       // Check if user has student role
       if (dbUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${dbUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${dbUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       const schoolId = dbUser.school_id;
 
       // Get the topic first to validate it exists and belongs to the school
-      this.logger.log(colors.blue(`📚 Validating topic exists and belongs to school...`));
+      this.logger.log(
+        colors.blue(`📚 Validating topic exists and belongs to school...`),
+      );
       const topic = await this.prisma.topic.findFirst({
         where: {
           id: topicId,
@@ -1000,14 +1156,14 @@ export class StudentsService {
         assignments,
         quizzes,
         liveClasses,
-        libraryResources
+        libraryResources,
       ] = await Promise.all([
         // Videos - only published ones for students
         this.prisma.videoContent.findMany({
           where: {
             topic_id: topicId,
             schoolId: schoolId,
-            status: 'published'
+            status: 'published',
           },
           orderBy: { order: 'asc' },
           select: {
@@ -1051,7 +1207,7 @@ export class StudentsService {
           where: {
             topic_id: topicId,
             school_id: schoolId,
-            is_published: true
+            is_published: true,
           },
           orderBy: { createdAt: 'desc' },
           select: {
@@ -1071,7 +1227,7 @@ export class StudentsService {
             topic_id: topicId,
             school_id: schoolId,
             status: 'PUBLISHED',
-            is_published: true
+            is_published: true,
           },
           orderBy: { createdAt: 'desc' },
           select: {
@@ -1090,7 +1246,7 @@ export class StudentsService {
           where: {
             topic_id: topicId,
             schoolId: schoolId,
-            status: 'scheduled'
+            status: 'scheduled',
           },
           orderBy: { startTime: 'asc' },
           select: {
@@ -1110,7 +1266,7 @@ export class StudentsService {
           where: {
             topic_id: topicId,
             schoolId: schoolId,
-            status: 'available'
+            status: 'available',
           },
           orderBy: { createdAt: 'desc' },
           select: {
@@ -1125,14 +1281,18 @@ export class StudentsService {
         }),
       ]);
 
-      this.logger.log(colors.yellow(`🔍 Total of Materials: ${materials?.length || 0}`));
+      this.logger.log(
+        colors.yellow(`🔍 Total of Materials: ${materials?.length || 0}`),
+      );
       this.logger.log(colors.blue(`📊 Content fetched successfully:`));
       this.logger.log(colors.blue(`   - Videos: ${videos.length}`));
       this.logger.log(colors.blue(`   - Materials: ${materials.length}`));
       this.logger.log(colors.blue(`   - Assignments: ${assignments.length}`));
       this.logger.log(colors.blue(`   - Quizzes: ${quizzes.length}`));
       this.logger.log(colors.blue(`   - Live Classes: ${liveClasses.length}`));
-      this.logger.log(colors.blue(`   - Library Resources: ${libraryResources.length}`));
+      this.logger.log(
+        colors.blue(`   - Library Resources: ${libraryResources.length}`),
+      );
 
       // Calculate content summary
       const contentSummary = {
@@ -1142,8 +1302,13 @@ export class StudentsService {
         totalQuizzes: quizzes.length,
         totalLiveClasses: liveClasses.length,
         totalLibraryResources: libraryResources.length,
-        totalContent: videos.length + materials.length + assignments.length + 
-                     quizzes.length + liveClasses.length + libraryResources.length,
+        totalContent:
+          videos.length +
+          materials.length +
+          assignments.length +
+          quizzes.length +
+          liveClasses.length +
+          libraryResources.length,
       };
 
       // Build response (same structure as teacher's endpoint)
@@ -1163,16 +1328,23 @@ export class StudentsService {
         updatedAt: topic.updatedAt,
       };
 
-      this.logger.log(colors.green(`🎉 Successfully retrieved content for topic "${topic.title}": ${contentSummary.totalContent} total items`));
-      
+      this.logger.log(
+        colors.green(
+          `🎉 Successfully retrieved content for topic "${topic.title}": ${contentSummary.totalContent} total items`,
+        ),
+      );
+
       return new ApiResponse(
         true,
         'Topic content retrieved successfully',
-        response
+        response,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching topic content for ${topicId}: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error fetching topic content for ${topicId}: ${error.message}`,
+        ),
+      );
       return new ApiResponse(false, 'Failed to fetch topic content', null);
     }
   }
@@ -1183,14 +1355,18 @@ export class StudentsService {
    * @param subjectId - Subject ID (optional)
    * @param academicSessionId - Academic Session ID (optional)
    */
-  async getAllTopics(user: any, subjectId?: string, academicSessionId?: string) {
+  async getAllTopics(
+    user: any,
+    subjectId?: string,
+    academicSessionId?: string,
+  ) {
     this.logger.log(colors.cyan(`Fetching topics for student: ${user.email}`));
 
     try {
       // Fetch user from database to get school_id
       const dbUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!dbUser) {
@@ -1200,8 +1376,16 @@ export class StudentsService {
 
       // Check if user has student role
       if (dbUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${dbUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${dbUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       const schoolId = dbUser.school_id;
@@ -1209,11 +1393,11 @@ export class StudentsService {
       this.logger.log(colors.cyan(`Fetching topics for school: ${schoolId}`));
 
       // Build where clause
-      const where: any = { 
+      const where: any = {
         school_id: schoolId,
-        is_active: true // Only active topics for students
+        is_active: true, // Only active topics for students
       };
-      
+
       if (subjectId) {
         where.subject_id = subjectId;
       }
@@ -1254,14 +1438,11 @@ export class StudentsService {
             },
           },
         },
-        orderBy: [
-          { subject_id: 'asc' },
-          { order: 'asc' },
-        ],
+        orderBy: [{ subject_id: 'asc' }, { order: 'asc' }],
       });
 
       // Format topics data (same structure as teacher's endpoint)
-      const formattedTopics = topics.map(topic => ({
+      const formattedTopics = topics.map((topic) => ({
         id: topic.id,
         title: topic.title,
         description: topic.description,
@@ -1276,16 +1457,21 @@ export class StudentsService {
         updatedAt: topic.updatedAt,
       }));
 
-      this.logger.log(colors.green(`✅ Successfully retrieved ${formattedTopics.length} topics for student`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully retrieved ${formattedTopics.length} topics for student`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Topics retrieved successfully',
-        formattedTopics
+        formattedTopics,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching topics: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching topics: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch topics', null);
     }
   }
@@ -1295,13 +1481,15 @@ export class StudentsService {
    * @param user - User object with sub and email
    */
   async fetchSchedulesTabForStudent(user: any) {
-    this.logger.log(colors.blue(`Fetching schedules tab for student: ${user.email}`));
+    this.logger.log(
+      colors.blue(`Fetching schedules tab for student: ${user.email}`),
+    );
 
     try {
       // Get full user data with school_id
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser) {
@@ -1311,20 +1499,30 @@ export class StudentsService {
 
       // Check if user has student role
       if (fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${fullUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: fullUser.school_id
-        }
+          school_id: fullUser.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -1332,12 +1530,16 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        return new ApiResponse(false, 'No current academic session found', null);
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class
@@ -1346,16 +1548,16 @@ export class StudentsService {
         include: {
           subjects: {
             where: {
-              academic_session_id: currentSession.id
+              academic_session_id: currentSession.id,
             },
             select: {
               id: true,
               name: true,
               code: true,
-              color: true
-            }
-          }
-        }
+              color: true,
+            },
+          },
+        },
       });
 
       if (!studentClass) {
@@ -1364,34 +1566,36 @@ export class StudentsService {
 
       this.logger.log(colors.green(`✅ Student found: ${user.email}`));
       this.logger.log(colors.green(`✅ Student class: ${studentClass.name}`));
-      this.logger.log(colors.green(`✅ Subjects in class: ${studentClass.subjects.length}`));
+      this.logger.log(
+        colors.green(`✅ Subjects in class: ${studentClass.subjects.length}`),
+      );
 
       // Get all active timeslots for the school
       const timeSlots = await this.prisma.timeSlot.findMany({
         where: {
           schoolId: student.school_id,
-          isActive: true
+          isActive: true,
         },
         select: {
           id: true,
           startTime: true,
           endTime: true,
           order: true,
-          label: true
+          label: true,
         },
         orderBy: {
-          order: 'asc'
-        }
+          order: 'asc',
+        },
       });
 
       // Get timetable entries for the student's class
-      const subjectIds = studentClass.subjects.map(subject => subject.id);
+      const subjectIds = studentClass.subjects.map((subject) => subject.id);
       const timetableEntries = await this.prisma.timetableEntry.findMany({
         where: {
           school_id: student.school_id,
           class_id: studentClass.id,
           academic_session_id: currentSession.id,
-          isActive: true
+          isActive: true,
         },
         include: {
           subject: {
@@ -1399,21 +1603,21 @@ export class StudentsService {
               id: true,
               name: true,
               code: true,
-              color: true
-            }
+              color: true,
+            },
           },
           class: {
             select: {
               id: true,
-              name: true
-            }
+              name: true,
+            },
           },
           teacher: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           timeSlot: {
             select: {
@@ -1421,39 +1625,46 @@ export class StudentsService {
               startTime: true,
               endTime: true,
               order: true,
-              label: true
-            }
-          }
+              label: true,
+            },
+          },
         },
-        orderBy: [
-          { day_of_week: 'asc' },
-          { timeSlot: { order: 'asc' } }
-        ]
+        orderBy: [{ day_of_week: 'asc' }, { timeSlot: { order: 'asc' } }],
       });
 
       // Format timetable data with schedule grouped by day
       const schedule: any = {};
-      
+
       // Initialize schedule for all days with all timeslots
-      const daysOfWeek = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-      
-      daysOfWeek.forEach(day => {
-        schedule[day] = timeSlots.map(timeSlot => ({
+      const daysOfWeek = [
+        'MONDAY',
+        'TUESDAY',
+        'WEDNESDAY',
+        'THURSDAY',
+        'FRIDAY',
+        'SATURDAY',
+        'SUNDAY',
+      ];
+
+      daysOfWeek.forEach((day) => {
+        schedule[day] = timeSlots.map((timeSlot) => ({
           timeSlotId: timeSlot.id,
           startTime: timeSlot.startTime,
           endTime: timeSlot.endTime,
           label: timeSlot.label,
           subject: null,
           teacher: null,
-          room: null
+          room: null,
         }));
       });
 
       // Fill in the actual timetable entries
-      timetableEntries.forEach(entry => {
+      timetableEntries.forEach((entry) => {
         const daySchedule = schedule[entry.day_of_week];
         if (daySchedule) {
-          const timeSlotIndex = daySchedule.findIndex(slot => slot.timeSlotId === entry.timeSlot.id);
+          const timeSlotIndex = daySchedule.findIndex(
+            (slot) => slot.timeSlotId === entry.timeSlot.id,
+          );
           if (timeSlotIndex !== -1) {
             daySchedule[timeSlotIndex] = {
               timeSlotId: entry.timeSlot.id,
@@ -1463,9 +1674,9 @@ export class StudentsService {
               subject: entry.subject,
               teacher: {
                 id: entry.teacher.id,
-                name: `${entry.teacher.first_name} ${entry.teacher.last_name}`
+                name: `${entry.teacher.first_name} ${entry.teacher.last_name}`,
               },
-              room: entry.room || ""
+              room: entry.room || '',
             };
           }
         }
@@ -1473,28 +1684,35 @@ export class StudentsService {
 
       const timetableData = {
         timeSlots: timeSlots,
-        schedule: schedule
+        schedule: schedule,
       };
 
       const responseData = {
         studentClass: {
           id: studentClass.id,
-          name: studentClass.name
+          name: studentClass.name,
         },
         subjects: studentClass.subjects,
-        timetable_data: timetableData
+        timetable_data: timetableData,
       };
 
-      this.logger.log(colors.green(`Schedules tab fetched successfully for student: ${user.email}`));
+      this.logger.log(
+        colors.green(
+          `Schedules tab fetched successfully for student: ${user.email}`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Schedules tab fetched successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching schedules tab for student: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error fetching schedules tab for student: ${error.message}`,
+        ),
+      );
       return new ApiResponse(false, 'Failed to fetch schedules tab', null);
     }
   }
@@ -1515,38 +1733,52 @@ export class StudentsService {
     search?: string,
     assessmentType?: string,
     status?: string,
-    subjectId?: string
+    subjectId?: string,
   ) {
-    this.logger.log(colors.cyan(`Fetching assessments for student: ${user.email}`));
+    this.logger.log(
+      colors.cyan(`Fetching assessments for student: ${user.email}`),
+    );
 
     try {
       // Get full user data with school_id
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser) {
-        this.logger.error(colors.red(`❌ User not found for assessments fetch`));
+        this.logger.error(
+          colors.red(`❌ User not found for assessments fetch`),
+        );
         return new ApiResponse(false, 'User not found', null);
       }
 
       // Check if user has student role
       if (fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${fullUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: fullUser.school_id
-        }
+          school_id: fullUser.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -1554,13 +1786,21 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.error(colors.red(`No current academic session found for student: ${user.email}`));
-        return new ApiResponse(false, 'No current academic session found', null);
+        this.logger.error(
+          colors.red(
+            `No current academic session found for student: ${user.email}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class
@@ -1569,21 +1809,23 @@ export class StudentsService {
         include: {
           subjects: {
             where: {
-              academic_session_id: currentSession.id
+              academic_session_id: currentSession.id,
             },
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!studentClass) {
-        this.logger.error(colors.red(`Student class not found for student: ${user.email}`));
+        this.logger.error(
+          colors.red(`Student class not found for student: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student class not found', null);
       }
 
-      const subjectIds = studentClass.subjects.map(subject => subject.id);
+      const subjectIds = studentClass.subjects.map((subject) => subject.id);
 
       // Auto-close assessments whose end_date has passed so list and filters show correct status
       const now = new Date();
@@ -1598,31 +1840,39 @@ export class StudentsService {
         data: { status: 'CLOSED' },
       });
       if (expiredResult.count > 0) {
-        this.logger.log(colors.yellow(`Auto-closed ${expiredResult.count} expired assessment(s)`));
+        this.logger.log(
+          colors.yellow(
+            `Auto-closed ${expiredResult.count} expired assessment(s)`,
+          ),
+        );
       }
 
       this.logger.log(colors.green(`✅ Student found: ${user.email}`));
       this.logger.log(colors.green(`✅ Student class: ${studentClass.name}`));
-      this.logger.log(colors.green(`✅ Subjects in class: ${subjectIds.length}`));
+      this.logger.log(
+        colors.green(`✅ Subjects in class: ${subjectIds.length}`),
+      );
 
       // Build where clause for assessments
       const where: any = {
         // school_id: student.school_id,
         academic_session_id: currentSession.id,
-        subject_id: subjectId ? subjectId : {
-          in: subjectIds
-        },
+        subject_id: subjectId
+          ? subjectId
+          : {
+              in: subjectIds,
+            },
         is_published: true, // Only published assessments for students
         status: {
-          in: ['PUBLISHED', 'ACTIVE', 'CLOSED'] // Include closed assessments for review
-        }
+          in: ['PUBLISHED', 'ACTIVE', 'CLOSED'], // Include closed assessments for review
+        },
       };
 
       // Add search filter
       if (search) {
         where.OR = [
           { title: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
+          { description: { contains: search, mode: 'insensitive' } },
         ];
       }
 
@@ -1651,15 +1901,15 @@ export class StudentsService {
               id: true,
               name: true,
               code: true,
-              color: true
-            }
+              color: true,
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           questions: {
             select: {
@@ -1669,14 +1919,14 @@ export class StudentsService {
               options: {
                 select: {
                   id: true,
-                  is_correct: true
-                }
-              }
-            }
+                  is_correct: true,
+                },
+              },
+            },
           },
           attempts: {
             where: {
-              student_id: user.sub
+              student_id: user.sub,
             },
             select: {
               id: true,
@@ -1686,23 +1936,23 @@ export class StudentsService {
               percentage: true,
               passed: true,
               submitted_at: true,
-              max_score: true
+              max_score: true,
             },
             orderBy: {
-              submitted_at: 'desc'
-            }
-          }
+              submitted_at: 'desc',
+            },
+          },
         },
         orderBy: [
-          { createdAt: 'desc' } // Most recent first
+          { createdAt: 'desc' }, // Most recent first
         ],
         skip,
-        take: limit
+        take: limit,
       });
 
       // If result is released but status is not CLOSED, close the assessment so student sees correct state
       const toClose = assessments.filter(
-        (a) => a.is_result_released === true && a.status !== 'CLOSED'
+        (a) => a.is_result_released === true && a.status !== 'CLOSED',
       );
       if (toClose.length > 0) {
         await this.prisma.assessment.updateMany({
@@ -1712,7 +1962,7 @@ export class StudentsService {
       }
 
       // Format assessments data (show CLOSED when result is released so student sees returned assessment as closed)
-      const formattedAssessments = assessments.map(assessment => {
+      const formattedAssessments = assessments.map((assessment) => {
         const studentAttempts = assessment.attempts || [];
         const attemptCount = studentAttempts.length;
         const hasReachedMaxAttempts = attemptCount >= assessment.max_attempts;
@@ -1720,15 +1970,23 @@ export class StudentsService {
         const canViewGrading = assessment.student_can_view_grading ?? false;
 
         // Calculate highest marks across all attempts (only used when student can view grading)
-        const highestScore = studentAttempts.length > 0 
-          ? Math.max(...studentAttempts.map(attempt => attempt.total_score || 0))
-          : 0;
-        const highestPercentage = studentAttempts.length > 0
-          ? Math.max(...studentAttempts.map(attempt => attempt.percentage || 0))
-          : 0;
+        const highestScore =
+          studentAttempts.length > 0
+            ? Math.max(
+                ...studentAttempts.map((attempt) => attempt.total_score || 0),
+              )
+            : 0;
+        const highestPercentage =
+          studentAttempts.length > 0
+            ? Math.max(
+                ...studentAttempts.map((attempt) => attempt.percentage || 0),
+              )
+            : 0;
         const overallAchievableMark = assessment.total_points;
 
-        const displayStatus = assessment.is_result_released ? 'CLOSED' : assessment.status;
+        const displayStatus = assessment.is_result_released
+          ? 'CLOSED'
+          : assessment.status;
         return {
           id: assessment.id,
           title: assessment.title,
@@ -1747,43 +2005,50 @@ export class StudentsService {
             id: assessment.subject.id,
             name: assessment.subject.name,
             code: assessment.subject.code,
-            color: assessment.subject.color
+            color: assessment.subject.color,
           },
           teacher: {
             id: assessment.createdBy.id,
-            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`
+            name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
           },
-          due_date: assessment.end_date ? (assessment.end_date.toISOString()) : null,
-          created_at: (assessment.createdAt.toISOString()),
+          due_date: assessment.end_date
+            ? assessment.end_date.toISOString()
+            : null,
+          created_at: assessment.createdAt.toISOString(),
           is_published: assessment.is_published,
           shuffle_questions: assessment.shuffle_questions ?? false,
           shuffle_options: assessment.shuffle_options ?? false,
           submissions: assessment.submissions || {
             total_submissions: 0,
             recent_submissions: [],
-            student_counts: {}
+            student_counts: {},
           },
           student_attempts: {
             total_attempts: attemptCount,
-            remaining_attempts: Math.max(0, assessment.max_attempts - attemptCount),
+            remaining_attempts: Math.max(
+              0,
+              assessment.max_attempts - attemptCount,
+            ),
             has_reached_max: hasReachedMaxAttempts,
-            latest_attempt: latestAttempt ? {
-              id: latestAttempt.id,
-              attempt_number: latestAttempt.attempt_number,
-              status: latestAttempt.status,
-              ...(canViewGrading
-                ? {
-                    total_score: latestAttempt.total_score,
-                    percentage: latestAttempt.percentage,
-                    passed: latestAttempt.passed,
-                  }
-                : {
-                    total_score: null,
-                    percentage: null,
-                    passed: null,
-                  }),
-              submitted_at: latestAttempt.submitted_at?.toISOString()
-            } : null
+            latest_attempt: latestAttempt
+              ? {
+                  id: latestAttempt.id,
+                  attempt_number: latestAttempt.attempt_number,
+                  status: latestAttempt.status,
+                  ...(canViewGrading
+                    ? {
+                        total_score: latestAttempt.total_score,
+                        percentage: latestAttempt.percentage,
+                        passed: latestAttempt.passed,
+                      }
+                    : {
+                        total_score: null,
+                        percentage: null,
+                        passed: null,
+                      }),
+                  submitted_at: latestAttempt.submitted_at?.toISOString(),
+                }
+              : null,
           },
           student_can_view_grading: canViewGrading,
           performance_summary: canViewGrading
@@ -1791,32 +2056,38 @@ export class StudentsService {
                 highest_score: highestScore,
                 highest_percentage: highestPercentage,
                 overall_achievable_mark: overallAchievableMark,
-                best_attempt: studentAttempts.length > 0 
-                  ? studentAttempts.find(attempt => attempt.total_score === highestScore) || null
-                  : null
+                best_attempt:
+                  studentAttempts.length > 0
+                    ? studentAttempts.find(
+                        (attempt) => attempt.total_score === highestScore,
+                      ) || null
+                    : null,
               }
             : null,
           _count: {
-            questions: assessment.questions.length
-          }
+            questions: assessment.questions.length,
+          },
         };
       });
 
       // Group assessments by assessment_type and status
-      const groupedAssessments = formattedAssessments.reduce((groups, assessment) => {
-        const key = `${assessment.assessment_type}_${assessment.status}`;
-        if (!groups[key]) {
-          groups[key] = {
-            assessment_type: assessment.assessment_type,
-            status: assessment.status,
-            count: 0,
-            assessments: []
-          };
-        }
-        groups[key].count++;
-        groups[key].assessments.push(assessment);
-        return groups;
-      }, {} as any);
+      const groupedAssessments = formattedAssessments.reduce(
+        (groups, assessment) => {
+          const key = `${assessment.assessment_type}_${assessment.status}`;
+          if (!groups[key]) {
+            groups[key] = {
+              assessment_type: assessment.assessment_type,
+              status: assessment.status,
+              count: 0,
+              assessments: [],
+            };
+          }
+          groups[key].count++;
+          groups[key].assessments.push(assessment);
+          return groups;
+        },
+        {} as any,
+      );
 
       // Convert grouped object to array
       const groupedArray = Object.values(groupedAssessments);
@@ -1837,8 +2108,8 @@ export class StudentsService {
               name: true,
               code: true,
               color: true,
-              description: true
-            }
+              description: true,
+            },
           });
 
           // Count total assessments for this subject
@@ -1848,9 +2119,9 @@ export class StudentsService {
               academic_session_id: currentSession.id,
               is_published: true,
               status: {
-                in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
-              }
-            }
+                in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
+              },
+            },
           });
 
           // Get all assessment IDs for this subject
@@ -1860,29 +2131,30 @@ export class StudentsService {
               academic_session_id: currentSession.id,
               is_published: true,
               status: {
-                in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
-              }
+                in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
+              },
             },
             select: {
-              id: true
-            }
+              id: true,
+            },
           });
 
-          const assessmentIds = subjectAssessments.map(a => a.id);
+          const assessmentIds = subjectAssessments.map((a) => a.id);
 
           // Count attempted/completed assessments
-          const attemptedAssessments = await this.prisma.assessmentAttempt.groupBy({
-            by: ['assessment_id'],
-            where: {
-              student_id: user.sub,
-              assessment_id: {
-                in: assessmentIds
-              }
-            },
-            _count: {
-              assessment_id: true
-            }
-          });
+          const attemptedAssessments =
+            await this.prisma.assessmentAttempt.groupBy({
+              by: ['assessment_id'],
+              where: {
+                student_id: user.sub,
+                assessment_id: {
+                  in: assessmentIds,
+                },
+              },
+              _count: {
+                assessment_id: true,
+              },
+            });
 
           const totalAttempted = attemptedAssessments.length;
           const totalNotAttempted = totalAssessments - totalAttempted;
@@ -1893,13 +2165,13 @@ export class StudentsService {
             where: {
               student_id: user.sub,
               assessment_id: {
-                in: assessmentIds
+                in: assessmentIds,
               },
-              status: 'SUBMITTED'
+              status: 'SUBMITTED',
             },
             _count: {
-              assessment_id: true
-            }
+              assessment_id: true,
+            },
           });
 
           return {
@@ -1912,42 +2184,51 @@ export class StudentsService {
               total_assessments: totalAssessments,
               attempted: totalAttempted,
               completed: completedCount.length,
-              not_attempted: totalNotAttempted
-            }
+              not_attempted: totalNotAttempted,
+            },
           };
-        })
+        }),
       );
 
       const responseData = {
         pagination: {
-            page,
-            limit,
-            total: totalAssessments,
-            totalPages,
-            hasNext,
-            hasPrev
-          },
-          filters: {
-            search: search || '',
-            assessment_type: assessmentType || 'all',
-            status: status || 'all',
-            subject_id: subjectId || 'all'
-          },
+          page,
+          limit,
+          total: totalAssessments,
+          totalPages,
+          hasNext,
+          hasPrev,
+        },
+        filters: {
+          search: search || '',
+          assessment_type: assessmentType || 'all',
+          status: status || 'all',
+          subject_id: subjectId || 'all',
+        },
         general_info: {
           current_session: {
             academic_year: currentSession.academic_year,
-            term: currentSession.term
-          }
+            term: currentSession.term,
+          },
         },
         subjects: subjectsWithStats,
         assessments: formattedAssessments,
         grouped_assessments: groupedArray,
-        
       };
 
-      this.logger.log(colors.green(`✅ Successfully retrieved ${formattedAssessments.length} assessments for student`));
-      this.logger.log(colors.green(`✅ Grouped into ${groupedArray.length} groups`));
-      this.logger.log(colors.green(`✅ Subject stats generated for ${subjectsWithStats.length} subjects`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully retrieved ${formattedAssessments.length} assessments for student`,
+        ),
+      );
+      this.logger.log(
+        colors.green(`✅ Grouped into ${groupedArray.length} groups`),
+      );
+      this.logger.log(
+        colors.green(
+          `✅ Subject stats generated for ${subjectsWithStats.length} subjects`,
+        ),
+      );
       if (subjectId) {
         this.logger.log(colors.yellow(`🔍 Filtered by subject: ${subjectId}`));
       }
@@ -1955,11 +2236,14 @@ export class StudentsService {
       return new ApiResponse(
         true,
         'Assessments fetched successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching assessments for student: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error fetching assessments for student: ${error.message}`,
+        ),
+      );
       return new ApiResponse(false, 'Failed to fetch assessments', null);
     }
   }
@@ -1970,36 +2254,52 @@ export class StudentsService {
    * @param assessmentId - Assessment ID
    */
   async getAssessmentQuestions(user: any, assessmentId: string) {
-    this.logger.log(colors.cyan(`Fetching assessment questions for student: ${user.email}, assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(
+        `Fetching assessment questions for student: ${user.email}, assessment: ${assessmentId}`,
+      ),
+    );
 
     try {
       // Get full user data with school_id
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser) {
-        this.logger.error(colors.red(`❌ User not found for assessment questions fetch`));
+        this.logger.error(
+          colors.red(`❌ User not found for assessment questions fetch`),
+        );
         return new ApiResponse(false, 'User not found', null);
       }
 
       // Check if user has student role
       if (fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${fullUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: fullUser.school_id
-        }
+          school_id: fullUser.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -2007,13 +2307,21 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.error(colors.red(`No current academic session found for student: ${user.email}`));
-        return new ApiResponse(false, 'No current academic session found', null);
+        this.logger.error(
+          colors.red(
+            `No current academic session found for student: ${user.email}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class
@@ -2022,21 +2330,23 @@ export class StudentsService {
         include: {
           subjects: {
             where: {
-              academic_session_id: currentSession.id
+              academic_session_id: currentSession.id,
             },
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!studentClass) {
-        this.logger.error(colors.red(`Student class not found for student: ${user.email}`));
+        this.logger.error(
+          colors.red(`Student class not found for student: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student class not found', null);
       }
 
-      const subjectIds = studentClass.subjects.map(subject => subject.id);
+      const subjectIds = studentClass.subjects.map((subject) => subject.id);
 
       // Get the assessment with all questions and options
       const assessment = await this.prisma.assessment.findFirst({
@@ -2045,12 +2355,12 @@ export class StudentsService {
           school_id: student.school_id,
           academic_session_id: currentSession.id,
           subject_id: {
-            in: subjectIds
+            in: subjectIds,
           },
-        //   is_published: true,
+          //   is_published: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
-          }
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
+          },
         },
         include: {
           subject: {
@@ -2058,15 +2368,15 @@ export class StudentsService {
               id: true,
               name: true,
               code: true,
-              color: true
-            }
+              color: true,
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           questions: {
             include: {
@@ -2075,61 +2385,92 @@ export class StudentsService {
                   id: true,
                   option_text: true,
                   is_correct: true,
-                  order: true
+                  order: true,
                 },
                 orderBy: {
-                  order: 'asc'
-                }
+                  order: 'asc',
+                },
               },
               correct_answers: {
                 select: {
                   id: true,
-                  option_ids: true
-                }
-              }
+                  option_ids: true,
+                },
+              },
             },
             orderBy: {
-              order: 'asc'
-            }
-          }
-        }
+              order: 'asc',
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        this.logger.error(colors.red(`❌ Assessment not found or access denied: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment not found or access denied', null);
+        this.logger.error(
+          colors.red(
+            `❌ Assessment not found or access denied: ${assessmentId}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Assessment not found or access denied',
+          null,
+        );
       }
 
       // Check if assessment is still active (within date range)
       const now = new Date();
       if (assessment.start_date && assessment.start_date > now) {
-        this.logger.error(colors.red(`❌ Assessment has not started yet: ${assessmentId}`));
+        this.logger.error(
+          colors.red(`❌ Assessment has not started yet: ${assessmentId}`),
+        );
         return new ApiResponse(false, 'Assessment has not started yet', null);
       }
       // If end_date has passed, mark as CLOSED and tell the student the assessment has closed
       if (assessment.end_date && new Date(assessment.end_date) < now) {
-        this.logger.log(colors.yellow(`Assessment ${assessmentId} has expired (end_date passed), updating status to CLOSED`));
-        await this.prisma.assessment.update({
-          where: { id: assessmentId },
-          data: { status: 'CLOSED' },
-        }).catch(() => { /* ignore update errors */ });
-        return new ApiResponse(false, 'Assessment has closed', { assessment_closed: true, end_date: assessment.end_date?.toISOString() ?? null });
+        this.logger.log(
+          colors.yellow(
+            `Assessment ${assessmentId} has expired (end_date passed), updating status to CLOSED`,
+          ),
+        );
+        await this.prisma.assessment
+          .update({
+            where: { id: assessmentId },
+            data: { status: 'CLOSED' },
+          })
+          .catch(() => {
+            /* ignore update errors */
+          });
+        return new ApiResponse(false, 'Assessment has closed', {
+          assessment_closed: true,
+          end_date: assessment.end_date?.toISOString() ?? null,
+        });
       }
       if (assessment.status && assessment.status === 'CLOSED') {
-        this.logger.error(colors.red(`❌ Assessment status: ${assessment.status}, Assessment has closed`));
-        return new ApiResponse(false, 'Assessment has closed', { assessment_closed: true });
+        this.logger.error(
+          colors.red(
+            `❌ Assessment status: ${assessment.status}, Assessment has closed`,
+          ),
+        );
+        return new ApiResponse(false, 'Assessment has closed', {
+          assessment_closed: true,
+        });
       }
 
       // Check student's attempt count
       const attemptCount = await this.prisma.assessmentAttempt.count({
         where: {
           assessment_id: assessmentId,
-          student_id: student.id
-        }
+          student_id: student.id,
+        },
       });
 
       if (attemptCount >= assessment.max_attempts) {
-        return new ApiResponse(false, 'Maximum attempts reached for this assessment', null);
+        return new ApiResponse(
+          false,
+          'Maximum attempts reached for this assessment',
+          null,
+        );
       }
 
       // Format assessment data
@@ -2148,24 +2489,28 @@ export class StudentsService {
           id: assessment.subject.id,
           name: assessment.subject.name,
           code: assessment.subject.code,
-          color: assessment.subject.color
+          color: assessment.subject.color,
         },
         teacher: {
           id: assessment.createdBy.id,
-          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`
+          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
         },
-        start_date: assessment.start_date ? assessment.start_date.toISOString() : null,
-        end_date: assessment.end_date ? assessment.end_date.toISOString() : null,
+        start_date: assessment.start_date
+          ? assessment.start_date.toISOString()
+          : null,
+        end_date: assessment.end_date
+          ? assessment.end_date.toISOString()
+          : null,
         created_at: assessment.createdAt.toISOString(),
         is_published: assessment.is_published,
         shuffle_questions: assessment.shuffle_questions ?? false,
         shuffle_options: assessment.shuffle_options ?? false,
         student_attempts: attemptCount,
-        remaining_attempts: assessment.max_attempts - attemptCount
+        remaining_attempts: assessment.max_attempts - attemptCount,
       };
 
       // Format questions data
-      const formattedQuestions = assessment.questions.map(question => ({
+      const formattedQuestions = assessment.questions.map((question) => ({
         id: question.id,
         question_text: question.question_text,
         question_image: question.image_url,
@@ -2173,16 +2518,16 @@ export class StudentsService {
         points: question.points,
         order: question.order,
         explanation: question.explanation,
-        options: question.options.map(option => ({
+        options: question.options.map((option) => ({
           id: option.id,
           text: option.option_text,
           is_correct: option.is_correct,
-          order: option.order
+          order: option.order,
         })),
-        correct_answers: question.correct_answers.map(answer => ({
+        correct_answers: question.correct_answers.map((answer) => ({
           id: answer.id,
-          option_ids: answer.option_ids
-        }))
+          option_ids: answer.option_ids,
+        })),
       }));
 
       const responseData = {
@@ -2190,20 +2535,29 @@ export class StudentsService {
         questions: formattedQuestions,
         total_questions: formattedQuestions.length,
         total_points: assessment.total_points,
-        estimated_duration: assessment.duration
+        estimated_duration: assessment.duration,
       };
 
-      this.logger.log(colors.green(`✅ Successfully retrieved assessment questions: ${formattedQuestions.length} questions`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully retrieved assessment questions: ${formattedQuestions.length} questions`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Assessment questions retrieved successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching assessment questions: ${error.message}`));
-      return new ApiResponse(false, 'Failed to fetch assessment questions', null);
+      this.logger.error(
+        colors.red(`❌ Error fetching assessment questions: ${error.message}`),
+      );
+      return new ApiResponse(
+        false,
+        'Failed to fetch assessment questions',
+        null,
+      );
     }
   }
 
@@ -2214,37 +2568,53 @@ export class StudentsService {
    * @param submissionData - Complete submission data from app
    */
   async submitAssessment(user: any, assessmentId: string, submissionData: any) {
-    this.logger.log(colors.cyan(`Submitting assessment for student: ${user.email}, assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(
+        `Submitting assessment for student: ${user.email}, assessment: ${assessmentId}`,
+      ),
+    );
     // this.logger.log(colors.blue(`Submission data: ${JSON.stringify(submissionData)}`));
 
     try {
       // Get full user data with school_id
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser) {
-        this.logger.error(colors.red(`❌ User not found for assessment submission`));
+        this.logger.error(
+          colors.red(`❌ User not found for assessment submission`),
+        );
         return new ApiResponse(false, 'User not found', null);
       }
 
       // Check if user has student role
       if (fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${fullUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: fullUser.school_id
-        }
+          school_id: fullUser.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -2252,13 +2622,21 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.error(colors.red(`No current academic session found for student: ${user.email}`));
-        return new ApiResponse(false, 'No current academic session found', null);
+        this.logger.error(
+          colors.red(
+            `No current academic session found for student: ${user.email}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get the assessment
@@ -2269,8 +2647,8 @@ export class StudentsService {
           academic_session_id: currentSession.id,
           is_published: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE']
-          }
+            in: ['PUBLISHED', 'ACTIVE'],
+          },
         },
         include: {
           questions: {
@@ -2279,17 +2657,25 @@ export class StudentsService {
               options: {
                 select: {
                   id: true,
-                  is_correct: true
-                }
-              }
-            }
-          }
-        }
+                  is_correct: true,
+                },
+              },
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        this.logger.error(colors.red(`❌ Assessment not found or access denied: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment not found or access denied', null);
+        this.logger.error(
+          colors.red(
+            `❌ Assessment not found or access denied: ${assessmentId}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Assessment not found or access denied',
+          null,
+        );
       }
 
       // Check if assessment is still active
@@ -2312,24 +2698,45 @@ export class StudentsService {
       const attemptCount = await this.prisma.assessmentAttempt.count({
         where: {
           assessment_id: assessmentId,
-          student_id: user.sub 
-        }
+          student_id: user.sub,
+        },
       });
 
       if (attemptCount >= assessment.max_attempts) {
-        this.logger.error(colors.red(`❌ Maximum attempts reached for this assessment: ${assessmentId}`));
-        return new ApiResponse(false, 'Maximum attempts reached for this assessment', null);
+        this.logger.error(
+          colors.red(
+            `❌ Maximum attempts reached for this assessment: ${assessmentId}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Maximum attempts reached for this assessment',
+          null,
+        );
       }
 
       // Extract data from submission
-      const { answers, submission_time, time_taken, total_questions, questions_answered, questions_skipped, total_points_possible, total_points_earned, submission_status, device_info } = submissionData;
+      const {
+        answers,
+        submission_time,
+        time_taken,
+        total_questions,
+        questions_answered,
+        questions_skipped,
+        total_points_possible,
+        total_points_earned,
+        submission_status,
+        device_info,
+      } = submissionData;
 
       // Log the incoming submission data for debugging
       this.logger.log(colors.blue(`📝 Submission data received:`));
       this.logger.log(colors.blue(`   - Assessment ID: ${assessmentId}`));
       this.logger.log(colors.blue(`   - Student ID: ${user.sub}`));
       this.logger.log(colors.blue(`   - Total answers: ${answers.length}`));
-      this.logger.log(colors.blue(`   - Answers: ${JSON.stringify(answers, null, 2)}`));
+      this.logger.log(
+        colors.blue(`   - Answers: ${JSON.stringify(answers, null, 2)}`),
+      );
 
       // Normalize answers: frontend may send single option as "answer" (string) instead of "selected_options" (array)
       const normalizedAnswers = (answers || []).map((a: any) => {
@@ -2349,28 +2756,52 @@ export class StudentsService {
       const studentAnswersToCreate: any[] = [];
 
       for (const answer of normalizedAnswers) {
-        const question = assessment.questions.find(q => q.id === answer.question_id);
+        const question = assessment.questions.find(
+          (q) => q.id === answer.question_id,
+        );
         if (!question) {
-          this.logger.warn(colors.yellow(`⚠️ Question not found: ${answer.question_id}`));
+          this.logger.warn(
+            colors.yellow(`⚠️ Question not found: ${answer.question_id}`),
+          );
           continue;
         }
 
-        this.logger.log(colors.blue(`🔍 Processing answer for question ${answer.question_id}:`));
-        this.logger.log(colors.blue(`   - Question type: ${answer.question_type ?? question.question_type}`));
-        this.logger.log(colors.blue(`   - Student answer: ${JSON.stringify(answer)}`));
-        this.logger.log(colors.blue(`   - Question points: ${question.points}`));
+        this.logger.log(
+          colors.blue(
+            `🔍 Processing answer for question ${answer.question_id}:`,
+          ),
+        );
+        this.logger.log(
+          colors.blue(
+            `   - Question type: ${answer.question_type ?? question.question_type}`,
+          ),
+        );
+        this.logger.log(
+          colors.blue(`   - Student answer: ${JSON.stringify(answer)}`),
+        );
+        this.logger.log(
+          colors.blue(`   - Question points: ${question.points}`),
+        );
 
         // Check if answer is correct based on question type
         let isCorrect = this.checkAnswerByType(answer, question);
-        
+
         // Fallback: If no correct_answers configured, check against option is_correct
-        const selectedForFallback = answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
-        if (!isCorrect && question.question_type === 'MULTIPLE_CHOICE_SINGLE' && selectedForFallback.length > 0) {
+        const selectedForFallback =
+          answer.selected_options ??
+          (answer.answer != null ? [answer.answer] : []);
+        if (
+          !isCorrect &&
+          question.question_type === 'MULTIPLE_CHOICE_SINGLE' &&
+          selectedForFallback.length > 0
+        ) {
           const selectedOptionId = selectedForFallback[0];
-          const selectedOption = question.options.find(opt => opt.id === selectedOptionId);
+          const selectedOption = question.options.find(
+            (opt) => opt.id === selectedOptionId,
+          );
           isCorrect = selectedOption?.is_correct || false;
         }
-        
+
         const pointsEarned = isCorrect ? question.points : 0;
 
         this.logger.log(colors.blue(`   - Is correct: ${isCorrect}`));
@@ -2381,12 +2812,18 @@ export class StudentsService {
           question_id: answer.question_id,
           student_id: user.sub,
           text_answer: answer.text_answer || null,
-          numeric_answer: answer.question_type === 'NUMERIC' && answer.text_answer ? parseFloat(answer.text_answer) : null,
-          date_answer: answer.question_type === 'DATE' && answer.text_answer ? new Date(answer.text_answer) : null,
+          numeric_answer:
+            answer.question_type === 'NUMERIC' && answer.text_answer
+              ? parseFloat(answer.text_answer)
+              : null,
+          date_answer:
+            answer.question_type === 'DATE' && answer.text_answer
+              ? new Date(answer.text_answer)
+              : null,
           selected_options: answer.selected_options || [],
           max_points: question.points,
           is_correct: isCorrect,
-          points_earned: pointsEarned
+          points_earned: pointsEarned,
         });
 
         gradedAnswers.push({
@@ -2396,7 +2833,7 @@ export class StudentsService {
           points_earned: pointsEarned,
           max_points: question.points,
           selected_options: answer.selected_options,
-          text_answer: answer.text_answer
+          text_answer: answer.text_answer,
         });
 
         totalScore += pointsEarned;
@@ -2421,41 +2858,54 @@ export class StudentsService {
             attempt_number: attemptCount + 1,
             status: 'IN_PROGRESS',
             started_at: new Date(),
-            max_score: assessment.total_points
-          }
+            max_score: assessment.total_points,
+          },
         });
 
         // Create all student answers
         const studentAnswers = await Promise.all(
-          studentAnswersToCreate.map(answerData => 
+          studentAnswersToCreate.map((answerData) =>
             tx.assessmentResponse.create({
               data: {
                 ...answerData,
-                attempt_id: attempt.id
-              }
-            })
-          )
+                attempt_id: attempt.id,
+              },
+            }),
+          ),
         );
 
-        this.logger.log(colors.green(`✅ All student answers saved: ${studentAnswers.length} answers`));
+        this.logger.log(
+          colors.green(
+            `✅ All student answers saved: ${studentAnswers.length} answers`,
+          ),
+        );
 
         // Update attempt with final scores
         const updatedAttempt = await tx.assessmentAttempt.update({
           where: { id: attempt.id },
           data: {
             status: 'GRADED',
-            submitted_at: submission_time ? new Date(submission_time) : new Date(),
+            submitted_at: submission_time
+              ? new Date(submission_time)
+              : new Date(),
             time_spent: timeSpent,
             total_score: totalScore,
             percentage: percentage,
             passed: passed,
             is_graded: true,
-            graded_at: new Date()
-          }
+            graded_at: new Date(),
+          },
         });
 
         // Update quiz submissions tracking
-        await this.updateQuizSubmissionsInTransaction(tx, assessmentId, user.sub, user.email, user.first_name, user.last_name);
+        await this.updateQuizSubmissionsInTransaction(
+          tx,
+          assessmentId,
+          user.sub,
+          user.email,
+          user.first_name,
+          user.last_name,
+        );
 
         return { attempt: updatedAttempt, studentAnswers };
       });
@@ -2476,22 +2926,27 @@ export class StudentsService {
           questions_skipped: questions_skipped,
           total_points_possible: total_points_possible,
           submission_status: submission_status,
-          device_info: device_info
+          device_info: device_info,
         },
         submitted_at: submission_time || new Date().toISOString(),
-        time_spent: timeSpent
+        time_spent: timeSpent,
       };
 
-      this.logger.log(colors.green(`✅ Assessment submitted successfully: ${totalScore}/${totalPoints} (${percentage.toFixed(1)}%)`));
+      this.logger.log(
+        colors.green(
+          `✅ Assessment submitted successfully: ${totalScore}/${totalPoints} (${percentage.toFixed(1)}%)`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Assessment submitted successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error submitting assessment: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error submitting assessment: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to submit assessment', null);
     }
   }
@@ -2503,22 +2958,37 @@ export class StudentsService {
    */
   private checkAnswerByType(answer: any, question: any): boolean {
     const correctAnswers = question.correct_answers;
-    this.logger.log(colors.cyan(`🔍 Checking answer for question ${answer.question_id}:`));
+    this.logger.log(
+      colors.cyan(`🔍 Checking answer for question ${answer.question_id}:`),
+    );
     this.logger.log(colors.cyan(`   - Question type: ${answer.question_type}`));
-    this.logger.log(colors.cyan(`   - Correct answers: ${JSON.stringify(correctAnswers)}`));
-    this.logger.log(colors.cyan(`   - Student answer: ${JSON.stringify(answer)}`));
+    this.logger.log(
+      colors.cyan(`   - Correct answers: ${JSON.stringify(correctAnswers)}`),
+    );
+    this.logger.log(
+      colors.cyan(`   - Student answer: ${JSON.stringify(answer)}`),
+    );
 
     if (!correctAnswers || correctAnswers.length === 0) {
-      this.logger.warn(colors.yellow(`⚠️ No correct answers found for question ${answer.question_id}, will use fallback method`));
+      this.logger.warn(
+        colors.yellow(
+          `⚠️ No correct answers found for question ${answer.question_id}, will use fallback method`,
+        ),
+      );
       // Return false here, but the fallback in the calling method will handle it
       return false;
     }
 
     const correctAnswer = correctAnswers[0]; // Assuming one correct answer per question
-    this.logger.log(colors.cyan(`   - Using correct answer: ${JSON.stringify(correctAnswer)}`));
+    this.logger.log(
+      colors.cyan(
+        `   - Using correct answer: ${JSON.stringify(correctAnswer)}`,
+      ),
+    );
 
     // Resolve selected options: support both selected_options array and single "answer" string
-    const selectedOptions = answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
+    const selectedOptions =
+      answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
 
     // Handle different question types
     switch (answer.question_type || question.question_type) {
@@ -2527,9 +2997,18 @@ export class StudentsService {
         if (selectedOptions.length > 0 && correctAnswer.option_ids) {
           const studentOptions = [...selectedOptions].sort();
           const correctOptions = [...(correctAnswer.option_ids || [])].sort();
-          const isCorrect = JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
-          this.logger.log(colors.cyan(`   - Student options: ${JSON.stringify(studentOptions)}`));
-          this.logger.log(colors.cyan(`   - Correct options: ${JSON.stringify(correctOptions)}`));
+          const isCorrect =
+            JSON.stringify(studentOptions) === JSON.stringify(correctOptions);
+          this.logger.log(
+            colors.cyan(
+              `   - Student options: ${JSON.stringify(studentOptions)}`,
+            ),
+          );
+          this.logger.log(
+            colors.cyan(
+              `   - Correct options: ${JSON.stringify(correctOptions)}`,
+            ),
+          );
           this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
           return isCorrect;
         }
@@ -2552,17 +3031,29 @@ export class StudentsService {
         if (answer.text_answer && correctAnswer.answer_text) {
           // For fill-in-blank, do exact match (case-insensitive)
           if (answer.question_type === 'FILL_IN_BLANK') {
-            const isCorrect = answer.text_answer.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
-            this.logger.log(colors.cyan(`   - Student text: "${answer.text_answer}"`));
-            this.logger.log(colors.cyan(`   - Correct text: "${correctAnswer.answer_text}"`));
+            const isCorrect =
+              answer.text_answer.toLowerCase().trim() ===
+              correctAnswer.answer_text.toLowerCase().trim();
+            this.logger.log(
+              colors.cyan(`   - Student text: "${answer.text_answer}"`),
+            );
+            this.logger.log(
+              colors.cyan(`   - Correct text: "${correctAnswer.answer_text}"`),
+            );
             this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
             return isCorrect;
           }
           // For essay, you might want more sophisticated checking or manual grading
           // For now, do basic text comparison
-          const isCorrect = answer.text_answer.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
-          this.logger.log(colors.cyan(`   - Student text: "${answer.text_answer}"`));
-          this.logger.log(colors.cyan(`   - Correct text: "${correctAnswer.answer_text}"`));
+          const isCorrect =
+            answer.text_answer.toLowerCase().trim() ===
+            correctAnswer.answer_text.toLowerCase().trim();
+          this.logger.log(
+            colors.cyan(`   - Student text: "${answer.text_answer}"`),
+          );
+          this.logger.log(
+            colors.cyan(`   - Correct text: "${correctAnswer.answer_text}"`),
+          );
           this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
           return isCorrect;
         }
@@ -2571,9 +3062,13 @@ export class StudentsService {
       case 'NUMERIC':
         if (answer.text_answer && correctAnswer.answer_number !== undefined) {
           const studentNumber = parseFloat(answer.text_answer);
-          const isCorrect = !isNaN(studentNumber) && Math.abs(studentNumber - correctAnswer.answer_number) < 0.01;
+          const isCorrect =
+            !isNaN(studentNumber) &&
+            Math.abs(studentNumber - correctAnswer.answer_number) < 0.01;
           this.logger.log(colors.cyan(`   - Student number: ${studentNumber}`));
-          this.logger.log(colors.cyan(`   - Correct number: ${correctAnswer.answer_number}`));
+          this.logger.log(
+            colors.cyan(`   - Correct number: ${correctAnswer.answer_number}`),
+          );
           this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
           return isCorrect;
         }
@@ -2583,21 +3078,35 @@ export class StudentsService {
         if (answer.text_answer && correctAnswer.answer_date) {
           const studentDate = new Date(answer.text_answer);
           const correctDate = new Date(correctAnswer.answer_date);
-          const isCorrect = !isNaN(studentDate.getTime()) && studentDate.getTime() === correctDate.getTime();
-          this.logger.log(colors.cyan(`   - Student date: ${studentDate.toISOString()}`));
-          this.logger.log(colors.cyan(`   - Correct date: ${correctDate.toISOString()}`));
+          const isCorrect =
+            !isNaN(studentDate.getTime()) &&
+            studentDate.getTime() === correctDate.getTime();
+          this.logger.log(
+            colors.cyan(`   - Student date: ${studentDate.toISOString()}`),
+          );
+          this.logger.log(
+            colors.cyan(`   - Correct date: ${correctDate.toISOString()}`),
+          );
           this.logger.log(colors.cyan(`   - Match: ${isCorrect}`));
           return isCorrect;
         }
         break;
 
       default:
-        this.logger.log(colors.cyan(`   - Using fallback method for type: ${answer.question_type}`));
+        this.logger.log(
+          colors.cyan(
+            `   - Using fallback method for type: ${answer.question_type}`,
+          ),
+        );
         // Fallback to old method for other types
         return this.checkAnswer(answer, correctAnswers);
     }
 
-    this.logger.warn(colors.yellow(`⚠️ No matching condition for question type: ${answer.question_type}`));
+    this.logger.warn(
+      colors.yellow(
+        `⚠️ No matching condition for question type: ${answer.question_type}`,
+      ),
+    );
     return false;
   }
 
@@ -2612,7 +3121,10 @@ export class StudentsService {
     const correctAnswer = correctAnswers[0]; // Assuming one correct answer per question
 
     // Check multiple choice answers (support both selected_option_ids and selected_options)
-    const optionIds = answer.selected_option_ids ?? answer.selected_options ?? (answer.answer != null ? [answer.answer] : []);
+    const optionIds =
+      answer.selected_option_ids ??
+      answer.selected_options ??
+      (answer.answer != null ? [answer.answer] : []);
     if (optionIds.length > 0 && correctAnswer.option_ids) {
       const studentOptions = [...optionIds].sort();
       const correctOptions = [...(correctAnswer.option_ids || [])].sort();
@@ -2621,12 +3133,20 @@ export class StudentsService {
 
     // Check text answers
     if (answer.answer_text && correctAnswer.answer_text) {
-      return answer.answer_text.toLowerCase().trim() === correctAnswer.answer_text.toLowerCase().trim();
+      return (
+        answer.answer_text.toLowerCase().trim() ===
+        correctAnswer.answer_text.toLowerCase().trim()
+      );
     }
 
     // Check numeric answers
-    if (answer.answer_number !== undefined && correctAnswer.answer_number !== undefined) {
-      return Math.abs(answer.answer_number - correctAnswer.answer_number) < 0.01;
+    if (
+      answer.answer_number !== undefined &&
+      correctAnswer.answer_number !== undefined
+    ) {
+      return (
+        Math.abs(answer.answer_number - correctAnswer.answer_number) < 0.01
+      );
     }
 
     // Check date answers
@@ -2665,32 +3185,42 @@ export class StudentsService {
       // Get full user
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser || fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ Access denied. Student role required. ${fullUser?.role}`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ Access denied. Student role required. ${fullUser?.role}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: fullUser.school_id
+          school_id: fullUser.school_id,
         },
         include: {
           current_class: {
             select: {
               id: true,
-              name: true
-            }
-          }
-        }
+              name: true,
+            },
+          },
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -2700,11 +3230,15 @@ export class StudentsService {
         academicSession = await this.prisma.academicSession.findFirst({
           where: {
             id: sessionId,
-            school_id: fullUser.school_id
-          }
+            school_id: fullUser.school_id,
+          },
         });
         if (!academicSession) {
-          this.logger.error(colors.red(`❌ Academic session not found for sessionId: ${sessionId}`));
+          this.logger.error(
+            colors.red(
+              `❌ Academic session not found for sessionId: ${sessionId}`,
+            ),
+          );
           return new ApiResponse(false, 'Academic session not found', null);
         }
       } else {
@@ -2712,56 +3246,70 @@ export class StudentsService {
           where: {
             school_id: fullUser.school_id,
             is_current: true,
-            status: 'active'
-          }
+            status: 'active',
+          },
         });
         if (!academicSession) {
           this.logger.error(colors.red(`❌ No current academic session found`));
-          return new ApiResponse(false, 'No current academic session found', null);
+          return new ApiResponse(
+            false,
+            'No current academic session found',
+            null,
+          );
         }
       }
 
-      this.logger.log(colors.green(`✅ Using session: ${academicSession.academic_year} - ${academicSession.term}`));
+      this.logger.log(
+        colors.green(
+          `✅ Using session: ${academicSession.academic_year} - ${academicSession.term}`,
+        ),
+      );
 
       // Query the Result model - results must be released by school admin/director
       const result = await this.prisma.result.findFirst({
         where: {
           academic_session_id: academicSession.id,
           student_id: student.id,
-          released_by_school_admin: true // Only show results released by school admin
+          released_by_school_admin: true, // Only show results released by school admin
         },
         include: {
           academicSession: {
             select: {
               id: true,
               academic_year: true,
-              term: true
-            }
-          }
-        }
+              term: true,
+            },
+          },
+        },
       });
 
       if (!result) {
-        this.logger.warn(colors.yellow(`⚠️ Results not yet released for this session`));
-        return new ApiResponse(false, 'Results not yet released for this session. Please contact your school administrator.', {
-          current_session: {
-            id: academicSession.id,
-            academic_year: academicSession.academic_year,
-            term: academicSession.term
+        this.logger.warn(
+          colors.yellow(`⚠️ Results not yet released for this session`),
+        );
+        return new ApiResponse(
+          false,
+          'Results not yet released for this session. Please contact your school administrator.',
+          {
+            current_session: {
+              id: academicSession.id,
+              academic_year: academicSession.academic_year,
+              term: academicSession.term,
+            },
+            subjects: [],
           },
-          subjects: []
-        });
+        );
       }
 
       // this.logger.log(colors.cyan(`   - Result: ${JSON.stringify(result)}`));
 
       // Parse subject results from JSON
       let subjectResults: any[] = [];
-      
+
       if (result.subject_results) {
         try {
-          subjectResults = Array.isArray(result.subject_results) 
-            ? result.subject_results 
+          subjectResults = Array.isArray(result.subject_results)
+            ? result.subject_results
             : JSON.parse(result.subject_results as string);
         } catch (parseError) {
           // this.logger.error(colors.red(`❌ Error parsing subject_results: ${parseError.message}`));
@@ -2788,49 +3336,63 @@ export class StudentsService {
 
       // Sort subjects by name
       if (subjectResults.length > 0) {
-        subjectResults.sort((a: any, b: any) => a.subject_name.localeCompare(b.subject_name));
+        subjectResults.sort((a: any, b: any) =>
+          a.subject_name.localeCompare(b.subject_name),
+        );
       }
 
-      this.logger.log(colors.green(`✅ Found released results with ${subjectResults.length} subjects`));
+      this.logger.log(
+        colors.green(
+          `✅ Found released results with ${subjectResults.length} subjects`,
+        ),
+      );
 
       // If result exists but has no subjects, return a helpful message
       if (subjectResults.length === 0) {
         return new ApiResponse(
-          false, 
+          false,
           'Results have been released but no subject data is available. This may occur if no assessment attempts were found. Please contact your school administrator.',
           {
             current_session: {
               id: academicSession.id,
               academic_year: academicSession.academic_year,
-              term: academicSession.term
+              term: academicSession.term,
             },
             subjects: [],
             result_id: result.id,
-            released_at: result.released_at
-          }
+            released_at: result.released_at,
+          },
         );
       }
 
       // Fetch subject colors from database (not stored in subject_results)
       const subjectIds = subjectResults.map((s: any) => s.subject_id);
-      this.logger.log(colors.cyan(`   - Fetching colors for ${subjectIds.length} subjects: ${subjectIds.join(', ')}`));
-      
+      this.logger.log(
+        colors.cyan(
+          `   - Fetching colors for ${subjectIds.length} subjects: ${subjectIds.join(', ')}`,
+        ),
+      );
+
       const subjects = await this.prisma.subject.findMany({
         where: {
           id: { in: subjectIds },
           schoolId: fullUser.school_id,
-          academic_session_id: academicSession.id
+          academic_session_id: academicSession.id,
         },
         select: {
           id: true,
-          color: true
-        }
+          color: true,
+        },
       });
 
-      this.logger.log(colors.cyan(`   - Found ${subjects.length} subjects with colors: ${JSON.stringify(subjects)}`));
+      this.logger.log(
+        colors.cyan(
+          `   - Found ${subjects.length} subjects with colors: ${JSON.stringify(subjects)}`,
+        ),
+      );
 
       // Create a map of subject_id -> color
-      const subjectColorMap = new Map(subjects.map(s => [s.id, s.color]));
+      const subjectColorMap = new Map(subjects.map((s) => [s.id, s.color]));
 
       // Build final response with colors
       const finalSubjects = subjectResults.map((subject: any) => ({
@@ -2846,23 +3408,26 @@ export class StudentsService {
         grade: subject.grade,
         class_analysis: {
           total_students: result.total_students || 0,
-          student_position: result.class_position || 0
-        }
+          student_position: result.class_position || 0,
+        },
       }));
 
       // this.logger.log(colors.cyan(`   - Final subjects with colors: ${JSON.stringify(finalSubjects)}`));
-      console.log(colors.cyan(`🎓 Student: ${user.email} results retrieved successfully`));
+      console.log(
+        colors.cyan(`🎓 Student: ${user.email} results retrieved successfully`),
+      );
       return new ApiResponse(true, 'Student results retrieved successfully', {
         current_session: {
           id: academicSession.id,
           academic_year: academicSession.academic_year,
-          term: academicSession.term
+          term: academicSession.term,
         },
-        subjects: finalSubjects
+        subjects: finalSubjects,
       });
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching student results: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error fetching student results: ${error.message}`),
+      );
       return new ApiResponse(false, 'Failed to fetch student results', null);
     }
   }
@@ -2872,11 +3437,14 @@ export class StudentsService {
    * @param quizId - Quiz ID
    * @param userId - User ID
    */
-  async getStudentSubmissionCount(quizId: string, userId: string): Promise<number> {
+  async getStudentSubmissionCount(
+    quizId: string,
+    userId: string,
+  ): Promise<number> {
     try {
       const quiz = await this.prisma.assessment.findUnique({
         where: { id: quizId },
-        select: { submissions: true }
+        select: { submissions: true },
       });
 
       if (!quiz || !quiz.submissions) return 0;
@@ -2884,7 +3452,11 @@ export class StudentsService {
       const submissions = quiz.submissions as any;
       return submissions.student_counts?.[userId] || 0;
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error getting student submission count: ${error.message}`));
+      this.logger.error(
+        colors.red(
+          `❌ Error getting student submission count: ${error.message}`,
+        ),
+      );
       return 0;
     }
   }
@@ -2898,38 +3470,45 @@ export class StudentsService {
    * @param firstName - User first name
    * @param lastName - User last name
    */
-  private async updateQuizSubmissionsInTransaction(tx: any, quizId: string, userId: string, email: string, firstName: string, lastName: string) {
+  private async updateQuizSubmissionsInTransaction(
+    tx: any,
+    quizId: string,
+    userId: string,
+    email: string,
+    firstName: string,
+    lastName: string,
+  ) {
     try {
       // Get current quiz data
       const quiz = await tx.assessment.findUnique({
         where: { id: quizId },
-        select: { submissions: true }
+        select: { submissions: true },
       });
 
       if (!quiz) return;
 
       // Parse existing submissions or initialize
-      const currentSubmissions = quiz.submissions as any || {
+      const currentSubmissions = quiz.submissions || {
         total_submissions: 0,
         recent_submissions: [],
-        student_counts: {} // Track individual student submission counts
+        student_counts: {}, // Track individual student submission counts
       };
 
       // Check if user already submitted and get current count
       const existingSubmission = currentSubmissions.recent_submissions.find(
-        (sub: any) => sub.user_id === userId
+        (sub: any) => sub.user_id === userId,
       );
       const userAlreadySubmitted = !!existingSubmission;
       const currentUserCount = currentSubmissions.student_counts[userId] || 0;
 
       // Update submissions data
       const updatedSubmissions = {
-        total_submissions: userAlreadySubmitted 
-          ? currentSubmissions.total_submissions 
+        total_submissions: userAlreadySubmitted
+          ? currentSubmissions.total_submissions
           : currentSubmissions.total_submissions + 1,
         student_counts: {
           ...currentSubmissions.student_counts,
-          [userId]: currentUserCount + 1
+          [userId]: currentUserCount + 1,
         },
         recent_submissions: [
           {
@@ -2937,24 +3516,32 @@ export class StudentsService {
             name: `${firstName} ${lastName}`,
             email: email,
             submitted_at: new Date().toISOString(),
-            count: currentUserCount + 1 // Add count for this specific submission
+            count: currentUserCount + 1, // Add count for this specific submission
           },
           // Keep only the 10 most recent submissions, excluding current user's old entries
-          ...currentSubmissions.recent_submissions.filter((sub: any) => sub.user_id !== userId)
-        ].slice(0, 10)
+          ...currentSubmissions.recent_submissions.filter(
+            (sub: any) => sub.user_id !== userId,
+          ),
+        ].slice(0, 10),
       };
 
       // Update quiz with new submissions data
       await tx.assessment.update({
         where: { id: quizId },
         data: {
-          submissions: updatedSubmissions
-        }
+          submissions: updatedSubmissions,
+        },
       });
 
-      this.logger.log(colors.green(`✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`));
+      this.logger.log(
+        colors.green(
+          `✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`,
+        ),
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error updating quiz submissions: ${error.message}`));
+      this.logger.error(
+        colors.red(`❌ Error updating quiz submissions: ${error.message}`),
+      );
     }
   }
 
@@ -2992,8 +3579,8 @@ export class StudentsService {
 
   //     // Update submissions data
   //     const updatedSubmissions = {
-  //       total_submissions: userAlreadySubmitted 
-  //         ? currentSubmissions.total_submissions 
+  //       total_submissions: userAlreadySubmitted
+  //         ? currentSubmissions.total_submissions
   //         : currentSubmissions.total_submissions + 1,
   //       student_counts: {
   //         ...currentSubmissions.student_counts,
@@ -3019,7 +3606,6 @@ export class StudentsService {
   //         submissions: updatedSubmissions
   //       }
   //     });
-      
 
   //     this.logger.log(colors.green(`✅ Quiz submissions updated: ${updatedSubmissions.total_submissions} total submissions, ${updatedSubmissions.student_counts[userId]} submissions by ${firstName} ${lastName}`));
   //   } catch (error) {
@@ -3033,36 +3619,52 @@ export class StudentsService {
    * @param assessmentId - Assessment ID
    */
   async getAssessmentWithAnswers(user: any, assessmentId: string) {
-    this.logger.log(colors.cyan(`Fetching assessment with answers for student: ${user.email}, assessment: ${assessmentId}`));
+    this.logger.log(
+      colors.cyan(
+        `Fetching assessment with answers for student: ${user.email}, assessment: ${assessmentId}`,
+      ),
+    );
 
     try {
       // Get full user data with school_id
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser) {
-        this.logger.error(colors.red(`❌ User not found for assessment with answers fetch`));
+        this.logger.error(
+          colors.red(`❌ User not found for assessment with answers fetch`),
+        );
         return new ApiResponse(false, 'User not found', null);
       }
 
       // Check if user has student role
       if (fullUser.role !== 'student') {
-        this.logger.error(colors.red(`❌ User ${user.email} has role '${fullUser.role}', expected 'student'`));
-        return new ApiResponse(false, 'Access denied. Student role required.', null);
+        this.logger.error(
+          colors.red(
+            `❌ User ${user.email} has role '${fullUser.role}', expected 'student'`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Access denied. Student role required.',
+          null,
+        );
       }
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
-          school_id: fullUser.school_id
-        }
+          school_id: fullUser.school_id,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student not found', null);
       }
 
@@ -3070,13 +3672,21 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.error(colors.red(`No current academic session found for student: ${user.email}`));
-        return new ApiResponse(false, 'No current academic session found', null);
+        this.logger.error(
+          colors.red(
+            `No current academic session found for student: ${user.email}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get student's class
@@ -3085,21 +3695,23 @@ export class StudentsService {
         include: {
           subjects: {
             where: {
-              academic_session_id: currentSession.id
+              academic_session_id: currentSession.id,
             },
             select: {
-              id: true
-            }
-          }
-        }
+              id: true,
+            },
+          },
+        },
       });
 
       if (!studentClass) {
-        this.logger.error(colors.red(`Student class not found for student: ${user.email}`));
+        this.logger.error(
+          colors.red(`Student class not found for student: ${user.email}`),
+        );
         return new ApiResponse(false, 'Student class not found', null);
       }
 
-      const subjectIds = studentClass.subjects.map(subject => subject.id);
+      const subjectIds = studentClass.subjects.map((subject) => subject.id);
 
       // Get the assessment with all questions and options
       const assessment = await this.prisma.assessment.findFirst({
@@ -3108,12 +3720,12 @@ export class StudentsService {
           school_id: student.school_id,
           academic_session_id: currentSession.id,
           subject_id: {
-            in: subjectIds
+            in: subjectIds,
           },
           is_published: true,
           status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED']
-          }
+            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
+          },
         },
         include: {
           subject: {
@@ -3121,15 +3733,15 @@ export class StudentsService {
               id: true,
               name: true,
               code: true,
-              color: true
-            }
+              color: true,
+            },
           },
           createdBy: {
             select: {
               id: true,
               first_name: true,
-              last_name: true
-            }
+              last_name: true,
+            },
           },
           questions: {
             include: {
@@ -3138,42 +3750,58 @@ export class StudentsService {
                   id: true,
                   option_text: true,
                   is_correct: true,
-                  order: true
+                  order: true,
                 },
                 orderBy: {
-                  order: 'asc'
-                }
+                  order: 'asc',
+                },
               },
               correct_answers: {
                 select: {
                   id: true,
-                  option_ids: true
-                }
-              }
+                  option_ids: true,
+                },
+              },
             },
             orderBy: {
-              order: 'asc'
-            }
-          }
-        }
+              order: 'asc',
+            },
+          },
+        },
       });
 
       if (!assessment) {
-        this.logger.error(colors.red(`❌ Assessment not found or access denied: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment not found or access denied', null);
+        this.logger.error(
+          colors.red(
+            `❌ Assessment not found or access denied: ${assessmentId}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Assessment not found or access denied',
+          null,
+        );
       }
 
       // Check if student can view grading
       if (assessment.student_can_view_grading === false) {
-        this.logger.warn(colors.yellow(`⚠️ Assessment grading is not available for viewing: ${assessmentId}`));
-        return new ApiResponse(false, 'Assessment grading is not available for viewing', null);
+        this.logger.warn(
+          colors.yellow(
+            `⚠️ Assessment grading is not available for viewing: ${assessmentId}`,
+          ),
+        );
+        return new ApiResponse(
+          false,
+          'Assessment grading is not available for viewing',
+          null,
+        );
       }
 
       // Get all attempts for this assessment by this student
       const attempts = await this.prisma.assessmentAttempt.findMany({
         where: {
           assessment_id: assessmentId,
-          student_id: user.sub
+          student_id: user.sub,
         },
         include: {
           responses: {
@@ -3183,23 +3811,31 @@ export class StudentsService {
                   id: true,
                   option_text: true,
                   is_correct: true,
-                  order: true
+                  order: true,
                 },
                 orderBy: {
-                  order: 'asc'
-                }
-              }
-            }
-          }
+                  order: 'asc',
+                },
+              },
+            },
+          },
         },
         orderBy: {
-          submitted_at: 'desc'
-        }
+          submitted_at: 'desc',
+        },
       });
 
-      this.logger.log(colors.blue(`📊 Found ${attempts.length} attempts for assessment ${assessmentId}`));
+      this.logger.log(
+        colors.blue(
+          `📊 Found ${attempts.length} attempts for assessment ${assessmentId}`,
+        ),
+      );
       attempts.forEach((attempt, index) => {
-        this.logger.log(colors.blue(`   Attempt ${index + 1}: ${attempt.id} - ${attempt.status} - ${attempt.responses.length} answers`));
+        this.logger.log(
+          colors.blue(
+            `   Attempt ${index + 1}: ${attempt.id} - ${attempt.status} - ${attempt.responses.length} answers`,
+          ),
+        );
       });
 
       // Format assessment data
@@ -3218,41 +3854,66 @@ export class StudentsService {
           id: assessment.subject.id,
           name: assessment.subject.name,
           code: assessment.subject.code,
-          color: assessment.subject.color
+          color: assessment.subject.color,
         },
         teacher: {
           id: assessment.createdBy.id,
-          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`
+          name: `${assessment.createdBy.first_name} ${assessment.createdBy.last_name}`,
         },
-        start_date: assessment.start_date ? assessment.start_date.toISOString() : null,
-        end_date: assessment.end_date ? assessment.end_date.toISOString() : null,
+        start_date: assessment.start_date
+          ? assessment.start_date.toISOString()
+          : null,
+        end_date: assessment.end_date
+          ? assessment.end_date.toISOString()
+          : null,
         created_at: assessment.createdAt.toISOString(),
         is_published: assessment.is_published,
         total_attempts: attempts.length,
-        remaining_attempts: Math.max(0, assessment.max_attempts - attempts.length)
+        remaining_attempts: Math.max(
+          0,
+          assessment.max_attempts - attempts.length,
+        ),
       };
 
       // Format submissions array - each attempt is a submission
       const formattedSubmissions = attempts.map((attempt, attemptIndex) => {
-        this.logger.log(colors.blue(`📝 Processing submission ${attemptIndex + 1}: ${attempt.id}`));
-        
+        this.logger.log(
+          colors.blue(
+            `📝 Processing submission ${attemptIndex + 1}: ${attempt.id}`,
+          ),
+        );
+
         // Format questions with user answers for this specific attempt
-        const formattedQuestions = assessment.questions.map(question => {
+        const formattedQuestions = assessment.questions.map((question) => {
           // Find user's answer for this question from this specific attempt
-          const userAnswer = attempt.responses.find(response => response.question_id === question.id);
-          
-          this.logger.log(colors.blue(`🔍 Processing question ${question.id} for attempt ${attemptIndex + 1}:`));
-          this.logger.log(colors.blue(`   - Question text: ${question.question_text}`));
-          this.logger.log(colors.blue(`   - User answer found: ${!!userAnswer}`));
+          const userAnswer = attempt.responses.find(
+            (response) => response.question_id === question.id,
+          );
+
+          this.logger.log(
+            colors.blue(
+              `🔍 Processing question ${question.id} for attempt ${attemptIndex + 1}:`,
+            ),
+          );
+          this.logger.log(
+            colors.blue(`   - Question text: ${question.question_text}`),
+          );
+          this.logger.log(
+            colors.blue(`   - User answer found: ${!!userAnswer}`),
+          );
           if (userAnswer) {
-            this.logger.log(colors.blue(`   - User answer data: ${JSON.stringify({
-              selected_options: userAnswer.selected_options,
-              text_answer: userAnswer.text_answer,
-              numeric_answer: userAnswer.numeric_answer,
-              date_answer: userAnswer.date_answer,
-              is_correct: userAnswer.is_correct,
-              points_earned: userAnswer.points_earned
-            })}`));
+            this.logger.log(
+              colors.blue(
+                `   - User answer data: ${JSON.stringify({
+                  selected_options: userAnswer.selected_options,
+                  text_answer: userAnswer.text_answer,
+                  numeric_answer: userAnswer.numeric_answer,
+                  date_answer: userAnswer.date_answer,
+                  is_correct: userAnswer.is_correct,
+                  points_earned: userAnswer.points_earned,
+                })}`,
+              ),
+            );
           }
 
           return {
@@ -3263,33 +3924,42 @@ export class StudentsService {
             points: question.points,
             order: question.order,
             explanation: question.explanation,
-            options: question.options.map(option => ({
+            options: question.options.map((option) => ({
               id: option.id,
               text: option.option_text,
               is_correct: option.is_correct,
               order: option.order,
-              is_selected: userAnswer?.selected_options.includes(option.id) || false
+              is_selected:
+                userAnswer?.selected_options.includes(option.id) || false,
             })),
-            user_answer: userAnswer ? {
-              text_answer: userAnswer.text_answer,
-              numeric_answer: userAnswer.numeric_answer,
-              date_answer: userAnswer.date_answer?.toISOString(),
-              selected_options: userAnswer.selected_options.map(optionId => {
-                const option = question.options.find(opt => opt.id === optionId);
-                return option ? {
-                  id: option.id,
-                  text: option.option_text,
-                  is_correct: option.is_correct
-                } : null;
-              }).filter(Boolean),
-              is_correct: userAnswer.is_correct,
-              points_earned: userAnswer.points_earned,
-              answered_at: userAnswer.createdAt
-            } : null,
-            correct_answers: question.correct_answers.map(answer => ({
+            user_answer: userAnswer
+              ? {
+                  text_answer: userAnswer.text_answer,
+                  numeric_answer: userAnswer.numeric_answer,
+                  date_answer: userAnswer.date_answer?.toISOString(),
+                  selected_options: userAnswer.selected_options
+                    .map((optionId) => {
+                      const option = question.options.find(
+                        (opt) => opt.id === optionId,
+                      );
+                      return option
+                        ? {
+                            id: option.id,
+                            text: option.option_text,
+                            is_correct: option.is_correct,
+                          }
+                        : null;
+                    })
+                    .filter(Boolean),
+                  is_correct: userAnswer.is_correct,
+                  points_earned: userAnswer.points_earned,
+                  answered_at: userAnswer.createdAt,
+                }
+              : null,
+            correct_answers: question.correct_answers.map((answer) => ({
               id: answer.id,
-              option_ids: answer.option_ids
-            }))
+              option_ids: answer.option_ids,
+            })),
           };
         });
 
@@ -3309,8 +3979,11 @@ export class StudentsService {
           overall_feedback: attempt.overall_feedback,
           questions: formattedQuestions,
           total_questions: formattedQuestions.length,
-          questions_answered: formattedQuestions.filter(q => q.user_answer).length,
-          questions_correct: formattedQuestions.filter(q => q.user_answer?.is_correct).length
+          questions_answered: formattedQuestions.filter((q) => q.user_answer)
+            .length,
+          questions_correct: formattedQuestions.filter(
+            (q) => q.user_answer?.is_correct,
+          ).length,
         };
       });
 
@@ -3323,23 +3996,38 @@ export class StudentsService {
         submission_summary: {
           total_submissions: formattedSubmissions.length,
           latest_submission: formattedSubmissions[0] || null, // Most recent submission
-          best_score: Math.max(...formattedSubmissions.map(s => s.total_score || 0)),
-          best_percentage: Math.max(...formattedSubmissions.map(s => s.percentage || 0)),
-          passed_attempts: formattedSubmissions.filter(s => s.passed).length
-        }
+          best_score: Math.max(
+            ...formattedSubmissions.map((s) => s.total_score || 0),
+          ),
+          best_percentage: Math.max(
+            ...formattedSubmissions.map((s) => s.percentage || 0),
+          ),
+          passed_attempts: formattedSubmissions.filter((s) => s.passed).length,
+        },
       };
 
-      this.logger.log(colors.green(`✅ Successfully retrieved assessment with answers: ${assessment.questions.length} questions, ${formattedSubmissions.length} submissions`));
+      this.logger.log(
+        colors.green(
+          `✅ Successfully retrieved assessment with answers: ${assessment.questions.length} questions, ${formattedSubmissions.length} submissions`,
+        ),
+      );
 
       return new ApiResponse(
         true,
         'Assessment with answers retrieved successfully',
-        responseData
+        responseData,
       );
-
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching assessment with answers: ${error.message}`));
-      return new ApiResponse(false, 'Failed to fetch assessment with answers', null);
+      this.logger.error(
+        colors.red(
+          `❌ Error fetching assessment with answers: ${error.message}`,
+        ),
+      );
+      return new ApiResponse(
+        false,
+        'Failed to fetch assessment with answers',
+        null,
+      );
     }
   }
 
@@ -3352,15 +4040,17 @@ export class StudentsService {
   async getStudentAttendance(
     user: any,
     year?: number,
-    month?: number
+    month?: number,
   ): Promise<ApiResponse<StudentAttendanceExtendedDto | null>> {
-    this.logger.log(colors.cyan(`Fetching attendance for student: ${user.email}`));
+    this.logger.log(
+      colors.cyan(`Fetching attendance for student: ${user.email}`),
+    );
 
     try {
       // Get full user data with school_id
       const fullUser = await this.prisma.user.findUnique({
         where: { id: user.sub },
-        select: { id: true, school_id: true, role: true }
+        select: { id: true, school_id: true, role: true },
       });
 
       if (!fullUser) {
@@ -3377,22 +4067,24 @@ export class StudentsService {
       // Default to current month if not provided
       const currentDate = new Date();
       const targetYear = year || currentDate.getFullYear();
-      const targetMonth = month || (currentDate.getMonth() + 1);
+      const targetMonth = month || currentDate.getMonth() + 1;
 
       // Get student record
       const student = await this.prisma.student.findFirst({
         where: {
           user_id: user.sub,
           school_id: fullUser.school_id,
-          status: 'active'
+          status: 'active',
         },
         include: {
-          current_class: true
-        }
+          current_class: true,
+        },
       });
 
       if (!student) {
-        this.logger.error(colors.red(`❌ Student not found for user: ${user.email}`));
+        this.logger.error(
+          colors.red(`❌ Student not found for user: ${user.email}`),
+        );
         return new ApiResponse<null>(false, 'Student not found', null);
       }
 
@@ -3400,19 +4092,27 @@ export class StudentsService {
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: student.school_id,
-          is_current: true
-        }
+          is_current: true,
+        },
       });
 
       if (!currentSession) {
-        this.logger.error(colors.red(`No current academic session found for student: ${user.email}`));
-        return new ApiResponse<null>(false, 'No current academic session found', null);
+        this.logger.error(
+          colors.red(
+            `No current academic session found for student: ${user.email}`,
+          ),
+        );
+        return new ApiResponse<null>(
+          false,
+          'No current academic session found',
+          null,
+        );
       }
 
       // Get all academic sessions for the school (for dropdown)
       const allAcademicSessions = await this.prisma.academicSession.findMany({
         where: {
-          school_id: student.school_id
+          school_id: student.school_id,
         },
         select: {
           id: true,
@@ -3421,34 +4121,36 @@ export class StudentsService {
           start_date: true,
           end_date: true,
           is_current: true,
-          status: true
+          status: true,
         },
-        orderBy: [
-          { academic_year: 'desc' },
-          { term: 'asc' }
-        ]
+        orderBy: [{ academic_year: 'desc' }, { term: 'asc' }],
       });
 
       // Format academic sessions
-      const formattedAcademicSessions: AcademicSessionDto[] = allAcademicSessions.map(session => ({
-        id: session.id,
-        academic_year: session.academic_year,
-        term: session.term,
-        start_date: session.start_date.toISOString(),
-        end_date: session.end_date.toISOString(),
-        is_current: session.is_current,
-        status: session.status
-      }));
+      const formattedAcademicSessions: AcademicSessionDto[] =
+        allAcademicSessions.map((session) => ({
+          id: session.id,
+          academic_year: session.academic_year,
+          term: session.term,
+          start_date: session.start_date.toISOString(),
+          end_date: session.end_date.toISOString(),
+          is_current: session.is_current,
+          status: session.status,
+        }));
 
       // Get available terms with their IDs from academic sessions
-      const availableTerms = allAcademicSessions.map(session => ({
+      const availableTerms = allAcademicSessions.map((session) => ({
         id: session.id,
         term: session.term,
-        academic_year: session.academic_year
+        academic_year: session.academic_year,
       }));
 
       this.logger.log(colors.green(`✅ Student found: ${user.email}`));
-      this.logger.log(colors.green(`✅ Student class: ${student.current_class?.name || 'No class assigned'}`));
+      this.logger.log(
+        colors.green(
+          `✅ Student class: ${student.current_class?.name || 'No class assigned'}`,
+        ),
+      );
 
       // Calculate date range for the month (using UTC to avoid timezone issues)
       const startDate = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
@@ -3463,98 +4165,112 @@ export class StudentsService {
           attendanceSession: {
             date: {
               gte: startDate,
-              lte: endDate
-            }
-          }
+              lte: endDate,
+            },
+          },
         },
         include: {
           attendanceSession: {
             select: {
               date: true,
-              status: true
-            }
-          }
+              status: true,
+            },
+          },
         },
         orderBy: {
           attendanceSession: {
-            date: 'desc'
-          }
-        }
+            date: 'desc',
+          },
+        },
       });
 
       // Get all attendance sessions for this class in the month (to calculate total school days)
-      const classAttendanceSessions = await this.prisma.attendanceSession.findMany({
-        where: {
-          class_id: student.current_class_id!,
-          school_id: student.school_id,
-          academic_session_id: currentSession.id,
-          date: {
-            gte: startDate,
-            lte: endDate
-          }
-        },
-        select: {
-          date: true,
-          status: true
-        },
-        orderBy: {
-          date: 'desc'
-        }
-      });
+      const classAttendanceSessions =
+        await this.prisma.attendanceSession.findMany({
+          where: {
+            class_id: student.current_class_id!,
+            school_id: student.school_id,
+            academic_session_id: currentSession.id,
+            date: {
+              gte: startDate,
+              lte: endDate,
+            },
+          },
+          select: {
+            date: true,
+            status: true,
+          },
+          orderBy: {
+            date: 'desc',
+          },
+        });
 
       // Get term attendance sessions (from start of term to end of month)
       const termStartDate = new Date(currentSession.start_date);
-      const termAttendanceSessions = await this.prisma.attendanceSession.findMany({
-        where: {
-          class_id: student.current_class_id!,
-          school_id: student.school_id,
-          academic_session_id: currentSession.id,
-          date: {
-            gte: termStartDate,
-            lte: endDate
-          }
-        },
-        select: {
-          date: true,
-          status: true
-        }
-      });
-
-      // Get term attendance records for this student
-      const termAttendanceRecords = await this.prisma.attendanceRecord.findMany({
-        where: {
-          student_id: student.user_id,
-          school_id: student.school_id,
-          academic_session_id: currentSession.id,
-          attendanceSession: {
+      const termAttendanceSessions =
+        await this.prisma.attendanceSession.findMany({
+          where: {
+            class_id: student.current_class_id!,
+            school_id: student.school_id,
+            academic_session_id: currentSession.id,
             date: {
               gte: termStartDate,
-              lte: endDate
-            }
-          }
+              lte: endDate,
+            },
+          },
+          select: {
+            date: true,
+            status: true,
+          },
+        });
+
+      // Get term attendance records for this student
+      const termAttendanceRecords = await this.prisma.attendanceRecord.findMany(
+        {
+          where: {
+            student_id: student.user_id,
+            school_id: student.school_id,
+            academic_session_id: currentSession.id,
+            attendanceSession: {
+              date: {
+                gte: termStartDate,
+                lte: endDate,
+              },
+            },
+          },
+          include: {
+            attendanceSession: {
+              select: {
+                date: true,
+                status: true,
+              },
+            },
+          },
         },
-        include: {
-          attendanceSession: {
-            select: {
-              date: true,
-              status: true
-            }
-          }
-        }
-      });
+      );
 
       // Calculate statistics
       const totalSchoolDaysThisMonth = classAttendanceSessions.length;
-      const totalPresentThisMonth = attendanceRecords.filter(record => record.status === 'PRESENT').length;
+      const totalPresentThisMonth = attendanceRecords.filter(
+        (record) => record.status === 'PRESENT',
+      ).length;
       const totalSchoolDaysThisTerm = termAttendanceSessions.length;
-      const totalPresentThisTerm = termAttendanceRecords.filter(record => record.status === 'PRESENT').length;
+      const totalPresentThisTerm = termAttendanceRecords.filter(
+        (record) => record.status === 'PRESENT',
+      ).length;
 
       // Find last absent date
       const lastAbsentRecord = attendanceRecords
-        .filter(record => record.status === 'ABSENT')
-        .sort((a, b) => new Date(b.attendanceSession.date).getTime() - new Date(a.attendanceSession.date).getTime())[0];
-      
-      const lastAbsentDate = lastAbsentRecord ? lastAbsentRecord.attendanceSession.date.toISOString().split('T')[0] : null;
+        .filter((record) => record.status === 'ABSENT')
+        .sort(
+          (a, b) =>
+            new Date(b.attendanceSession.date).getTime() -
+            new Date(a.attendanceSession.date).getTime(),
+        )[0];
+
+      const lastAbsentDate = lastAbsentRecord
+        ? lastAbsentRecord.attendanceSession.date.toISOString().split('T')[0]
+        : null;
 
       // Create summary
       const summary: StudentAttendanceSummaryDto = {
@@ -3562,42 +4278,50 @@ export class StudentsService {
         totalPresentThisMonth,
         totalSchoolDaysThisTerm,
         totalPresentThisTerm,
-        lastAbsentDate
+        lastAbsentDate,
       };
 
       // Create records array with all days in the month up to today
       const records: StudentAttendanceRecordDto[] = [];
       const today = new Date();
       const todayString = today.toISOString().split('T')[0];
-      
+
       // Generate all days in the month up to today (or end of month, whichever is earlier)
       let maxDay = endDate.getDate();
-      
+
       // If we're in the same month and year, only go up to today
-      if (today.getFullYear() === targetYear && today.getMonth() + 1 === targetMonth) {
+      if (
+        today.getFullYear() === targetYear &&
+        today.getMonth() + 1 === targetMonth
+      ) {
         maxDay = today.getDate();
       }
-      
+
       for (let day = 1; day <= maxDay; day++) {
-        const currentDate = new Date(Date.UTC(targetYear, targetMonth - 1, day));
+        const currentDate = new Date(
+          Date.UTC(targetYear, targetMonth - 1, day),
+        );
         const dateString = currentDate.toISOString().split('T')[0];
-        
+
         // Skip future dates (but include today)
         if (dateString > todayString) {
           continue;
         }
-        
+
         // Check if it's weekend
-        const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
-        
+        const isWeekend =
+          currentDate.getDay() === 0 || currentDate.getDay() === 6;
+
         // Find attendance record for this date
-        const attendanceRecord = attendanceRecords.find(record => 
-          record.attendanceSession.date.toISOString().split('T')[0] === dateString
+        const attendanceRecord = attendanceRecords.find(
+          (record) =>
+            record.attendanceSession.date.toISOString().split('T')[0] ===
+            dateString,
         );
 
         // Find attendance session for this date
-        const attendanceSession = classAttendanceSessions.find(session => 
-          session.date.toISOString().split('T')[0] === dateString
+        const attendanceSession = classAttendanceSessions.find(
+          (session) => session.date.toISOString().split('T')[0] === dateString,
         );
 
         let status: string;
@@ -3628,7 +4352,7 @@ export class StudentsService {
           isExcused,
           reason,
           markedAt,
-          markedBy
+          markedBy,
         });
       }
 
@@ -3637,7 +4361,7 @@ export class StudentsService {
 
       const baseData: StudentAttendanceDto = {
         summary,
-        records: reversedRecords
+        records: reversedRecords,
       };
 
       const extendedData: StudentAttendanceExtendedDto = {
@@ -3646,15 +4370,32 @@ export class StudentsService {
         ...baseData,
       };
 
-      this.logger.log(colors.green(`✅ Student attendance retrieved successfully for student ${user.email}. Month: ${targetMonth}/${targetYear}, Present: ${totalPresentThisMonth}/${totalSchoolDaysThisMonth}`));
-      this.logger.log(colors.green(`✅ Academic sessions: ${formattedAcademicSessions.length}, Available terms: ${availableTerms.length}`));
-      return new ApiResponse(true, 'Student attendance retrieved successfully', extendedData);
-
+      this.logger.log(
+        colors.green(
+          `✅ Student attendance retrieved successfully for student ${user.email}. Month: ${targetMonth}/${targetYear}, Present: ${totalPresentThisMonth}/${totalSchoolDaysThisMonth}`,
+        ),
+      );
+      this.logger.log(
+        colors.green(
+          `✅ Academic sessions: ${formattedAcademicSessions.length}, Available terms: ${availableTerms.length}`,
+        ),
+      );
+      return new ApiResponse(
+        true,
+        'Student attendance retrieved successfully',
+        extendedData,
+      );
     } catch (error) {
-      this.logger.error(colors.red(`❌ Error fetching student attendance for student ${user.email}: ${error.message}`));
-      return new ApiResponse<null>(false, 'Failed to fetch student attendance', null);
+      this.logger.error(
+        colors.red(
+          `❌ Error fetching student attendance for student ${user.email}: ${error.message}`,
+        ),
+      );
+      return new ApiResponse<null>(
+        false,
+        'Failed to fetch student attendance',
+        null,
+      );
     }
   }
-
-  
 }

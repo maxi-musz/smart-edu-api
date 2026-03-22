@@ -1,7 +1,24 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsInt, IsOptional, IsString, IsArray, Min, Max, MinLength, ValidateIf } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsArray,
+  Min,
+  Max,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
-export const LIBRARY_USER_ROLES = ['admin', 'manager', 'content_creator', 'reviewer', 'viewer'] as const;
+export const LIBRARY_USER_ROLES = [
+  'admin',
+  'manager',
+  'content_creator',
+  'reviewer',
+  'viewer',
+] as const;
 export const LIBRARY_USER_TYPES = [
   'libraryresourceowner',
   'librarymanager',
@@ -11,12 +28,16 @@ export const LIBRARY_USER_TYPES = [
 ] as const;
 
 export class CreateLibraryUserDto {
-  @ApiProperty({ description: 'Email (unique across platform)', example: 'creator@library.com' })
+  @ApiProperty({
+    description: 'Email (unique across platform)',
+    example: 'creator@library.com',
+  })
   @IsEmail()
   email: string;
 
   @ApiPropertyOptional({
-    description: 'Password (omit to auto-generate a strong password; onboarding email will contain it)',
+    description:
+      'Password (omit to auto-generate a strong password; onboarding email will contain it)',
     example: 'SecurePass123!',
     minLength: 8,
   })
@@ -34,7 +55,10 @@ export class CreateLibraryUserDto {
   @IsString()
   last_name: string;
 
-  @ApiPropertyOptional({ description: 'Phone number', example: '+2348012345678' })
+  @ApiPropertyOptional({
+    description: 'Phone number',
+    example: '+2348012345678',
+  })
   @IsOptional()
   @IsString()
   phone_number?: string;
@@ -58,7 +82,8 @@ export class CreateLibraryUserDto {
   userType?: (typeof LIBRARY_USER_TYPES)[number];
 
   @ApiPropertyOptional({
-    description: 'Permission codes from LibraryPermissionDefinition (e.g. manage_library_users, view_analytics)',
+    description:
+      'Permission codes from LibraryPermissionDefinition (e.g. manage_library_users, view_analytics)',
     example: ['view_analytics'],
   })
   @IsOptional()
@@ -67,7 +92,8 @@ export class CreateLibraryUserDto {
   permissions?: string[];
 
   @ApiPropertyOptional({
-    description: 'Elevated permission level (e.g. 10 = can manage library users)',
+    description:
+      'Elevated permission level (e.g. 10 = can manage library users)',
     example: 10,
     minimum: 0,
     maximum: 100,

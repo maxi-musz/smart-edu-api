@@ -10,6 +10,11 @@ import { AdminStudentsController } from './students/admin-students.controller';
 @Module({
   controllers: [AdminController, AdminStudentsController],
   providers: [AdminService],
-  imports: [SchoolManagementModule, AuthAdminModule, SessionAndTermModule, HlsTranscodeAdminModule]
+  imports: [
+    SchoolManagementModule,
+    AuthAdminModule,
+    SessionAndTermModule,
+    HlsTranscodeAdminModule,
+  ],
 })
 export class AdminModule {}

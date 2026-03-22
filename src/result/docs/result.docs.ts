@@ -42,7 +42,8 @@ export class ResultDocs {
   static get downloadPdfResponse200() {
     return ApiResponse({
       status: 200,
-      description: 'PDF file stream (application/pdf). Filename in Content-Disposition.',
+      description:
+        'PDF file stream (application/pdf). Filename in Content-Disposition.',
       content: {
         'application/pdf': {
           schema: { type: 'string', format: 'binary' },
@@ -54,12 +55,16 @@ export class ResultDocs {
   static get response400() {
     return ApiResponse({
       status: 400,
-      description: 'Bad request - Missing or invalid studentId/academicSessionId',
+      description:
+        'Bad request - Missing or invalid studentId/academicSessionId',
       schema: {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'studentId and academicSessionId are required' },
+          message: {
+            type: 'string',
+            example: 'studentId and academicSessionId are required',
+          },
           statusCode: { type: 'number', example: 400 },
         },
       },
@@ -89,7 +94,10 @@ export class ResultDocs {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'You do not have access to this result' },
+          message: {
+            type: 'string',
+            example: 'You do not have access to this result',
+          },
           statusCode: { type: 'number', example: 403 },
         },
       },
@@ -99,12 +107,16 @@ export class ResultDocs {
   static get response404() {
     return ApiResponse({
       status: 404,
-      description: 'Not found - Result not found or not released for this student/session',
+      description:
+        'Not found - Result not found or not released for this student/session',
       schema: {
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          message: { type: 'string', example: 'Result not found or not released' },
+          message: {
+            type: 'string',
+            example: 'Result not found or not released',
+          },
           statusCode: { type: 'number', example: 404 },
         },
       },

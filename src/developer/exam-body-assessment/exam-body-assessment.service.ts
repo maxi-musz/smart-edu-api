@@ -1,6 +1,15 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateExamBodyAssessmentDto, CreateExamBodyQuestionDto, UpdateExamBodyAssessmentDto } from './dto';
+import {
+  CreateExamBodyAssessmentDto,
+  CreateExamBodyQuestionDto,
+  UpdateExamBodyAssessmentDto,
+} from './dto';
 import { ResponseHelper } from '../../shared/helper-functions/response.helpers';
 import * as colors from 'colors';
 
@@ -10,7 +19,12 @@ export class ExamBodyAssessmentService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async createAssessment(examBodyId: string, subjectId: string, yearId: string, createDto: CreateExamBodyAssessmentDto) {
+  async createAssessment(
+    examBodyId: string,
+    subjectId: string,
+    yearId: string,
+    createDto: CreateExamBodyAssessmentDto,
+  ) {
     this.logger.log(colors.cyan(`📝 Creating assessment: ${createDto.title}`));
 
     const [examBody, subject, year] = await Promise.all([
@@ -33,7 +47,9 @@ export class ExamBodyAssessmentService {
     });
 
     if (existing) {
-      throw new BadRequestException('Assessment already exists for this exam body, subject, and year combination');
+      throw new BadRequestException(
+        'Assessment already exists for this exam body, subject, and year combination',
+      );
     }
 
     const assessment = await this.prisma.examBodyAssessment.create({
@@ -53,10 +69,17 @@ export class ExamBodyAssessmentService {
     });
 
     this.logger.log(colors.green(`✅ Assessment created: ${assessment.title}`));
-    return ResponseHelper.success('Assessment created successfully', assessment);
+    return ResponseHelper.success(
+      'Assessment created successfully',
+      assessment,
+    );
   }
 
-  async findAllAssessments(examBodyId: string, subjectId?: string, yearId?: string) {
+  async findAllAssessments(
+    examBodyId: string,
+    subjectId?: string,
+    yearId?: string,
+  ) {
     const assessments = await this.prisma.examBodyAssessment.findMany({
       where: {
         examBodyId,
@@ -72,7 +95,10 @@ export class ExamBodyAssessmentService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return ResponseHelper.success('Assessments retrieved successfully', assessments);
+    return ResponseHelper.success(
+      'Assessments retrieved successfully',
+      assessments,
+    );
   }
 
   async findOneAssessment(id: string) {
@@ -97,11 +123,16 @@ export class ExamBodyAssessmentService {
       throw new NotFoundException('Assessment not found');
     }
 
-    return ResponseHelper.success('Assessment retrieved successfully', assessment);
+    return ResponseHelper.success(
+      'Assessment retrieved successfully',
+      assessment,
+    );
   }
 
   async updateAssessment(id: string, updateDto: UpdateExamBodyAssessmentDto) {
-    const existing = await this.prisma.examBodyAssessment.findUnique({ where: { id } });
+    const existing = await this.prisma.examBodyAssessment.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Assessment not found');
     }
@@ -117,11 +148,16 @@ export class ExamBodyAssessmentService {
     });
 
     this.logger.log(colors.green(`✅ Assessment updated: ${assessment.title}`));
-    return ResponseHelper.success('Assessment updated successfully', assessment);
+    return ResponseHelper.success(
+      'Assessment updated successfully',
+      assessment,
+    );
   }
 
   async deleteAssessment(id: string) {
-    const assessment = await this.prisma.examBodyAssessment.findUnique({ where: { id } });
+    const assessment = await this.prisma.examBodyAssessment.findUnique({
+      where: { id },
+    });
     if (!assessment) {
       throw new NotFoundException('Assessment not found');
     }
@@ -132,10 +168,17 @@ export class ExamBodyAssessmentService {
     return ResponseHelper.success('Assessment deleted successfully', { id });
   }
 
-  async createQuestion(assessmentId: string, createDto: CreateExamBodyQuestionDto) {
-    this.logger.log(colors.cyan(`📝 Creating question for assessment: ${assessmentId}`));
+  async createQuestion(
+    assessmentId: string,
+    createDto: CreateExamBodyQuestionDto,
+  ) {
+    this.logger.log(
+      colors.cyan(`📝 Creating question for assessment: ${assessmentId}`),
+    );
 
-    const assessment = await this.prisma.examBodyAssessment.findUnique({ where: { id: assessmentId } });
+    const assessment = await this.prisma.examBodyAssessment.findUnique({
+      where: { id: assessmentId },
+    });
     if (!assessment) {
       throw new NotFoundException('Assessment not found');
     }
@@ -164,22 +207,29 @@ export class ExamBodyAssessmentService {
                 isCorrect: optionData.isCorrect || false,
               },
             });
-          })
+          }),
         );
       }
 
-      const correctOptionIds = options.filter(opt => opt.isCorrect).map(opt => opt.id);
+      const correctOptionIds = options
+        .filter((opt) => opt.isCorrect)
+        .map((opt) => opt.id);
       let correctAnswers: any[] = [];
 
       if (correctOptionIds.length > 0) {
-        this.logger.log(colors.yellow(`🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options`));
+        this.logger.log(
+          colors.yellow(
+            `🔧 Auto-generating correct answer from ${correctOptionIds.length} correct options`,
+          ),
+        );
 
-        const correctAnswer = await prisma.examBodyAssessmentCorrectAnswer.create({
-          data: {
-            questionId: question.id,
-            optionIds: correctOptionIds,
-          },
-        });
+        const correctAnswer =
+          await prisma.examBodyAssessmentCorrectAnswer.create({
+            data: {
+              questionId: question.id,
+              optionIds: correctOptionIds,
+            },
+          });
         correctAnswers = [correctAnswer];
 
         this.logger.log(colors.green(`✅ Correct answer auto-generated`));
@@ -190,7 +240,9 @@ export class ExamBodyAssessmentService {
 
     await this.updateAssessmentTotalPoints(assessmentId);
 
-    this.logger.log(colors.green(`✅ Question created with ${result.options.length} options`));
+    this.logger.log(
+      colors.green(`✅ Question created with ${result.options.length} options`),
+    );
     return ResponseHelper.success('Question created successfully', result);
   }
 
@@ -204,11 +256,17 @@ export class ExamBodyAssessmentService {
       orderBy: { order: 'asc' },
     });
 
-    return ResponseHelper.success('Questions retrieved successfully', questions);
+    return ResponseHelper.success(
+      'Questions retrieved successfully',
+      questions,
+    );
   }
 
   async deleteQuestion(id: string) {
-    const question = await this.prisma.examBodyAssessmentQuestion.findUnique({ where: { id }, include: { assessment: true } });
+    const question = await this.prisma.examBodyAssessmentQuestion.findUnique({
+      where: { id },
+      include: { assessment: true },
+    });
     if (!question) {
       throw new NotFoundException('Question not found');
     }
@@ -229,8 +287,13 @@ export class ExamBodyAssessmentService {
       },
     });
 
-    this.logger.log(colors.green(`✅ Assessment published: ${assessment.title}`));
-    return ResponseHelper.success('Assessment published successfully', assessment);
+    this.logger.log(
+      colors.green(`✅ Assessment published: ${assessment.title}`),
+    );
+    return ResponseHelper.success(
+      'Assessment published successfully',
+      assessment,
+    );
   }
 
   async unpublishAssessment(id: string) {
@@ -242,8 +305,13 @@ export class ExamBodyAssessmentService {
       },
     });
 
-    this.logger.log(colors.green(`✅ Assessment unpublished: ${assessment.title}`));
-    return ResponseHelper.success('Assessment unpublished successfully', assessment);
+    this.logger.log(
+      colors.green(`✅ Assessment unpublished: ${assessment.title}`),
+    );
+    return ResponseHelper.success(
+      'Assessment unpublished successfully',
+      assessment,
+    );
   }
 
   private async updateAssessmentTotalPoints(assessmentId: string) {
@@ -262,4 +330,3 @@ export class ExamBodyAssessmentService {
     this.logger.log(colors.cyan(`📊 Total points updated: ${totalPoints}`));
   }
 }
-

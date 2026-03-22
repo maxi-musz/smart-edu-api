@@ -17,9 +17,13 @@ export const teacherRoleChangeDirectorTemplate = (payload: {
   previousClasses?: string[];
   changeDate: string;
 }): string => {
-  const hasSubjectChanges = (payload.newSubjects && payload.newSubjects.length > 0) || (payload.removedSubjects && payload.removedSubjects.length > 0);
-  const hasClassChanges = (payload.newClasses && payload.newClasses.length > 0) || (payload.removedClasses && payload.removedClasses.length > 0);
-  
+  const hasSubjectChanges =
+    (payload.newSubjects && payload.newSubjects.length > 0) ||
+    (payload.removedSubjects && payload.removedSubjects.length > 0);
+  const hasClassChanges =
+    (payload.newClasses && payload.newClasses.length > 0) ||
+    (payload.removedClasses && payload.removedClasses.length > 0);
+
   return `
     <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; color: #333;">
       <div style="max-width: 700px; margin: 0 auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
@@ -46,65 +50,97 @@ export const teacherRoleChangeDirectorTemplate = (payload: {
             <p style="margin: 5px 0;"><strong>Change Type:</strong> ${payload.changeType === 'subject' ? 'Subject Assignment' : payload.changeType === 'class' ? 'Class Assignment' : 'Subject & Class Assignment'}</p>
           </div>
           
-          ${hasSubjectChanges ? `
+          ${
+            hasSubjectChanges
+              ? `
           <div style="background-color: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #1e40af;">📚 Teaching Role Changes</h3>
-            ${payload.previousSubjects && payload.previousSubjects.length > 0 ? `
+            ${
+              payload.previousSubjects && payload.previousSubjects.length > 0
+                ? `
             <div style="margin-bottom: 15px;">
               <p style="margin: 0 0 5px 0; color: #6b7280;"><strong>Previous Subjects:</strong></p>
               <ul style="margin: 0; padding-left: 20px; color: #6b7280;">
-                ${payload.previousSubjects.map(subject => `<li style="margin: 3px 0;">${subject}</li>`).join('')}
+                ${payload.previousSubjects.map((subject) => `<li style="margin: 3px 0;">${subject}</li>`).join('')}
               </ul>
             </div>
-            ` : ''}
-            ${payload.newSubjects && payload.newSubjects.length > 0 ? `
+            `
+                : ''
+            }
+            ${
+              payload.newSubjects && payload.newSubjects.length > 0
+                ? `
             <div style="margin-bottom: 15px;">
               <p style="margin: 0 0 5px 0; color: #15803d;"><strong>✅ New Teaching Subjects:</strong></p>
               <ul style="margin: 0; padding-left: 20px; color: #15803d;">
-                ${payload.newSubjects.map(subject => `<li style="margin: 3px 0;">${subject}</li>`).join('')}
+                ${payload.newSubjects.map((subject) => `<li style="margin: 3px 0;">${subject}</li>`).join('')}
               </ul>
             </div>
-            ` : ''}
-            ${payload.removedSubjects && payload.removedSubjects.length > 0 ? `
+            `
+                : ''
+            }
+            ${
+              payload.removedSubjects && payload.removedSubjects.length > 0
+                ? `
             <div>
               <p style="margin: 0 0 5px 0; color: #dc2626;"><strong>❌ Subjects Removed:</strong></p>
               <ul style="margin: 0; padding-left: 20px; color: #dc2626;">
-                ${payload.removedSubjects.map(subject => `<li style="margin: 3px 0;">${subject}</li>`).join('')}
+                ${payload.removedSubjects.map((subject) => `<li style="margin: 3px 0;">${subject}</li>`).join('')}
               </ul>
             </div>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
-          ${hasClassChanges ? `
+          ${
+            hasClassChanges
+              ? `
           <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #15803d;">🏫 Class Management Changes</h3>
-            ${payload.previousClasses && payload.previousClasses.length > 0 ? `
+            ${
+              payload.previousClasses && payload.previousClasses.length > 0
+                ? `
             <div style="margin-bottom: 15px;">
               <p style="margin: 0 0 5px 0; color: #6b7280;"><strong>Previous Classes:</strong></p>
               <ul style="margin: 0; padding-left: 20px; color: #6b7280;">
-                ${payload.previousClasses.map(cls => `<li style="margin: 3px 0;">${cls}</li>`).join('')}
+                ${payload.previousClasses.map((cls) => `<li style="margin: 3px 0;">${cls}</li>`).join('')}
               </ul>
             </div>
-            ` : ''}
-            ${payload.newClasses && payload.newClasses.length > 0 ? `
+            `
+                : ''
+            }
+            ${
+              payload.newClasses && payload.newClasses.length > 0
+                ? `
             <div style="margin-bottom: 15px;">
               <p style="margin: 0 0 5px 0; color: #15803d;"><strong>✅ New Classes to Manage:</strong></p>
               <ul style="margin: 0; padding-left: 20px; color: #15803d;">
-                ${payload.newClasses.map(cls => `<li style="margin: 3px 0;">${cls}</li>`).join('')}
+                ${payload.newClasses.map((cls) => `<li style="margin: 3px 0;">${cls}</li>`).join('')}
               </ul>
             </div>
-            ` : ''}
-            ${payload.removedClasses && payload.removedClasses.length > 0 ? `
+            `
+                : ''
+            }
+            ${
+              payload.removedClasses && payload.removedClasses.length > 0
+                ? `
             <div>
               <p style="margin: 0 0 5px 0; color: #dc2626;"><strong>❌ Classes Removed:</strong></p>
               <ul style="margin: 0; padding-left: 20px; color: #dc2626;">
-                ${payload.removedClasses.map(cls => `<li style="margin: 3px 0;">${cls}</li>`).join('')}
+                ${payload.removedClasses.map((cls) => `<li style="margin: 3px 0;">${cls}</li>`).join('')}
               </ul>
             </div>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #92400e;">📊 Summary</h3>
@@ -170,23 +206,31 @@ export const newTeacherRoleDirectorTemplate = (payload: {
             <p style="margin: 5px 0;"><strong>Creation Date:</strong> ${payload.creationDate}</p>
           </div>
           
-          ${payload.assignedSubjects.length > 0 ? `
+          ${
+            payload.assignedSubjects.length > 0
+              ? `
           <div style="background-color: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #1e40af;">📚 Initial Teaching Roles</h3>
             <ul style="margin: 0; padding-left: 20px; color: #1e40af;">
-              ${payload.assignedSubjects.map(subject => `<li style="margin: 5px 0;"><strong>${subject}</strong></li>`).join('')}
+              ${payload.assignedSubjects.map((subject) => `<li style="margin: 5px 0;"><strong>${subject}</strong></li>`).join('')}
             </ul>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
-          ${payload.assignedClasses.length > 0 ? `
+          ${
+            payload.assignedClasses.length > 0
+              ? `
           <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #15803d;">🏫 Initial Class Management Roles</h3>
             <ul style="margin: 0; padding-left: 20px; color: #15803d;">
-              ${payload.assignedClasses.map(cls => `<li style="margin: 5px 0;"><strong>${cls}</strong></li>`).join('')}
+              ${payload.assignedClasses.map((cls) => `<li style="margin: 5px 0;"><strong>${cls}</strong></li>`).join('')}
             </ul>
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           
           <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <h3 style="margin: 0 0 10px 0; color: #92400e;">📊 Summary</h3>
@@ -213,4 +257,4 @@ export const newTeacherRoleDirectorTemplate = (payload: {
       </div>
     </div>
   `;
-}; 
+};

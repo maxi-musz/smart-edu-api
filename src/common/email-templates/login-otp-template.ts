@@ -1,4 +1,8 @@
-export const loginOtpTemplate = (email: string, otp: string, otpExpiresAt: Date) => {
+export const loginOtpTemplate = (
+  email: string,
+  otp: string,
+  otpExpiresAt: Date,
+) => {
   return `
     <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
       <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px;">
@@ -22,4 +26,4 @@ export const loginOtpTemplate = (email: string, otp: string, otpExpiresAt: Date)
       </div>
     </div>
   `;
-}; 
+};

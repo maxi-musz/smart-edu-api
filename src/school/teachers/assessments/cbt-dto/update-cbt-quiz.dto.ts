@@ -7,14 +7,14 @@ export enum QuizStatus {
   PUBLISHED = 'PUBLISHED',
   ACTIVE = 'ACTIVE',
   CLOSED = 'CLOSED',
-  ARCHIVED = 'ARCHIVED'
+  ARCHIVED = 'ARCHIVED',
 }
 
 export class UpdateAssessmentDto extends PartialType(CreateAssessmentDto) {
   @ApiPropertyOptional({
     description: 'Status of the quiz',
     enum: QuizStatus,
-    example: QuizStatus.PUBLISHED
+    example: QuizStatus.PUBLISHED,
   })
   @IsEnum(QuizStatus)
   @IsOptional()

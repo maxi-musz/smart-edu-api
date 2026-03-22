@@ -1,10 +1,26 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UseGuards, UseInterceptors, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LibraryJwtGuard } from '../library-auth/guard/library-jwt.guard';
 import { LibraryOwnerGuard } from '../library-auth/guard/library-owner.guard';
 import { LibraryExamBodySubjectService } from './exam-body-subject.service';
-import { CreateLibraryExamBodySubjectDto, UpdateLibraryExamBodySubjectDto } from './dto';
+import {
+  CreateLibraryExamBodySubjectDto,
+  UpdateLibraryExamBodySubjectDto,
+} from './dto';
 import { LibraryExamBodySubjectDocs } from './docs/exam-body-subject.docs';
 
 @ApiTags('Exam Body Subjects')

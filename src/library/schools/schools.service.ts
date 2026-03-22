@@ -29,193 +29,213 @@ export class SchoolsService {
   ) {}
 
   async getAllSchools(): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan('[LIBRARY SCHOOLS] Fetching comprehensive dashboard data for all schools'));
+    this.logger.log(
+      colors.cyan(
+        '[LIBRARY SCHOOLS] Fetching comprehensive dashboard data for all schools',
+      ),
+    );
 
     try {
       // Fetch all schools with basic info
       const schools = await this.prisma.school.findMany({
-      select: {
-        id: true,
-        school_name: true,
-        school_email: true,
-        school_phone: true,
-        school_address: true,
-        school_type: true,
-        school_ownership: true,
-        status: true,
-        school_icon: true,
-        platformId: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        select: {
+          id: true,
+          school_name: true,
+          school_email: true,
+          school_phone: true,
+          school_address: true,
+          school_type: true,
+          school_ownership: true,
+          status: true,
+          school_icon: true,
+          platformId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
 
-    // Calculate overall statistics
-    const [
-      totalSchools,
-      schoolsByStatus,
-      schoolsByType,
-      schoolsByOwnership,
-      totalTeachers,
-      totalStudents,
-      totalClasses,
-      totalSubjects,
-      totalParents,
-      totalUsers,
-    ] = await Promise.all([
-      this.prisma.school.count(),
-      this.prisma.school.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
-      this.prisma.school.groupBy({
-        by: ['school_type'],
-        _count: true,
-      }),
-      this.prisma.school.groupBy({
-        by: ['school_ownership'],
-        _count: true,
-      }),
-      this.prisma.teacher.count(),
-      this.prisma.student.count(),
-      this.prisma.class.count(),
-      this.prisma.subject.count(),
-      this.prisma.parent.count(),
-      this.prisma.user.count(),
-    ]);
-
-    // Fetch detailed breakdown for each school
-    const schoolsWithDetails = await Promise.all(
-      schools.map(async (school) => {
-        const [
-          teacherCount,
-          studentCount,
-          classCount,
-          subjectCount,
-          parentCount,
-          userCount,
-          academicSessionCount,
-          assessmentCount,
-          assignmentCount,
-          activeAcademicSession,
-          subscriptionPlan,
-        ] = await Promise.all([
-          this.prisma.teacher.count({ where: { school_id: school.id } }),
-          this.prisma.student.count({ where: { school_id: school.id } }),
-          this.prisma.class.count({ where: { schoolId: school.id } }),
-          this.prisma.subject.count({ where: { schoolId: school.id } }),
-          this.prisma.parent.count({ where: { school_id: school.id } }),
-          this.prisma.user.count({ where: { school_id: school.id } }),
-          this.prisma.academicSession.count({ where: { school_id: school.id } }),
-          this.prisma.assessment.count({ where: { school_id: school.id } }),
-          this.prisma.assignment.count({ where: { school_id: school.id } }),
-          this.prisma.academicSession.findFirst({
-            where: { school_id: school.id, is_current: true },
-            select: {
-              id: true,
-              academic_year: true,
-              term: true,
-              status: true,
-            },
-          }),
-          this.prisma.platformSubscriptionPlan.findUnique({
-            where: { school_id: school.id },
-            select: {
-              plan_type: true,
-              name: true,
-              status: true,
-              is_active: true,
-            },
-          }),
-        ]);
-
-        return {
-          ...school,
-          breakdown: {
-            teachers: {
-              total: teacherCount,
-            },
-            students: {
-              total: studentCount,
-            },
-            classes: {
-              total: classCount,
-            },
-            subjects: {
-              total: subjectCount,
-            },
-            parents: {
-              total: parentCount,
-            },
-            users: {
-              total: userCount,
-            },
-            academicSessions: {
-              total: academicSessionCount,
-              current: activeAcademicSession,
-            },
-            content: {
-              assessments: assessmentCount,
-              assignments: assignmentCount,
-            },
-            subscription: subscriptionPlan || null,
-          },
-        };
-      }),
-    );
-
-    // Format statistics
-    const statistics = {
-      overview: {
+      // Calculate overall statistics
+      const [
         totalSchools,
+        schoolsByStatus,
+        schoolsByType,
+        schoolsByOwnership,
         totalTeachers,
         totalStudents,
         totalClasses,
         totalSubjects,
         totalParents,
         totalUsers,
-      },
-      schoolsByStatus: schoolsByStatus.reduce(
-        (acc, item) => {
-          acc[item.status] = item._count;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-      schoolsByType: schoolsByType.reduce(
-        (acc, item) => {
-          acc[item.school_type] = item._count;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-      schoolsByOwnership: schoolsByOwnership.reduce(
-        (acc, item) => {
-          acc[item.school_ownership] = item._count;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-    };
+      ] = await Promise.all([
+        this.prisma.school.count(),
+        this.prisma.school.groupBy({
+          by: ['status'],
+          _count: true,
+        }),
+        this.prisma.school.groupBy({
+          by: ['school_type'],
+          _count: true,
+        }),
+        this.prisma.school.groupBy({
+          by: ['school_ownership'],
+          _count: true,
+        }),
+        this.prisma.teacher.count(),
+        this.prisma.student.count(),
+        this.prisma.class.count(),
+        this.prisma.subject.count(),
+        this.prisma.parent.count(),
+        this.prisma.user.count(),
+      ]);
 
-      this.logger.log(colors.green(`Successfully retrieved dashboard data for ${schools.length} schools`));
+      // Fetch detailed breakdown for each school
+      const schoolsWithDetails = await Promise.all(
+        schools.map(async (school) => {
+          const [
+            teacherCount,
+            studentCount,
+            classCount,
+            subjectCount,
+            parentCount,
+            userCount,
+            academicSessionCount,
+            assessmentCount,
+            assignmentCount,
+            activeAcademicSession,
+            subscriptionPlan,
+          ] = await Promise.all([
+            this.prisma.teacher.count({ where: { school_id: school.id } }),
+            this.prisma.student.count({ where: { school_id: school.id } }),
+            this.prisma.class.count({ where: { schoolId: school.id } }),
+            this.prisma.subject.count({ where: { schoolId: school.id } }),
+            this.prisma.parent.count({ where: { school_id: school.id } }),
+            this.prisma.user.count({ where: { school_id: school.id } }),
+            this.prisma.academicSession.count({
+              where: { school_id: school.id },
+            }),
+            this.prisma.assessment.count({ where: { school_id: school.id } }),
+            this.prisma.assignment.count({ where: { school_id: school.id } }),
+            this.prisma.academicSession.findFirst({
+              where: { school_id: school.id, is_current: true },
+              select: {
+                id: true,
+                academic_year: true,
+                term: true,
+                status: true,
+              },
+            }),
+            this.prisma.platformSubscriptionPlan.findUnique({
+              where: { school_id: school.id },
+              select: {
+                plan_type: true,
+                name: true,
+                status: true,
+                is_active: true,
+              },
+            }),
+          ]);
 
-      return new ApiResponse(true, 'All schools dashboard data retrieved successfully', {
-        statistics,
-        schools: schoolsWithDetails,
-        total: schools.length,
-      });
+          return {
+            ...school,
+            breakdown: {
+              teachers: {
+                total: teacherCount,
+              },
+              students: {
+                total: studentCount,
+              },
+              classes: {
+                total: classCount,
+              },
+              subjects: {
+                total: subjectCount,
+              },
+              parents: {
+                total: parentCount,
+              },
+              users: {
+                total: userCount,
+              },
+              academicSessions: {
+                total: academicSessionCount,
+                current: activeAcademicSession,
+              },
+              content: {
+                assessments: assessmentCount,
+                assignments: assignmentCount,
+              },
+              subscription: subscriptionPlan || null,
+            },
+          };
+        }),
+      );
+
+      // Format statistics
+      const statistics = {
+        overview: {
+          totalSchools,
+          totalTeachers,
+          totalStudents,
+          totalClasses,
+          totalSubjects,
+          totalParents,
+          totalUsers,
+        },
+        schoolsByStatus: schoolsByStatus.reduce(
+          (acc, item) => {
+            acc[item.status] = item._count;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
+        schoolsByType: schoolsByType.reduce(
+          (acc, item) => {
+            acc[item.school_type] = item._count;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
+        schoolsByOwnership: schoolsByOwnership.reduce(
+          (acc, item) => {
+            acc[item.school_ownership] = item._count;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
+      };
+
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved dashboard data for ${schools.length} schools`,
+        ),
+      );
+
+      return new ApiResponse(
+        true,
+        'All schools dashboard data retrieved successfully',
+        {
+          statistics,
+          schools: schoolsWithDetails,
+          total: schools.length,
+        },
+      );
     } catch (error) {
-      this.logger.error(colors.red(`Error fetching all schools: ${error.message}`));
-      throw new InternalServerErrorException('Failed to retrieve schools dashboard data');
+      this.logger.error(
+        colors.red(`Error fetching all schools: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve schools dashboard data',
+      );
     }
   }
 
   async getSchoolById(id: string): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Fetching detailed data for school: ${id}`));
+    this.logger.log(
+      colors.cyan(`[LIBRARY SCHOOLS] Fetching detailed data for school: ${id}`),
+    );
 
     try {
       const documentSelect = { id: true, secure_url: true, public_id: true };
@@ -462,16 +482,28 @@ export class SchoolsService {
         },
       };
 
-      this.logger.log(colors.green(`Successfully retrieved detailed data for school: ${school.school_name}`));
+      this.logger.log(
+        colors.green(
+          `Successfully retrieved detailed data for school: ${school.school_name}`,
+        ),
+      );
 
-      return new ApiResponse(true, 'School details retrieved successfully', responseData);
+      return new ApiResponse(
+        true,
+        'School details retrieved successfully',
+        responseData,
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(colors.red(`Error fetching school details: ${error.message}`));
-      throw new InternalServerErrorException('Failed to retrieve school details');
+      this.logger.error(
+        colors.red(`Error fetching school details: ${error.message}`),
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve school details',
+      );
     }
   }
 
@@ -510,7 +542,9 @@ export class SchoolsService {
       },
     });
 
-    this.logger.log(colors.green(`School approved successfully: ${updated.school_name}`));
+    this.logger.log(
+      colors.green(`School approved successfully: ${updated.school_name}`),
+    );
     return new ApiResponse(true, 'School approved successfully', updated);
   }
 
@@ -524,7 +558,11 @@ export class SchoolsService {
     schoolIcon: Express.Multer.File | undefined,
     libraryUser: { id: string },
   ): Promise<ApiResponse<unknown>> {
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding school: ${dto.school_name}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding school: ${dto.school_name}`,
+      ),
+    );
     return this.authService.onboardSchool(dto, files, schoolIcon, {
       type: 'library_user',
       id: libraryUser.id,
@@ -536,8 +574,16 @@ export class SchoolsService {
     dto: OnboardClassesDto,
     libraryUser: { id: string },
   ): Promise<ApiResponse<unknown>> {
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding classes for school: ${schoolId}`));
-    return this.authService.onboardClasses(dto, {}, { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } }) as Promise<ApiResponse<unknown>>;
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding classes for school: ${schoolId}`,
+      ),
+    );
+    return this.authService.onboardClasses(
+      dto,
+      {},
+      { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } },
+    ) as Promise<ApiResponse<unknown>>;
   }
 
   async onboardTeachers(
@@ -545,8 +591,16 @@ export class SchoolsService {
     dto: OnboardTeachersDto,
     libraryUser: { id: string },
   ): Promise<ApiResponse<unknown>> {
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding teachers for school: ${schoolId}`));
-    return this.authService.onboardTeachers(dto, {}, { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } }) as Promise<ApiResponse<unknown>>;
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding teachers for school: ${schoolId}`,
+      ),
+    );
+    return this.authService.onboardTeachers(
+      dto,
+      {},
+      { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } },
+    ) as Promise<ApiResponse<unknown>>;
   }
 
   async onboardStudents(
@@ -554,8 +608,16 @@ export class SchoolsService {
     dto: OnboardStudentsDto,
     libraryUser: { id: string },
   ): Promise<ApiResponse<unknown>> {
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding students for school: ${schoolId}`));
-    return this.authService.onboardStudents(dto, {}, { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } }) as Promise<ApiResponse<unknown>>;
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY SCHOOLS] Library user ${libraryUser.id} onboarding students for school: ${schoolId}`,
+      ),
+    );
+    return this.authService.onboardStudents(
+      dto,
+      {},
+      { schoolId, performedBy: { type: 'library_user', id: libraryUser.id } },
+    ) as Promise<ApiResponse<unknown>>;
   }
 
   async createSubject(
@@ -565,10 +627,14 @@ export class SchoolsService {
   ): Promise<ApiResponse<unknown>> {
     if (!dto.class_taking_it || dto.class_taking_it.trim() === '') {
       throw new BadRequestException(
-        'class_taking_it (school class id) is required when adding a subject as library owner. Send the school\'s Class id, not a library class.',
+        "class_taking_it (school class id) is required when adding a subject as library owner. Send the school's Class id, not a library class.",
       );
     }
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} creating subject for school: ${schoolId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY SCHOOLS] Library user ${libraryUser.id} creating subject for school: ${schoolId}`,
+      ),
+    );
     const result = await this.subjectService.createSubject(null, dto, {
       schoolId,
       performedBy: { type: 'library_user', id: libraryUser.id },
@@ -588,7 +654,11 @@ export class SchoolsService {
     dto: EditSubjectDto,
     libraryUser: { id: string },
   ): Promise<ApiResponse<unknown>> {
-    this.logger.log(colors.cyan(`[LIBRARY SCHOOLS] Library user ${libraryUser.id} editing subject ${subjectId} for school: ${schoolId}`));
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY SCHOOLS] Library user ${libraryUser.id} editing subject ${subjectId} for school: ${schoolId}`,
+      ),
+    );
     const result = await this.subjectService.editSubject(null, subjectId, dto, {
       schoolId,
       performedBy: { type: 'library_user', id: libraryUser.id },
@@ -605,4 +675,3 @@ export class SchoolsService {
     return result as ApiResponse<unknown>;
   }
 }
-

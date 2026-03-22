@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsNumber, Min, Max, IsEnum, IsArray } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsNumber,
+  Min,
+  Max,
+  IsEnum,
+  IsArray,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { AcademicTerm, QuizStatus, AssessmentType } from '@prisma/client';
 
@@ -51,7 +59,8 @@ export class GetAssessmentsQueryDto {
   // ========================================
 
   @ApiPropertyOptional({
-    description: 'Filter by academic session ID. Defaults to current active session if not provided.',
+    description:
+      'Filter by academic session ID. Defaults to current active session if not provided.',
     example: 'session_abc123',
   })
   @IsOptional()
@@ -59,7 +68,8 @@ export class GetAssessmentsQueryDto {
   academic_session_id?: string;
 
   @ApiPropertyOptional({
-    description: 'Filter by academic term (first, second, third). Used in combination with academic_session_id filter.',
+    description:
+      'Filter by academic term (first, second, third). Used in combination with academic_session_id filter.',
     example: 'first',
     enum: AcademicTerm,
   })
@@ -125,7 +135,8 @@ export class GetAssessmentsQueryDto {
   // ========================================
 
   @ApiPropertyOptional({
-    description: 'Filter by creator user ID (for directors/admins to filter by specific teacher)',
+    description:
+      'Filter by creator user ID (for directors/admins to filter by specific teacher)',
     example: 'user_abc123',
   })
   @IsOptional()
@@ -144,7 +155,8 @@ export class GetAssessmentsQueryDto {
   })
   @IsOptional()
   @IsString()
-  sort_by?: 'createdAt' | 'title' | 'start_date' | 'end_date' | 'status' = 'createdAt';
+  sort_by?: 'createdAt' | 'title' | 'start_date' | 'end_date' | 'status' =
+    'createdAt';
 
   @ApiPropertyOptional({
     description: 'Sort order',

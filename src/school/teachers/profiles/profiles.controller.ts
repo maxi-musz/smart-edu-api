@@ -1,4 +1,10 @@
-import { Controller, Get, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 import { JwtGuard } from '../../auth/guard';
 import { GetUser } from '../../auth/decorator';
@@ -18,7 +24,6 @@ export class ProfilesController {
    * Protected endpoint
    */
   @Get()
-  
   @HttpCode(HttpStatus.OK)
   @GetTeacherProfileDocs.bearerAuth
   @GetTeacherProfileDocs.operation
@@ -29,4 +34,3 @@ export class ProfilesController {
     return this.profilesService.getTeacherProfile(user);
   }
 }
-

@@ -81,4 +81,3 @@ export const envValidationSchema = joi
   })
   // Allow extra variables so you can add new ones without breaking validation
   .unknown(true);
-

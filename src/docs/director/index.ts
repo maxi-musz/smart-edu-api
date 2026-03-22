@@ -6,4 +6,4 @@ export * from './subjects';
 export * from './schedules';
 export * from './finance';
 export * from './dashboard';
-export * from './profiles'; 
+export * from './profiles';

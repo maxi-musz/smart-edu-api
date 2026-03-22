@@ -5,10 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { LibraryAuthModule } from '../library/library-auth/library-auth.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    LibraryAuthModule,
-  ],
+  imports: [PrismaModule, LibraryAuthModule],
   controllers: [LibraryAccessControlController],
   providers: [LibraryAccessControlService],
   exports: [LibraryAccessControlService],

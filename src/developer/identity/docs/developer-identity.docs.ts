@@ -12,5 +12,3 @@ export const RegisterDeveloperDocs = {
     description: 'Developer registered successfully',
   }),
 };
-
-

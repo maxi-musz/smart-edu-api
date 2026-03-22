@@ -8,7 +8,14 @@ import { AcademicSessionModule } from '../academic-session/academic-session.modu
 import { SchoolController } from './school.controller';
 
 @Module({
-  imports: [DirectorModule, TeachersModule, StudentsModule, AuthModule, AiChatModule, AcademicSessionModule],
-  controllers: [SchoolController]
+  imports: [
+    DirectorModule,
+    TeachersModule,
+    StudentsModule,
+    AuthModule,
+    AiChatModule,
+    AcademicSessionModule,
+  ],
+  controllers: [SchoolController],
 })
 export class SchoolModule {}
