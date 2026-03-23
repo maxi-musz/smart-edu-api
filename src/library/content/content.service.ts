@@ -55,9 +55,9 @@ export class ContentService {
       },
     });
     if (activeCount >= this.maxActiveUploadsPerUser) {
-      throw new BadRequestException(
-        `You already have ${activeCount} active upload(s). Please wait for at least one to finish before starting another (limit: ${this.maxActiveUploadsPerUser}).`,
-      );
+      // throw new BadRequestException(
+      //   `You already have ${activeCount} active upload(s). Please wait for at least one to finish before starting another (limit: ${this.maxActiveUploadsPerUser}).`,
+      // );
     }
   }
 
