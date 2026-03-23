@@ -17,15 +17,20 @@
 
 ## IMPORTANT: Response Structure
 
-**ALL ENDPOINTS** follow this exact response format:
+Successful responses from `ResponseHelper.success` use this shape (global prefix: `/api/v1`):
 
 ```typescript
 {
-  success: boolean;      // true for success, false for error
+  success: true;
   message: string;       // Human-readable message
-  data: object | null;   // Response data (object on success, null on error)
+  data: object | null;   // Payload on success
+  statusCode: 200;       // Always present on success paths using ResponseHelper
+  length?: number;      // Present when data is an array
+  meta?: unknown;        // Optional metadata
 }
 ```
+
+HTTP errors (4xx/5xx) are returned by Nest’s exception layer; the JSON body may differ from the helper shape above.
 
 ---
 
@@ -56,15 +61,20 @@ GET /video/video-uuid-123/play
 **Success Response (200):**
 
 **For Library Videos:**
+
+Library playback **requires** adaptive HLS to be ready (`hlsStatus === completed` in the database). `videoUrl` is always the **HLS master playlist** (e.g. CloudFront URL ending in `main.m3u8` when using MediaConvert, or `master.m3u8` when using FFmpeg). There is **no MP4 fallback** for library videos on this endpoint.
+
 ```json
 {
   "success": true,
   "message": "Video retrieved for playback",
+  "statusCode": 200,
   "data": {
     "id": "video-uuid-123",
     "title": "Introduction to Mathematics",
     "description": "Basic concepts of mathematics",
-    "videoUrl": "https://s3.amazonaws.com/bucket/video.mp4",
+    "videoUrl": "https://your-cdn.cloudfront.net/library/videos-hls/video-uuid-123/main.m3u8",
+    "streamingType": "hls",
     "thumbnailUrl": "https://s3.amazonaws.com/bucket/thumb.jpg",
     "durationSeconds": 3600,
     "sizeBytes": 52428800,
@@ -75,11 +85,7 @@ GET /video/video-uuid-123/play
     "topic": {
       "id": "topic-uuid",
       "title": "Basic Math",
-      "description": "Fundamentals",
-      "chapter": {
-        "id": "chapter-uuid",
-        "title": "Chapter 1"
-      }
+      "description": "Fundamentals"
     },
     "subject": {
       "id": "subject-uuid",
@@ -90,9 +96,9 @@ GET /video/video-uuid-123/play
     },
     "platform": {
       "id": "platform-uuid",
-      "name": "AWS S3",
-      "slug": "aws-s3",
-      "description": "Amazon S3 Storage"
+      "name": "Example Library",
+      "slug": "example-library",
+      "description": "Platform description"
     },
     "hasViewedBefore": false,
     "viewedAt": null,
@@ -105,15 +111,20 @@ GET /video/video-uuid-123/play
 ```
 
 **For School Videos:**
+
+When HLS transcoding has finished, `videoUrl` points at the HLS playlist and `streamingType` is `"hls"`. If HLS is not ready yet, the API falls back to **MP4** (CloudFront or stored URL) and `streamingType` is `"mp4"`.
+
 ```json
 {
   "success": true,
   "message": "Video retrieved for playback",
+  "statusCode": 200,
   "data": {
     "id": "video-uuid-456",
     "title": "Algebra Basics",
     "description": "Introduction to algebra",
     "videoUrl": "https://s3.amazonaws.com/bucket/school-video.mp4",
+    "streamingType": "mp4",
     "thumbnailUrl": "https://s3.amazonaws.com/bucket/thumb.jpg",
     "durationSeconds": 1800,
     "size": "50 MB",
@@ -152,11 +163,13 @@ GET /video/video-uuid-123/play
 {
   success: true;
   message: string;
+  statusCode: 200;
   data: {
     id: string;
     title: string;
     description: string | null;
-    videoUrl: string;
+    videoUrl: string; // Library: HLS playlist only. School: HLS playlist or MP4 URL
+    streamingType: 'hls' | 'mp4'; // Library: always 'hls' when 200 OK
     thumbnailUrl: string | null;
     durationSeconds: number;
     size?: string;
@@ -169,10 +182,6 @@ GET /video/video-uuid-123/play
       id: string;
       title: string;
       description?: string;
-      chapter?: {
-        id: string;
-        title: string;
-      };
       subject?: {
         id: string;
         name: string;
@@ -210,10 +219,11 @@ GET /video/video-uuid-123/play
 **Important Notes:**
 
 1. **Automatic Detection:** Endpoint automatically detects if video is library or school type
-2. **Unique View Tracking:** Only counts each user once per video (YouTube-style)
-3. **Resume Functionality:** Returns `lastWatchPosition` for resume playback
-4. **Completion Status:** Shows if user has completed watching (>90%)
-5. **Universal:** Works for all authenticated users (students, teachers, directors, library users)
+2. **Library HLS only:** For `videoType: 'library'`, playback is returned only after HLS transcoding completes. While processing, the API responds with **503**; if transcoding failed, **422** (see below). Use `hlsStatus` from listing/detail APIs to drive “Preparing…” UI and polling.
+3. **Unique View Tracking:** Only counts each user once per video (YouTube-style). Views are incremented only after the video is eligible to play (library: after HLS is ready).
+4. **Resume Functionality:** Returns `lastWatchPosition` for resume playback
+5. **Completion Status:** Shows if user has completed watching (>90%)
+6. **Universal:** Works for all authenticated users (students, teachers, directors, library users)
 
 **Error Responses:**
 
@@ -232,6 +242,28 @@ GET /video/video-uuid-123/play
   "success": false,
   "message": "Unauthorized access",
   "data": null
+}
+```
+
+**503 Service Unavailable** (library video — HLS not ready yet, e.g. `pending` / `processing`):
+
+Shape follows Nest’s `ServiceUnavailableException` payload; `message` explains that adaptive streaming is still being prepared.
+
+```json
+{
+  "success": false,
+  "message": "Video is not ready for playback yet. Adaptive streaming is still being prepared.",
+  "hlsStatus": "processing"
+}
+```
+
+**422 Unprocessable Entity** (library video — HLS transcoding **failed**):
+
+```json
+{
+  "success": false,
+  "message": "Video processing failed. Please re-upload the video or contact support.",
+  "hlsStatus": "failed"
 }
 ```
 

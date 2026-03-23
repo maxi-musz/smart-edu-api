@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AccessControlHelperService } from '../school-access-control/access-control-helper.service';
 import { CloudFrontService } from '../shared/services/cloudfront.service';
+import { assertLibraryVideoReadyForHlsPlayback } from '../video/library-hls-playback.policy';
 import { LibraryResourceType } from '../library-access-control/dto';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
@@ -945,6 +946,8 @@ export class ExploreService {
         throw new NotFoundException('Video not found or not available');
       }
 
+      assertLibraryVideoReadyForHlsPlayback(video);
+
       // Check if user has already viewed this video (unique view tracking like YouTube)
       // Library users: sub is LibraryResourceUser id. School users: sub is User id.
       const viewWhere = isLibraryUser
@@ -985,24 +988,17 @@ export class ExploreService {
         );
       }
 
-      // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
-      const isHlsReady =
-        video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
-      const playbackUrl =
-        isHlsReady && video.hlsPlaybackUrl
-          ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
-          : this.cloudFrontService.getVideoUrl(
-              video.videoS3Key,
-              video.videoUrl,
-            );
+      const playbackUrl = this.cloudFrontService.getHlsPlaybackUrl(
+        video.hlsPlaybackUrl!,
+      );
 
       // Remove internal fields from response
       const { hlsStatus, hlsPlaybackUrl, videoS3Key, ...videoData } = video;
 
       const data = {
         ...videoData,
-        videoUrl: playbackUrl, // Use HLS or CloudFront URL when available
-        streamingType: isHlsReady ? 'hls' : 'mp4', // Inform client of stream type
+        videoUrl: playbackUrl,
+        streamingType: 'hls' as const,
         views: updatedViews,
         hasViewedBefore: !!existingView,
         viewedAt: existingView?.viewedAt || new Date(),

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudFrontService } from '../shared/services/cloudfront.service';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
+import { assertLibraryVideoReadyForHlsPlayback } from './library-hls-playback.policy';
 import * as colors from 'colors';
 
 @Injectable()
@@ -144,6 +145,8 @@ export class VideoService {
       throw new NotFoundException('Video not found or not published');
     }
 
+    assertLibraryVideoReadyForHlsPlayback(video);
+
     // Build view query based on user type
     const viewWhere = {
       videoId: videoId,
@@ -213,20 +216,17 @@ export class VideoService {
       },
     });
 
-    // Build playback URL - prefer HLS if available, then CloudFront MP4, then S3
-    const isHlsReady = video.hlsStatus === 'completed' && video.hlsPlaybackUrl;
-    const playbackUrl =
-      isHlsReady && video.hlsPlaybackUrl
-        ? this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl)
-        : this.cloudFrontService.getVideoUrl(video.videoS3Key, video.videoUrl);
+    const playbackUrl = this.cloudFrontService.getHlsPlaybackUrl(
+      video.hlsPlaybackUrl!,
+    );
 
     // Remove internal fields from response
     const { hlsStatus, hlsPlaybackUrl, videoS3Key, ...videoData } = video;
 
     return ResponseHelper.success('Video retrieved for playback', {
       ...videoData,
-      videoUrl: playbackUrl, // Use HLS or CloudFront URL when available
-      streamingType: isHlsReady ? 'hls' : 'mp4', // Inform client of stream type
+      videoUrl: playbackUrl,
+      streamingType: 'hls' as const,
       views: updatedViews,
       hasViewedBefore: !!existingView,
       viewedAt: existingView?.viewedAt || null,

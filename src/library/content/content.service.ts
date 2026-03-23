@@ -24,6 +24,8 @@ import {
 } from './dto/request-video-upload.dto';
 import { HlsTranscodeStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { CloudFrontService } from '../../shared/services/cloudfront.service';
+import { assertLibraryVideoReadyForHlsPlayback } from '../../video/library-hls-playback.policy';
 import * as colors from 'colors';
 
 @Injectable()
@@ -38,6 +40,7 @@ export class ContentService {
     private readonly uploadProgressService: UploadProgressService,
     private readonly videoUploadService: VideoUploadService,
     private readonly configService: ConfigService,
+    private readonly cloudFrontService: CloudFrontService,
   ) {
     this.maxActiveUploadsPerUser =
       Number(this.configService.get('MAX_ACTIVE_UPLOADS_PER_USER')) || 5;
@@ -1207,6 +1210,9 @@ export class ContentService {
           title: true,
           description: true,
           videoUrl: true,
+          videoS3Key: true,
+          hlsPlaybackUrl: true,
+          hlsStatus: true,
           thumbnailUrl: true,
           durationSeconds: true,
           sizeBytes: true,
@@ -1249,7 +1255,7 @@ export class ContentService {
         );
       }
 
-      this.logger.log(colors.blue(`Video URL: ${video.videoUrl}`));
+      assertLibraryVideoReadyForHlsPlayback(video);
 
       // Extract userId and determine user type
       const userId = user.sub || user.id;
@@ -1352,15 +1358,24 @@ export class ContentService {
         );
       }
 
+      const {
+        hlsStatus: _hls,
+        hlsPlaybackUrl: _hlsUrl,
+        videoS3Key: _s3,
+        ...videoPublic
+      } = video;
+
       const responseData = {
-        ...video,
+        ...videoPublic,
+        videoUrl: this.cloudFrontService.getHlsPlaybackUrl(video.hlsPlaybackUrl!),
+        streamingType: 'hls' as const,
         views: updatedViews,
         hasViewedBefore: !!existingView,
       };
 
       this.logger.log(
         colors.green(
-          `Video retrieved for playback: ${video.title} (Total unique views: ${updatedViews})`,
+          `Video retrieved for playback (HLS): ${video.title} (Total unique views: ${updatedViews})`,
         ),
       );
       return new ApiResponse(
