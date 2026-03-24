@@ -100,3 +100,29 @@ export class UpdateTopicDto {
   @Type(() => Boolean)
   is_active?: boolean;
 }
+
+/** Body for drag-and-drop reorder: 1-based positions as shown in the topic list. */
+export class ReorderTopicDto {
+  @ApiProperty({
+    description:
+      '1-based index of this topic in the list before the move (must match server order; used to detect stale UI)',
+    example: 9,
+    minimum: 1,
+  })
+  @IsInt()
+  @Type(() => Number)
+  @Min(1)
+  currentOrder: number;
+
+  @ApiProperty({
+    description:
+      '1-based index where the topic should appear after the move (1 = first, N = last). ' +
+      'You may also send N+1 to mean “after the last topic” (treated as N; same total count).',
+    example: 7,
+    minimum: 1,
+  })
+  @IsInt()
+  @Type(() => Number)
+  @Min(1)
+  newOrder: number;
+}

@@ -283,11 +283,44 @@ export class SubjectService {
 
       // Build update data object (only include fields that are provided)
       const updateData: any = {};
+      if (payload.classId !== undefined) {
+        if (payload.classId === null) {
+          updateData.classId = null;
+        } else {
+          const libraryClass = await this.prisma.libraryClass.findUnique({
+            where: { id: payload.classId },
+          });
+          if (!libraryClass) {
+            this.logger.error(
+              colors.red(`Class not found: ${payload.classId}`),
+            );
+            throw new NotFoundException('Class not found');
+          }
+          updateData.classId = payload.classId;
+        }
+      }
       if (payload.name !== undefined) updateData.name = payload.name;
       if (payload.code !== undefined) updateData.code = payload.code ?? null;
       if (payload.color !== undefined) updateData.color = payload.color;
       if (payload.description !== undefined)
         updateData.description = payload.description ?? null;
+
+      if (Object.keys(updateData).length === 0) {
+        const subject = await this.prisma.librarySubject.findFirst({
+          where: { id: subjectId, platformId: libraryUser.platformId },
+          include: {
+            class: {
+              select: { id: true, name: true, order: true },
+            },
+          },
+        });
+        if (!subject) {
+          throw new NotFoundException(
+            'Subject not found or does not belong to your platform',
+          );
+        }
+        return new ApiResponse(true, 'No changes detected', subject);
+      }
 
       // Update the subject in a transaction
       const subject = await this.prisma.$transaction(

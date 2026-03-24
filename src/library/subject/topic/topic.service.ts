@@ -5,9 +5,10 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ApiResponse } from '../../../shared/helper-functions/response';
-import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
+import { CreateTopicDto, ReorderTopicDto, UpdateTopicDto } from './dto/topic.dto';
 import * as colors from 'colors';
 
 @Injectable()
@@ -262,6 +263,199 @@ export class TopicService {
         error.stack,
       );
       throw new InternalServerErrorException('Failed to update topic');
+    }
+  }
+
+  /**
+   * Reorders topics for drag-and-drop: list positions are 1..N by `order` asc, then `id` asc.
+   * Moving position 9 → 7 shifts former 7 → 8 and 8 → 9.
+   */
+  async reorderTopic(
+    user: any,
+    topicId: string,
+    payload: ReorderTopicDto,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[LIBRARY TOPIC] Reordering topic: ${topicId} (${payload.currentOrder} → ${payload.newOrder}) for library user: ${user.email}`,
+      ),
+    );
+
+    try {
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true },
+      });
+
+      if (!libraryUser) {
+        this.logger.error(colors.red('Library user not found'));
+        throw new NotFoundException('Library user not found');
+      }
+
+      const topic = await this.prisma.libraryTopic.findFirst({
+        where: {
+          id: topicId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          subjectId: true,
+          order: true,
+        },
+      });
+
+      if (!topic) {
+        this.logger.error(
+          colors.red(
+            `Topic not found or does not belong to user's platform: ${topicId}`,
+          ),
+        );
+        throw new NotFoundException(
+          'Topic not found or does not belong to your platform',
+        );
+      }
+
+      const topics = await this.prisma.libraryTopic.findMany({
+        where: {
+          subjectId: topic.subjectId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          order: true,
+        },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      });
+
+      const n = topics.length;
+      const { currentOrder, newOrder: rawNewOrder } = payload;
+
+      if (n === 0) {
+        throw new BadRequestException('No topics to reorder');
+      }
+
+      if (currentOrder > n) {
+        throw new BadRequestException(
+          `currentOrder must be between 1 and ${n} for this subject`,
+        );
+      }
+
+      // N+1 means "after the last item" (same as position N). Common when the UI shows
+      // "Unit 30 Topic 1" at 150 and users type 151 to mean "right after that".
+      let newOrder = rawNewOrder;
+      if (rawNewOrder === n + 1) {
+        newOrder = n;
+      } else if (rawNewOrder > n + 1 || rawNewOrder < 1) {
+        throw new BadRequestException(
+          `newOrder must be between 1 and ${n}, or ${n + 1} to move after the last topic`,
+        );
+      }
+
+      const atCurrent = topics[currentOrder - 1];
+      if (!atCurrent || atCurrent.id !== topicId) {
+        throw new BadRequestException(
+          'Current order does not match the server list; refresh topics and try again',
+        );
+      }
+
+      if (currentOrder === newOrder) {
+        const unchanged = await this.prisma.libraryTopic.findUnique({
+          where: { id: topicId },
+          include: {
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                class: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+        return new ApiResponse(true, 'Topic order unchanged', unchanged);
+      }
+
+      const reordered = [...topics];
+      const [moved] = reordered.splice(currentOrder - 1, 1);
+      reordered.splice(newOrder - 1, 0, moved);
+
+      const updates: { id: string; order: number }[] = [];
+      for (let i = 0; i < reordered.length; i++) {
+        const nextOrder = i + 1;
+        if (reordered[i].order !== nextOrder) {
+          updates.push({ id: reordered[i].id, order: nextOrder });
+        }
+      }
+
+      // One statement instead of N sequential updates (avoids 30s+ interactive tx timeouts on large subjects).
+      if (updates.length > 0) {
+        const caseBranches = Prisma.join(
+          updates.map((u) =>
+            Prisma.sql`WHEN ${u.id} THEN CAST(${u.order} AS INTEGER)`,
+          ),
+          ' ',
+        );
+        const idList = Prisma.join(
+          updates.map((u) => Prisma.sql`${u.id}`),
+          ', ',
+        );
+
+        await this.prisma.$executeRaw`
+          UPDATE "LibraryTopic"
+          SET "order" = CASE id ${caseBranches} END
+          WHERE "subjectId" = ${topic.subjectId}
+            AND "platformId" = ${libraryUser.platformId}
+            AND id IN (${idList})
+        `;
+      }
+
+      const updated = await this.prisma.libraryTopic.findUnique({
+        where: { id: topicId },
+        include: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        colors.green(
+          `Topic reordered successfully: ${topicId} → position ${newOrder}${rawNewOrder !== newOrder ? ` (newOrder ${rawNewOrder} normalized to ${newOrder})` : ''} (${updates.length} row(s) updated)`,
+        ),
+      );
+
+      return new ApiResponse(true, 'Topic order updated successfully', {
+        topic: updated,
+        updatedCount: updates.length,
+      });
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      this.logger.error(
+        colors.red(`Error reordering topic: ${error.message}`),
+        error.stack,
+      );
+      throw new InternalServerErrorException('Failed to reorder topic');
     }
   }
 
@@ -1010,9 +1204,7 @@ export class TopicService {
           createdAt: true,
           updatedAt: true,
         },
-        orderBy: {
-          order: 'asc',
-        },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
       });
 
       this.logger.log(

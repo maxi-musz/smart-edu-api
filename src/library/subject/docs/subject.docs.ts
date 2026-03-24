@@ -56,8 +56,9 @@ export const UpdateSubjectDocs = {
   operation: ApiOperation({
     summary: 'Update a subject',
     description:
-      "Update subject details (name, code, color, description) for the authenticated library user's platform. " +
-      'Only provided fields will be updated. Subject code must be unique within the platform if changed. ' +
+      "Update subject details (name, code, color, description, classId) for the authenticated library user's platform. " +
+      'Only provided fields will be updated. To move the subject to another library class, send classId; send JSON null for classId to detach the subject from its class. ' +
+      'Subject code must be unique within the platform if changed. ' +
       'Requires a valid JWT token in the Authorization header. ' +
       'Response is wrapped in { success, message, data } where data contains the updated subject with class information.',
   }),
@@ -86,7 +87,7 @@ export const UpdateSubjectDocs = {
   response404: ApiResponse({
     status: 404,
     description:
-      "Not found - library user not found or subject not found/does not belong to user's platform",
+      "Not found - library user not found, subject not found/does not belong to user's platform, or class not found (when classId is set)",
   }),
 
   response500: ApiResponse({

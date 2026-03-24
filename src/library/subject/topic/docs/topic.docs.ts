@@ -1,5 +1,9 @@
 import { ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
-import { CreateTopicDto, UpdateTopicDto } from '../dto/topic.dto';
+import {
+  CreateTopicDto,
+  ReorderTopicDto,
+  UpdateTopicDto,
+} from '../dto/topic.dto';
 
 export const CreateTopicDocs = {
   operation: ApiOperation({
@@ -50,6 +54,7 @@ export const UpdateTopicDocs = {
     description:
       "Update topic details (title, description, order, is_active) for the authenticated library user's platform. " +
       'Only provided fields will be updated. ' +
+      'To change a topic’s position in the subject list (drag-and-drop), use PATCH reorder instead of setting order here, so indices shift correctly. ' +
       'Requires a valid JWT token in the Authorization header. ' +
       'Response is wrapped in { success, message, data } where data contains the updated topic with subject information.',
   }),
@@ -67,6 +72,53 @@ export const UpdateTopicDocs = {
   response400: ApiResponse({
     status: 400,
     description: 'Bad request - validation error',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description:
+      "Not found - library user not found or topic not found/does not belong to user's platform",
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
+
+export const ReorderTopicDocs = {
+  operation: ApiOperation({
+    summary: 'Reorder a topic (drag-and-drop)',
+    description:
+      'PATCH library/subject/topic/reorder/:topicId (app-wide prefix applies, e.g. /api/v1). ' +
+      'Moves a topic to a new 1-based position within its subject. Other topics shift so order stays dense 1..N (e.g. move 9→7: old 7→8, old 8→9). ' +
+      'Body: currentOrder = row index before the move, newOrder = after — same ordering as GET topics (order ascending, then id ascending). ' +
+      'newOrder is usually 1..N; N+1 is accepted as an alias for “after the last row” (normalized to N, list size unchanged). ' +
+      'currentOrder must match the server (topic at that index must be topicId); otherwise refresh the list and retry. ' +
+      'currentOrder must be in 1..N; newOrder must be in 1..N or N+1. ' +
+      'Requires a valid JWT. On success after a move, data is { topic, updatedCount }. If currentOrder equals newOrder, data is the topic alone (no updatedCount).',
+  }),
+
+  body: ApiBody({
+    description: 'Previous and target list positions (1-based)',
+    type: ReorderTopicDto,
+  }),
+
+  response200: ApiResponse({
+    status: 200,
+    description:
+      'Order updated, or unchanged (no-op). Payload shape: { topic, updatedCount } after a real move; topic only when positions are equal.',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description:
+      'Bad request - validation error, bounds error (newOrder must be 1..N or N+1), or currentOrder out of sync with server',
   }),
 
   response401: ApiResponse({
@@ -128,7 +180,7 @@ export const GetTopicsBySubjectDocs = {
     summary: 'Get all topics for a subject',
     description:
       'Retrieves all topics associated with a specific library subject. ' +
-      'Topics are returned in order (ascending by order field). ' +
+      'Topics are sorted by `order` ascending, then `id` ascending (stable list positions 1..N for drag-and-drop reorder). ' +
       'Requires a valid JWT token in the Authorization header. ' +
       'Response is wrapped in { success, message, data } where data contains the subject information and an array of topics.',
   }),

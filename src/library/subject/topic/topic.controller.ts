@@ -14,7 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { TopicService } from './topic.service';
-import { CreateTopicDto, UpdateTopicDto } from './dto/topic.dto';
+import { CreateTopicDto, ReorderTopicDto, UpdateTopicDto } from './dto/topic.dto';
 import { LibraryJwtGuard } from '../../library-auth/guard/library-jwt.guard';
 import {
   CreateTopicDocs,
@@ -22,6 +22,7 @@ import {
   GetTopicMaterialsDocs,
   GetTopicsBySubjectDocs,
   DeleteTopicDocs,
+  ReorderTopicDocs,
 } from './docs/topic.docs';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
@@ -62,6 +63,25 @@ export class TopicController {
     @Body() payload: UpdateTopicDto,
   ) {
     return await this.topicService.updateTopic(req.user, topicId, payload);
+  }
+
+  @Patch('reorder/:topicId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @ReorderTopicDocs.operation
+  @ReorderTopicDocs.body
+  @ReorderTopicDocs.response200
+  @ReorderTopicDocs.response400
+  @ReorderTopicDocs.response401
+  @ReorderTopicDocs.response404
+  @ReorderTopicDocs.response500
+  async reorderTopic(
+    @Request() req: any,
+    @Param('topicId') topicId: string,
+    @Body() payload: ReorderTopicDto,
+  ) {
+    return await this.topicService.reorderTopic(req.user, topicId, payload);
   }
 
   @Get('getmaterials/:topicId')

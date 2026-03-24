@@ -63,6 +63,17 @@ export class CreateSubjectDto {
 
 export class UpdateSubjectDto {
   @ApiPropertyOptional({
+    description:
+      'Library class ID to attach this subject to. Omit to leave unchanged. Send JSON null to remove the class association.',
+    example: 'cmjbnj4zw0002vlevol2u657f',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  classId?: string | null;
+
+  @ApiPropertyOptional({
     description: 'Name of the subject',
     example: 'Mathematics',
   })

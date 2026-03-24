@@ -20,13 +20,14 @@
 5. [Topic Management](#topic-management)
    - [Create Topic](#4-create-topic)
    - [Update Topic](#5-update-topic)
-   - [Get Topic Materials](#6-get-topic-materials)
+   - [Reorder Topic (drag-and-drop)](#6-reorder-topic-drag-and-drop)
+   - [Get Topic Materials](#7-get-topic-materials)
 6. [Content Management](#content-management)
-   - [Upload Video](#7-upload-video)
-   - [Upload Material](#8-upload-material)
-   - [Create Link](#9-create-link)
-   - [Update Video](#10-update-video)
-   - [Delete Content](#11-delete-content)
+   - [Upload Video](#8-upload-video)
+   - [Upload Material](#9-upload-material)
+   - [Create Link](#10-create-link)
+   - [Update Video](#11-update-video)
+   - [Delete Content](#12-delete-content)
 7. [Integration Flow](#integration-flow)
 8. [Error Responses](#error-responses)
 
@@ -176,7 +177,7 @@ const response = await fetch('https://api.example.com/api/v1/library/subject/cre
 
 ### 2. Update Subject
 
-Update subject details (name, code, color, description).
+Update subject details (name, code, color, description, and optionally which **library class** the subject belongs to).
 
 **Endpoint:** `PATCH /api/v1/library/subject/updatesubject/:subjectId`
 
@@ -188,6 +189,7 @@ Update subject details (name, code, color, description).
 **Request Body:**
 ```typescript
 {
+  classId?: string | null;   // Optional: Library class ID to attach this subject to (same catalog as create). Omit = leave class unchanged. JSON null = remove class association
   name?: string;             // Optional: Subject name (max 200 chars)
   code?: string;             // Optional: Subject code (max 20 chars, must be unique in platform)
   color?: string;            // Optional: Hex color
@@ -204,9 +206,12 @@ curl -X PATCH "https://api.example.com/api/v1/library/subject/updatesubject/subj
     "name": "Advanced Mathematics",
     "code": "MATH101",
     "color": "#FF5733",
-    "description": "Updated description"
+    "description": "Updated description",
+    "classId": "class-uuid-new"
   }'
 ```
+
+**Frontend (edit subject form):** Include a class selector bound to `classId`. Load options from the same library-class list you use at create time. On save, send only fields the user changed; include `classId` when they pick a different class. To clear the class, send `"classId": null` (must be JSON `null`, not the string `"null"`).
 
 **Success Response (200):**
 ```json
@@ -219,14 +224,17 @@ curl -X PATCH "https://api.example.com/api/v1/library/subject/updatesubject/subj
     "code": "MATH101",
     "color": "#FF5733",
     "description": "Updated description",
+    "classId": "class-uuid-new",
     "class": {
-      "id": "class-uuid-1",
+      "id": "class-uuid-new",
       "name": "Grade 10",
       "order": 10
     }
   }
 }
 ```
+
+**Error responses:** Same as other subject routes; **404** if `classId` is set to an ID that does not exist in the library class catalog.
 
 ---
 
@@ -345,6 +353,8 @@ curl -X POST "https://api.example.com/api/v1/library/subject/topic/createtopic" 
 
 Update topic details (title, description, order, is_active).
 
+**Note:** For changing a topic’s **position in the subject’s topic list** (e.g. drag-and-drop), use [Reorder Topic (drag-and-drop)](#6-reorder-topic-drag-and-drop) instead of PATCHing `order` here, so other topics shift correctly.
+
 **Endpoint:** `PATCH /api/v1/library/subject/topic/updatetopic/:topicId`
 
 **Content-Type:** `application/json`
@@ -395,7 +405,94 @@ curl -X PATCH "https://api.example.com/api/v1/library/subject/topic/updatetopic/
 
 ---
 
-### 6. Get Topic Materials
+### 6. Reorder Topic (drag-and-drop)
+
+Move a topic to a new **1-based** position within its subject. Other topics shift so `order` stays a dense sequence **1…N** (e.g. moving row **9** to **7** makes the old row 7 become 8 and old row 8 become 9).
+
+**“After the last topic”:** The list always has **N** slots. The last slot is **N**, not N+1. Many users type **N+1** when they mean “right after the row at N” (e.g. last topic at 150 → they enter 151). The API accepts **`newOrder === N + 1`** and treats it the same as **`newOrder === N`** (move to last). The total count stays **N**.
+
+**List order:** Use the same ordering as when you load topics for the subject: `GET /api/v1/library/subject/topic?subjectId=<subjectId>` — topics are sorted by `order` ascending, then `id` ascending. The **row index in that array (1-based)** is what you send as `currentOrder` and `newOrder`.
+
+**Endpoint:** `PATCH /api/v1/library/subject/topic/reorder/:topicId`
+
+**Content-Type:** `application/json`
+
+**Path parameters:**
+- `topicId` (string, required): The topic being moved.
+
+**Request body:**
+```typescript
+{
+  currentOrder: number;  // Required: 1-based index of this topic in the list *before* the move (must match server; stale UI → 400)
+  newOrder: number;      // Required: 1..N (final rank), or N+1 = alias for “after last” / last rank
+}
+```
+
+**Example:** Move the topic that is currently **9th** in the list to **7th**:
+```bash
+curl -X PATCH "https://api.example.com/api/v1/library/subject/topic/reorder/topic-uuid-9" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentOrder": 9,
+    "newOrder": 7
+  }'
+```
+
+**Example:** Move a topic to the **end** when the last visible row is position **N** (either send **`newOrder: N`** or **`newOrder: N + 1`** — both mean last):
+
+```bash
+# Equivalent when N = 150: place after "Unit 30 Topic 1" at row 150
+curl -X PATCH "https://api.example.com/api/v1/library/subject/topic/reorder/topic-uuid-unit30-t2" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentOrder": 59,
+    "newOrder": 151
+  }'
+```
+
+**Success response (200)** — after a real move:
+```json
+{
+  "success": true,
+  "message": "Topic order updated successfully",
+  "data": {
+    "topic": {
+      "id": "topic-uuid-9",
+      "title": "Unit 2 Topic 1: Speech Sounds",
+      "order": 7,
+      "subject": {
+        "id": "subject-uuid-1",
+        "name": "English Language",
+        "code": "ENG PRY1",
+        "class": { "id": "class-uuid-1", "name": "Primary 1" }
+      }
+    },
+    "updatedCount": 3
+  }
+}
+```
+
+`updatedCount` is how many topics had their `order` field changed (only rows that actually moved).
+
+**Success response (200)** — when `currentOrder` equals `newOrder` (no-op): `data` is the topic object only (same shape as other topic responses), message `"Topic order unchanged"`.
+
+**Error responses:**
+- **400 Bad Request:** Validation error, `currentOrder` outside **1…N**, `newOrder` outside **1…N+1** (only **N+1** is allowed beyond N, as an alias for last), or `currentOrder` does not match the server list (refresh topics and retry).
+- **401 Unauthorized:** Invalid or missing JWT.
+- **404 Not Found:** Topic not found or not on the user’s platform.
+- **500 Internal Server Error:** Server error.
+
+**Frontend checklist:**
+1. Load topics with `GET /api/v1/library/subject/topic?subjectId=...`.
+2. On drag end, send `currentOrder` = old 1-based index, `newOrder` = new 1-based index, and `topicId` of the dragged row.
+3. For a **“Move to position”** field: allow **1 through N+1** (or cap the input at N and label it “last = N”). If you allow **N+1**, the API will normalize it to last place without changing the topic count.
+4. If the API returns 400 about order mismatch, refetch the list and show a short “list was updated” message.
+
+---
+
+### 7. Get Topic Materials
 
 Retrieve all content associated with a topic, including videos, materials, links, assignments, comments, and CBT assessments.
 
@@ -531,7 +628,7 @@ curl -X GET "https://api.example.com/api/v1/library/subject/topic/getmaterials/t
 
 ## Content Management
 
-### 7. Upload Video
+### 8. Upload Video
 
 Upload a video lesson to a topic. Supports progress tracking via SSE.
 
@@ -639,7 +736,7 @@ const checkProgress = async () => {
 
 ---
 
-### 8. Upload Material
+### 9. Upload Material
 
 Upload a material file (PDF, DOC, DOCX, PPT, PPTX) to a topic. Supports progress tracking via SSE.
 
@@ -691,7 +788,7 @@ Same as video upload - use the `sessionId` with the progress endpoints.
 
 ---
 
-### 9. Create Link
+### 10. Create Link
 
 Add an external link/resource to a topic.
 
@@ -760,7 +857,7 @@ curl -X POST "https://api.example.com/api/v1/library/content/create-link" \
 
 ---
 
-### 10. Update Video
+### 11. Update Video
 
 Update video details (title, description).
 
@@ -792,7 +889,7 @@ curl -X PATCH "https://api.example.com/api/v1/library/content/video/video-uuid-1
 
 ---
 
-### 11. Delete Content
+### 12. Delete Content
 
 Delete videos, materials, links, or assignments from a topic.
 
@@ -1074,6 +1171,7 @@ All endpoints follow a consistent error response format:
 
 ### 2. **Topic Management**
 - Create topics in logical order using the `order` field
+- Use **PATCH …/topic/reorder/:topicId** for drag-and-drop list reordering; do not rely on PATCH `updatetopic` `order` alone for shifting neighbors
 - Use descriptive titles that clearly indicate content
 - Keep descriptions concise but informative
 - Deactivate topics instead of deleting when content is outdated
@@ -1120,8 +1218,9 @@ The Library Subject API provides a streamlined way to organize educational conte
 
 1. **Create Subjects** under library classes
 2. **Create Topics** directly under subjects (no chapters)
-3. **Upload Content** (videos, materials, links) to topics
-4. **Manage Content** with update and delete operations
-5. **Track Progress** for large file uploads
+3. **Reorder Topics** via the reorder endpoint when editing list order (drag-and-drop)
+4. **Upload Content** (videos, materials, links) to topics
+5. **Manage Content** with update and delete operations
+6. **Track Progress** for large file uploads
 
 The simplified structure (Subject → Topic → Content) makes it easy for library owners to organize and manage their educational resources without the complexity of an intermediate chapter level.
