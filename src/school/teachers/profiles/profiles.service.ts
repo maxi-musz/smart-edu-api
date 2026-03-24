@@ -216,14 +216,6 @@ export class ProfilesService {
         };
       }
 
-      // Get subscription plan for the school
-      const subscriptionPlan =
-        await this.prisma.platformSubscriptionPlan.findUnique({
-          where: {
-            school_id: teacher.school_id,
-          },
-        });
-
       // Get upload counts
       const [
         totalStudents,
@@ -381,58 +373,6 @@ export class ProfilesService {
           videos_uploaded: totalVideos,
           materials_uploaded: totalMaterials,
         },
-        subscription_plan: subscriptionPlan
-          ? {
-              id: subscriptionPlan.id,
-              name: subscriptionPlan.name,
-              plan_type: subscriptionPlan.plan_type,
-              description: subscriptionPlan.description,
-              cost: subscriptionPlan.cost,
-              currency: subscriptionPlan.currency,
-              billing_cycle: subscriptionPlan.billing_cycle,
-              is_active: subscriptionPlan.is_active,
-              // Basic Limits
-              max_allowed_teachers: subscriptionPlan.max_allowed_teachers,
-              max_allowed_students: subscriptionPlan.max_allowed_students,
-              max_allowed_classes: subscriptionPlan.max_allowed_classes,
-              max_allowed_subjects: subscriptionPlan.max_allowed_subjects,
-              // AI Interactions & Document Management
-              allowed_document_types: subscriptionPlan.allowed_document_types,
-              max_file_size_mb: subscriptionPlan.max_file_size_mb,
-              max_document_uploads_per_teacher_per_day:
-                subscriptionPlan.max_document_uploads_per_teacher_per_day,
-              max_document_uploads_per_student_per_day:
-                subscriptionPlan.max_document_uploads_per_student_per_day,
-              max_storage_mb: subscriptionPlan.max_storage_mb,
-              max_files_per_month: subscriptionPlan.max_files_per_month,
-              // Token Usage Limits
-              max_daily_tokens_per_user:
-                subscriptionPlan.max_daily_tokens_per_user,
-              max_weekly_tokens_per_user:
-                subscriptionPlan.max_weekly_tokens_per_user,
-              max_monthly_tokens_per_user:
-                subscriptionPlan.max_monthly_tokens_per_user,
-              max_total_tokens_per_school:
-                subscriptionPlan.max_total_tokens_per_school,
-              // Chat & Messaging Limits
-              max_messages_per_week: subscriptionPlan.max_messages_per_week,
-              max_conversations_per_user:
-                subscriptionPlan.max_conversations_per_user,
-              max_chat_sessions_per_user:
-                subscriptionPlan.max_chat_sessions_per_user,
-              // Additional Features
-              features: subscriptionPlan.features,
-              // Subscription Management
-              start_date: subscriptionPlan.start_date
-                ? formatDate(subscriptionPlan.start_date)
-                : null,
-              end_date: subscriptionPlan.end_date
-                ? formatDate(subscriptionPlan.end_date)
-                : null,
-              status: subscriptionPlan.status,
-              auto_renew: subscriptionPlan.auto_renew,
-            }
-          : null,
       };
 
       this.logger.log(

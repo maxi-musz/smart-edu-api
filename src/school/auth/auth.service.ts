@@ -291,6 +291,7 @@ export class AuthService {
             plan_type: freeTemplatePlan.plan_type,
             description: freeTemplatePlan.description,
             cost: freeTemplatePlan.cost,
+            yearly_cost: freeTemplatePlan.yearly_cost,
             currency: freeTemplatePlan.currency,
             billing_cycle: freeTemplatePlan.billing_cycle,
             is_active: true,
@@ -323,6 +324,14 @@ export class AuthService {
               freeTemplatePlan.max_conversations_per_user,
             max_chat_sessions_per_user:
               freeTemplatePlan.max_chat_sessions_per_user,
+            max_concurrent_published_assessments:
+              freeTemplatePlan.max_concurrent_published_assessments,
+            max_assessments_created_per_school_day:
+              freeTemplatePlan.max_assessments_created_per_school_day,
+            max_assessment_questions_added_per_school_day:
+              freeTemplatePlan.max_assessment_questions_added_per_school_day,
+            max_questions_per_assessment:
+              freeTemplatePlan.max_questions_per_assessment,
             // Additional Features
             features: freeTemplatePlan.features as any,
             // Subscription Management

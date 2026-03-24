@@ -134,6 +134,7 @@ model User {
   first_name                       String
   last_name                        String
   phone_number                     String
+  is_developer                     Boolean?                                 @default(false)
   display_picture                  Json?
   gender                           Gender                                   @default(other)
   otp                              String?                                  @default("")
@@ -1519,41 +1520,52 @@ model SupportInfo {
 }
 
 model PlatformSubscriptionPlan {
-  id                                       String               @id @default(cuid())
-  school_id                                String?              @unique
-  name                                     String               @default("Free")
-  plan_type                                SubscriptionPlanType @default(FREE)
-  description                              String?
-  cost                                     Float                @default(0)
-  currency                                 String               @default("USD")
-  billing_cycle                            BillingCycle         @default(MONTHLY)
-  is_active                                Boolean              @default(true)
-  max_allowed_teachers                     Int                  @default(30)
-  max_allowed_students                     Int                  @default(100)
-  max_allowed_classes                      Int?
-  max_allowed_subjects                     Int?
-  allowed_document_types                   String[]             @default(["pdf"])
-  max_file_size_mb                         Int                  @default(10)
-  max_document_uploads_per_student_per_day Int                  @default(3)
-  max_document_uploads_per_teacher_per_day Int                  @default(10)
-  max_storage_mb                           Int                  @default(500)
-  max_files_per_month                      Int                  @default(10)
-  max_daily_tokens_per_user                Int                  @default(50000)
-  max_weekly_tokens_per_user               Int?
-  max_monthly_tokens_per_user              Int?
-  max_total_tokens_per_school              Int?
-  max_messages_per_week                    Int                  @default(100)
-  max_conversations_per_user               Int?
-  max_chat_sessions_per_user               Int?
-  features                                 Json?
-  start_date                               DateTime?
-  end_date                                 DateTime?
-  status                                   SubscriptionStatus   @default(ACTIVE)
-  auto_renew                               Boolean              @default(false)
-  created_at                               DateTime             @default(now())
-  updated_at                               DateTime             @updatedAt
-  is_template                              Boolean              @default(false)
-  school                                   School?              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  id                                            String               @id @default(cuid())
+  school_id                                     String?              @unique
+  name                                          String               @default("Free")
+  plan_type                                     SubscriptionPlanType @default(FREE)
+  description                                   String?
+  /// Per-month price when offering monthly billing (same row can also set `yearly_cost`).
+  cost                                          Float                @default(0)
+  /// Optional total charged once per year (e.g. discounted vs 12×monthly). Null = no annual SKU on this catalog row.
+  yearly_cost                                   Float?
+  currency                                      String               @default("USD")
+  billing_cycle                                 BillingCycle         @default(MONTHLY)
+  is_active                                     Boolean              @default(true)
+  max_allowed_teachers                          Int                  @default(30)
+  max_allowed_students                          Int                  @default(100)
+  max_allowed_classes                           Int?
+  max_allowed_subjects                          Int?
+  allowed_document_types                        String[]             @default(["pdf"])
+  max_file_size_mb                              Int                  @default(10)
+  max_document_uploads_per_student_per_day      Int                  @default(3)
+  max_document_uploads_per_teacher_per_day      Int                  @default(10)
+  max_storage_mb                                Int                  @default(500)
+  max_files_per_month                           Int                  @default(10)
+  max_daily_tokens_per_user                     Int                  @default(50000)
+  max_weekly_tokens_per_user                    Int?
+  max_monthly_tokens_per_user                   Int?
+  max_total_tokens_per_school                   Int?
+  max_messages_per_week                         Int                  @default(100)
+  max_conversations_per_user                    Int?
+  max_chat_sessions_per_user                    Int?
+  /// Max assessments with `is_published=true` at once for the school. Null = unlimited (catalog / entitlement display).
+  max_concurrent_published_assessments          Int?
+  /// Max new assessments created per school per UTC calendar day. Null = unlimited.
+  max_assessments_created_per_school_day        Int?
+  /// Max assessment questions added per school per UTC day (all assessments). Null = unlimited.
+  max_assessment_questions_added_per_school_day Int?
+  /// Max questions on a single assessment. Null = unlimited.
+  max_questions_per_assessment                  Int?
+  features                                      Json?
+  start_date                                    DateTime?
+  end_date                                      DateTime?
+  status                                        SubscriptionStatus   @default(ACTIVE)
+  auto_renew                                    Boolean              @default(false)
+  created_at                                    DateTime             @default(now())
+  updated_at                                    DateTime             @updatedAt
+  is_template                                   Boolean              @default(false)
+  school                                        School?              @relation(fields: [school_id], references: [id], onDelete: Cascade)
 
   @@index([school_id])
   @@index([plan_type])
@@ -1958,7 +1970,7 @@ model DirectUpload {
   description String?
   fileName    String
   contentType String  @default("video/mp4")
-  fileSize    BigInt  // expected file size in bytes (BigInt for files > 2GB)
+  fileSize    BigInt // expected file size in bytes (BigInt for files > 2GB)
 
   // S3 state
   s3Key             String

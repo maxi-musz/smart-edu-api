@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class TeacherProfileDto {
   @ApiProperty({ example: 'teacher-uuid' })
@@ -313,6 +313,13 @@ export class SubscriptionPlanDto {
   @ApiProperty({ example: 99.99 })
   cost: number;
 
+  @ApiPropertyOptional({
+    example: 1000000,
+    nullable: true,
+    description: 'Annual total when tier offers yearly billing; null if not applicable.',
+  })
+  yearly_cost: number | null;
+
   @ApiProperty({ example: 'USD' })
   currency: string;
 
@@ -398,7 +405,4 @@ export class TeacherProfileResponseDto {
 
   @ApiProperty({ type: UsageStatsDto })
   usage: UsageStatsDto;
-
-  @ApiProperty({ type: SubscriptionPlanDto, nullable: true })
-  subscription_plan: SubscriptionPlanDto | null;
 }

@@ -5,7 +5,7 @@ export const GetTeacherProfileDocs = {
   operation: ApiOperation({
     summary: 'Get teacher profile',
     description:
-      'Retrieve comprehensive teacher profile including personal information, school details, subjects teaching, classes managing, token usage, upload counts, subscription plan, and statistics',
+      'Retrieve comprehensive teacher profile including personal information, school details, subjects teaching, classes managing, token usage, upload counts, and statistics',
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   response200: ApiResponse({

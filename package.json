@@ -25,6 +25,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:use-env": "node prisma/use-env.js",
     "prisma:migrate": "npm run prisma:use-env && prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
     "prisma:studio": "npm run prisma:use-env && prisma studio",
     "prisma:generate": "npm run prisma:use-env && prisma generate",
     "prisma:seed": "npm run prisma:use-env && ts-node prisma/seed-comprehensive.ts",

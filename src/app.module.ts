@@ -27,6 +27,7 @@ import { VideoModule } from './video/video.module';
 import { LibraryAccessControlModule } from './library-access-control/library-access-control.module';
 import { SchoolAccessControlModule } from './school-access-control/school-access-control.module';
 import { ResultModule } from './result/result.module';
+import { PricingModule } from './pricing/pricing.module';
 import { CloudFrontModule } from './shared/services/cloudfront.module';
 import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
 @Module({
@@ -68,6 +69,7 @@ import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
     LibraryAccessControlModule,
     SchoolAccessControlModule,
     ResultModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

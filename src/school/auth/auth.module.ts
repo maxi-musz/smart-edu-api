@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { TemEndpointController } from './tem-endpoint.controller';
 import { TemEndpointService } from './tem-endpoint.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
+import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ExcelProcessorService } from 'src/shared/services/excel-processor.service';
@@ -16,6 +17,7 @@ import { AuditModule } from 'src/audit/audit.module';
 
 @Module({
   imports: [
+    PassportModule.register({ defaultStrategy: 'jwt1' }),
     PrismaModule,
     AuditModule,
     AcademicSessionModule,
@@ -44,6 +46,6 @@ import { AuditModule } from 'src/audit/audit.module';
     ExcelProcessorService,
     TemEndpointService,
   ],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule, PassportModule, JwtStrategy],
 })
 export class AuthModule {}
