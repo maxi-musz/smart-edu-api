@@ -14,7 +14,7 @@ import {
 } from '@nestjs/swagger';
 import { ExploreAiBooksService } from './explore-aibooks.service';
 import { QueryAiBooksDto } from './dto';
-import { JwtGuard } from '../school/auth/guard';
+import { UniversalJwtGuard } from '../video/guards/universal-jwt.guard';
 
 @ApiTags('Explore - AI Books')
 @Controller('explore/ai-books')
@@ -22,7 +22,7 @@ export class ExploreAiBooksController {
   constructor(private readonly exploreAiBooksService: ExploreAiBooksService) {}
 
   @Get('landing-page')
-  @UseGuards(JwtGuard)
+  @UseGuards(UniversalJwtGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Fetch AI book landing page data' })
   @ApiResponse({
@@ -41,7 +41,7 @@ export class ExploreAiBooksController {
   }
 
   @Get(':bookId/chapters')
-  @UseGuards(JwtGuard)
+  @UseGuards(UniversalJwtGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Fetch all chapters for a book' })
   @ApiResponse({ status: 200, description: 'Chapters retrieved successfully' })
@@ -52,7 +52,7 @@ export class ExploreAiBooksController {
   }
 
   @Get(':bookId/chapters/:chapterId')
-  @UseGuards(JwtGuard)
+  @UseGuards(UniversalJwtGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Fetch a single chapter for a book' })
   @ApiResponse({ status: 200, description: 'Chapter retrieved successfully' })
