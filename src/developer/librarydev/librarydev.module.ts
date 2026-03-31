@@ -4,9 +4,15 @@ import { LibraryDevService } from './librarydev.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LibraryDevClassModule } from './librarydev-class/librarydev-class.module';
 import { LibraryDevSubjectModule } from './librarydev-subject/librarydev-subject.module';
+import { TempEndpointModule } from './temp-endpoint/temp-endpoint.module';
 
 @Module({
-  imports: [PrismaModule, LibraryDevClassModule, LibraryDevSubjectModule],
+  imports: [
+    PrismaModule,
+    LibraryDevClassModule,
+    LibraryDevSubjectModule,
+    TempEndpointModule,
+  ],
   controllers: [LibraryDevController],
   providers: [LibraryDevService],
   exports: [LibraryDevService],
