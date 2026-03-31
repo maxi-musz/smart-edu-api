@@ -1346,7 +1346,7 @@ export class GeneralMaterialsService {
 
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
         where: { id: user.sub },
-        select: { platformId: true, email: true },
+        select: { platformId: true, email: true, platform: { select: { name: true } } },
       });
 
       if (!libraryUser) {
@@ -1387,7 +1387,7 @@ export class GeneralMaterialsService {
         }
       }, tickMs);
 
-      const uploadFolder = `library/general-materials/platforms/${libraryUser.platformId}`;
+      const uploadFolder = `library/ai-books/${libraryUser.platform.name}`;
       const uploadResult = await this.s3Service.uploadFile(
         file,
         uploadFolder,
@@ -1404,7 +1404,7 @@ export class GeneralMaterialsService {
       let thumbnailS3KeyValue: string | null = null;
 
       if (thumbnailFile) {
-        const thumbFolder = `library/general-materials/thumbnails/platforms/${libraryUser.platformId}`;
+        const thumbFolder = `library/ai-books/thumbnails/${libraryUser.platform.name}`;
         const thumbResult = await this.s3Service.uploadFile(
           thumbnailFile,
           thumbFolder,
