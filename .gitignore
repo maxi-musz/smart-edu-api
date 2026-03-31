@@ -59,7 +59,8 @@ backups/
 # Local DB dumps / archives (keep on disk, do not push)
 smeh-prod.zip
 backup_local_db.sql
-docs/
+# Only ignore documentation at repo root — do not use bare `docs/` (breaks src/**/docs/*.ts Swagger helpers)
+/docs/
 credentials.md
 
 
