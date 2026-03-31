@@ -14,6 +14,8 @@
 11. [Bulk Chapter Upload (Multiple Files)](#10-bulk-chapter-upload-multiple-files)
 12. [Create General Material Chapter (Without File)](#11-create-general-material-chapter-without-file)
 13. [Upload File for Existing Chapter](#12-upload-file-for-existing-chapter)
+14. [Delete a Chapter](#13-delete-a-chapter)
+15. [Delete an Entire Textbook](#14-delete-an-entire-textbook)
 
 ---
 
@@ -1870,6 +1872,202 @@ order: 1
 
 ---
 
+## 13. Delete a Chapter
+
+**Endpoint:** `DELETE /api/v1/library/general-materials/:materialId/chapters/:chapterId`
+
+### Description
+Permanently deletes a single chapter from a textbook. This is a **hard delete** — the chapter, its files, AI chunks, embeddings, Pinecone vectors, chat data, and S3 files are all removed. The entire database portion runs inside a single transaction (all-or-nothing). After the chapter is removed, the `order` numbers of the remaining chapters are recompacted so there are no gaps (e.g. if chapters had orders 1, 2, 3 and chapter 2 is deleted, chapters 1 and 3 become 1 and 2).
+
+### Request Parameters
+- `materialId` (path parameter): The ID of the general material (textbook)
+- `chapterId` (path parameter): The ID of the chapter to delete
+
+### Example Request
+```
+DELETE /api/v1/library/general-materials/material_123/chapters/chapter_456
+Authorization: Bearer <token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Chapter \"Chapter 2: Linear Equations\" and all related data deleted successfully",
+  "data": {
+    "chapterId": "chapter_456",
+    "materialId": "material_123",
+    "title": "Chapter 2: Linear Equations",
+    "deletedCounts": {
+      "libraryChatContexts": 12,
+      "schoolChatContexts": 0,
+      "schoolChatMessages": 0,
+      "schoolChatConversations": 0,
+      "schoolChatAnalytics": 0,
+      "documentChunks": 8,
+      "materialProcessings": 1,
+      "pdfMaterials": 1
+    },
+    "remainingChapters": 4,
+    "externalCleanup": {
+      "pinecone": {
+        "attempted": 1,
+        "warnings": []
+      },
+      "s3": {
+        "attempted": 1,
+        "warnings": []
+      }
+    }
+  }
+}
+```
+
+### Response Structure Breakdown
+
+#### Top-level Data
+- `chapterId`: ID of the deleted chapter
+- `materialId`: ID of the parent textbook
+- `title`: Title of the deleted chapter
+
+#### deletedCounts Object
+Row counts removed from the database within the transaction:
+- `libraryChatContexts`: Library AI chat context rows that referenced this chapter's chunks
+- `schoolChatContexts`: School pipeline chat context rows
+- `schoolChatMessages`: School pipeline chat message rows
+- `schoolChatConversations`: School pipeline chat conversation rows
+- `schoolChatAnalytics`: School pipeline chat analytics rows
+- `documentChunks`: School pipeline document chunk rows
+- `materialProcessings`: School pipeline material processing rows
+- `pdfMaterials`: PDFMaterial rows linked to the chapter
+
+#### remainingChapters
+Number of chapters still remaining under the textbook after deletion. Their `order` values have been recompacted to 1, 2, 3, ... with no gaps.
+
+#### externalCleanup Object
+Best-effort cleanup of external services (runs after the DB transaction succeeds):
+- `pinecone.attempted`: Number of Pinecone vector deletion calls attempted
+- `pinecone.warnings`: Array of warning strings for any Pinecone deletions that failed (empty on full success)
+- `s3.attempted`: Number of S3 file deletion calls attempted
+- `s3.warnings`: Array of warning strings for any S3 deletions that failed (empty on full success)
+
+### Error Responses
+- **401**: Unauthorized - Invalid or missing token
+- **404**: Library user not found, material not found, chapter not found, or does not belong to user's platform
+- **500**: Internal server error (transaction rolled back, nothing was deleted)
+
+### Important Notes
+- This is a **permanent, irreversible** hard delete. All chapter data — including AI chat conversations that used this chapter's chunks — will be lost.
+- The database deletion is **transactional**: if any DB operation fails, the entire deletion rolls back and nothing is removed.
+- External cleanup (Pinecone vectors and S3 files) runs **after** the DB transaction. If an external delete fails it is reported in `externalCleanup.warnings` but does **not** cause the endpoint to fail — the DB changes are already committed.
+- After deletion, the remaining chapters are automatically reordered. Frontend should re-fetch the chapter list to get the updated order values.
+- The material-level processing chunk counts are decremented to reflect the removed chapter's chunks.
+
+---
+
+## 14. Delete an Entire Textbook
+
+**Endpoint:** `DELETE /api/v1/library/general-materials/:materialId`
+
+### Description
+Permanently deletes an entire textbook (general material) and **ALL** of its related data: chapters, chapter files, AI processing records, library and school chat data (conversations, messages, contexts), purchases, AI chunks, embeddings, Pinecone vectors, and S3 files. The entire database portion runs inside a single transaction (all-or-nothing).
+
+### Request Parameters
+- `materialId` (path parameter): The ID of the general material (textbook) to delete
+
+### Example Request
+```
+DELETE /api/v1/library/general-materials/material_123
+Authorization: Bearer <token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Textbook \"Advanced Algebra for Senior Secondary Schools\" and all related data deleted successfully",
+  "data": {
+    "materialId": "material_123",
+    "title": "Advanced Algebra for Senior Secondary Schools",
+    "deletedCounts": {
+      "libraryChatContexts": 48,
+      "libraryChatMessages": 120,
+      "libraryChatConversations": 15,
+      "libraryPurchases": 3,
+      "schoolChatContexts": 0,
+      "schoolChatMessages": 0,
+      "schoolChatConversations": 0,
+      "schoolChatAnalytics": 0,
+      "documentChunks": 45,
+      "materialProcessings": 5,
+      "pdfMaterials": 6
+    },
+    "chapters": 5,
+    "externalCleanup": {
+      "pinecone": {
+        "attempted": 6,
+        "warnings": []
+      },
+      "s3": {
+        "attempted": 8,
+        "warnings": []
+      }
+    }
+  }
+}
+```
+
+### Response Structure Breakdown
+
+#### Top-level Data
+- `materialId`: ID of the deleted textbook
+- `title`: Title of the deleted textbook
+- `chapters`: Number of chapters that were under this textbook (all deleted)
+
+#### deletedCounts Object
+Row counts removed from the database within the transaction:
+- `libraryChatContexts`: Library AI chat context rows for this material
+- `libraryChatMessages`: Library AI chat message rows for this material
+- `libraryChatConversations`: Library AI chat conversation rows for this material
+- `libraryPurchases`: Purchase/activation records for this material
+- `schoolChatContexts`: School pipeline chat context rows
+- `schoolChatMessages`: School pipeline chat message rows
+- `schoolChatConversations`: School pipeline chat conversation rows
+- `schoolChatAnalytics`: School pipeline chat analytics rows
+- `documentChunks`: School pipeline document chunk rows
+- `materialProcessings`: School pipeline material processing rows
+- `pdfMaterials`: PDFMaterial rows linked to the textbook or its chapters
+
+Additional rows deleted via database cascade (not counted individually):
+- `LibraryGeneralMaterialChapter` — all chapters under the textbook
+- `LibraryGeneralMaterialChapterFile` — all chapter files
+- `LibraryGeneralMaterialChunk` — all library-side AI chunks
+- `LibraryGeneralMaterialProcessing` — the material processing record
+- `LibraryGeneralMaterialClass` — class association links
+
+#### externalCleanup Object
+Best-effort cleanup of external services (runs after the DB transaction succeeds):
+- `pinecone.attempted`: Number of Pinecone vector deletion calls attempted
+- `pinecone.warnings`: Array of warning strings for any Pinecone deletions that failed (empty on full success)
+- `s3.attempted`: Number of S3 file deletion calls attempted (includes material file, thumbnail, and all chapter files)
+- `s3.warnings`: Array of warning strings for any S3 deletions that failed (empty on full success)
+
+### Error Responses
+- **401**: Unauthorized - Invalid or missing token
+- **404**: Library user not found, material not found, or does not belong to user's platform
+- **500**: Internal server error (transaction rolled back, nothing was deleted)
+
+### Important Notes
+- This is a **permanent, irreversible** hard delete. The entire textbook, all its chapters, all AI chat history, all purchase records, all files, and all vector embeddings will be permanently removed.
+- The database deletion is **transactional**: if any DB operation fails, the entire deletion rolls back and nothing is removed.
+- External cleanup (Pinecone vectors and S3 files) runs **after** the DB transaction. If an external delete fails it is reported in `externalCleanup.warnings` but does **not** cause the endpoint to fail — the DB changes are already committed.
+- Purchase records are deleted along with the textbook. Implement a confirmation dialog on the frontend before calling this endpoint.
+- After deletion, the material will no longer appear in any listing or search endpoint. Frontend should navigate the user away from the deleted material's detail page.
+
+---
+
 ## General Notes
 
 ### Platform Scoping
@@ -1887,6 +2085,14 @@ order: 1
 - Materials in "Get All" endpoint: Ordered by `createdAt` (descending - newest first)
 - Chapters: Automatically ordered sequentially (1, 2, 3, ...) based on creation order
 - Files within chapters: Ordered by `order` (ascending)
+- When a chapter is deleted, the remaining chapters are automatically recompacted (e.g. orders 1, 3, 4 become 1, 2, 3)
+
+### Deletion
+- **Delete Chapter** (`DELETE /:materialId/chapters/:chapterId`): Permanently removes a single chapter and all its related data (files, AI chunks, embeddings, chat contexts, linked PDFMaterial pipeline). Remaining chapters are reordered automatically. This is irreversible.
+- **Delete Textbook** (`DELETE /:materialId`): Permanently removes an entire textbook and everything under it — all chapters, files, AI processing, chat history, purchases, chunks, embeddings, and vector data. This is irreversible.
+- Both endpoints use a database transaction — if any DB operation fails, nothing is deleted.
+- External storage cleanup (Pinecone vectors, S3 files) is best-effort after the transaction. Failures are returned as warnings, not errors.
+- Frontend should show a confirmation dialog before calling either delete endpoint, especially the textbook delete which also removes purchase records.
 
 ### File Upload
 - Supported file types: PDF, DOC, DOCX, PPT, PPTX, and other document formats
@@ -1937,13 +2143,13 @@ All endpoints follow a consistent error response format:
 ```
 
 ### Common HTTP Status Codes
-- **200**: Success (GET requests)
+- **200**: Success (GET requests, DELETE requests)
 - **201**: Created (POST requests - resource created)
 - **202**: Accepted (POST requests - async operation started)
 - **400**: Bad Request - Validation error or invalid input
 - **401**: Unauthorized - Invalid or missing authentication token
 - **404**: Not Found - Resource not found or doesn't belong to user's platform
-- **500**: Internal Server Error - Server-side error
+- **500**: Internal Server Error - Server-side error (for DELETE endpoints, this means the transaction was rolled back and nothing was deleted)
 
 ---
 

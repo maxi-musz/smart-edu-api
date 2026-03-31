@@ -274,7 +274,7 @@ export class GeneralMaterialsController {
     );
   }
 
-  // 12) Delete a chapter (soft delete - sets status to deleted)
+  // 12) Hard-delete a chapter and reorder remaining chapters
   @Delete(':materialId/chapters/:chapterId')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LibraryJwtGuard)
@@ -288,6 +288,21 @@ export class GeneralMaterialsController {
       req.user,
       materialId,
       chapterId,
+    );
+  }
+
+  // 13) Hard-delete an entire textbook and all related data
+  @Delete(':materialId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  async deleteTextbook(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+  ) {
+    return await this.generalMaterialsService.deleteTextbook(
+      req.user,
+      materialId,
     );
   }
 }

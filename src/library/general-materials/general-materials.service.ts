@@ -4058,8 +4058,259 @@ export class GeneralMaterialsService {
   }
 
   /**
-   * Delete a chapter (soft delete - sets chapterStatus to deleted)
-   * Chapter remains in database for chat history purposes
+   * Hard-delete an entire textbook (LibraryGeneralMaterial) and ALL related data.
+   * DB operations run inside a single interactive transaction.
+   * External cleanup (Pinecone vectors, S3 files) is best-effort after the transaction.
+   */
+  async deleteTextbook(
+    user: any,
+    materialId: string,
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[GENERAL MATERIALS] Starting full deletion of textbook: ${materialId}`,
+      ),
+    );
+
+    try {
+      // ── 1. Validate user & ownership ──
+      const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+        where: { id: user.sub },
+        select: { platformId: true, email: true },
+      });
+
+      if (!libraryUser) {
+        throw new NotFoundException('Library user not found');
+      }
+
+      const material = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: {
+          id: materialId,
+          platformId: libraryUser.platformId,
+        },
+        select: {
+          id: true,
+          title: true,
+          s3Key: true,
+          thumbnailS3Key: true,
+        },
+      });
+
+      if (!material) {
+        throw new NotFoundException(
+          'Material not found or does not belong to your platform',
+        );
+      }
+
+      // ── 2. Gather all related IDs before the transaction ──
+      const chapters =
+        await this.prisma.libraryGeneralMaterialChapter.findMany({
+          where: { materialId },
+          select: { id: true, chunkCount: true },
+        });
+      const chapterIds = chapters.map((c) => c.id);
+
+      const chapterFiles =
+        await this.prisma.libraryGeneralMaterialChapterFile.findMany({
+          where: { chapterId: { in: chapterIds } },
+          select: { s3Key: true },
+        });
+
+      const materialIdOrChapterId = [materialId, ...chapterIds];
+      const pdfMaterials = await this.prisma.pDFMaterial.findMany({
+        where: { materialId: { in: materialIdOrChapterId } },
+        select: { id: true },
+      });
+      const pdfIds = pdfMaterials.map((p) => p.id);
+
+      this.logger.log(
+        colors.white(
+          `[GENERAL MATERIALS] Deletion scope for "${material.title}": ${chapterIds.length} chapter(s), ${chapterFiles.length} chapter file(s), ${pdfIds.length} PDFMaterial row(s)`,
+        ),
+      );
+
+      // ── 3. DB Transaction — all or nothing ──
+      const txResult = await this.prisma.$transaction(async (tx) => {
+        const counts = {
+          libraryChatContexts: 0,
+          libraryChatMessages: 0,
+          libraryChatConversations: 0,
+          libraryPurchases: 0,
+          schoolChatContexts: 0,
+          schoolChatMessages: 0,
+          schoolChatConversations: 0,
+          schoolChatAnalytics: 0,
+          documentChunks: 0,
+          materialProcessings: 0,
+          pdfMaterials: 0,
+        };
+
+        // Library chat pipeline (must go before chunks to avoid FK violations)
+        const ctxDel =
+          await tx.libraryGeneralMaterialChatContext.deleteMany({
+            where: { materialId },
+          });
+        counts.libraryChatContexts = ctxDel.count;
+
+        const msgDel =
+          await tx.libraryGeneralMaterialChatMessage.deleteMany({
+            where: { materialId },
+          });
+        counts.libraryChatMessages = msgDel.count;
+
+        const convDel =
+          await tx.libraryGeneralMaterialChatConversation.deleteMany({
+            where: { materialId },
+          });
+        counts.libraryChatConversations = convDel.count;
+
+        // Purchases
+        const purDel =
+          await tx.libraryGeneralMaterialPurchase.deleteMany({
+            where: { materialId },
+          });
+        counts.libraryPurchases = purDel.count;
+
+        // School / explore PDFMaterial pipeline
+        if (pdfIds.length > 0) {
+          const sCtx = await tx.chatContext.deleteMany({
+            where: { chunk: { material_id: { in: pdfIds } } },
+          });
+          counts.schoolChatContexts = sCtx.count;
+
+          const sMsg = await tx.chatMessage.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.schoolChatMessages = sMsg.count;
+
+          const sConv = await tx.chatConversation.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.schoolChatConversations = sConv.count;
+
+          const sAn = await tx.chatAnalytics.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.schoolChatAnalytics = sAn.count;
+
+          const dc = await tx.documentChunk.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.documentChunks = dc.count;
+
+          const mp = await tx.materialProcessing.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.materialProcessings = mp.count;
+
+          const pdf = await tx.pDFMaterial.deleteMany({
+            where: { id: { in: pdfIds } },
+          });
+          counts.pdfMaterials = pdf.count;
+        }
+
+        // Finally delete the material itself (cascades chapters, chapter files, library chunks, processing, class links)
+        await tx.libraryGeneralMaterial.delete({
+          where: { id: materialId },
+        });
+
+        return counts;
+      });
+
+      this.logger.log(
+        colors.green(
+          `[GENERAL MATERIALS] DB transaction completed for textbook "${material.title}"`,
+        ),
+      );
+
+      // ── 4. Post-transaction best-effort: Pinecone ──
+      const pineconeWarnings: string[] = [];
+      for (const pdfId of pdfIds) {
+        try {
+          await this.pineconeService.deleteChunksByMaterial(pdfId);
+        } catch (e: any) {
+          const msg = e?.message ?? String(e);
+          pineconeWarnings.push(`${pdfId}: ${msg}`);
+          this.logger.warn(
+            colors.yellow(
+              `[GENERAL MATERIALS] Pinecone cleanup failed for PDFMaterial ${pdfId}: ${msg}`,
+            ),
+          );
+        }
+      }
+
+      // ── 5. Post-transaction best-effort: S3 ──
+      const s3Warnings: string[] = [];
+      const s3Keys = new Set<string>();
+      if (material.s3Key) s3Keys.add(material.s3Key);
+      if (material.thumbnailS3Key) s3Keys.add(material.thumbnailS3Key);
+      for (const f of chapterFiles) {
+        if (f.s3Key) s3Keys.add(f.s3Key);
+      }
+
+      for (const key of s3Keys) {
+        try {
+          await this.s3Service.deleteFile(key);
+        } catch (e: any) {
+          const msg = e?.message ?? String(e);
+          s3Warnings.push(`${key}: ${msg}`);
+          this.logger.warn(
+            colors.yellow(
+              `[GENERAL MATERIALS] S3 cleanup failed for key "${key}": ${msg}`,
+            ),
+          );
+        }
+      }
+
+      this.logger.log(
+        colors.green(
+          `[GENERAL MATERIALS] Textbook "${material.title}" fully deleted`,
+        ),
+      );
+
+      return new ApiResponse(
+        true,
+        `Textbook "${material.title}" and all related data deleted successfully`,
+        {
+          materialId,
+          title: material.title,
+          deletedCounts: txResult,
+          chapters: chapterIds.length,
+          externalCleanup: {
+            pinecone: {
+              attempted: pdfIds.length,
+              warnings: pineconeWarnings,
+            },
+            s3: {
+              attempted: s3Keys.size,
+              warnings: s3Warnings,
+            },
+          },
+        },
+      );
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(
+          `[GENERAL MATERIALS] Error deleting textbook ${materialId}: ${error.message}`,
+        ),
+      );
+
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        `Failed to delete textbook: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Hard-delete a single chapter, clean up all related data,
+   * and recompact the order numbers of remaining chapters.
    */
   async deleteChapter(
     user: any,
@@ -4068,52 +4319,44 @@ export class GeneralMaterialsService {
   ): Promise<ApiResponse<any>> {
     this.logger.log(
       colors.cyan(
-        `[GENERAL MATERIALS] Soft deleting chapter: ${chapterId} for material: ${materialId}`,
+        `[GENERAL MATERIALS] Starting hard deletion of chapter: ${chapterId} for material: ${materialId}`,
       ),
     );
 
     try {
+      // ── 1. Validate user & ownership ──
       const libraryUser = await this.prisma.libraryResourceUser.findUnique({
         where: { id: user.sub },
         select: { platformId: true, email: true },
       });
 
       if (!libraryUser) {
-        this.logger.error(colors.red('Library user not found'));
         throw new NotFoundException('Library user not found');
       }
 
-      // Verify material exists and belongs to user's platform
       const material = await this.prisma.libraryGeneralMaterial.findFirst({
         where: {
           id: materialId,
           platformId: libraryUser.platformId,
         },
-        select: { id: true },
+        select: { id: true, title: true },
       });
 
       if (!material) {
-        this.logger.error(
-          colors.red(
-            `Material not found or does not belong to your platform: ${materialId}`,
-          ),
-        );
         throw new NotFoundException(
           'Material not found or does not belong to your platform',
         );
       }
 
-      // Verify chapter exists and belongs to the material and platform
-      const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst(
-        {
+      const chapter =
+        await this.prisma.libraryGeneralMaterialChapter.findFirst({
           where: {
             id: chapterId,
-            materialId: materialId,
+            materialId,
             platformId: libraryUser.platformId,
           },
-          select: { id: true, title: true, chapterStatus: true },
-        },
-      );
+          select: { id: true, title: true, order: true, chunkCount: true },
+        });
 
       if (!chapter) {
         throw new NotFoundException(
@@ -4121,49 +4364,220 @@ export class GeneralMaterialsService {
         );
       }
 
-      // Check if already deleted
-      if (chapter.chapterStatus === 'deleted') {
-        return new ApiResponse(true, 'Chapter is already deleted', {
-          chapterId,
-          materialId,
-          status: 'deleted',
-          message: 'Chapter was already deleted',
+      // ── 2. Gather related IDs ──
+      const chapterChunks =
+        await this.prisma.libraryGeneralMaterialChunk.findMany({
+          where: { chapterId },
+          select: { id: true },
         });
-      }
+      const chunkIds = chapterChunks.map((c) => c.id);
 
-      // Soft delete: Update status to deleted
-      const updatedChapter =
-        await this.prisma.libraryGeneralMaterialChapter.update({
-          where: { id: chapterId },
-          data: { chapterStatus: 'deleted' },
-          select: {
-            id: true,
-            title: true,
-            chapterStatus: true,
-            updatedAt: true,
+      const chapterFiles =
+        await this.prisma.libraryGeneralMaterialChapterFile.findMany({
+          where: { chapterId },
+          select: { s3Key: true },
+        });
+
+      const pdfMaterials = await this.prisma.pDFMaterial.findMany({
+        where: { materialId: chapterId },
+        select: { id: true },
+      });
+      const pdfIds = pdfMaterials.map((p) => p.id);
+
+      const remainingChapters =
+        await this.prisma.libraryGeneralMaterialChapter.findMany({
+          where: {
+            materialId,
+            id: { not: chapterId },
           },
+          select: { id: true, order: true },
+          orderBy: { order: 'asc' },
         });
 
       this.logger.log(
-        colors.green(`✅ Chapter soft deleted successfully: ${chapterId}`),
+        colors.white(
+          `[GENERAL MATERIALS] Chapter "${chapter.title}" deletion scope: ${chunkIds.length} chunk(s), ${chapterFiles.length} file(s), ${pdfIds.length} PDFMaterial row(s), ${remainingChapters.length} sibling(s) to reorder`,
+        ),
+      );
+
+      // ── 3. DB Transaction ──
+      const txResult = await this.prisma.$transaction(async (tx) => {
+        const counts = {
+          libraryChatContexts: 0,
+          schoolChatContexts: 0,
+          schoolChatMessages: 0,
+          schoolChatConversations: 0,
+          schoolChatAnalytics: 0,
+          documentChunks: 0,
+          materialProcessings: 0,
+          pdfMaterials: 0,
+        };
+
+        // Remove library chat contexts that reference this chapter's chunks (FK has no cascade)
+        if (chunkIds.length > 0) {
+          const ctxDel =
+            await tx.libraryGeneralMaterialChatContext.deleteMany({
+              where: { chunkId: { in: chunkIds } },
+            });
+          counts.libraryChatContexts = ctxDel.count;
+        }
+
+        // School / explore PDFMaterial pipeline
+        if (pdfIds.length > 0) {
+          const sCtx = await tx.chatContext.deleteMany({
+            where: { chunk: { material_id: { in: pdfIds } } },
+          });
+          counts.schoolChatContexts = sCtx.count;
+
+          const sMsg = await tx.chatMessage.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.schoolChatMessages = sMsg.count;
+
+          const sConv = await tx.chatConversation.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.schoolChatConversations = sConv.count;
+
+          const sAn = await tx.chatAnalytics.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.schoolChatAnalytics = sAn.count;
+
+          const dc = await tx.documentChunk.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.documentChunks = dc.count;
+
+          const mp = await tx.materialProcessing.deleteMany({
+            where: { material_id: { in: pdfIds } },
+          });
+          counts.materialProcessings = mp.count;
+
+          const pdf = await tx.pDFMaterial.deleteMany({
+            where: { id: { in: pdfIds } },
+          });
+          counts.pdfMaterials = pdf.count;
+        }
+
+        // Delete the chapter (cascades: chapter files, library chunks)
+        await tx.libraryGeneralMaterialChapter.delete({
+          where: { id: chapterId },
+        });
+
+        // Adjust material-level processing counts
+        if (chapter.chunkCount > 0) {
+          const processing =
+            await tx.libraryGeneralMaterialProcessing.findUnique({
+              where: { materialId },
+            });
+
+          if (processing) {
+            await tx.libraryGeneralMaterialProcessing.update({
+              where: { materialId },
+              data: {
+                totalChunks: Math.max(
+                  0,
+                  processing.totalChunks - chapter.chunkCount,
+                ),
+                processedChunks: Math.max(
+                  0,
+                  processing.processedChunks - chapter.chunkCount,
+                ),
+              },
+            });
+          }
+        }
+
+        // Recompact order numbers for remaining chapters
+        for (let i = 0; i < remainingChapters.length; i++) {
+          const newOrder = i + 1;
+          if (remainingChapters[i].order !== newOrder) {
+            await tx.libraryGeneralMaterialChapter.update({
+              where: { id: remainingChapters[i].id },
+              data: { order: newOrder },
+            });
+          }
+        }
+
+        return counts;
+      });
+
+      this.logger.log(
+        colors.green(
+          `[GENERAL MATERIALS] DB transaction completed for chapter "${chapter.title}"`,
+        ),
+      );
+
+      // ── 4. Post-transaction best-effort: Pinecone ──
+      const pineconeWarnings: string[] = [];
+      for (const pdfId of pdfIds) {
+        try {
+          await this.pineconeService.deleteChunksByMaterial(pdfId);
+        } catch (e: any) {
+          const msg = e?.message ?? String(e);
+          pineconeWarnings.push(`${pdfId}: ${msg}`);
+          this.logger.warn(
+            colors.yellow(
+              `[GENERAL MATERIALS] Pinecone cleanup failed for PDFMaterial ${pdfId}: ${msg}`,
+            ),
+          );
+        }
+      }
+
+      // ── 5. Post-transaction best-effort: S3 ──
+      const s3Warnings: string[] = [];
+      const s3Keys = new Set<string>();
+      for (const f of chapterFiles) {
+        if (f.s3Key) s3Keys.add(f.s3Key);
+      }
+
+      for (const key of s3Keys) {
+        try {
+          await this.s3Service.deleteFile(key);
+        } catch (e: any) {
+          const msg = e?.message ?? String(e);
+          s3Warnings.push(`${key}: ${msg}`);
+          this.logger.warn(
+            colors.yellow(
+              `[GENERAL MATERIALS] S3 cleanup failed for key "${key}": ${msg}`,
+            ),
+          );
+        }
+      }
+
+      this.logger.log(
+        colors.green(
+          `[GENERAL MATERIALS] Chapter "${chapter.title}" fully deleted, remaining chapters reordered`,
+        ),
       );
 
       return new ApiResponse(
         true,
-        'Chapter deleted successfully. It has been hidden but remains in the database for chat history.',
+        `Chapter "${chapter.title}" and all related data deleted successfully`,
         {
-          chapterId: updatedChapter.id,
+          chapterId,
           materialId,
-          title: updatedChapter.title,
-          status: updatedChapter.chapterStatus,
-          deletedAt: updatedChapter.updatedAt.toISOString(),
-          message:
-            'Chapter has been soft deleted. Chat history will remain accessible.',
+          title: chapter.title,
+          deletedCounts: txResult,
+          remainingChapters: remainingChapters.length,
+          externalCleanup: {
+            pinecone: {
+              attempted: pdfIds.length,
+              warnings: pineconeWarnings,
+            },
+            s3: {
+              attempted: s3Keys.size,
+              warnings: s3Warnings,
+            },
+          },
         },
       );
     } catch (error: any) {
       this.logger.error(
-        colors.red(`❌ Error deleting chapter: ${error.message}`),
+        colors.red(
+          `[GENERAL MATERIALS] Error deleting chapter ${chapterId}: ${error.message}`,
+        ),
       );
 
       if (
