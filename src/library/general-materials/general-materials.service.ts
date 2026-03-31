@@ -140,6 +140,9 @@ export class GeneralMaterialsService {
             thumbnailS3Key: true,
             createdAt: true,
             updatedAt: true,
+            _count: {
+              select: { chapters: true },
+            },
             uploadedBy: {
               select: {
                 id: true,
@@ -215,10 +218,11 @@ export class GeneralMaterialsService {
         },
       };
 
-      // Format materials to include classes as array
       const formattedMaterials = recentMaterials.map((material: any) => ({
         ...material,
+        chapterCount: material._count?.chapters || 0,
         classes: material.classes?.map((mc: any) => mc.class) || [],
+        _count: undefined,
       }));
 
       const responseData = {
@@ -1568,6 +1572,216 @@ export class GeneralMaterialsService {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────
+  // Bulk chapter upload (multiple files, independent success/fail)
+  // ──────────────────────────────────────────────────────────────
+
+  /**
+   * Start a bulk chapter upload. Returns immediately with session info;
+   * each chapter is processed sequentially in the background.
+   */
+  async startBulkChapterUpload(
+    user: any,
+    materialId: string,
+    chaptersJson: string,
+    files: Express.Multer.File[],
+  ): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[GENERAL MATERIALS] Starting bulk chapter upload for material: ${materialId} (${files.length} file(s))`,
+      ),
+    );
+
+    if (!files || files.length === 0) {
+      throw new BadRequestException('At least one file is required');
+    }
+
+    let chapters: { title: string; description?: string; pageStart?: number; pageEnd?: number }[];
+    try {
+      chapters = JSON.parse(chaptersJson);
+    } catch {
+      throw new BadRequestException(
+        'chapters must be valid JSON — an array of objects with at least a "title" key per file',
+      );
+    }
+
+    if (!Array.isArray(chapters) || chapters.length !== files.length) {
+      throw new BadRequestException(
+        `chapters array length (${Array.isArray(chapters) ? chapters.length : 0}) must match the number of files (${files.length})`,
+      );
+    }
+
+    for (let i = 0; i < chapters.length; i++) {
+      if (!chapters[i].title || typeof chapters[i].title !== 'string') {
+        throw new BadRequestException(
+          `chapters[${i}].title is required and must be a non-empty string`,
+        );
+      }
+    }
+
+    for (const file of files) {
+      const v = FileValidationHelper.validateMaterialFile(file);
+      if (!v.isValid) {
+        throw new BadRequestException(
+          `File "${file.originalname}" failed validation: ${v.error}`,
+        );
+      }
+    }
+
+    const bulkSessionId = `bulk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const totalBytes = files.reduce((s, f) => s + f.size, 0);
+
+    const chapterSessions: {
+      index: number;
+      title: string;
+      fileName: string;
+      sessionId: string;
+    }[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const sid = this.uploadProgressService.createUploadSession(
+        user.sub,
+        `bulk-chapter-${materialId}-${i}`,
+        files[i].size,
+      );
+      chapterSessions.push({
+        index: i,
+        title: chapters[i].title,
+        fileName: files[i].originalname,
+        sessionId: sid,
+      });
+    }
+
+    this.processBulkChaptersInBackground(
+      user,
+      materialId,
+      chapters,
+      files,
+      chapterSessions,
+      bulkSessionId,
+    ).catch((err) => {
+      this.logger.error(
+        colors.red(
+          `[GENERAL MATERIALS] Fatal bulk upload error: ${err.message}`,
+        ),
+      );
+    });
+
+    return new ApiResponse(true, 'Bulk chapter upload started', {
+      bulkSessionId,
+      totalFiles: files.length,
+      totalBytes,
+      chapters: chapterSessions.map((cs) => ({
+        index: cs.index,
+        title: cs.title,
+        fileName: cs.fileName,
+        sessionId: cs.sessionId,
+        progressEndpoint: `/api/v1/library/general-materials/upload-progress/${cs.sessionId}/poll`,
+      })),
+    });
+  }
+
+  /**
+   * Sequential background processor — each chapter upload is independent.
+   */
+  private async processBulkChaptersInBackground(
+    user: any,
+    materialId: string,
+    chapters: { title: string; description?: string; pageStart?: number; pageEnd?: number }[],
+    files: Express.Multer.File[],
+    sessions: { index: number; title: string; fileName: string; sessionId: string }[],
+    bulkSessionId: string,
+  ): Promise<void> {
+    this.logger.log(
+      colors.cyan(
+        `[GENERAL MATERIALS][BULK] Processing ${files.length} chapter(s) for material: ${materialId}`,
+      ),
+    );
+
+    const results: {
+      index: number;
+      title: string;
+      status: 'completed' | 'failed';
+      chapterId?: string;
+      error?: string;
+    }[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const meta = chapters[i];
+      const session = sessions[i];
+
+      this.logger.log(
+        colors.white(
+          `[GENERAL MATERIALS][BULK] (${i + 1}/${files.length}) Starting: "${meta.title}" (${file.originalname})`,
+        ),
+      );
+
+      try {
+        const payload: CreateChapterWithFileDto = {
+          title: meta.title,
+          description: meta.description,
+          pageStart: meta.pageStart,
+          pageEnd: meta.pageEnd,
+          file: undefined,
+        };
+
+        await this.uploadChapterWithFileWithProgress(
+          user,
+          materialId,
+          payload,
+          file,
+          session.sessionId,
+        );
+
+        const progress = this.uploadProgressService.getCurrentProgress(
+          session.sessionId,
+        );
+
+        results.push({
+          index: i,
+          title: meta.title,
+          status: 'completed',
+          chapterId: (progress as any)?.materialId,
+        });
+
+        this.logger.log(
+          colors.green(
+            `[GENERAL MATERIALS][BULK] (${i + 1}/${files.length}) Completed: "${meta.title}"`,
+          ),
+        );
+      } catch (err: any) {
+        results.push({
+          index: i,
+          title: meta.title,
+          status: 'failed',
+          error: err.message,
+        });
+
+        this.logger.error(
+          colors.red(
+            `[GENERAL MATERIALS][BULK] (${i + 1}/${files.length}) Failed: "${meta.title}" — ${err.message}`,
+          ),
+        );
+      }
+    }
+
+    const succeeded = results.filter((r) => r.status === 'completed').length;
+    const failed = results.filter((r) => r.status === 'failed').length;
+
+    this.logger.log(
+      colors.cyan('────────────────────────────────────────────────────────'),
+    );
+    this.logger.log(
+      colors.green.bold(
+        `[GENERAL MATERIALS][BULK] Finished — ${succeeded}/${files.length} succeeded, ${failed} failed`,
+      ),
+    );
+    this.logger.log(
+      colors.cyan('────────────────────────────────────────────────────────'),
+    );
+  }
+
   /**
    * Get upload progress (for polling)
    */
@@ -1957,8 +2171,7 @@ export class GeneralMaterialsService {
           // Process document synchronously using file buffer directly
           const fileExtension =
             file.originalname.split('.').pop()?.toLowerCase() || 'pdf';
-          const processingFileType =
-            fileExtension === 'docx' ? 'doc' : fileExtension;
+          const processingFileType = fileExtension;
 
           const processingResult =
             await this.documentProcessingService.processDocumentFromBuffer(
@@ -2593,8 +2806,7 @@ export class GeneralMaterialsService {
           // Determine file type for processing (extract from filename or use validation result)
           const fileExtension =
             file.originalname.split('.').pop()?.toLowerCase() || 'pdf';
-          const processingFileType =
-            fileExtension === 'docx' ? 'doc' : fileExtension;
+          const processingFileType = fileExtension;
 
           const processingResult =
             await this.documentProcessingService.processDocumentFromBuffer(

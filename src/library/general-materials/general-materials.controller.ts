@@ -25,6 +25,7 @@ import { CreateChapterWithFileDto } from './dto/create-chapter-with-file.dto';
 import {
   FileFieldsInterceptor,
   FileInterceptor,
+  FilesInterceptor,
 } from '@nestjs/platform-express';
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
@@ -36,6 +37,7 @@ import {
   StartGeneralMaterialUploadDocs,
   GeneralMaterialUploadProgressSseDocs,
   GeneralMaterialUploadProgressPollDocs,
+  BulkChapterUploadDocs,
 } from './docs/general-materials.docs';
 
 @ApiTags('Library General Materials')
@@ -153,6 +155,34 @@ export class GeneralMaterialsController {
       materialId,
       payload,
       file,
+    );
+  }
+
+  // 7) Bulk chapter upload (multiple files in one request)
+  @Post(':materialId/chapters/upload/bulk')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(LibraryJwtGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FilesInterceptor('files', 20))
+  @BulkChapterUploadDocs.consumes
+  @BulkChapterUploadDocs.operation
+  @BulkChapterUploadDocs.body
+  @BulkChapterUploadDocs.response202
+  @BulkChapterUploadDocs.response400
+  @BulkChapterUploadDocs.response401
+  @BulkChapterUploadDocs.response404
+  @BulkChapterUploadDocs.response500
+  async startBulkChapterUpload(
+    @Request() req: any,
+    @Param('materialId') materialId: string,
+    @Body('chapters') chaptersJson: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return await this.generalMaterialsService.startBulkChapterUpload(
+      req.user,
+      materialId,
+      chaptersJson,
+      files,
     );
   }
 

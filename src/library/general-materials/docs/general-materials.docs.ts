@@ -334,6 +334,69 @@ export const GeneralMaterialUploadProgressSseDocs = {
   }),
 };
 
+export const BulkChapterUploadDocs = {
+  operation: ApiOperation({
+    summary: 'Upload multiple chapters at once (bulk)',
+    description:
+      'Upload several chapter files for a material in one request. ' +
+      'Each chapter is processed independently — partial success is allowed (e.g. 3/5 succeed). ' +
+      'Returns a session ID per chapter so the frontend can poll each one individually.',
+  }),
+
+  consumes: ApiConsumes('multipart/form-data'),
+
+  body: ApiBody({
+    description:
+      'Chapter files + metadata. Send files under the "files" field and a JSON string under "chapters".',
+    schema: {
+      type: 'object',
+      required: ['chapters', 'files'],
+      properties: {
+        chapters: {
+          type: 'string',
+          description:
+            'JSON array of objects (same order as files). Each object: { title (required), description?, pageStart?, pageEnd? }',
+          example:
+            '[{"title":"Chapter 1"},{"title":"Chapter 2","description":"Intro"}]',
+        },
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description:
+            'Chapter files (PDF, DOC, DOCX, PPT, PPTX — max 300 MB each). Must match the length of the chapters array.',
+        },
+      },
+    },
+  }),
+
+  response202: ApiResponse({
+    status: 202,
+    description:
+      'Bulk upload accepted. Returns per-chapter sessionId for progress polling.',
+  }),
+
+  response400: ApiResponse({
+    status: 400,
+    description:
+      'Bad request — validation error, mismatched file/chapter count, or invalid file.',
+  }),
+
+  response401: ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid or missing JWT token',
+  }),
+
+  response404: ApiResponse({
+    status: 404,
+    description: 'Not found - library user, material, or platform not found',
+  }),
+
+  response500: ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  }),
+};
+
 export const GeneralMaterialUploadProgressPollDocs = {
   operation: ApiOperation({
     summary: 'Get general material upload progress (polling)',

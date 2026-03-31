@@ -11,8 +11,9 @@
 8. [Start General Material Upload (with Progress)](#7-start-general-material-upload-with-progress)
 9. [Track Upload Progress](#8-track-upload-progress)
 10. [Create Chapter with File Upload (Recommended)](#9-create-chapter-with-file-upload-recommended)
-11. [Create General Material Chapter (Without File)](#10-create-general-material-chapter-without-file)
-12. [Upload File for Existing Chapter](#11-upload-file-for-existing-chapter)
+11. [Bulk Chapter Upload (Multiple Files)](#10-bulk-chapter-upload-multiple-files)
+12. [Create General Material Chapter (Without File)](#11-create-general-material-chapter-without-file)
+13. [Upload File for Existing Chapter](#12-upload-file-for-existing-chapter)
 
 ---
 
@@ -1255,7 +1256,392 @@ curl -X POST \
 
 ---
 
-## 10. Create General Material Chapter (Without File)
+## 10. Bulk Chapter Upload (Multiple Files)
+
+**Endpoint:** `POST /api/v1/library/general-materials/:materialId/chapters/upload/bulk`
+
+### Description
+Upload **multiple chapter files** for a material in a single request. Each chapter is processed independently — partial success is accepted. For example, if you send 5 files, 3 can succeed while 2 fail; the successful chapters are **not** rolled back.
+
+Each chapter file goes through the same pipeline as the single-chapter upload:
+1. File validation
+2. Upload to S3
+3. Create chapter + file records in the database
+4. AI document processing (text extraction → chunking → embeddings → Pinecone)
+
+If AI processing fails for a chapter, that chapter's file is **removed** from S3 and its database records are rolled back. Other chapters are unaffected.
+
+The endpoint returns **immediately** (HTTP 202) with a `sessionId` per chapter. Frontend polls each session individually to track progress.
+
+### Request Parameters
+- `materialId` (path parameter): The ID of the general material
+
+### Request
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `files` | File[] | Yes | Array of chapter files (PDF, DOC, DOCX, PPT, PPTX — max 300 MB each, up to 20 files) |
+| `chapters` | string (JSON) | Yes | JSON array of chapter metadata objects — **must match the length and order of `files`** |
+
+**`chapters` JSON Schema:**
+
+Each object in the array corresponds to the file at the same index:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | Yes | Title of the chapter (max 200 characters) |
+| `description` | string | No | Description of the chapter (max 2000 characters) |
+| `pageStart` | number | No | Starting page number in the full material (minimum: 1) |
+| `pageEnd` | number | No | Ending page number in the full material (minimum: 1) |
+
+### Example Request
+
+**Using FormData (JavaScript / React / Next.js):**
+```javascript
+const files = [file1, file2, file3]; // File objects from <input type="file" multiple>
+
+const chapters = [
+  { title: 'Chapter 1: Introduction to Algebra' },
+  { title: 'Chapter 2: Linear Equations', description: 'Covers solving linear equations' },
+  { title: 'Chapter 3: Quadratic Equations', pageStart: 45, pageEnd: 72 },
+];
+
+const formData = new FormData();
+formData.append('chapters', JSON.stringify(chapters));
+files.forEach((file) => formData.append('files', file));
+
+const response = await fetch(
+  `/api/v1/library/general-materials/${materialId}/chapters/upload/bulk`,
+  {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  },
+);
+
+const result = await response.json();
+// result.data.chapters => array of { index, title, fileName, sessionId, progressEndpoint }
+```
+
+**Using cURL:**
+```bash
+curl -X POST \
+  https://api.example.com/api/v1/library/general-materials/material_123/chapters/upload/bulk \
+  -H 'Authorization: Bearer <token>' \
+  -F 'chapters=[{"title":"Chapter 1"},{"title":"Chapter 2","description":"Linear equations"}]' \
+  -F 'files=@chapter1.pdf' \
+  -F 'files=@chapter2.docx'
+```
+
+### Success Response (202)
+
+```json
+{
+  "success": true,
+  "message": "Bulk chapter upload started",
+  "data": {
+    "bulkSessionId": "bulk_1711900000000_abc123def",
+    "totalFiles": 3,
+    "totalBytes": 15728640,
+    "chapters": [
+      {
+        "index": 0,
+        "title": "Chapter 1: Introduction to Algebra",
+        "fileName": "chapter1.pdf",
+        "sessionId": "upload_session_1711900000001_xyz111",
+        "progressEndpoint": "/api/v1/library/general-materials/upload-progress/upload_session_1711900000001_xyz111/poll"
+      },
+      {
+        "index": 1,
+        "title": "Chapter 2: Linear Equations",
+        "fileName": "chapter2.docx",
+        "sessionId": "upload_session_1711900000002_xyz222",
+        "progressEndpoint": "/api/v1/library/general-materials/upload-progress/upload_session_1711900000002_xyz222/poll"
+      },
+      {
+        "index": 2,
+        "title": "Chapter 3: Quadratic Equations",
+        "fileName": "chapter3.pdf",
+        "sessionId": "upload_session_1711900000003_xyz333",
+        "progressEndpoint": "/api/v1/library/general-materials/upload-progress/upload_session_1711900000003_xyz333/poll"
+      }
+    ]
+  }
+}
+```
+
+### Tracking Progress (per chapter)
+
+After the 202 response, poll each chapter's progress individually using the `progressEndpoint`:
+
+```javascript
+// Poll all chapters concurrently
+const pollAllChapters = async (chapters) => {
+  const statuses = new Map(); // index -> latest progress
+
+  const poll = async (chapter) => {
+    const res = await fetch(chapter.progressEndpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const { data } = await res.json();
+    statuses.set(chapter.index, data);
+    return data;
+  };
+
+  const interval = setInterval(async () => {
+    const results = await Promise.all(chapters.map(poll));
+
+    // Check if all chapters are done (completed or error)
+    const allDone = results.every(
+      (r) => r.stage === 'completed' || r.stage === 'error',
+    );
+
+    if (allDone) {
+      clearInterval(interval);
+
+      const succeeded = results.filter((r) => r.stage === 'completed');
+      const failed = results.filter((r) => r.stage === 'error');
+
+      console.log(`Upload finished: ${succeeded.length} succeeded, ${failed.length} failed`);
+
+      // Show errors for failed chapters
+      failed.forEach((f) => {
+        const ch = chapters.find((c) => c.sessionId === f.sessionId);
+        console.error(`"${ch?.title}" failed: ${f.error}`);
+      });
+    }
+  }, 2000); // Poll every 2 seconds
+};
+
+// After receiving the 202 response:
+pollAllChapters(result.data.chapters);
+```
+
+### Per-Chapter Progress Object
+
+Each poll returns the same progress structure as the single-chapter upload:
+
+```json
+{
+  "success": true,
+  "message": "Upload progress retrieved",
+  "data": {
+    "sessionId": "upload_session_1711900000001_xyz111",
+    "stage": "processing",
+    "progress": 85,
+    "bytesUploaded": 4194304,
+    "totalBytes": 5242880,
+    "estimatedTimeRemaining": 3,
+    "error": null,
+    "materialId": null
+  }
+}
+```
+
+**Stages (in order):**
+| Stage | Description |
+|-------|-------------|
+| `validating` | Validating file and permissions |
+| `uploading` | Uploading file to S3 storage |
+| `processing` | AI processing (text extraction, chunking, embeddings) |
+| `saving` | Saving chapter records to database |
+| `completed` | Chapter upload and processing finished successfully |
+| `error` | Something failed — check the `error` field for details |
+
+### Complete Frontend Implementation Example (React)
+
+```tsx
+import { useState, useRef, useCallback } from 'react';
+
+interface ChapterFile {
+  file: File;
+  title: string;
+  description?: string;
+}
+
+interface ChapterProgress {
+  index: number;
+  title: string;
+  fileName: string;
+  sessionId: string;
+  progressEndpoint: string;
+  stage: string;
+  progress: number;
+  error?: string;
+  chapterId?: string;
+}
+
+function BulkChapterUpload({ materialId, token }: { materialId: string; token: string }) {
+  const [chapterFiles, setChapterFiles] = useState<ChapterFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [progresses, setProgresses] = useState<ChapterProgress[]>([]);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+  const addFiles = (files: FileList) => {
+    const items = Array.from(files).map((file) => ({
+      file,
+      title: file.name.replace(/\.[^/.]+$/, ''),
+    }));
+    setChapterFiles((prev) => [...prev, ...items]);
+  };
+
+  const updateTitle = (idx: number, title: string) => {
+    setChapterFiles((prev) => prev.map((c, i) => (i === idx ? { ...c, title } : c)));
+  };
+
+  const removeFile = (idx: number) => {
+    setChapterFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const startUpload = useCallback(async () => {
+    if (chapterFiles.length === 0) return;
+    setUploading(true);
+
+    const formData = new FormData();
+    const chapters = chapterFiles.map(({ title, description }) => ({
+      title,
+      ...(description && { description }),
+    }));
+    formData.append('chapters', JSON.stringify(chapters));
+    chapterFiles.forEach(({ file }) => formData.append('files', file));
+
+    const res = await fetch(
+      `/api/v1/library/general-materials/${materialId}/chapters/upload/bulk`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      },
+    );
+
+    const result = await res.json();
+    if (!result.success) {
+      alert(result.message);
+      setUploading(false);
+      return;
+    }
+
+    const initial: ChapterProgress[] = result.data.chapters.map((c: any) => ({
+      ...c,
+      stage: 'validating',
+      progress: 0,
+    }));
+    setProgresses(initial);
+
+    // Start polling
+    pollRef.current = setInterval(async () => {
+      const updates = await Promise.all(
+        initial.map(async (ch) => {
+          try {
+            const r = await fetch(ch.progressEndpoint, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const { data } = await r.json();
+            return { ...ch, stage: data.stage, progress: data.progress, error: data.error, chapterId: data.materialId };
+          } catch {
+            return ch;
+          }
+        }),
+      );
+
+      setProgresses(updates);
+
+      const allDone = updates.every((u) => u.stage === 'completed' || u.stage === 'error');
+      if (allDone && pollRef.current) {
+        clearInterval(pollRef.current);
+        setUploading(false);
+      }
+    }, 2000);
+  }, [chapterFiles, materialId, token]);
+
+  const succeeded = progresses.filter((p) => p.stage === 'completed').length;
+  const failed = progresses.filter((p) => p.stage === 'error').length;
+  const total = progresses.length;
+
+  return (
+    <div>
+      <h2>Bulk Chapter Upload</h2>
+
+      {/* File picker */}
+      <input
+        type="file"
+        multiple
+        accept=".pdf,.doc,.docx,.ppt,.pptx"
+        onChange={(e) => e.target.files && addFiles(e.target.files)}
+        disabled={uploading}
+      />
+
+      {/* Chapter list with editable titles */}
+      {chapterFiles.map((ch, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <input
+            value={ch.title}
+            onChange={(e) => updateTitle(i, e.target.value)}
+            placeholder="Chapter title"
+            disabled={uploading}
+          />
+          <span>{ch.file.name}</span>
+          {!uploading && <button onClick={() => removeFile(i)}>Remove</button>}
+        </div>
+      ))}
+
+      {/* Upload button */}
+      {chapterFiles.length > 0 && !uploading && (
+        <button onClick={startUpload} style={{ marginTop: 12 }}>
+          Upload {chapterFiles.length} Chapter(s)
+        </button>
+      )}
+
+      {/* Progress display */}
+      {progresses.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <p>
+            <strong>
+              {total > 0 && succeeded + failed === total
+                ? `Done: ${succeeded} succeeded, ${failed} failed`
+                : `Uploading... ${succeeded}/${total} done`}
+            </strong>
+          </p>
+          {progresses.map((p) => (
+            <div key={p.index} style={{ marginTop: 6 }}>
+              <span>{p.title}: </span>
+              {p.stage === 'completed' && <span style={{ color: 'green' }}>Completed</span>}
+              {p.stage === 'error' && <span style={{ color: 'red' }}>Failed — {p.error}</span>}
+              {p.stage !== 'completed' && p.stage !== 'error' && (
+                <span>{p.stage} ({p.progress}%)</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Error Responses
+- **400**: Bad request — Validation error, mismatched file/chapter count, invalid file, or missing `chapters` JSON
+- **401**: Unauthorized — Invalid or missing token
+- **404**: Library user not found, material not found, or material does not belong to user's platform
+- **500**: Internal server error
+
+### Important Notes
+- **Maximum 20 files** per bulk upload request (server-side limit)
+- Each chapter is processed **sequentially** in the background — this prevents memory/CPU spikes when processing large files
+- The response array order matches the input order (index 0 = first file, index 1 = second file, etc.)
+- If a chapter's AI processing fails, its file is deleted from S3 and its database records are rolled back — other chapters are unaffected
+- The `chapters` JSON array length **must exactly match** the number of `files` — a mismatch returns 400
+- Chapters are ordered automatically; the first chapter in the batch gets the next available order, second gets order+1, etc.
+- You can reuse the same progress polling endpoint and SSE endpoint from section 8 for each individual session
+- Supported file types: PDF, DOC, DOCX, PPT, PPTX (same as single-chapter upload)
+- Material must have `isAiEnabled: true` for AI processing to run
+
+---
+
+## 11. Create General Material Chapter (Without File)
 
 **Endpoint:** `POST /api/v1/library/general-materials/:materialId/chapters`
 
@@ -1356,7 +1742,7 @@ Content-Type: application/json
 
 ---
 
-## 11. Upload File for Existing Chapter
+## 12. Upload File for Existing Chapter
 
 **Endpoint:** `POST /api/v1/library/general-materials/:materialId/chapters/:chapterId/files`
 
