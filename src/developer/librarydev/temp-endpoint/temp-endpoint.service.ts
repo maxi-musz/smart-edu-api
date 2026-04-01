@@ -1,13 +1,8 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as colors from 'colors';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PineconeService } from '../../../explore/chat/services/pinecone.service';
 import { S3Service } from '../../../shared/services/s3.service';
-import { DELETE_ALL_LIBRARY_AI_BOOKS_CONFIRM } from './dto/delete-all-library-ai-books.dto';
 
 const LOG = '[TEMP][LIBRARY-AI-BOOKS]';
 
@@ -54,15 +49,7 @@ export class TempEndpointService {
    * library chat + purchases, linked PDFMaterial pipeline (Pinecone, DocumentChunk,
    * MaterialProcessing, school Chat* rows), and best-effort S3 keys.
    */
-  async deleteAllLibraryOwnerAiBooks(
-    confirm: string,
-  ): Promise<DeleteAllLibraryAiBooksResult> {
-    if (confirm !== DELETE_ALL_LIBRARY_AI_BOOKS_CONFIRM) {
-      throw new BadRequestException(
-        `Invalid confirm token. Must be "${DELETE_ALL_LIBRARY_AI_BOOKS_CONFIRM}".`,
-      );
-    }
-
+  async deleteAllLibraryOwnerAiBooks(): Promise<DeleteAllLibraryAiBooksResult> {
     this.logger.log(
       colors.cyan(
         `${LOG} Starting purge of all library AI books (LibraryGeneralMaterial + related data)…`,

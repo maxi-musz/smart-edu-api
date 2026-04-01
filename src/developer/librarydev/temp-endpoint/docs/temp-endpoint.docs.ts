@@ -6,7 +6,7 @@ export const DeleteAllLibraryAiBooksDocs = {
     description:
       'Permanently deletes every LibraryGeneralMaterial row, chapters, chapter files, library chat/purchase rows, ' +
       'linked PDFMaterial + DocumentChunk + MaterialProcessing + school Chat* rows, Pinecone vectors (by PDFMaterial id), ' +
-      'and attempts S3 deletes for known keys. Requires body.confirm exactly DELETE_ALL_LIBRARY_AI_BOOKS. Remove this route after use.',
+      'and attempts S3 deletes for known keys. Requires library JWT (Bearer). Only **admin** and **manager** roles. No request body. Remove or protect this route before production.',
   }),
 
   response200: ApiResponse({

@@ -1,8 +1,17 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { DayOfWeek } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
-import { DayOfWeek } from '@prisma/client';
 import * as colors from 'colors';
+import {
+  buildSubjectsEnrolledFromClass,
+  fetchStudentDashboardParallel,
+  formatDashboardDaySchedule,
+  getClassSubjectIdsForDashboard,
+  getDashboardCurrentDayOfWeek,
+  getDashboardDayAfterNext,
+  getDashboardNextDay,
+} from './students-dashboard.helper';
 import { formatDate } from 'src/shared/helper-functions/formatter';
 import {
   StudentAttendanceDto,
@@ -19,65 +28,12 @@ export class StudentsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Get current DayOfWeek enum string
-   */
-  private getCurrentDayOfWeek(): DayOfWeek {
-    const dayIndex = new Date().getDay();
-    const days: DayOfWeek[] = [
-      DayOfWeek.SUNDAY,
-      DayOfWeek.MONDAY,
-      DayOfWeek.TUESDAY,
-      DayOfWeek.WEDNESDAY,
-      DayOfWeek.THURSDAY,
-      DayOfWeek.FRIDAY,
-      DayOfWeek.SATURDAY,
-    ];
-    return days[dayIndex];
-  }
-
-  /**
-   * Get next day
-   */
-  private getNextDay(currentDay: DayOfWeek): DayOfWeek {
-    const days: DayOfWeek[] = [
-      DayOfWeek.SUNDAY,
-      DayOfWeek.MONDAY,
-      DayOfWeek.TUESDAY,
-      DayOfWeek.WEDNESDAY,
-      DayOfWeek.THURSDAY,
-      DayOfWeek.FRIDAY,
-      DayOfWeek.SATURDAY,
-    ];
-    const currentIndex = days.indexOf(currentDay);
-    const nextIndex = (currentIndex + 1) % 7;
-    return days[nextIndex];
-  }
-
-  /**
-   * Get day after next
-   */
-  private getDayAfterNext(currentDay: DayOfWeek): DayOfWeek {
-    const days: DayOfWeek[] = [
-      DayOfWeek.SUNDAY,
-      DayOfWeek.MONDAY,
-      DayOfWeek.TUESDAY,
-      DayOfWeek.WEDNESDAY,
-      DayOfWeek.THURSDAY,
-      DayOfWeek.FRIDAY,
-      DayOfWeek.SATURDAY,
-    ];
-    const currentIndex = days.indexOf(currentDay);
-    const dayAfterNextIndex = (currentIndex + 2) % 7;
-    return days[dayAfterNextIndex];
-  }
-
-  /**
    * Get student dashboard
    * @param user - User object with sub and email
    */
   async getStudentDashboard(user: any) {
     this.logger.log(
-      colors.cyan(`Fetching student dashboard for:js ${JSON.stringify(user)}`),
+      colors.cyan(`Fetching student dashboard for: ${user.email ?? user.sub}`),
     );
 
     const full_user = await this.prisma.user.findUnique({
@@ -108,39 +64,47 @@ export class StudentsService {
     }
 
     try {
-      // Get student record using user.sub (which is the user ID)
-      const student = await this.prisma.student.findFirst({
-        where: {
-          user_id: user.sub,
-          school_id: full_user.school_id,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              email: true,
-              display_picture: true,
+      // Student + school's current session are independent — run in one round-trip each (parallel)
+      const [student, currentSession] = await Promise.all([
+        this.prisma.student.findFirst({
+          where: {
+            user_id: user.sub,
+            school_id: full_user.school_id,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true,
+                display_picture: true,
+              },
+            },
+            school: {
+              select: {
+                id: true,
+                school_name: true,
+              },
+            },
+            academicSession: {
+              select: {
+                id: true,
+                academic_year: true,
+                term: true,
+                start_date: true,
+                end_date: true,
+              },
             },
           },
-          school: {
-            select: {
-              id: true,
-              school_name: true,
-            },
+        }),
+        this.prisma.academicSession.findFirst({
+          where: {
+            school_id: full_user.school_id,
+            is_current: true,
           },
-          academicSession: {
-            select: {
-              id: true,
-              academic_year: true,
-              term: true,
-              start_date: true,
-              end_date: true,
-            },
-          },
-        },
-      });
+        }),
+      ]);
 
       if (!student) {
         this.logger.error(
@@ -149,20 +113,6 @@ export class StudentsService {
         return new ApiResponse(false, 'Student not found', null);
       }
 
-      this.logger.log(
-        colors.green(
-          `✅ Student found: ${student.user.first_name} ${student.user.last_name}`,
-        ),
-      );
-
-      // Get current academic session
-      const currentSession = await this.prisma.academicSession.findFirst({
-        where: {
-          school_id: student.school_id,
-          is_current: true,
-        },
-      });
-
       if (!currentSession) {
         return new ApiResponse(
           false,
@@ -170,6 +120,12 @@ export class StudentsService {
           null,
         );
       }
+
+      this.logger.log(
+        colors.green(
+          `✅ Student found: ${student.user.first_name} ${student.user.last_name}`,
+        ),
+      );
 
       // Get student's class information (if enrolled)
       let studentClass: any = null;
@@ -222,166 +178,33 @@ export class StudentsService {
         );
       }
 
-      // Get subjects enrolled with teacher info
-      const subjectsEnrolled =
-        studentClass?.subjects?.map((subject) => {
-          const teacherSubject = subject.teacherSubjects[0];
-          return {
-            id: subject.id,
-            name: subject.name,
-            code: subject.code,
-            color: subject.color,
-            teacher: teacherSubject
-              ? {
-                  id: teacherSubject.teacher.id,
-                  name: `${teacherSubject.teacher.first_name} ${teacherSubject.teacher.last_name}`,
-                  display_picture: teacherSubject.teacher.display_picture,
-                }
-              : null,
-          };
-        }) || [];
+      const subjectsEnrolled = buildSubjectsEnrolledFromClass(studentClass);
+      const classSubjectIds = getClassSubjectIdsForDashboard(studentClass);
+      const currentDay = getDashboardCurrentDayOfWeek();
+      const nextDay = getDashboardNextDay(currentDay);
+      const dayAfterNext = getDashboardDayAfterNext(currentDay);
 
-      // Get pending assessments only for subjects the student is enrolled in (same scope as GET /assessment list)
-      const classSubjectIds =
-        studentClass?.subjects?.map((s: { id: string }) => s.id) ?? [];
-      const pendingAssessments =
-        classSubjectIds.length === 0
-          ? []
-          : await this.prisma.assessment.findMany({
-              where: {
-                school_id: student.school_id,
-                academic_session_id: currentSession.id,
-                subject_id: { in: classSubjectIds },
-                status: 'PUBLISHED',
-                is_published: true,
-                AND: [
-                  {
-                    OR: [
-                      { start_date: null },
-                      { start_date: { lte: new Date() } },
-                    ],
-                  },
-                  {
-                    OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-                  },
-                ],
-              },
-              include: {
-                subject: {
-                  select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                  },
-                },
-                _count: {
-                  select: {
-                    attempts: {
-                      where: {
-                        student_id: user.sub,
-                      },
-                    },
-                  },
-                },
-              },
-            });
+      const [pendingAssessments, classSchedule, notifications] =
+        await fetchStudentDashboardParallel(this.prisma, {
+          classSubjectIds,
+          schoolId: student.school_id,
+          currentSessionId: currentSession.id,
+          userSub: user.sub,
+          currentClassId: student.current_class_id,
+          currentDay,
+          nextDay,
+          dayAfterNext,
+        });
 
-      // Filter assessments where student hasn't reached max attempts
-      const availableAssessments = pendingAssessments.filter(
+      const availableAssessments = (pendingAssessments as any[]).filter(
         (assessment) => assessment._count.attempts < assessment.max_attempts,
       );
 
-      // Get current day and next two days for schedule
-      const currentDay = this.getCurrentDayOfWeek();
-      const nextDay = this.getNextDay(currentDay);
-      const dayAfterNext = this.getDayAfterNext(currentDay);
-
-      // Get class schedule for next 3 days (only if student is enrolled in a class)
-      const classSchedule = student.current_class_id
-        ? await this.prisma.timetableEntry.findMany({
-            where: {
-              class_id: student.current_class_id,
-              day_of_week: {
-                in: [currentDay, nextDay, dayAfterNext],
-              },
-              isActive: true,
-              academic_session_id: currentSession.id,
-            },
-            include: {
-              subject: {
-                select: {
-                  id: true,
-                  name: true,
-                  code: true,
-                  color: true,
-                },
-              },
-              teacher: {
-                select: {
-                  id: true,
-                  first_name: true,
-                  last_name: true,
-                },
-              },
-              timeSlot: {
-                select: {
-                  id: true,
-                  startTime: true,
-                  endTime: true,
-                  label: true,
-                  order: true,
-                },
-              },
-            },
-            orderBy: [{ day_of_week: 'asc' }, { timeSlot: { order: 'asc' } }],
-          })
-        : [];
-
-      // Format schedule by day
-      const formatDaySchedule = (day: DayOfWeek) => {
-        const dayEntries = classSchedule.filter(
-          (entry) => entry.day_of_week === day,
-        );
-        return dayEntries.map((entry) => ({
-          subject: {
-            id: entry.subject.id,
-            name: entry.subject.name,
-            code: entry.subject.code,
-            color: entry.subject.color,
-          },
-          teacher: {
-            id: entry.teacher.id,
-            name: `${entry.teacher.first_name} ${entry.teacher.last_name}`,
-          },
-          time: {
-            from: entry.timeSlot.startTime,
-            to: entry.timeSlot.endTime,
-            label: entry.timeSlot.label,
-          },
-          room: entry.room,
-        }));
-      };
-
-      // Get recent notifications for the school
-      const notifications = await this.prisma.notification.findMany({
-        where: {
-          school_id: student.school_id,
-          academic_session_id: currentSession.id,
-          OR: [{ type: 'all' }, { type: 'students' }],
-        },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          type: true,
-          comingUpOn: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: 5,
-      });
+      const scheduleRows = classSchedule as Parameters<
+        typeof formatDashboardDaySchedule
+      >[0];
+      const daySchedule = (day: DayOfWeek) =>
+        formatDashboardDaySchedule(scheduleRows, day);
 
       // Get current date and time
       const now = new Date();
@@ -428,15 +251,15 @@ export class StudentsService {
         class_schedule: {
           today: {
             day: currentDay,
-            schedule: formatDaySchedule(currentDay),
+            schedule: daySchedule(currentDay),
           },
           tomorrow: {
             day: nextDay,
-            schedule: formatDaySchedule(nextDay),
+            schedule: daySchedule(nextDay),
           },
           day_after_tomorrow: {
             day: dayAfterNext,
-            schedule: formatDaySchedule(dayAfterNext),
+            schedule: daySchedule(dayAfterNext),
           },
         },
         notifications: notifications,

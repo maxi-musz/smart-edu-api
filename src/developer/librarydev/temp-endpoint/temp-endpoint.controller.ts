@@ -1,11 +1,19 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { ApiBody, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { LibraryJwtGuard } from '../../../library/library-auth/guard/library-jwt.guard';
+import { LibraryOwnerGuard } from '../../../library/library-auth/guard/library-owner.guard';
 import { TempEndpointService } from './temp-endpoint.service';
 import {
   DeleteAllLibraryAiBooksDocs,
   TempEndpointPingDocs,
 } from './docs/temp-endpoint.docs';
-import { DeleteAllLibraryAiBooksDto } from './dto/delete-all-library-ai-books.dto';
 
 @ApiTags('Developer - Library Temp Endpoint')
 @Controller('developer/librarydev/temp-endpoint')
@@ -21,16 +29,18 @@ export class TempEndpointController {
     return this.tempEndpointService.ping();
   }
 
-  @Post('delete-all-library-ai-books')
+  @Delete('delete-all-library-ai-books')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(LibraryJwtGuard, LibraryOwnerGuard)
+  @ApiBearerAuth()
   @DeleteAllLibraryAiBooksDocs.operation
-  @ApiBody({ type: DeleteAllLibraryAiBooksDto })
   @DeleteAllLibraryAiBooksDocs.response200
-  @ApiResponse({ status: 400, description: 'Invalid confirm token' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden — admin or manager only' })
   @ApiResponse({ status: 500, description: 'Internal Server Error' })
-  async deleteAllLibraryAiBooks(@Body() body: DeleteAllLibraryAiBooksDto) {
+  async deleteAllLibraryAiBooks() {
     const data =
-      await this.tempEndpointService.deleteAllLibraryOwnerAiBooks(body.confirm);
+      await this.tempEndpointService.deleteAllLibraryOwnerAiBooks();
     return {
       success: true,
       message:

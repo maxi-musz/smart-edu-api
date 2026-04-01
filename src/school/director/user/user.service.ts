@@ -35,6 +35,15 @@ import {
   AppInfoDto,
 } from './dto/mobile-student-profile.dto';
 
+/** school_icon JSON in DB: { url?, secure_url?, key?, ... } */
+function schoolLogoUrlFromIcon(schoolIcon: unknown): string | null {
+  if (!schoolIcon || typeof schoolIcon !== 'object') return null;
+  const o = schoolIcon as Record<string, unknown>;
+  if (typeof o.url === 'string') return o.url;
+  if (typeof o.secure_url === 'string') return o.secure_url;
+  return null;
+}
+
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -75,6 +84,7 @@ export class UserService {
               school_type: true,
               school_ownership: true,
               status: true,
+              school_icon: true,
             },
           },
         },
@@ -85,35 +95,89 @@ export class UserService {
         throw new NotFoundException('User not found');
       }
 
-      // Get current academic session for the school
-      let currentSession: any = null;
-      let currentTerm: any = null;
-      let currentSessionId: any = null;
-      if (userProfile.school_id) {
-        try {
-          const currentSessionResponse =
-            await this.academicSessionService.getCurrentSession(
-              userProfile.school_id,
-            );
-          if (currentSessionResponse.success) {
-            currentSession = currentSessionResponse.data.academic_year;
-            currentTerm = currentSessionResponse.data.term;
-            currentSessionId = currentSessionResponse.data.id;
-          }
-        } catch (error) {
-          this.logger.warn(
-            colors.yellow(
-              `Could not fetch current session for school ${userProfile.school_id}: ${error.message}`,
-            ),
-          );
-        }
+      // Current academic session + linked library account (same email as school user)
+      let currentSession: string | null = null;
+      let currentTerm: string | null = null;
+      let currentSessionId: string | null = null;
+      let currentSessionDetail: {
+        id: string;
+        academic_year: string;
+        term: string;
+        start_year: number;
+        end_year: number;
+        start_date: string;
+        end_date: string;
+        status: string;
+        is_current: boolean;
+      } | null = null;
+
+      const [currentSessionResponse, linkedLibraryUser] = await Promise.all([
+        userProfile.school_id
+          ? this.academicSessionService
+              .getCurrentSession(userProfile.school_id)
+              .catch((err: Error) => {
+                this.logger.warn(
+                  colors.yellow(
+                    `Could not fetch current session for school ${userProfile.school_id}: ${err.message}`,
+                  ),
+                );
+                return { success: false as const, data: null };
+              })
+          : Promise.resolve({ success: false as const, data: null }),
+        this.prisma.libraryResourceUser.findFirst({
+          where: {
+            email: userProfile.email,
+            status: 'active',
+          },
+          select: {
+            id: true,
+            role: true,
+            platformId: true,
+            platform: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                description: true,
+                status: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      if (currentSessionResponse.success && currentSessionResponse.data) {
+        const d = currentSessionResponse.data;
+        currentSessionId = d.id;
+        currentSession = d.academic_year;
+        currentTerm = d.term;
+        currentSessionDetail = {
+          id: d.id,
+          academic_year: d.academic_year,
+          term: d.term,
+          start_year: d.start_year,
+          end_year: d.end_year,
+          start_date:
+            d.start_date instanceof Date
+              ? d.start_date.toISOString()
+              : String(d.start_date),
+          end_date:
+            d.end_date instanceof Date
+              ? d.end_date.toISOString()
+              : String(d.end_date),
+          status: d.status,
+          is_current: d.is_current,
+        };
       }
 
-      // Format the response
+      const schoolIcon = userProfile.school?.school_icon ?? null;
+      const schoolLogoUrl = schoolLogoUrlFromIcon(schoolIcon);
+
       const formattedProfile = {
         current_academic_session_id: currentSessionId,
         current_academic_session: currentSession,
         current_term: currentTerm,
+        current_session: currentSessionDetail,
         id: userProfile.id,
         email: userProfile.email,
         first_name: userProfile.first_name,
@@ -127,6 +191,22 @@ export class UserService {
         gender: userProfile.gender,
         created_at: formatDate(userProfile.createdAt),
         updated_at: formatDate(userProfile.updatedAt),
+        organization: {
+          school_name: userProfile.school?.school_name ?? null,
+          school_logo_url: schoolLogoUrl,
+          school_icon: schoolIcon,
+          library_platform_name: linkedLibraryUser?.platform?.name ?? null,
+          library_platform_slug: linkedLibraryUser?.platform?.slug ?? null,
+          library_platform_logo_url: null,
+          has_linked_library_account: !!linkedLibraryUser,
+        },
+        linked_library_account: linkedLibraryUser
+          ? {
+              library_user_id: linkedLibraryUser.id,
+              role: linkedLibraryUser.role,
+              platform: linkedLibraryUser.platform,
+            }
+          : null,
         school: userProfile.school
           ? {
               id: userProfile.school.id,
@@ -137,6 +217,8 @@ export class UserService {
               type: userProfile.school.school_type,
               ownership: userProfile.school.school_ownership,
               status: userProfile.school.status,
+              school_icon: schoolIcon,
+              logo_url: schoolLogoUrl,
             }
           : null,
       };

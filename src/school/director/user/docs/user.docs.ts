@@ -9,7 +9,7 @@ export class UserDocs {
     return ApiOperation({
       summary: 'Get user profile details',
       description:
-        "Fetch the authenticated user's profile information including school details",
+        "Fetch the authenticated user's profile: school details, school logo (school_icon), current academic session/term, optional linked library account when the same email exists as an active LibraryResourceUser",
     });
   }
 
@@ -49,6 +49,44 @@ export class UserDocs {
               },
               created_at: { type: 'string', example: 'Jan 15, 2024, 10:30 AM' },
               updated_at: { type: 'string', example: 'Jan 15, 2024, 10:30 AM' },
+              current_academic_session_id: {
+                type: 'string',
+                nullable: true,
+                example: 'sess_abc123',
+              },
+              current_academic_session: {
+                type: 'string',
+                nullable: true,
+                example: '2024/2025',
+              },
+              current_term: {
+                type: 'string',
+                nullable: true,
+                example: 'first',
+              },
+              current_session: {
+                type: 'object',
+                nullable: true,
+                description:
+                  'Full current session row when is_current active session exists',
+              },
+              organization: {
+                type: 'object',
+                properties: {
+                  school_name: { type: 'string', nullable: true },
+                  school_logo_url: { type: 'string', nullable: true },
+                  school_icon: { type: 'object', nullable: true },
+                  library_platform_name: { type: 'string', nullable: true },
+                  library_platform_slug: { type: 'string', nullable: true },
+                  library_platform_logo_url: {
+                    type: 'string',
+                    nullable: true,
+                    description: 'Reserved; LibraryPlatform has no logo field yet',
+                  },
+                  has_linked_library_account: { type: 'boolean' },
+                },
+              },
+              linked_library_account: { type: 'object', nullable: true },
               school: {
                 type: 'object',
                 nullable: true,
@@ -64,6 +102,8 @@ export class UserDocs {
                   type: { type: 'string', example: 'secondary' },
                   ownership: { type: 'string', example: 'private' },
                   status: { type: 'string', example: 'active' },
+                  school_icon: { type: 'object', nullable: true },
+                  logo_url: { type: 'string', nullable: true },
                 },
               },
             },
