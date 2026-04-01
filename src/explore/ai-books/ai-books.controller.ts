@@ -12,9 +12,9 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { ExploreAiBooksService } from './explore-aibooks.service';
+import { ExploreAiBooksService } from './ai-books.service';
 import { QueryAiBooksDto } from './dto';
-import { UniversalJwtGuard } from '../video/guards/universal-jwt.guard';
+import { UniversalJwtGuard } from '../../video/guards/universal-jwt.guard';
 
 @ApiTags('Explore - AI Books')
 @Controller('explore/ai-books')

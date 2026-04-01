@@ -11,6 +11,7 @@ import { assertLibraryVideoReadyForHlsPlayback } from '../video/library-hls-play
 import { LibraryResourceType } from '../library-access-control/dto';
 import { ResponseHelper } from '../shared/helper-functions/response.helpers';
 import { QuerySubjectsDto, QueryVideosDto } from './dto';
+import { MaterialProcessingStatus } from '@prisma/client';
 import * as colors from 'colors';
 
 @Injectable()
@@ -644,6 +645,9 @@ export class ExploreService {
                 title: true,
                 description: true,
                 materialType: true,
+                url: true,
+                isAiEnabled: true,
+                processingStatus: true,
                 sizeBytes: true,
                 pageCount: true,
               },
@@ -775,6 +779,13 @@ export class ExploreService {
               title: material.title,
               description: material.description,
               materialType: material.materialType,
+              url: material.url,
+              is_ai_enabled: material.isAiEnabled,
+              ai_processing_status: material.processingStatus,
+              ai_chat_ready:
+                material.isAiEnabled &&
+                material.processingStatus ===
+                  MaterialProcessingStatus.COMPLETED,
               sizeBytes: material.sizeBytes,
               pageCount: material.pageCount,
             })),

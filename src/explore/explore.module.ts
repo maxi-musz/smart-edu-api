@@ -6,8 +6,7 @@ import { ExploreController } from './explore.controller';
 import { ExploreService } from './explore.service';
 import { ExploreAssessmentController } from './explore.assessment.controller';
 import { ExploreAssessmentService } from './explore.assessment.service';
-import { ExploreAiBooksController } from './explore-aibooks.controller';
-import { ExploreAiBooksService } from './explore-aibooks.service';
+import { ExploreAiBooksModule } from './ai-books/ai-books.module';
 import { ExploreChatGateway } from './socket/explore-chat.gateway';
 import { ExploreChatSocketJwtGuard } from './socket/socket-jwt.guard';
 import { ChatService } from './chat/chat.service';
@@ -27,6 +26,7 @@ import {
   imports: [
     PassportModule,
     ExploreExamBodyModule,
+    ExploreAiBooksModule,
     PrismaModule,
     LibraryAuthModule,
     SchoolAccessControlModule,
@@ -51,19 +51,17 @@ import {
   controllers: [
     ExploreController,
     ExploreAssessmentController,
-    ExploreAiBooksController,
     ChatTTSController,
   ],
   providers: [
     ExploreService,
     ExploreAssessmentService,
-    ExploreAiBooksService,
     ExploreChatGateway,
     ExploreChatSocketJwtGuard,
     ChatService,
     UniversalJwtStrategy,
     UniversalJwtGuard,
   ],
-  exports: [ExploreService, ExploreAiBooksService, ExploreChatGateway],
+  exports: [ExploreService, ExploreAiBooksModule, ExploreChatGateway],
 })
 export class ExploreModule {}

@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { ApiResponse } from '../shared/helper-functions/response';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ApiResponse } from '../../shared/helper-functions/response';
 import { QueryAiBooksDto } from './dto/query-ai-books.dto';
 import * as colors from 'colors';
 

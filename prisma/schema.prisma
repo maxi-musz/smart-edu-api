@@ -3410,6 +3410,11 @@ model LibraryMaterial {
   url          String // Public or signed URL
   s3Key        String? // S3 object key
 
+  /// When true, this topic material may participate in AI chat once processing completes.
+  isAiEnabled      Boolean                  @default(false)
+  /// Ingestion / embedding pipeline status for explore AI chat (if enabled).
+  processingStatus MaterialProcessingStatus @default(PENDING)
+
   sizeBytes Int?
   pageCount Int?
 
