@@ -69,4 +69,16 @@ export class ExploreAiBooksController {
       chapterId,
     );
   }
+
+  /** Single-segment :bookId must be registered after :bookId/chapters routes */
+  @Get(':bookId')
+  @UseGuards(UniversalJwtGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Fetch one AI book by id (Explore)' })
+  @ApiResponse({ status: 200, description: 'Book retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Book not found' })
+  async getBookById(@Request() req: any, @Param('bookId') bookId: string) {
+    return this.exploreAiBooksService.getBookById(req.user, bookId);
+  }
 }

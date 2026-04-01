@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
+import { S3Service } from '../../shared/services/s3.service';
 import { QueryAiBooksDto } from './dto/query-ai-books.dto';
 import * as colors from 'colors';
 
@@ -8,7 +9,10 @@ import * as colors from 'colors';
 export class ExploreAiBooksService {
   private readonly logger = new Logger(ExploreAiBooksService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3Service: S3Service,
+  ) {}
 
   /**
    * Fetch AI book landing page data
@@ -157,6 +161,9 @@ export class ExploreAiBooksService {
           description: book.description,
           author: book.author,
           thumbnailS3Key: book.thumbnailS3Key,
+          thumbnailUrl: book.thumbnailS3Key
+            ? this.s3Service.getFileUrl(book.thumbnailS3Key)
+            : null,
           views: book.views,
           downloads: book.downloads,
           createdAt: book.createdAt,
@@ -184,6 +191,7 @@ export class ExploreAiBooksService {
         ),
       );
 
+      // this.logger.log(colors.magenta(JSON.stringify(responseData, null, 2)));
       return new ApiResponse(
         true,
         'AI book landing page data fetched successfully',
@@ -192,6 +200,93 @@ export class ExploreAiBooksService {
     } catch (error: any) {
       this.logger.error(
         colors.red(`❌ Error fetching landing page data: ${error.message}`),
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Single book metadata for detail screens (same visibility rules as landing list).
+   * Use this from Explore — not GET /library/general-materials (Library JWT).
+   */
+  async getBookById(user: any, bookId: string): Promise<ApiResponse<any>> {
+    this.logger.log(
+      colors.cyan(
+        `[EXPLORE AI BOOKS] Fetching book: ${bookId} by user: ${user.email || user.sub}`,
+      ),
+    );
+
+    try {
+      const libraryUser = await this.prisma.libraryResourceUser.findFirst({
+        where: { email: user.email },
+        select: { id: true, platformId: true },
+      });
+
+      const materialWhere: any = {
+        id: bookId,
+        isAiEnabled: true,
+        isAvailable: true,
+        status: 'published',
+      };
+
+      if (libraryUser?.platformId) {
+        materialWhere.platformId = libraryUser.platformId;
+      }
+
+      const book = await this.prisma.libraryGeneralMaterial.findFirst({
+        where: materialWhere,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          author: true,
+          thumbnailS3Key: true,
+          views: true,
+          downloads: true,
+          createdAt: true,
+          classes: {
+            select: {
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  order: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!book) {
+        this.logger.error(
+          colors.red(`Book not found or not available: ${bookId}`),
+        );
+        throw new NotFoundException('Book not found or not available');
+      }
+
+      const data = {
+        id: book.id,
+        title: book.title,
+        description: book.description,
+        author: book.author,
+        thumbnailS3Key: book.thumbnailS3Key,
+        thumbnailUrl: book.thumbnailS3Key
+          ? this.s3Service.getFileUrl(book.thumbnailS3Key)
+          : null,
+        views: book.views,
+        downloads: book.downloads,
+        createdAt: book.createdAt,
+        classes: book.classes?.map((mc: any) => mc.class) || [],
+      };
+
+      return new ApiResponse(true, 'Book retrieved successfully', data);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        colors.red(`❌ Error fetching book: ${error.message}`),
       );
       throw error;
     }
@@ -248,7 +343,7 @@ export class ExploreAiBooksService {
       const chapterWhere: any = {
         materialId: bookId,
         isProcessed: true,
-        chapterStatus: 'active', // Only return active chapters (soft delete support)
+        // chapterStatus: 'active', // Only return active chapters (soft delete support)
       };
 
       // If library user exists, filter by their platform
