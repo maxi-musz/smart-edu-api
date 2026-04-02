@@ -21,6 +21,15 @@ export class SendMessageDto {
 
   @ApiPropertyOptional({
     description:
+      'Existing explore chat conversation id. Omit to start a new conversation (title is derived from the first message).',
+    example: 'clxxxxxxxx',
+  })
+  @IsString()
+  @IsOptional()
+  conversationId?: string;
+
+  @ApiPropertyOptional({
+    description:
       'Language code for the response (ISO 639-1 format, e.g., "en", "fr", "es", "de"). Defaults to "en" if not provided.',
     example: 'en',
     default: 'en',

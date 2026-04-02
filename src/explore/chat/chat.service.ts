@@ -1,10 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MessageRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import { SendMessageDto } from './dto/send-message.dto';
+import {
+  ExploreListConversationsDto,
+  ExploreConversationMessagesDto,
+} from './dto/explore-conversations.dto';
 import { DocumentProcessingService } from '../../school/ai-chat/services/document-processing.service';
 import OpenAI from 'openai';
 import * as colors from 'colors';
+
+const EXPLORE_CHAT_HISTORY_LIMIT = 10;
 
 @Injectable()
 export class ChatService {
@@ -79,10 +86,8 @@ REMEMBER:
   }
 
   /**
-   * Send a message for a chapter (materialId is actually chapterId)
-   * Basic implementation - returns a simple response
-   * Language parameter will be used for OpenAI integration to return responses in the specified language
-   * AI integration and DB persistence will be added later
+   * Explore chat: chapter-scoped AI with persisted conversation history (library general material chat tables).
+   * sendMessageDto.materialId is the chapter id.
    */
   async sendMessage(
     user: any,
@@ -90,28 +95,26 @@ REMEMBER:
   ): Promise<ApiResponse<any>> {
     this.logger.log(
       colors.cyan(
-        `[EXPLORE CHAT] Sending message from user: ${user.email || user.sub} for chapter: ${sendMessageDto.materialId}, language: ${sendMessageDto.language || 'en'}`,
+        `[EXPLORE CHAT] Sending message from user: ${user.email || user.sub} for chapter: ${sendMessageDto.materialId}, language: ${sendMessageDto.language || 'en'}, conversationId: ${sendMessageDto.conversationId || 'new'}`,
       ),
     );
 
     try {
-      const userId = user.sub || user.id;
-      const { message, materialId, language } = sendMessageDto;
-
-      // Default language to 'en' if not provided
+      const clientUserId = user.sub || user.id;
+      const { message, materialId, language, conversationId } = sendMessageDto;
       const responseLanguage = language || 'en';
 
-      // Validate chapter exists (materialId is actually chapterId)
       const chapter = await this.prisma.libraryGeneralMaterialChapter.findFirst(
         {
           where: {
             id: materialId,
-            isAiEnabled: true, // Only allow AI-enabled chapters
+            isAiEnabled: true,
           },
           select: {
             id: true,
             title: true,
             materialId: true,
+            platformId: true,
             material: {
               select: {
                 id: true,
@@ -135,7 +138,6 @@ REMEMBER:
         );
       }
 
-      // Check if parent material is available and published
       if (
         !chapter.material.isAvailable ||
         chapter.material.status !== 'published'
@@ -150,22 +152,65 @@ REMEMBER:
         );
       }
 
-      // Find PDFMaterial for Pinecone search
-      // PDFMaterial.materialId can be either:
-      // 1. chapter.id (when created via "create chapter with file" endpoint)
-      // 2. chapterFile.id (when created via "upload file to existing chapter" endpoint)
-      // Chunks are stored in Pinecone with material_id = PDFMaterial.id
+      const persistenceUserId = await this.resolvePersistenceUserId(user);
+
+      let conversation =
+        await this.prisma.libraryGeneralMaterialChatConversation.findFirst({
+          where: conversationId
+            ? { id: conversationId, userId: persistenceUserId }
+            : { id: '__never__' },
+        });
+
+      if (conversationId) {
+        if (!conversation) {
+          return new ApiResponse(false, 'Conversation not found', null);
+        }
+        if (
+          conversation.materialId !== chapter.materialId ||
+          conversation.platformId !== chapter.platformId
+        ) {
+          return new ApiResponse(
+            false,
+            'Conversation does not match this chapter or material',
+            null,
+          );
+        }
+        if (
+          conversation.chapterId != null &&
+          conversation.chapterId !== chapter.id
+        ) {
+          return new ApiResponse(
+            false,
+            'Conversation does not match this chapter',
+            null,
+          );
+        }
+      } else {
+        const title = await this.generateChatTitle(message);
+        conversation =
+          await this.prisma.libraryGeneralMaterialChatConversation.create({
+            data: {
+              userId: persistenceUserId,
+              materialId: chapter.materialId,
+              platformId: chapter.platformId,
+              chapterId: chapter.id,
+              title,
+            },
+          });
+      }
+
+      const history = await this.loadRecentHistoryForOpenAi(conversation.id);
+
       this.logger.log(
         colors.cyan(
           `🔍 Searching for PDFMaterial with materialId: ${materialId} (chapter ID)...`,
         ),
       );
       let pdfMaterial = await this.prisma.pDFMaterial.findFirst({
-        where: { materialId: materialId }, // Try chapter ID first (most common case)
+        where: { materialId: materialId },
         select: { id: true, materialId: true },
       });
 
-      // If not found, try finding via chapter file
       if (!pdfMaterial) {
         this.logger.log(
           colors.yellow(
@@ -185,7 +230,7 @@ REMEMBER:
             ),
           );
           pdfMaterial = await this.prisma.pDFMaterial.findFirst({
-            where: { materialId: chapterFile.id }, // Try chapter file ID
+            where: { materialId: chapterFile.id },
             select: { id: true, materialId: true },
           });
         } else {
@@ -197,7 +242,6 @@ REMEMBER:
         }
       }
 
-      // Get relevant context chunks from Pinecone using PDFMaterial.id
       let contextChunks: any[] = [];
       if (pdfMaterial) {
         this.logger.log(
@@ -206,8 +250,6 @@ REMEMBER:
           ),
         );
 
-        // Check if chunks exist in database for this PDFMaterial (to verify processing happened)
-        // Chunks are stored in DocumentChunk table with material_id = PDFMaterial.id
         const chunkCount = await this.prisma.documentChunk.count({
           where: { material_id: pdfMaterial.id },
         });
@@ -218,14 +260,11 @@ REMEMBER:
         );
 
         try {
-          // For summary requests, use a broader search with more chunks
           const isSummaryRequest =
             /summary|summarize|overview|what is this chapter about|what does this chapter cover/i.test(
               message,
             );
-          const topK = isSummaryRequest ? 10 : 5; // Get more chunks for summaries
-
-          // For summary requests, use chapter title as search query to get broader context
+          const topK = isSummaryRequest ? 10 : 5;
           const searchQuery = isSummaryRequest ? chapter.title : message;
           contextChunks =
             await this.documentProcessingService.searchRelevantChunks(
@@ -240,7 +279,6 @@ REMEMBER:
                 `✅ Found ${contextChunks.length} relevant chunks from Pinecone for PDFMaterial: ${pdfMaterial.id}`,
               ),
             );
-            // Log chunk previews for debugging
             contextChunks.slice(0, 2).forEach((chunk, idx) => {
               this.logger.log(
                 colors.blue(
@@ -252,11 +290,6 @@ REMEMBER:
             this.logger.warn(
               colors.yellow(
                 `⚠️ No chunks found in Pinecone for PDFMaterial: ${pdfMaterial.id} (but ${chunkCount} chunks exist in database - processing may not have completed or chunks may not be indexed yet)`,
-              ),
-            );
-            this.logger.warn(
-              colors.yellow(
-                `⚠️ This may indicate: 1) Processing is still in progress, 2) Chunks failed to save to Pinecone, or 3) Search query didn't match any chunks`,
               ),
             );
           }
@@ -274,21 +307,88 @@ REMEMBER:
         );
       }
 
-      // Generate AI response using OpenAI with context chunks
+      await this.prisma.$transaction(async (tx) => {
+        await tx.libraryGeneralMaterialChatMessage.create({
+          data: {
+            conversationId: conversation.id,
+            materialId: chapter.materialId,
+            userId: persistenceUserId,
+            role: MessageRole.USER,
+            content: message,
+          },
+        });
+        await tx.libraryGeneralMaterialChatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            totalMessages: { increment: 1 },
+            lastActivity: new Date(),
+          },
+        });
+      });
+
       const startTime = Date.now();
-      const aiResponse = await this.generateAIResponse(
-        message,
-        chapter.title,
-        chapter.material.title,
-        responseLanguage,
-        contextChunks,
-      );
+      let aiResponse: { content: string; tokensUsed: number };
+      try {
+        aiResponse = await this.generateAIResponse(
+          message,
+          chapter.title,
+          chapter.material.title,
+          responseLanguage,
+          contextChunks,
+          history,
+        );
+      } catch (aiErr: any) {
+        this.logger.error(
+          colors.red(`❌ OpenAI failed after user message saved: ${aiErr.message}`),
+        );
+        return new ApiResponse(
+          false,
+          aiErr.message || 'Failed to generate AI response',
+          {
+            conversationId: conversation.id,
+            conversationTitle: conversation.title,
+            userId: clientUserId,
+            chapterId: materialId,
+            chapterTitle: chapter.title,
+            materialId: chapter.materialId,
+            materialTitle: chapter.material.title,
+          },
+        );
+      }
       const responseTime = Date.now() - startTime;
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.libraryGeneralMaterialChatMessage.create({
+          data: {
+            conversationId: conversation.id,
+            materialId: chapter.materialId,
+            userId: persistenceUserId,
+            role: MessageRole.ASSISTANT,
+            content: aiResponse.content,
+            tokensUsed: aiResponse.tokensUsed,
+            model: 'gpt-4o-mini',
+          },
+        });
+        await tx.libraryGeneralMaterialChatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            totalMessages: { increment: 1 },
+            lastActivity: new Date(),
+          },
+        });
+      });
+
+      const refreshed =
+        await this.prisma.libraryGeneralMaterialChatConversation.findUnique({
+          where: { id: conversation.id },
+        });
 
       const responseData = {
         response: aiResponse.content,
-        userId,
-        chapterId: materialId, // The materialId is actually chapterId
+        userId: clientUserId,
+        conversationId: conversation.id,
+        conversationTitle: refreshed?.title ?? conversation.title,
+        chapterId: materialId,
         chapterTitle: chapter.title,
         materialId: chapter.materialId,
         materialTitle: chapter.material.title,
@@ -300,7 +400,7 @@ REMEMBER:
 
       this.logger.log(
         colors.green(
-          `✅ Message processed successfully for user: ${userId} (${aiResponse.tokensUsed} tokens, ${responseTime}ms)`,
+          `✅ Message processed successfully for user: ${clientUserId} (${aiResponse.tokensUsed} tokens, ${responseTime}ms)`,
         ),
       );
 
@@ -313,24 +413,288 @@ REMEMBER:
     }
   }
 
-  /**
-   * Generate AI response using OpenAI
-   * @param userMessage - The user's message/question
-   * @param chapterTitle - The title of the chapter
-   * @param materialTitle - The title of the parent material
-   * @param language - Language code for the response (ISO 639-1)
-   * @param contextChunks - Relevant chunks from Pinecone for context
-   * @returns AI response content and token usage
-   */
+  async listConversations(
+    user: any,
+    query: ExploreListConversationsDto,
+  ): Promise<ApiResponse<any>> {
+    try {
+      const persistenceUserId = await this.resolvePersistenceUserId(user);
+      const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
+
+      let lastActivityBefore: Date | undefined;
+      if (query.cursor) {
+        const cursorRow =
+          await this.prisma.libraryGeneralMaterialChatConversation.findFirst({
+            where: { id: query.cursor, userId: persistenceUserId },
+            select: { lastActivity: true },
+          });
+        if (!cursorRow) {
+          return new ApiResponse(false, 'Invalid cursor', null);
+        }
+        lastActivityBefore = cursorRow.lastActivity;
+      }
+
+      const rows =
+        await this.prisma.libraryGeneralMaterialChatConversation.findMany({
+          where: {
+            userId: persistenceUserId,
+            ...(query.chapterId ? { chapterId: query.chapterId } : {}),
+            ...(query.materialId ? { materialId: query.materialId } : {}),
+            ...(lastActivityBefore
+              ? { lastActivity: { lt: lastActivityBefore } }
+              : {}),
+          },
+          orderBy: { lastActivity: 'desc' },
+          take: limit + 1,
+          include: {
+            messages: {
+              take: 1,
+              orderBy: { createdAt: 'desc' },
+              select: { content: true, role: true },
+            },
+          },
+        });
+
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const nextCursor = hasMore ? page[page.length - 1]?.id : null;
+
+      const conversations = page.map((c) => ({
+        id: c.id,
+        title: c.title,
+        chapterId: c.chapterId,
+        materialId: c.materialId,
+        platformId: c.platformId,
+        lastActivity: c.lastActivity.toISOString(),
+        totalMessages: c.totalMessages,
+        preview: c.messages[0]?.content?.substring(0, 200) ?? null,
+      }));
+
+      return new ApiResponse(true, 'Conversations loaded', {
+        conversations,
+        nextCursor,
+      });
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(`❌ listConversations: ${error.message}`),
+      );
+      return new ApiResponse(false, error.message || 'Failed to list conversations', null);
+    }
+  }
+
+  async getConversationMessages(
+    user: any,
+    query: ExploreConversationMessagesDto,
+  ): Promise<ApiResponse<any>> {
+    try {
+      const persistenceUserId = await this.resolvePersistenceUserId(user);
+      const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+
+      const conv =
+        await this.prisma.libraryGeneralMaterialChatConversation.findFirst({
+          where: {
+            id: query.conversationId,
+            userId: persistenceUserId,
+          },
+        });
+      if (!conv) {
+        return new ApiResponse(false, 'Conversation not found', null);
+      }
+
+      let createdAtGt: Date | undefined;
+      if (query.cursor) {
+        const cur = await this.prisma.libraryGeneralMaterialChatMessage.findFirst(
+          {
+            where: {
+              id: query.cursor,
+              conversationId: conv.id,
+            },
+            select: { createdAt: true },
+          },
+        );
+        if (!cur) {
+          return new ApiResponse(false, 'Invalid message cursor', null);
+        }
+        createdAtGt = cur.createdAt;
+      }
+
+      const messages =
+        await this.prisma.libraryGeneralMaterialChatMessage.findMany({
+          where: {
+            conversationId: conv.id,
+            ...(createdAtGt ? { createdAt: { gt: createdAtGt } } : {}),
+          },
+          orderBy: { createdAt: 'asc' },
+          take: limit + 1,
+          select: {
+            id: true,
+            role: true,
+            content: true,
+            tokensUsed: true,
+            model: true,
+            createdAt: true,
+          },
+        });
+
+      const hasMore = messages.length > limit;
+      const page = hasMore ? messages.slice(0, limit) : messages;
+      const nextCursor = hasMore ? page[page.length - 1]?.id : null;
+
+      return new ApiResponse(true, 'Messages loaded', {
+        conversationId: conv.id,
+        messages: page.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          tokensUsed: m.tokensUsed,
+          model: m.model,
+          createdAt: m.createdAt.toISOString(),
+        })),
+        nextCursor,
+      });
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(`❌ getConversationMessages: ${error.message}`),
+      );
+      return new ApiResponse(
+        false,
+        error.message || 'Failed to load messages',
+        null,
+      );
+    }
+  }
+
+  private async resolvePersistenceUserId(user: any): Promise<string> {
+    const sub = user.sub || user.id;
+    if (!sub) {
+      throw new Error('User ID not found in token');
+    }
+
+    const existingById = await this.prisma.user.findUnique({
+      where: { id: sub },
+      select: { id: true },
+    });
+    if (existingById) {
+      return existingById.id;
+    }
+
+    const libraryUser = await this.prisma.libraryResourceUser.findUnique({
+      where: { id: sub },
+      select: {
+        id: true,
+        email: true,
+        first_name: true,
+        last_name: true,
+        phone_number: true,
+      },
+    });
+
+    if (libraryUser) {
+      const byEmail = await this.prisma.user.findUnique({
+        where: { email: libraryUser.email },
+        select: { id: true },
+      });
+      if (byEmail) {
+        return byEmail.id;
+      }
+
+      const librarySchool = await this.prisma.school.upsert({
+        where: { school_email: 'library-chat@system.com' },
+        update: {},
+        create: {
+          school_name: 'Library Chat System',
+          school_email: 'library-chat@system.com',
+          school_phone: '+000-000-0000',
+          school_address: 'System Default',
+          school_type: 'primary_and_secondary',
+          school_ownership: 'private',
+          status: 'approved',
+        },
+      });
+
+      await this.prisma.user.create({
+        data: {
+          id: libraryUser.id,
+          email: libraryUser.email,
+          school_id: librarySchool.id,
+          password: 'library-user-placeholder',
+          first_name: libraryUser.first_name || 'Library',
+          last_name: libraryUser.last_name || 'User',
+          phone_number: libraryUser.phone_number || '+000-000-0000',
+          role: 'student',
+          status: 'active',
+        },
+      });
+      return libraryUser.id;
+    }
+
+    throw new Error(
+      'Chat history requires a library or school user linked to this account',
+    );
+  }
+
+  private async loadRecentHistoryForOpenAi(
+    conversationId: string,
+  ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+    const rows = await this.prisma.libraryGeneralMaterialChatMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: EXPLORE_CHAT_HISTORY_LIMIT,
+      select: { role: true, content: true },
+    });
+
+    const chronological = rows.reverse();
+    const out: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (const r of chronological) {
+      if (r.role === MessageRole.USER) {
+        out.push({ role: 'user', content: r.content });
+      } else if (r.role === MessageRole.ASSISTANT) {
+        out.push({ role: 'assistant', content: r.content });
+      }
+    }
+    return out;
+  }
+
+  private async generateChatTitle(firstMessage: string): Promise<string> {
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              "Generate a short, descriptive title (max 5 words) for this conversation based on the user's first message. Return only the title, nothing else.",
+          },
+          {
+            role: 'user',
+            content: firstMessage,
+          },
+        ],
+        max_tokens: 20,
+        temperature: 0.3,
+      });
+
+      const title =
+        response.choices[0].message.content?.trim() || 'New conversation';
+      this.logger.log(colors.cyan(`📝 Generated explore chat title: "${title}"`));
+      return title;
+    } catch (error: any) {
+      this.logger.error(
+        colors.red(`❌ Error generating chat title: ${error.message}`),
+      );
+      return 'New conversation';
+    }
+  }
+
   private async generateAIResponse(
     userMessage: string,
     chapterTitle: string,
     materialTitle: string,
     language: string,
     contextChunks: any[] = [],
+    history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
   ): Promise<{ content: string; tokensUsed: number }> {
     try {
-      // Build context from chunks
       const context =
         contextChunks.length > 0
           ? `\n\nRelevant document context from the chapter:\n${contextChunks
@@ -341,24 +705,29 @@ REMEMBER:
               .join('\n\n')}`
           : '\n\nNote: No specific document chunks were found. However, you should still provide helpful information about the chapter topic based on the chapter title and material title.';
 
-      // Build system prompt with language instruction and context
       const languageInstruction = this.getLanguageInstruction(language);
       const systemPrompt = `${this.CHAPTER_SYSTEM_PROMPT}\n\n${languageInstruction}\n\nYou are teaching about chapter "${chapterTitle}" from the material "${materialTitle}".${context}`;
 
-      const messages = [
+      const messages: OpenAI.ChatCompletionMessageParam[] = [
         { role: 'system', content: systemPrompt },
+        ...history.map((h) => ({
+          role: h.role,
+          content: h.content,
+        })),
         { role: 'user', content: userMessage },
       ];
 
       this.logger.log(
-        colors.cyan(`🤖 Sending request to OpenAI (language: ${language})...`),
+        colors.cyan(
+          `🤖 OpenAI request (language: ${language}, history turns: ${history.length})`,
+        ),
       );
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
-        messages: messages as any,
-        max_tokens: 16000, // Increased from 4000 to allow complete responses (gpt-4o-mini supports up to 16,384)
-        temperature: 0.25, // Lower temperature for more factual, consistent responses
+        messages,
+        max_tokens: 16000,
+        temperature: 0.25,
       });
 
       const content =
@@ -382,11 +751,6 @@ REMEMBER:
     }
   }
 
-  /**
-   * Get language instruction for the system prompt
-   * @param language - Language code (ISO 639-1)
-   * @returns Language instruction string
-   */
   private getLanguageInstruction(language: string): string {
     const languageMap: Record<string, string> = {
       en: 'Respond in English.',

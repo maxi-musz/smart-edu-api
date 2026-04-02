@@ -3559,10 +3559,11 @@ model LibraryGeneralMaterialChapter {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  material LibraryGeneralMaterial              @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  platform LibraryPlatform                     @relation(fields: [platformId], references: [id])
-  chunks   LibraryGeneralMaterialChunk[]
-  files    LibraryGeneralMaterialChapterFile[]
+  material          LibraryGeneralMaterial                   @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  platform          LibraryPlatform                          @relation(fields: [platformId], references: [id])
+  chunks            LibraryGeneralMaterialChunk[]
+  files             LibraryGeneralMaterialChapterFile[]
+  chatConversations LibraryGeneralMaterialChatConversation[]
 
   @@index([materialId])
   @@index([platformId])
@@ -3703,10 +3704,11 @@ model LibraryGeneralMaterialPurchase {
 
 /// AI Chat conversations for general materials
 model LibraryGeneralMaterialChatConversation {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   userId     String
   materialId String
   platformId String
+  chapterId  String?
 
   title          String?
   status         ConversationStatus @default(ACTIVE)
@@ -3721,12 +3723,15 @@ model LibraryGeneralMaterialChatConversation {
   user     User                                @relation(fields: [userId], references: [id])
   material LibraryGeneralMaterial              @relation(fields: [materialId], references: [id])
   platform LibraryPlatform                     @relation(fields: [platformId], references: [id])
+  chapter  LibraryGeneralMaterialChapter?      @relation(fields: [chapterId], references: [id], onDelete: SetNull)
   messages LibraryGeneralMaterialChatMessage[]
   contexts LibraryGeneralMaterialChatContext[]
 
   @@index([userId])
   @@index([materialId])
   @@index([platformId])
+  @@index([chapterId])
+  @@index([userId, chapterId])
   @@index([status])
 }
 

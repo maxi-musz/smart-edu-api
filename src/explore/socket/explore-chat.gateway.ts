@@ -12,6 +12,8 @@ import { Server, Socket } from 'socket.io';
 import { Logger, ExecutionContext } from '@nestjs/common';
 import {
   ExploreChatSendMessageDto,
+  ExploreChatListConversationsDto,
+  ExploreChatConversationMessagesDto,
   ExploreChatErrorResponseDto,
   ExploreChatSuccessResponseDto,
 } from './socket-events.dto';
@@ -190,6 +192,11 @@ export class ExploreChatGateway
       );
       this.logger.log(
         colors.cyan(
+          `     - conversationId: "${data.conversationId ?? '(new thread)'}"`,
+        ),
+      );
+      this.logger.log(
+        colors.cyan(
           '═══════════════════════════════════════════════════════════',
         ),
       );
@@ -222,17 +229,18 @@ export class ExploreChatGateway
       const sendMessageDto = {
         message: data.message,
         materialId: data.materialId,
-        language: data.language, // Language for OpenAI response
+        language: data.language,
+        conversationId: data.conversationId,
       };
 
       const result = await this.chatService.sendMessage(user, sendMessageDto);
 
-      // Check if material was not found
       if (!result.success) {
         client.emit('message:error', {
           success: false,
           message: result.message,
           error: result.message,
+          ...(result.data != null ? { data: result.data } : {}),
           event: 'message:error',
         } as ExploreChatErrorResponseDto);
 
@@ -246,15 +254,21 @@ export class ExploreChatGateway
         return;
       }
 
-      // Emit the response (response is already in markdown format from service)
       client.emit('message:response', {
         success: true,
         message: 'Message received and processed',
         data: {
-          response: result.data.response, // Markdown formatted response
+          response: result.data.response,
           userId: result.data.userId,
+          conversationId: result.data.conversationId,
+          conversationTitle: result.data.conversationTitle,
+          chapterId: result.data.chapterId,
+          chapterTitle: result.data.chapterTitle,
           materialId: result.data.materialId,
           materialTitle: result.data.materialTitle,
+          language: result.data.language,
+          tokensUsed: result.data.tokensUsed,
+          responseTimeMs: result.data.responseTimeMs,
           timestamp: result.data.timestamp,
         },
         event: 'message:response',
@@ -290,6 +304,103 @@ export class ExploreChatGateway
         data: { isTyping: false },
         event: 'message:typing',
       } as ExploreChatSuccessResponseDto);
+    }
+  }
+
+  @SubscribeMessage('conversations:list')
+  async handleListConversations(
+    @MessageBody() data: ExploreChatListConversationsDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const user = client.data.user;
+      const userId = client.data.userId;
+      if (data.userId !== userId) {
+        client.emit('conversations:list:error', {
+          success: false,
+          message: 'User ID mismatch',
+          error: 'The provided userId does not match the authenticated user',
+          event: 'conversations:list:error',
+        } as ExploreChatErrorResponseDto);
+        return;
+      }
+      const result = await this.chatService.listConversations(user, {
+        chapterId: data.chapterId,
+        materialId: data.materialId,
+        limit: data.limit,
+        cursor: data.cursor,
+      });
+      if (!result.success) {
+        client.emit('conversations:list:error', {
+          success: false,
+          message: result.message,
+          error: result.message,
+          event: 'conversations:list:error',
+        } as ExploreChatErrorResponseDto);
+        return;
+      }
+      client.emit('conversations:list:response', {
+        success: true,
+        message: result.message,
+        data: result.data,
+        event: 'conversations:list:response',
+      } as ExploreChatSuccessResponseDto);
+    } catch (error: any) {
+      client.emit('conversations:list:error', {
+        success: false,
+        message: 'Failed to list conversations',
+        error: error.message,
+        event: 'conversations:list:error',
+      } as ExploreChatErrorResponseDto);
+    }
+  }
+
+  @SubscribeMessage('conversation:messages')
+  async handleConversationMessages(
+    @MessageBody() data: ExploreChatConversationMessagesDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userId = client.data.userId;
+      if (data.userId !== userId) {
+        client.emit('conversation:messages:error', {
+          success: false,
+          message: 'User ID mismatch',
+          error: 'The provided userId does not match the authenticated user',
+          event: 'conversation:messages:error',
+        } as ExploreChatErrorResponseDto);
+        return;
+      }
+      const result = await this.chatService.getConversationMessages(
+        client.data.user,
+        {
+          conversationId: data.conversationId,
+          limit: data.limit,
+          cursor: data.cursor,
+        },
+      );
+      if (!result.success) {
+        client.emit('conversation:messages:error', {
+          success: false,
+          message: result.message,
+          error: result.message,
+          event: 'conversation:messages:error',
+        } as ExploreChatErrorResponseDto);
+        return;
+      }
+      client.emit('conversation:messages:response', {
+        success: true,
+        message: result.message,
+        data: result.data,
+        event: 'conversation:messages:response',
+      } as ExploreChatSuccessResponseDto);
+    } catch (error: any) {
+      client.emit('conversation:messages:error', {
+        success: false,
+        message: 'Failed to load messages',
+        error: error.message,
+        event: 'conversation:messages:error',
+      } as ExploreChatErrorResponseDto);
     }
   }
 }

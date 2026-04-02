@@ -31,11 +31,14 @@ This document provides a complete guide for integrating the Explore Chat Socket.
    ```typescript
    socket.emit('message:send', {
      message: 'Your message here',
-     materialId: 'chapter-id',  // Note: This is actually chapterId, not materialId
+     materialId: 'chapter-id',  // Chapter ID (name is historical; not LibraryGeneralMaterial.id)
      userId: 'user-id',
-     language: 'en',  // Optional: Language code (ISO 639-1), defaults to 'en'
+     language: 'en',            // Optional: ISO 639-1, defaults to 'en'
+     conversationId: undefined, // Omit first turn; then pass id from message:response
    });
    ```
+
+5. **Conversation history:** Persist `conversationId` from the first successful `message:response` and send it on every follow-up for that thread. Use `conversations:list` and `conversation:messages` to build a sidebar and replay transcripts.
 
 ## Socket Configuration
 
@@ -78,14 +81,15 @@ This document provides a complete guide for integrating the Explore Chat Socket.
 **`message:send`** - Send a message (client → server)
 ```typescript
 {
-  message: string,           // The message/question to send
-  materialId: string,        // Chapter ID (note: parameter name is materialId but it's actually chapterId)
-  userId: string,            // User ID (must match authenticated user)
-  language?: string          // Optional: Language code (ISO 639-1, e.g., 'en', 'fr', 'es'). Defaults to 'en'
+  message: string,              // The message/question to send
+  materialId: string,           // Chapter ID (same as elsewhere in this doc)
+  userId: string,               // Must match JWT `sub`
+  language?: string,            // Optional: ISO 639-1, default 'en'
+  conversationId?: string      // Omit to start a new thread (title is derived via OpenAI from the first message)
 }
 ```
 
-**Note:** The `materialId` parameter is actually the **chapter ID**, not the material ID. This is a chapter within a material.
+**Naming:** In the request payload, `materialId` is the **chapter** id (`LibraryGeneralMaterialChapter.id`). In `message:response`, `materialId` is the **parent book** id (`LibraryGeneralMaterial.id`), and `chapterId` echoes the chapter you sent.
 
 **`message:typing`** - Typing indicator (server → client)
 ```typescript
@@ -105,15 +109,17 @@ This document provides a complete guide for integrating the Explore Chat Socket.
   success: true,
   message: string,
   data: {
-    response: string,        // Markdown formatted AI response
-    userId: string,
-    chapterId: string,       // Chapter ID (the materialId you sent)
-    chapterTitle: string,   // Chapter title
-    materialId: string,       // Parent material ID
-    materialTitle: string,   // Parent material title
-    language: string,        // Language code used for the response
-    tokensUsed: number,     // Number of tokens used by OpenAI
-    responseTimeMs: number,  // Response time in milliseconds
+    response: string,           // Markdown formatted AI response
+    userId: string,             // Same as JWT subject you send
+    conversationId: string,     // Persist for follow-up messages in this thread
+    conversationTitle: string | null,
+    chapterId: string,          // Chapter ID (your request materialId)
+    chapterTitle: string,
+    materialId: string,         // Parent LibraryGeneralMaterial id
+    materialTitle: string,
+    language: string,
+    tokensUsed: number,
+    responseTimeMs: number,
     timestamp: string
   },
   event: 'message:response'
@@ -128,9 +134,94 @@ This document provides a complete guide for integrating the Explore Chat Socket.
   success: false,
   message: string,
   error: string,
+  data?: {                     // Present for some failures after the user message was stored (e.g. AI error)
+    conversationId?: string,
+    conversationTitle?: string | null,
+    userId?: string,
+    chapterId?: string,
+    chapterTitle?: string,
+    materialId?: string,
+    materialTitle?: string
+  },
   event: 'message:error'
 }
 ```
+
+#### Conversation list and transcript (history)
+
+**`conversations:list`** (client → server) — list threads for the signed-in user.
+
+Request body:
+```typescript
+{
+  userId: string,               // Must match JWT `sub`
+  chapterId?: string,          // Filter to one chapter
+  materialId?: string,         // Filter to one parent material (book)
+  limit?: number,              // 1–100, default 20
+  cursor?: string              // Previous response's `nextCursor` (conversation id)
+}
+```
+
+**`conversations:list:response`** (server → client)
+```typescript
+{
+  success: true,
+  message: string,
+  data: {
+    conversations: Array<{
+      id: string,
+      title: string | null,
+      chapterId: string | null,
+      materialId: string,
+      platformId: string,
+      lastActivity: string,
+      totalMessages: number,
+      preview: string | null
+    }>,
+    nextCursor: string | null
+  },
+  event: 'conversations:list:response'
+}
+```
+
+**`conversations:list:error`** — `{ success: false, message, error, event: 'conversations:list:error' }`
+
+---
+
+**`conversation:messages`** (client → server) — paginated message history for one thread.
+
+Request body:
+```typescript
+{
+  userId: string,               // Must match JWT `sub`
+  conversationId: string,
+  limit?: number,              // 1–200, default 50
+  cursor?: string              // Last message `id` from previous page (exclusive cursor)
+}
+```
+
+**`conversation:messages:response`** (server → client)
+```typescript
+{
+  success: true,
+  message: string,
+  data: {
+    conversationId: string,
+    messages: Array<{
+      id: string,
+      role: 'USER' | 'ASSISTANT' | 'SYSTEM',
+      content: string,
+      tokensUsed: number | null,
+      model: string | null,
+      createdAt: string
+    }>,
+    nextCursor: string | null
+  },
+  event: 'conversation:messages:response'
+}
+```
+
+**`conversation:messages:error`** — `{ success: false, message, error, event: 'conversation:messages:error' }`
 
 ## Frontend Integration
 
@@ -170,13 +261,18 @@ socket.on('connection:error', (error) => {
   console.error('Connection failed:', error);
 });
 
-// Send a message
-function sendMessage(message: string, chapterId: string, userId: string, language?: string) {
+function sendMessage(
+  message: string,
+  chapterId: string,
+  userId: string,
+  opts?: { language?: string; conversationId?: string }
+) {
   socket.emit('message:send', {
     message,
-    materialId: chapterId,  // Note: parameter is called materialId but it's actually chapterId
+    materialId: chapterId,
     userId,
-    language: language || 'en',  // Optional: defaults to 'en'
+    language: opts?.language || 'en',
+    ...(opts?.conversationId ? { conversationId: opts.conversationId } : {}),
   });
 }
 
@@ -189,9 +285,10 @@ socket.on('message:typing', (data) => {
   }
 });
 
-// Listen for response
 socket.on('message:response', (data) => {
-  console.log('Received response:', data.data.response);
+  const { conversationId, response } = data.data;
+  // Store conversationId in client state for this chapter/thread
+  console.log('Received response:', response, 'thread:', conversationId);
 });
 
 // Listen for errors
@@ -216,6 +313,7 @@ export function useExploreChat(token: string) {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [conversationId, setConversationId] = useState<string | undefined>();
 
   useEffect(() => {
     if (!token) return;
@@ -242,6 +340,7 @@ export function useExploreChat(token: string) {
 
     newSocket.on('message:response', (data) => {
       setMessages((prev) => [...prev, data.data]);
+      setConversationId(data.data.conversationId);
       setIsTyping(false);
     });
 
@@ -261,13 +360,19 @@ export function useExploreChat(token: string) {
     };
   }, [token]);
 
-  const sendMessage = (message: string, chapterId: string, userId: string, language?: string) => {
+  const sendMessage = (
+    message: string,
+    chapterId: string,
+    userId: string,
+    language?: string,
+  ) => {
     if (socket && isConnected) {
       socket.emit('message:send', {
         message,
-        materialId: chapterId,  // Note: parameter is called materialId but it's actually chapterId
+        materialId: chapterId,
         userId,
-        language: language || 'en',  // Optional: defaults to 'en'
+        language: language || 'en',
+        ...(conversationId ? { conversationId } : {}),
       });
     }
   };
@@ -278,6 +383,8 @@ export function useExploreChat(token: string) {
     messages,
     isTyping,
     sendMessage,
+    conversationId,
+    setConversationId,
   };
 }
 ```
@@ -328,18 +435,20 @@ const socket = io(`${API_BASE_URL}/explore-chat`, {
 
 ## Current Implementation Status
 
-✅ Socket connection setup
-✅ JWT authentication
-✅ AI-powered message responses (OpenAI integration)
-✅ Multi-language support (15+ languages)
-✅ Markdown formatted responses
-✅ Typing indicators
-✅ Error handling
-✅ Token usage tracking
-✅ Response time tracking
+✅ Socket connection setup  
+✅ JWT authentication  
+✅ AI-powered message responses (OpenAI integration)  
+✅ Multi-language support (15+ languages)  
+✅ Markdown formatted responses  
+✅ Typing indicators  
+✅ Error handling  
+✅ Token usage tracking  
+✅ Response time tracking  
+✅ Database persistence (`LibraryGeneralMaterialChatConversation` / `LibraryGeneralMaterialChatMessage`)  
+✅ Conversation threads, AI-generated titles, last 10 turns sent to the model  
+✅ `conversations:list` and `conversation:messages` socket APIs  
 
-⏳ Database persistence (next step)
-⏳ Message history (next step)
+**Client expectation:** If you omit `conversationId` on every send, the backend creates a **new** conversation each time. Persist `conversationId` from `message:response` for follow-ups.
 
 ## Language Support
 
@@ -385,14 +494,7 @@ socket.emit('message:send', {
 
 ⚠️ **Chapter ID vs Material ID**: The `materialId` parameter is actually the **chapter ID**, not the material ID. Make sure you're passing the correct chapter ID.
 
-📝 **Current Status**:
-- ✅ Socket connection and authentication working
-- ✅ AI-powered message responses (OpenAI integration)
-- ✅ Multi-language support
-- ✅ Typing indicators
-- ✅ Markdown formatted responses
-- ⏳ Database persistence (coming soon)
-- ⏳ Message history (coming soon)
+📝 **Persistence:** Conversations are keyed by authenticated user, parent material, platform, and chapter. Messages and titles are stored in the database; list and transcript are available via socket events above.
 
 ## Troubleshooting
 
@@ -450,15 +552,17 @@ interface MessageResponseData {
   success: true;
   message: string;
   data: {
-    response: string;        // Markdown formatted AI response
+    response: string;
     userId: string;
-    chapterId: string;       // Chapter ID
-    chapterTitle: string;    // Chapter title
-    materialId: string;       // Parent material ID
-    materialTitle: string;   // Parent material title
-    language: string;        // Language code used
-    tokensUsed: number;      // OpenAI tokens used
-    responseTimeMs: number;   // Response time in ms
+    conversationId: string;
+    conversationTitle: string | null;
+    chapterId: string;
+    chapterTitle: string;
+    materialId: string;
+    materialTitle: string;
+    language: string;
+    tokensUsed: number;
+    responseTimeMs: number;
     timestamp: string;
   };
   event: 'message:response';
