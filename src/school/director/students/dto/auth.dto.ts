@@ -8,9 +8,13 @@ import {
   IsDateString,
   MinLength,
   MaxLength,
+  ArrayMinSize,
+  ArrayMaxSize,
+  ValidateNested,
+  IsIn,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { AcademicTerm } from '@prisma/client';
 
 export class OnboardSchoolDto {
@@ -648,6 +652,120 @@ export class EnrollNewStudentDto {
     required: false,
   })
   password?: string;
+}
+
+/** One row from bulk Excel import (class is set on the parent body, not per row). */
+export class BulkEnrollNewStudentItemDto {
+  @ApiProperty({ example: 'Jane' })
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value.trim()
+      : value == null
+        ? ''
+        : String(value).trim(),
+  )
+  @IsNotEmpty({ message: 'first_name is required' })
+  @IsString()
+  @MaxLength(200)
+  first_name: string;
+
+  @ApiProperty({ example: 'Doe' })
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value.trim()
+      : value == null
+        ? ''
+        : String(value).trim(),
+  )
+  @IsNotEmpty({ message: 'last_name is required' })
+  @IsString()
+  @MaxLength(200)
+  last_name: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Optional; if omitted a login email may be generated from admission_number.',
+  })
+  @Transform(({ value }) =>
+    value == null || String(value).trim() === ''
+      ? undefined
+      : String(value).trim().toLowerCase(),
+  )
+  @IsOptional()
+  @IsEmail({}, { message: 'email must be a valid address when provided' })
+  email?: string;
+
+  @ApiProperty({ required: false })
+  @Transform(({ value }) =>
+    value == null || String(value).trim() === ''
+      ? undefined
+      : String(value).trim(),
+  )
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone_number?: string;
+
+  @ApiProperty({ enum: ['male', 'female', 'other'], example: 'female' })
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value.trim().toLowerCase()
+      : String(value ?? '')
+          .trim()
+          .toLowerCase(),
+  )
+  @IsNotEmpty({ message: 'gender is required' })
+  @IsIn(['male', 'female', 'other'], {
+    message: 'gender must be one of: male, female, other',
+  })
+  gender: 'male' | 'female' | 'other';
+
+  @ApiProperty({
+    required: false,
+    description: 'ISO date string e.g. 2008-05-15',
+  })
+  @Transform(({ value }) => {
+    if (value == null || String(value).trim() === '') return undefined;
+    return String(value).trim();
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    { message: 'date_of_birth must be a valid ISO date (YYYY-MM-DD) when provided' },
+  )
+  date_of_birth?: string;
+
+  @ApiProperty({ example: 'ADM/2026/001' })
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value.trim()
+      : String(value ?? '').trim(),
+  )
+  @IsNotEmpty({ message: 'admission_number is required' })
+  @IsString()
+  @MaxLength(120)
+  admission_number: string;
+}
+
+export class BulkEnrollNewStudentsDto {
+  @ApiProperty({
+    description: 'Class all imported students will be enrolled in',
+    example: 'clxxxxxxxx',
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(64)
+  class_id: string;
+
+  @ApiProperty({ type: [BulkEnrollNewStudentItemDto] })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one student row is required' })
+  @ArrayMaxSize(500, {
+    message: 'A maximum of 500 student rows can be imported in one request',
+  })
+  @ValidateNested({ each: true })
+  @Type(() => BulkEnrollNewStudentItemDto)
+  students: BulkEnrollNewStudentItemDto[];
 }
 
 export class VerifyOTPAndResetPasswordDto {

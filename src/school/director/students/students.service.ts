@@ -6,6 +6,7 @@ import * as colors from 'colors';
 import {
   AddStudentToClassDto,
   EnrollNewStudentDto,
+  BulkEnrollNewStudentsDto,
   UpdateStudentDto,
   SetStudentPasswordDto,
 } from './dto/auth.dto';
@@ -1106,6 +1107,145 @@ export class StudentsService {
       this.logger.error(colors.red('Error enrolling new student: '), error);
       return new ApiResponse(false, 'Failed to enroll new student', null);
     }
+  }
+
+  /**
+   * Bulk-import new students (same rules as enrollNewStudent per row).
+   * Rejects the whole request if duplicate admission_number values appear in the payload.
+   * Rows are processed sequentially; failures are collected without stopping the batch.
+   */
+  async bulkEnrollNewStudents(user: User, dto: BulkEnrollNewStudentsDto) {
+    this.logger.log(
+      colors.cyan(
+        `Bulk enroll: class_id=${dto.class_id}, rows=${dto.students?.length ?? 0}`,
+      ),
+    );
+
+    const userId = (user as any).sub || user.id;
+    const fullUser = await this.prisma.user.findFirst({
+      where: { id: userId },
+      select: { id: true, school_id: true },
+    });
+
+    if (!fullUser?.school_id) {
+      return new ApiResponse(
+        false,
+        'User not found or invalid school data',
+        null,
+      );
+    }
+
+    const classExists = await this.prisma.class.findFirst({
+      where: {
+        id: dto.class_id,
+        schoolId: fullUser.school_id,
+      },
+      select: { id: true, name: true },
+    });
+
+    if (!classExists) {
+      return new ApiResponse(
+        false,
+        'Specified class not found or access denied',
+        null,
+      );
+    }
+
+    const normalized = dto.students.map((s) => ({
+      ...s,
+      admission_number: s.admission_number.trim(),
+    }));
+
+    const seenAdmission = new Map<string, number>();
+    for (let i = 0; i < normalized.length; i++) {
+      const key = normalized[i].admission_number.toLowerCase();
+      if (seenAdmission.has(key)) {
+        const firstRow = seenAdmission.get(key)! + 2;
+        const secondRow = i + 2;
+        return new ApiResponse(
+          false,
+          `Duplicate admission_number in file: "${normalized[i].admission_number}" appears at Excel row ${firstRow} and row ${secondRow}. Remove or correct duplicates before importing.`,
+          null,
+        );
+      }
+      seenAdmission.set(key, i);
+    }
+
+    type Failure = {
+      excel_row: number;
+      admission_number: string;
+      first_name: string;
+      last_name: string;
+      error: string;
+    };
+
+    const failures: Failure[] = [];
+    const successes: Array<{
+      excel_row: number;
+      student_id: string;
+      name: string;
+      email: string | null;
+    }> = [];
+
+    for (let i = 0; i < normalized.length; i++) {
+      const row = normalized[i];
+      const excel_row = i + 2;
+      const single: EnrollNewStudentDto = {
+        first_name: row.first_name,
+        last_name: row.last_name,
+        student_id: row.admission_number,
+        admission_number: row.admission_number,
+        gender: row.gender,
+        class_id: dto.class_id,
+        email: row.email,
+        phone_number: row.phone_number,
+        date_of_birth: row.date_of_birth,
+      };
+
+      const res = await this.enrollNewStudent(user, single);
+      if (res.success && res.data && typeof res.data === 'object') {
+        const data = res.data as {
+          student?: {
+            student_id?: string;
+            name?: string;
+            email?: string;
+          };
+        };
+        successes.push({
+          excel_row,
+          student_id: data.student?.student_id ?? row.admission_number,
+          name: data.student?.name ?? `${row.first_name} ${row.last_name}`,
+          email: data.student?.email ?? null,
+        });
+      } else {
+        failures.push({
+          excel_row,
+          admission_number: row.admission_number,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          error: res.message || 'Enrollment failed',
+        });
+      }
+    }
+
+    const created = successes.length;
+    const failed = failures.length;
+    const total = normalized.length;
+
+    return new ApiResponse(
+      true,
+      failed === 0
+        ? `Successfully enrolled ${created} student(s) in ${classExists.name}.`
+        : `Import finished: ${created} enrolled, ${failed} failed (see failures).`,
+      {
+        class: { id: classExists.id, name: classExists.name },
+        total_rows: total,
+        created,
+        failed,
+        successes,
+        failures,
+      },
+    );
   }
 
   // Update student information

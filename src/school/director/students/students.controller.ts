@@ -10,6 +10,7 @@ import {
   Patch,
   Param,
   ValidationPipe,
+  UsePipes,
 } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { JwtGuard } from 'src/school/auth/guard';
@@ -20,6 +21,7 @@ import { StudentsDocs } from './api-docs/students.docs';
 import {
   AddStudentToClassDto,
   EnrollNewStudentDto,
+  BulkEnrollNewStudentsDto,
   UpdateStudentDto,
   SetStudentPasswordDto,
 } from './dto/auth.dto';
@@ -75,6 +77,23 @@ export class StudentsController {
   @StudentsDocs.bearerAuth
   enrollNewStudent(@GetUser() user: User, @Body() dto: EnrollNewStudentDto) {
     return this.studentsService.enrollNewStudent(user, dto);
+  }
+
+  @Post('bulk-enroll-new-students')
+  @HttpCode(HttpStatus.OK)
+  @StudentsDocs.bearerAuth
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  bulkEnrollNewStudents(
+    @GetUser() user: User,
+    @Body() dto: BulkEnrollNewStudentsDto,
+  ) {
+    return this.studentsService.bulkEnrollNewStudents(user, dto);
   }
 
   @Get('available-classes')
