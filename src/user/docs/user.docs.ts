@@ -8,9 +8,9 @@ import {
 
 export const GetUserProfileDocs = {
   operation: ApiOperation({
-    summary: 'Get user profile details',
+    summary: 'Get unified user profile',
     description:
-      'Retrieve user profile information including general info, academic info, settings, and support information',
+      'Single endpoint for all school roles. Returns core user and school info plus `roleDetails`, whose shape depends on `role` (student, teacher, school_director, parent, etc.).',
   }),
   bearerAuth: ApiBearerAuth('JWT-auth'),
   response200: ApiResponse({
@@ -24,10 +24,21 @@ export const GetUserProfileDocs = {
         data: {
           type: 'object',
           properties: {
-            general_info: { type: 'object' },
-            academic_info: { type: 'object' },
-            settings: { type: 'object' },
-            support_info: { type: 'object' },
+            role: { type: 'string', example: 'student' },
+            user: {
+              type: 'object',
+              description: 'Core account fields from User',
+            },
+            school: {
+              type: 'object',
+              nullable: true,
+              description: 'School summary',
+            },
+            roleDetails: {
+              type: 'object',
+              description:
+                'Role-specific payload (student / teacher / staff / parent)',
+            },
           },
         },
         statusCode: { type: 'number' },

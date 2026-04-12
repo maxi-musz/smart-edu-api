@@ -5,8 +5,6 @@ import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { DayOfWeek, UserStatus, User, Gender } from '@prisma/client';
 import * as argon from 'argon2';
 import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
-import { generateStrongPassword } from 'src/shared/helper-functions/password-generator';
-import { sendTeacherOnboardEmail } from 'src/common/mailer/send-congratulatory-emails';
 import {
   sendAssignmentNotifications,
   sendSubjectRoleEmail,
@@ -229,6 +227,7 @@ export class TeachersService {
           { last_name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone_number: { contains: search, mode: 'insensitive' } },
+          { teacher_id: { contains: search, mode: 'insensitive' } },
         ];
       }
 
@@ -298,6 +297,7 @@ export class TeachersService {
             last_name: true,
             email: true,
             phone_number: true,
+            teacher_id: true,
             display_picture: true,
             status: true,
             subjectsTeaching: {
@@ -428,6 +428,7 @@ export class TeachersService {
       password,
       user,
       gender,
+      teacher_id: dtoTeacherId,
     } = dto;
 
     // 1. Validate required fields
@@ -473,10 +474,27 @@ export class TeachersService {
       );
     }
 
-    // 4. Generate strong password if not provided
-    const generatedPassword =
-      password ||
-      generateStrongPassword(first_name, last_name, email, phone_number);
+    let businessTeacherId: string;
+    if (dtoTeacherId !== undefined && dtoTeacherId.trim() !== '') {
+      businessTeacherId = dtoTeacherId.trim();
+      const idTaken = await this.prisma.teacher.findFirst({
+        where: {
+          school_id: loggedInUser.school_id,
+          teacher_id: businessTeacherId,
+        },
+      });
+      if (idTaken) {
+        return ResponseHelper.error(
+          'A teacher with this teacher ID already exists in your school',
+          409,
+        );
+      }
+    } else {
+      businessTeacherId = await generateUniqueTeacherId(this.prisma);
+    }
+
+    // 4. Default password when not provided
+    const generatedPassword = password ?? 'password123';
     const hashedPassword = await argon.hash(generatedPassword);
 
     // 5. Get school name for email
@@ -519,6 +537,7 @@ export class TeachersService {
             role: 'teacher',
             password: hashedPassword,
             school_id: loggedInUser.school_id,
+            teacher_id: businessTeacherId,
           },
         });
 
@@ -530,7 +549,7 @@ export class TeachersService {
             email,
             phone_number,
             display_picture,
-            teacher_id: await generateUniqueTeacherId(this.prisma),
+            teacher_id: businessTeacherId,
             school_id: loggedInUser.school_id,
             academic_session_id: currentSession.id,
             user_id: newUser.id,
@@ -574,27 +593,7 @@ export class TeachersService {
         return { newUser, teacher };
       });
 
-      // 8. Send congratulatory email to teacher (outside transaction)
-      try {
-        await sendTeacherOnboardEmail({
-          firstName: first_name,
-          lastName: last_name,
-          email,
-          phone: phone_number,
-          schoolName: school?.school_name || 'Your School',
-        });
-        this.logger.log(
-          colors.green(`✅ Welcome email sent to teacher: ${email}`),
-        );
-      } catch (emailError) {
-        this.logger.error(
-          colors.red(`❌ Failed to send welcome email to teacher: ${email}`),
-          emailError,
-        );
-        // Don't fail the entire operation if email fails
-      }
-
-      // 9. Send assignment notifications if subjects or classes are assigned (outside transaction)
+      // 8. Send assignment notifications if subjects or classes are assigned (outside transaction)
       try {
         const teacherName = `${first_name} ${last_name}`;
         const assignedBy =

@@ -9,12 +9,9 @@ import {
   UpdateStudentDto,
 } from './dto/auth.dto';
 import { ApiResponse } from '../../../shared/helper-functions/response';
-import { generateUniqueStudentId } from './helper-functions';
 import * as argon from 'argon2';
-import { generateStrongPassword } from '../../../shared/helper-functions/password-generator';
 import {
   sendNewStudentEnrollmentNotification,
-  sendStudentWelcomeEmail,
   sendClassTeacherNotification,
 } from '../../../common/mailer/send-enrollment-notifications';
 import { AcademicSessionService } from '../../../academic-session/academic-session.service';
@@ -765,6 +762,25 @@ export class StudentsService {
         );
       }
 
+      const businessStudentId = dto.student_id.trim();
+      if (!businessStudentId) {
+        return new ApiResponse(false, 'Student ID cannot be empty', 400);
+      }
+
+      const duplicateBusinessId = await this.prisma.student.findFirst({
+        where: {
+          school_id: fullUser.school_id,
+          student_id: businessStudentId,
+        },
+      });
+      if (duplicateBusinessId) {
+        return new ApiResponse(
+          false,
+          'A student with this student ID already exists in your school',
+          409,
+        );
+      }
+
       // 4. Verify class exists and belongs to the school (only if class_id is provided)
       let classExists: any = null;
       if (dto.class_id) {
@@ -813,9 +829,8 @@ export class StudentsService {
         );
       }
 
-      // 5. Generate strong password if not provided
-      const generatedPassword = 'Maximus123';
-      // const generatedPassword = dto.password || generateStrongPassword(dto.first_name, dto.last_name, dto.email, dto.phone_number);
+      // 5. Default password for new students (director may override)
+      const generatedPassword = dto.password ?? 'password123';
       const hashedPassword = await argon.hash(generatedPassword);
 
       // 6. Get current academic session for the school
@@ -846,71 +861,36 @@ export class StudentsService {
               role: 'student',
               password: hashedPassword,
               school_id: fullUser.school_id,
+              student_id: businessStudentId,
             },
           });
 
-          // Create student record with retry mechanism for unique constraint
-          let student;
-          let retryCount = 0;
-          const maxRetries = 3;
-
-          while (retryCount < maxRetries) {
-            try {
-              student = await tx.student.create({
-                data: {
-                  school_id: fullUser.school_id,
-                  user_id: newUser.id,
-                  student_id: await generateUniqueStudentId(this.prisma),
-                  admission_number: dto.admission_number,
-                  date_of_birth: dto.date_of_birth
-                    ? new Date(dto.date_of_birth)
-                    : null,
-                  admission_date: new Date(),
-                  current_class_id: dto.class_id,
-                  guardian_name: dto.guardian_name,
-                  guardian_phone: dto.guardian_phone,
-                  guardian_email: dto.guardian_email,
-                  address: dto.address,
-                  emergency_contact: dto.emergency_contact,
-                  blood_group: dto.blood_group,
-                  medical_conditions: dto.medical_conditions,
-                  allergies: dto.allergies,
-                  previous_school: dto.previous_school,
-                  academic_level: dto.academic_level,
-                  parent_id: dto.parent_id,
-                  status: UserStatus.active,
-                  academic_session_id: currentSessionResponse.data.id,
-                },
-              });
-              break; // Success, exit the retry loop
-            } catch (error: any) {
-              if (
-                error.code === 'P2002' &&
-                error.meta?.target?.includes('student_id')
-              ) {
-                retryCount++;
-                if (retryCount >= maxRetries) {
-                  this.logger.error(
-                    colors.red(
-                      `Failed to create student after ${maxRetries} retries due to duplicate student_id`,
-                    ),
-                  );
-                  throw error;
-                }
-                this.logger.warn(
-                  colors.yellow(
-                    `Duplicate student_id detected, retrying... (${retryCount}/${maxRetries})`,
-                  ),
-                );
-                // Small delay before retry
-                await new Promise((resolve) => setTimeout(resolve, 100));
-              } else {
-                throw error; // Re-throw if it's not a duplicate key error
-              }
-            }
-          }
-
-          // Student is already enrolled to the class via current_class_id in student record
+          const student = await tx.student.create({
+            data: {
+              school_id: fullUser.school_id,
+              user_id: newUser.id,
+              student_id: businessStudentId,
+              admission_number: dto.admission_number,
+              date_of_birth: dto.date_of_birth
+                ? new Date(dto.date_of_birth)
+                : null,
+              admission_date: new Date(),
+              current_class_id: dto.class_id,
+              guardian_name: dto.guardian_name,
+              guardian_phone: dto.guardian_phone,
+              guardian_email: dto.guardian_email,
+              address: dto.address,
+              emergency_contact: dto.emergency_contact,
+              blood_group: dto.blood_group,
+              medical_conditions: dto.medical_conditions,
+              allergies: dto.allergies,
+              previous_school: dto.previous_school,
+              academic_level: dto.academic_level,
+              parent_id: dto.parent_id,
+              status: UserStatus.active,
+              academic_session_id: currentSessionResponse.data.id,
+            },
+          });
 
           return { newUser, student };
         });
@@ -956,22 +936,6 @@ export class StudentsService {
             address: dto.address,
             academicLevel: dto.academic_level,
             previousSchool: dto.previous_school,
-          },
-        });
-
-        // Send welcome email to student
-        await sendStudentWelcomeEmail({
-          studentName: `${dto.first_name} ${dto.last_name}`,
-          studentEmail: dto.email,
-          schoolName: school?.school_name || 'Your School',
-          studentId: result.student.student_id,
-          className: classExists?.name || 'No Class Assigned',
-          classTeacher: classTeacher
-            ? `${classTeacher.first_name} ${classTeacher.last_name}`
-            : undefined,
-          loginCredentials: {
-            email: dto.email,
-            password: generatedPassword,
           },
         });
 
@@ -1021,7 +985,6 @@ export class StudentsService {
           name: `${dto.first_name} ${dto.last_name}`,
           email: dto.email,
           class: classExists?.name || null,
-          generatedPassword: !dto.password ? generatedPassword : undefined, // Only return if auto-generated
         },
       });
     } catch (error) {
@@ -1222,6 +1185,29 @@ export class StudentsService {
         }
       }
 
+      if (dto.student_id !== undefined) {
+        const nextStudentId = dto.student_id.trim();
+        if (!nextStudentId) {
+          return new ApiResponse(false, 'Student ID cannot be empty', 400);
+        }
+        if (nextStudentId !== existingStudent.student_id) {
+          const idTaken = await this.prisma.student.findFirst({
+            where: {
+              school_id: schoolAdmin.school_id,
+              student_id: nextStudentId,
+              id: { not: actualStudentId },
+            },
+          });
+          if (idTaken) {
+            return new ApiResponse(
+              false,
+              'A student with this student ID already exists in your school',
+              409,
+            );
+          }
+        }
+      }
+
       // 5. Check if class transfer is requested and validate the new class
       if (dto.class_id && dto.class_id !== existingStudent.current_class_id) {
         const newClass = await this.prisma.class.findFirst({
@@ -1257,6 +1243,9 @@ export class StudentsService {
       if (dto.gender !== undefined) userUpdateData.gender = dto.gender;
       if (dto.status !== undefined)
         userUpdateData.status = dto.status as UserStatus;
+      if (dto.student_id !== undefined) {
+        userUpdateData.student_id = dto.student_id.trim();
+      }
 
       // Student fields
       if (dto.date_of_birth !== undefined)
@@ -1265,6 +1254,8 @@ export class StudentsService {
           : null;
       if (dto.admission_number !== undefined)
         studentUpdateData.admission_number = dto.admission_number;
+      if (dto.student_id !== undefined)
+        studentUpdateData.student_id = dto.student_id.trim();
       if (dto.guardian_name !== undefined)
         studentUpdateData.guardian_name = dto.guardian_name;
       if (dto.guardian_phone !== undefined)

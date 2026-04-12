@@ -38,7 +38,7 @@ export async function generateUniqueStudentId(
   const studentId = `STUD/${yearPrefix}/${formattedSequence}`;
 
   // Double-check uniqueness to prevent race conditions
-  const existingStudent = await prisma.student.findUnique({
+  const existingStudent = await prisma.student.findFirst({
     where: { student_id: studentId },
   });
 

@@ -22,9 +22,9 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   /**
-   * Get user profile
+   * Unified profile for all school JWT roles (student, teacher, director, parent, etc.).
+   * Response includes `role`, `user`, `school` (with `subscription_plan` for limits/features), and `roleDetails`.
    * GET /api/v1/user/profile
-   * Protected endpoint
    */
   @Get('profile')
   @HttpCode(HttpStatus.OK)

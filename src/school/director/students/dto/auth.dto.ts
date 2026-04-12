@@ -111,7 +111,8 @@ enum SchoolOwnership {
 
 export class SignInDto {
   @ApiProperty({
-    description: 'Email address for authentication',
+    description:
+      'Email address **or** school student/teacher business ID. When using an ID, send `school_id` too.',
     example: 'director@school.edu.ng',
   })
   @IsNotEmpty()
@@ -125,6 +126,16 @@ export class SignInDto {
   @IsNotEmpty()
   @IsString()
   password: string;
+
+  @ApiProperty({
+    description:
+      'School id (cuid). Required when `email` is a student or teacher ID instead of an email.',
+    example: 'clxxxxxxxxxxxxxxxxxxxxxxxx',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  school_id?: string;
 
   @ApiProperty({
     description: 'Expo push notification token (optional)',
@@ -472,6 +483,15 @@ export class EnrollNewStudentDto {
   last_name: string;
 
   @ApiProperty({
+    description:
+      'School-facing student ID (exam number / admission code). Must be unique within this school.',
+    example: 'EXM/2024/0042',
+  })
+  @IsNotEmpty({ message: 'Student ID is required' })
+  @IsString({ message: 'Student ID must be a string' })
+  student_id: string;
+
+  @ApiProperty({
     description: 'Email address of the student',
     example: 'jane.smith@school.edu.ng',
   })
@@ -595,16 +615,17 @@ export class EnrollNewStudentDto {
   parent_id?: string;
 
   @ApiProperty({
-    description: 'Class ID to enroll the student in',
+    description: 'Class ID to enroll the student in (optional)',
     example: 'class-uuid-here',
+    required: false,
   })
-  @IsNotEmpty({ message: 'Class ID is required' })
+  @IsOptional()
   @IsString({ message: 'Class ID must be a string' })
-  class_id: string;
+  class_id?: string;
 
   @ApiProperty({
     description:
-      'Password for the student account (optional - will be auto-generated if not provided)',
+      'Password for the student account (optional; defaults to password123 if omitted)',
     example: 'password123',
     required: false,
   })
@@ -710,6 +731,16 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsString()
   admission_number?: string;
+
+  @ApiProperty({
+    description:
+      'School-facing student ID (exam number). Must stay unique within this school.',
+    example: 'EXM/2024/0042',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  student_id?: string;
 
   @ApiProperty({
     description: 'Guardian name (optional)',

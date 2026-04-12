@@ -61,12 +61,22 @@ export class AddNewTeacherDto {
 
   @ApiProperty({
     example: 'password123',
-    description: 'Password (optional, will be generated if not provided)',
+    description: 'Password (optional; defaults to password123 if omitted)',
     required: false,
   })
   @IsOptional()
   @IsString()
   password?: string;
+
+  @ApiProperty({
+    example: 'TCH-2024-01',
+    description:
+      'School-facing teacher ID (optional; auto-generated if omitted). Must be unique within this school.',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  teacher_id?: string;
 }
 
 export class UpdateTeacherDto {

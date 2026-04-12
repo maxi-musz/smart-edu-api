@@ -214,6 +214,13 @@ model User {
   schoolExclusionsBy               SchoolResourceExclusion[]                @relation("SchoolExclusionBy")
   teacherExclusionsBy              TeacherResourceExclusion[]               @relation("TeacherExclusionBy")
   teacherExclusionsForStudent      TeacherResourceExclusion[]               @relation("TeacherExclusionForStudent")
+  /// School-facing student business ID (mirrors Student.student_id for login); null for non-students
+  student_id                       String?
+  /// School-facing teacher business ID (mirrors Teacher.teacher_id for login); null for non-teachers
+  teacher_id                       String?
+
+  @@unique([school_id, student_id], name: "User_school_id_student_id_key")
+  @@unique([school_id, teacher_id], name: "User_school_id_teacher_id_key")
 }
 
 model Teacher {
@@ -229,7 +236,7 @@ model Teacher {
   gender              Gender              @default(other)
   role                Roles               @default(teacher)
   password            String              @default("")
-  teacher_id          String              @unique
+  teacher_id          String
   employee_number     String?             @unique
   qualification       String?
   specialization      String?
@@ -255,6 +262,7 @@ model Teacher {
   @@index([employee_number])
   @@index([department])
   @@index([is_class_teacher])
+  @@unique([school_id, teacher_id], name: "Teacher_school_id_teacher_id_key")
 }
 
 model Student {
@@ -262,7 +270,7 @@ model Student {
   school_id           String
   academic_session_id String
   user_id             String          @unique
-  student_id          String          @unique
+  student_id          String
   admission_number    String?         @unique
   date_of_birth       DateTime?
   admission_date      DateTime        @default(now())
@@ -299,6 +307,7 @@ model Student {
   @@index([admission_number])
   @@index([parent_id])
   @@index([academic_level])
+  @@unique([school_id, student_id], name: "Student_school_id_student_id_key")
 }
 
 model Parent {

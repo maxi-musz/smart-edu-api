@@ -203,9 +203,9 @@ export const VerifyLoginOtpDocs = {
 // Sign In Documentation
 export const SignInDocs = {
   operation: ApiOperation({
-    summary: 'Sign in with email and password',
+    summary: 'Sign in with email or school ID and password',
     description:
-      'Authenticate user with email and password credentials. Role-based OTP verification applies: students, teachers, and parents can sign in directly if email is verified. Directors, admins, and other roles require OTP verification before login.',
+      'Authenticate with the `email` field set to either an email address or a student/teacher business ID. When using an ID, also send `school_id`. Password is always required.',
   }),
   response200: ApiResponse({
     status: 200,

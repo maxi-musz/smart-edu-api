@@ -714,51 +714,89 @@ export class AuthService {
   }
 
   async signIn(payload: SignInDto) {
+    const identifierRaw = payload.email?.trim() ?? '';
     this.logger.log(
-      colors.cyan('Signing in user with email: ' + payload.email),
+      colors.cyan(`Signing in user with identifier: ${identifierRaw}`),
     );
 
     try {
-      // find the user by email
-      const existing_user = await this.prisma.user.findUnique({
-        where: {
-          email: payload.email,
-        },
-      });
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const isEmail = emailPattern.test(identifierRaw);
 
-      // if user does not exist, then look under school table, before even goig to under library user table
-      if (!existing_user) {
-        this.logger.log(
-          colors.yellow(
-            `User not found in users table, checking school table for email: ${payload.email}`,
-          ),
-        );
-        const email_is_attached_to_school = await this.prisma.school.findFirst({
-          where: { school_email: payload.email.toLowerCase() },
+      let existing_user = null as Awaited<
+        ReturnType<typeof this.prisma.user.findUnique>
+      > | null;
+
+      if (isEmail) {
+        const emailLower = identifierRaw.toLowerCase();
+        existing_user = await this.prisma.user.findUnique({
+          where: {
+            email: emailLower,
+          },
         });
-        if (email_is_attached_to_school) {
-          const new_user = await this.prisma.user.create({
-            data: {
-              email: payload.email.toLowerCase(),
-              password: 'SmartEdu@01.',
-              first_name: '',
-              last_name: '',
-              phone_number: '',
-              school_id: email_is_attached_to_school.id,
-              role: 'school_director',
-              status: 'active',
-            },
-          });
+
+        // if user does not exist, then look under school table, before even goig to under library user table
+        if (!existing_user) {
           this.logger.log(
-            colors.cyan(
-              `Created User record for email attached to school: ${payload.email}`,
+            colors.yellow(
+              `User not found in users table, checking school table for email: ${emailLower}`,
             ),
           );
-          return new_user;
-        } else {
+          const email_is_attached_to_school = await this.prisma.school.findFirst({
+            where: { school_email: emailLower },
+          });
+          if (email_is_attached_to_school) {
+            const new_user = await this.prisma.user.create({
+              data: {
+                email: emailLower,
+                password: 'SmartEdu@01.',
+                first_name: '',
+                last_name: '',
+                phone_number: '',
+                school_id: email_is_attached_to_school.id,
+                role: 'school_director',
+                status: 'active',
+              },
+            });
+            this.logger.log(
+              colors.cyan(
+                `Created User record for email attached to school: ${emailLower}`,
+              ),
+            );
+            return new_user;
+          } else {
+            console.log(
+              colors.red(
+                'User not found: (email does not exist in users table or school table)',
+              ),
+            );
+            throw new NotFoundException('User not found');
+          }
+        }
+      } else {
+        if (!payload.school_id?.trim()) {
+          return ResponseHelper.error(
+            'school_id is required when signing in with a student or teacher ID',
+            null,
+            400,
+          );
+        }
+        const schoolId = payload.school_id.trim();
+        existing_user = await this.prisma.user.findFirst({
+          where: {
+            school_id: schoolId,
+            OR: [
+              { student_id: identifierRaw },
+              { teacher_id: identifierRaw },
+              { student: { student_id: identifierRaw } },
+              { teacher: { teacher_id: identifierRaw } },
+            ],
+          },
+        });
+        if (!existing_user) {
           console.log(
             colors.red(
-              'User not found: (email does not exist in users table or school table)',
+              'User not found for this school ID and business identifier',
             ),
           );
           throw new NotFoundException('User not found');
@@ -790,7 +828,7 @@ export class AuthService {
         if (libraryUser) {
           this.logger.log(
             colors.yellow(
-              `Library user attempted sign-in via school auth: ${payload.email}`,
+              `Library user attempted sign-in via school auth: ${existing_user.email}`,
             ),
           );
           return ResponseHelper.error(
@@ -1603,6 +1641,11 @@ export class AuthService {
             )?.id;
 
             const studentId = await generateUniqueStudentId(tx);
+
+            await tx.user.update({
+              where: { id: user.id },
+              data: { student_id: studentId },
+            });
 
             const student = await tx.student.create({
               data: {
