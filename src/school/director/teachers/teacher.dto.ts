@@ -1,4 +1,12 @@
-import { IsString, IsEmail, IsOptional, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  IsArray,
+  IsNotEmpty,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AddNewTeacherDto {
@@ -153,6 +161,16 @@ export class UpdateTeacherDto {
   classesManaging?: string[];
 
   @ApiProperty({
+    example: 'TCH-2024-01',
+    description:
+      'School-facing teacher ID (login identifier). Must be unique within this school.',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  teacher_id?: string;
+
+  @ApiProperty({
     example: 'password123',
     description: 'Password (optional, will be generated if not provided)',
     required: false,
@@ -166,4 +184,18 @@ export enum Gender {
   male = 'male',
   female = 'female',
   other = 'other',
+}
+
+/** Body for POST /director/teachers/:id/reset-password (school owner sets password). */
+export class SetTeacherPasswordDto {
+  @ApiProperty({
+    description:
+      'New password for the teacher account (as agreed with the teacher; not returned in responses).',
+    example: 'TeacherChosenPass1',
+  })
+  @IsNotEmpty({ message: 'Password is required' })
+  @IsString()
+  @MinLength(6, { message: 'Password must be at least 6 characters' })
+  @MaxLength(128, { message: 'Password must be at most 128 characters' })
+  password: string;
 }

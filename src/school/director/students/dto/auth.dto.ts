@@ -6,8 +6,11 @@ import {
   IsEnum,
   IsOptional,
   IsDateString,
+  MinLength,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { AcademicTerm } from '@prisma/client';
 
 export class OnboardSchoolDto {
@@ -492,20 +495,34 @@ export class EnrollNewStudentDto {
   student_id: string;
 
   @ApiProperty({
-    description: 'Email address of the student',
+    description:
+      'Student email (optional). If omitted, a unique login address is generated from the admission number at smart-edu-hub.com.',
     example: 'jane.smith@school.edu.ng',
+    required: false,
   })
-  @IsNotEmpty({ message: 'Email is required' })
+  @Transform(({ value }) =>
+    value == null || String(value).trim() === ''
+      ? undefined
+      : String(value).trim().toLowerCase(),
+  )
+  @IsOptional()
   @IsEmail({}, { message: 'Please provide a valid email address' })
-  email: string;
+  email?: string;
 
   @ApiProperty({
-    description: 'Phone number of the student',
+    description:
+      'Student phone (optional). If omitted, stored as empty — nothing is auto-generated.',
     example: '+2348012345678',
+    required: false,
   })
-  @IsNotEmpty({ message: 'Phone number is required' })
+  @Transform(({ value }) =>
+    value == null || String(value).trim() === ''
+      ? undefined
+      : String(value).trim(),
+  )
+  @IsOptional()
   @IsString({ message: 'Phone number must be a string' })
-  phone_number: string;
+  phone_number?: string;
 
   @ApiProperty({
     description: 'Display picture URL (optional)',
@@ -860,4 +877,18 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsString()
   status?: 'active' | 'suspended' | 'inactive';
+}
+
+/** Body for POST /director/students/:studentId/reset-password (school owner sets password). */
+export class SetStudentPasswordDto {
+  @ApiProperty({
+    description:
+      'New password for the student account (as agreed with the student; not returned in responses).',
+    example: 'StudentChosenPass1',
+  })
+  @IsNotEmpty({ message: 'Password is required' })
+  @IsString()
+  @MinLength(6, { message: 'Password must be at least 6 characters' })
+  @MaxLength(128, { message: 'Password must be at most 128 characters' })
+  password: string;
 }

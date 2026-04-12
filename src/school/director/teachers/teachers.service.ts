@@ -4,7 +4,8 @@ import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { DayOfWeek, UserStatus, User, Gender } from '@prisma/client';
 import * as argon from 'argon2';
-import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
+import { AddNewTeacherDto, SetTeacherPasswordDto, UpdateTeacherDto } from './teacher.dto';
+import { ApiResponse } from 'src/shared/helper-functions/response';
 import {
   sendAssignmentNotifications,
   sendSubjectRoleEmail,
@@ -382,6 +383,7 @@ export class TeachersService {
         },
         teachers: teachersWithNextClass.map((teacher) => ({
           id: teacher.id,
+          teacher_id: teacher.teacher_id,
           name: `${teacher.first_name} ${teacher.last_name}`,
           display_picture: teacher.display_picture,
           contact: {
@@ -832,6 +834,42 @@ export class TeachersService {
       if (dto.status !== undefined)
         updateData.status = dto.status as UserStatus;
 
+      if (dto.teacher_id !== undefined) {
+        const nextId = dto.teacher_id.trim();
+        if (!nextId) {
+          return ResponseHelper.error('Teacher ID cannot be empty', 400);
+        }
+        if (nextId !== existingTeacher.teacher_id) {
+          const idTaken = await this.prisma.teacher.findFirst({
+            where: {
+              school_id: fullUser.school_id,
+              teacher_id: nextId,
+              id: { not: existingTeacher.id },
+            },
+          });
+          if (idTaken) {
+            return ResponseHelper.error(
+              'A teacher with this teacher ID already exists in your school',
+              409,
+            );
+          }
+          const userIdTaken = await this.prisma.user.findFirst({
+            where: {
+              school_id: fullUser.school_id,
+              teacher_id: nextId,
+              id: { not: existingTeacher.user_id },
+            },
+          });
+          if (userIdTaken) {
+            return ResponseHelper.error(
+              'This teacher ID is already assigned to another user in your school',
+              409,
+            );
+          }
+          updateData.teacher_id = nextId;
+        }
+      }
+
       // 4. Check if email is being updated and if it's already taken
       if (dto.email && dto.email !== existingTeacher.email) {
         const emailExists = await this.prisma.user.findFirst({
@@ -860,6 +898,13 @@ export class TeachersService {
           classesManaging: true,
         },
       });
+
+      if (updateData.teacher_id !== undefined) {
+        await this.prisma.user.update({
+          where: { id: existingTeacher.user_id },
+          data: { teacher_id: updateData.teacher_id },
+        });
+      }
 
       // 6. Update subject assignments if provided
       let subjectsToAdd: string[] = [];
@@ -1629,6 +1674,108 @@ export class TeachersService {
         'Failed to fetch teacher classes and subjects',
         null,
       );
+    }
+  }
+
+  /**
+   * Admin-assisted password: school owner sets the teacher's new password (body).
+   * Plaintext is never stored or returned — only a hash is saved.
+   */
+  async resetTeacherPassword(
+    teacherKey: string,
+    dto: SetTeacherPasswordDto,
+    user: { sub?: string; id?: string },
+  ) {
+    const adminUserId = user.sub || user.id;
+    this.logger.log(
+      colors.cyan(
+        `Admin-assisted password set for teacher key: ${teacherKey} by ${adminUserId}`,
+      ),
+    );
+    try {
+      const schoolAdmin = await this.prisma.user.findFirst({
+        where: { id: adminUserId },
+        select: { id: true, school_id: true },
+      });
+      if (!schoolAdmin?.school_id) {
+        return new ApiResponse(
+          false,
+          'User not found or invalid school data',
+          400,
+        );
+      }
+
+      let row = await this.prisma.teacher.findUnique({
+        where: { id: teacherKey },
+        select: { id: true, school_id: true, user_id: true },
+      });
+      if (!row) {
+        row = await this.prisma.teacher.findUnique({
+          where: { user_id: teacherKey },
+          select: { id: true, school_id: true, user_id: true },
+        });
+      }
+      if (!row) {
+        return new ApiResponse(false, 'Teacher not found', 404);
+      }
+
+      const teacherUser = await this.prisma.user.findUnique({
+        where: { id: row.user_id },
+        select: { id: true, school_id: true, role: true },
+      });
+      const teacherSchoolId = teacherUser?.school_id || row.school_id;
+      if (teacherSchoolId !== schoolAdmin.school_id) {
+        return new ApiResponse(
+          false,
+          'Teacher does not belong to your school',
+          403,
+        );
+      }
+      if (teacherUser?.role !== 'teacher') {
+        return new ApiResponse(false, 'Target user is not a teacher', 400);
+      }
+
+      const plain = dto.password.trim();
+      if (!plain) {
+        return new ApiResponse(false, 'Password cannot be empty', 400);
+      }
+
+      const hashed = await argon.hash(plain);
+      const updated = await this.prisma.user.update({
+        where: { id: row.user_id },
+        data: { password: hashed },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          email: true,
+        },
+      });
+
+      await this.prisma.teacher.update({
+        where: { id: row.id },
+        data: { password: hashed },
+      });
+
+      this.logger.log(
+        colors.green(
+          `Password set by admin ${adminUserId} for teacher user ${row.user_id} (teacher record ${row.id})`,
+        ),
+      );
+
+      return new ApiResponse(true, 'Teacher password updated successfully.', {
+        teacher: {
+          id: updated.id,
+          name: `${updated.first_name} ${updated.last_name}`.trim(),
+          email: updated.email,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        colors.red('Error resetting teacher password: '),
+        error,
+      );
+      return new ApiResponse(false, 'Failed to reset password', null);
     }
   }
 }

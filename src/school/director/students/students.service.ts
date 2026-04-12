@@ -7,6 +7,7 @@ import {
   AddStudentToClassDto,
   EnrollNewStudentDto,
   UpdateStudentDto,
+  SetStudentPasswordDto,
 } from './dto/auth.dto';
 import { ApiResponse } from '../../../shared/helper-functions/response';
 import * as argon from 'argon2';
@@ -690,6 +691,88 @@ export class StudentsService {
     }
   }
 
+  private readonly PLACEHOLDER_STUDENT_EMAIL_DOMAIN = 'smart-edu-hub.com';
+
+  /** RFC-safe local-part from admission / exam number (before @smart-edu-hub.com). */
+  private sanitizeAdmissionLocalPartForEmail(admission: string): string {
+    let s = admission
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (!s) s = 'student';
+    if (s.length > 40) s = s.slice(0, 40).replace(/-+$/, '');
+    return s;
+  }
+
+  /** Disambiguate across schools when the same admission string exists in multiple tenants. */
+  private schoolScopeForPlaceholderEmail(
+    schoolId: string,
+    schoolCode: string | null | undefined,
+  ): string {
+    const code = schoolCode?.trim();
+    if (code) {
+      return code.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 12);
+    }
+    return schoolId.replace(/[^a-f0-9]/gi, '').slice(0, 12);
+  }
+
+  /** Generate a globally unique @smart-edu-hub.com login email from admission number. */
+  private async allocateGeneratedStudentEmail(
+    admissionNumber: string,
+    schoolId: string,
+    schoolCode: string | null | undefined,
+  ): Promise<string> {
+    const base = this.sanitizeAdmissionLocalPartForEmail(admissionNumber);
+    const scope = this.schoolScopeForPlaceholderEmail(schoolId, schoolCode);
+    const domain = this.PLACEHOLDER_STUDENT_EMAIL_DOMAIN;
+
+    const tryEmail = async (local: string): Promise<string | null> => {
+      let loc = local;
+      if (loc.length > 64) loc = loc.slice(0, 64).replace(/-+$/, '');
+      const email = `${loc}@${domain}`;
+      const taken = await this.prisma.user.findFirst({
+        where: { email },
+        select: { id: true },
+      });
+      return taken ? null : email;
+    };
+
+    let found = await tryEmail(base);
+    if (found) return found;
+
+    found = await tryEmail(`${base}.${scope}`);
+    if (found) return found;
+
+    for (let n = 2; n <= 100; n++) {
+      found = await tryEmail(`${base}.${scope}.${n}`);
+      if (found) return found;
+    }
+
+    this.logger.error(
+      colors.red('Could not allocate unique generated student email'),
+    );
+    throw new Error('Could not allocate unique student email');
+  }
+
+  private async resolveEnrollStudentEmail(
+    dto: EnrollNewStudentDto,
+    admissionNumber: string,
+    schoolId: string,
+    schoolCode: string | null | undefined,
+  ): Promise<string> {
+    const raw = dto.email?.trim();
+    if (raw) {
+      return raw.toLowerCase();
+    }
+    return this.allocateGeneratedStudentEmail(
+      admissionNumber,
+      schoolId,
+      schoolCode,
+    );
+  }
+
   // Enroll a completely new student
   async enrollNewStudent(user: User, dto: EnrollNewStudentDto) {
     this.logger.log(
@@ -697,8 +780,8 @@ export class StudentsService {
     );
 
     try {
-      // 1. Validate required fields
-      if (!dto.first_name || !dto.last_name || !dto.email) {
+      // 1. Validate required fields (email optional — generated from admission when omitted)
+      if (!dto.first_name || !dto.last_name) {
         return new ApiResponse(false, 'Missing required fields', null);
       }
 
@@ -730,6 +813,11 @@ export class StudentsService {
         );
       }
 
+      const schoolRecord = await this.prisma.school.findFirst({
+        where: { id: fullUser.school_id },
+        select: { school_code: true },
+      });
+
       // log all available class fr this school
       const availableClasses = await this.prisma.class.findMany({
         where: {
@@ -747,21 +835,7 @@ export class StudentsService {
         ),
       );
 
-      // 3. Check if student already exists
-      const existingStudent = await this.prisma.user.findFirst({
-        where: { email: dto.email },
-      });
-      if (existingStudent) {
-        this.logger.error(
-          colors.red('A student with this email already exists'),
-        );
-        return new ApiResponse(
-          false,
-          'A student with this email already exists',
-          409,
-        );
-      }
-
+      // 3. Business student ID + admission (needed to resolve login email)
       const businessStudentId = dto.student_id.trim();
       if (!businessStudentId) {
         return new ApiResponse(false, 'Student ID cannot be empty', 400);
@@ -771,6 +845,39 @@ export class StudentsService {
       if (!admissionNumber) {
         this.logger.error(colors.red('Admission number is required'));
         return new ApiResponse(false, 'Admission number is required', 400);
+      }
+
+      let resolvedEmail: string;
+      try {
+        resolvedEmail = await this.resolveEnrollStudentEmail(
+          dto,
+          admissionNumber,
+          fullUser.school_id,
+          schoolRecord?.school_code ?? null,
+        );
+      } catch (allocErr: any) {
+        this.logger.error(
+          colors.red(`Email allocation failed: ${allocErr?.message}`),
+        );
+        return new ApiResponse(
+          false,
+          allocErr?.message || 'Could not allocate student email',
+          500,
+        );
+      }
+
+      const existingByEmail = await this.prisma.user.findFirst({
+        where: { email: resolvedEmail },
+      });
+      if (existingByEmail) {
+        this.logger.error(
+          colors.red('A user with this email already exists'),
+        );
+        return new ApiResponse(
+          false,
+          'A student with this email already exists',
+          409,
+        );
       }
 
       const duplicateBusinessId = await this.prisma.student.findFirst({
@@ -861,8 +968,8 @@ export class StudentsService {
             data: {
               first_name: dto.first_name,
               last_name: dto.last_name,
-              email: dto.email,
-              phone_number: dto.phone_number,
+              email: resolvedEmail,
+              phone_number: dto.phone_number?.trim() ?? '',
               display_picture: dto.display_picture,
               gender: dto.gender,
               status: UserStatus.active,
@@ -991,7 +1098,7 @@ export class StudentsService {
           user_id: result.newUser.id,
           student_id: result.student.student_id,
           name: `${dto.first_name} ${dto.last_name}`,
-          email: dto.email,
+          email: resolvedEmail,
           class: classExists?.name || null,
         },
       });
@@ -1399,6 +1506,100 @@ export class StudentsService {
     } catch (error) {
       this.logger.error(colors.red('Error updating student: '), error);
       return new ApiResponse(false, 'Failed to update student', null);
+    }
+  }
+
+  /**
+   * Admin-assisted password: school owner sets the student's new password (body).
+   * Plaintext is never stored or returned — only a hash is saved.
+   */
+  async resetStudentPassword(
+    studentId: string,
+    dto: SetStudentPasswordDto,
+    user: any,
+  ) {
+    const adminUserId = user.sub || user.id;
+    this.logger.log(
+      colors.cyan(
+        `Admin-assisted password set for student key: ${studentId} by ${adminUserId}`,
+      ),
+    );
+    try {
+      const schoolAdmin = await this.prisma.user.findFirst({
+        where: { id: adminUserId },
+        select: { id: true, school_id: true },
+      });
+      if (!schoolAdmin?.school_id) {
+        return new ApiResponse(
+          false,
+          'User not found or invalid school data',
+          400,
+        );
+      }
+
+      let row = await this.prisma.student.findUnique({
+        where: { id: studentId },
+        select: { id: true, school_id: true, user_id: true },
+      });
+      if (!row) {
+        row = await this.prisma.student.findUnique({
+          where: { user_id: studentId },
+          select: { id: true, school_id: true, user_id: true },
+        });
+      }
+      if (!row) {
+        return new ApiResponse(false, 'Student not found', 404);
+      }
+
+      const studentUser = await this.prisma.user.findUnique({
+        where: { id: row.user_id },
+        select: { id: true, school_id: true, role: true },
+      });
+      const studentSchoolId = studentUser?.school_id || row.school_id;
+      if (studentSchoolId !== schoolAdmin.school_id) {
+        return new ApiResponse(
+          false,
+          'Student does not belong to your school',
+          403,
+        );
+      }
+      if (studentUser?.role !== 'student') {
+        return new ApiResponse(false, 'Target user is not a student', 400);
+      }
+
+      const plain = dto.password.trim();
+      if (!plain) {
+        return new ApiResponse(false, 'Password cannot be empty', 400);
+      }
+
+      const hashed = await argon.hash(plain);
+      const updated = await this.prisma.user.update({
+        where: { id: row.user_id },
+        data: { password: hashed },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          email: true,
+        },
+      });
+
+      this.logger.log(
+        colors.green(
+          `Password set by admin ${adminUserId} for student user ${row.user_id} (student record ${row.id})`,
+        ),
+      );
+
+      return new ApiResponse(true, 'Student password updated successfully.', {
+        student: {
+          id: updated.id,
+          name: `${updated.first_name} ${updated.last_name}`.trim(),
+          email: updated.email,
+        },
+      });
+    } catch (error) {
+      this.logger.error(colors.red('Error resetting student password: '), error);
+      return new ApiResponse(false, 'Failed to reset password', null);
     }
   }
 }

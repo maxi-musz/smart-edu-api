@@ -9,6 +9,7 @@ import {
   Body,
   Patch,
   Param,
+  ValidationPipe,
 } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { JwtGuard } from 'src/school/auth/guard';
@@ -20,6 +21,7 @@ import {
   AddStudentToClassDto,
   EnrollNewStudentDto,
   UpdateStudentDto,
+  SetStudentPasswordDto,
 } from './dto/auth.dto';
 
 @ApiTags('Students')
@@ -83,6 +85,18 @@ export class StudentsController {
   @StudentsDocs.response401
   getAvailableClasses(@GetUser() user: User) {
     return this.studentsService.getAvailableClasses(user);
+  }
+
+  /** Admin-assisted password set — school owner sends the new password in the body. */
+  @Post(':studentId/reset-password')
+  @HttpCode(HttpStatus.OK)
+  @StudentsDocs.bearerAuth
+  resetStudentPassword(
+    @Param('studentId') studentId: string,
+    @Body(ValidationPipe) dto: SetStudentPasswordDto,
+    @GetUser() user: User,
+  ) {
+    return this.studentsService.resetStudentPassword(studentId, dto, user);
   }
 
   @Patch(':studentId')

@@ -11,13 +11,18 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  ValidationPipe,
 } from '@nestjs/common';
 import { TeachersService } from './teachers.service';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
-import { AddNewTeacherDto, UpdateTeacherDto } from './teacher.dto';
+import {
+  AddNewTeacherDto,
+  SetTeacherPasswordDto,
+  UpdateTeacherDto,
+} from './teacher.dto';
 import {
   GetTeachersDashboardDocs,
   GetClassesAndSubjectsDocs,
@@ -107,6 +112,17 @@ export class TeachersController {
       ...dto,
       user,
     });
+  }
+
+  /** Admin-assisted password — school owner sends the new password in the body. */
+  @Post(':id/reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetTeacherPassword(
+    @Param('id') teacherId: string,
+    @Body(ValidationPipe) dto: SetTeacherPasswordDto,
+    @GetUser() user: User,
+  ) {
+    return this.teachersService.resetTeacherPassword(teacherId, dto, user);
   }
 
   /**
