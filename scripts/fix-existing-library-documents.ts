@@ -12,6 +12,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { allocateUniqueSchoolCode } from '../src/school/auth/school-code.util';
 
 const prisma = new PrismaClient();
 
@@ -27,9 +28,11 @@ async function findLibrarySystemSchool() {
   });
 
   if (!librarySchool) {
+    const schoolCode = await allocateUniqueSchoolCode(prisma);
     // Create the library system school if it doesn't exist
     const newSchool = await prisma.school.create({
       data: {
+        school_code: schoolCode,
         school_name: 'Library Chat System',
         school_email: 'library-chat@system.com',
         school_phone: '+000-000-0000',

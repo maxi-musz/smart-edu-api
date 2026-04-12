@@ -129,8 +129,8 @@ export class SignInDto {
 
   @ApiProperty({
     description:
-      'School id (cuid). Required when `email` is a student or teacher ID instead of an email.',
-    example: 'clxxxxxxxxxxxxxxxxxxxxxxxx',
+      'School: 6-digit login code or school UUID. Required when `email` is a student or teacher ID.',
+    example: '482913',
     required: false,
   })
   @IsOptional()
@@ -531,11 +531,12 @@ export class EnrollNewStudentDto {
   date_of_birth?: string;
 
   @ApiProperty({
-    description: 'Admission number (optional)',
+    description: 'Admission number (school registry ID; required)',
     example: 'STD/2024/001',
-    required: false,
   })
-  admission_number?: string;
+  @IsNotEmpty({ message: 'Admission number is required' })
+  @IsString({ message: 'Admission number must be a string' })
+  admission_number: string;
 
   @ApiProperty({
     description: 'Guardian name (optional)',

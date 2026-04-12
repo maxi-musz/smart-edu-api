@@ -21,6 +21,7 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
+import { allocateUniqueSchoolCode } from 'src/school/auth/school-code.util';
 import {
   OnboardDataDto,
   OnboardSchoolDto,
@@ -230,9 +231,12 @@ export class AuthService {
           }
         : undefined;
 
+      const schoolCode = await allocateUniqueSchoolCode(this.prisma);
+
       // create a new school in the database
       const school = await this.prisma.school.create({
         data: {
+          school_code: schoolCode,
           school_name: dto.school_name.toLowerCase(),
           school_email: dto.school_email.toLowerCase(),
           school_phone: dto.school_phone,
@@ -636,6 +640,11 @@ export class AuthService {
         updatedUser.school_id,
       );
 
+      const schoolForOtp = await this.prisma.school.findUnique({
+        where: { id: updatedUser.school_id },
+        select: { school_code: true },
+      });
+
       const formatted_response = {
         user: {
           id: updatedUser.id,
@@ -646,6 +655,7 @@ export class AuthService {
           is_email_verified: updatedUser.is_email_verified,
           role: updatedUser.role,
           school_id: updatedUser.school_id,
+          school_code: schoolForOtp?.school_code ?? null,
           created_at: formatDate(updatedUser.createdAt),
           updated_at: formatDate(updatedUser.updatedAt),
         },
@@ -674,6 +684,7 @@ export class AuthService {
     schoolId: string,
   ): Promise<{ access_token: string; refresh_token: string }> {
     // console.log(colors.cyan('Signing token for:'), { userId, email, schoolId });
+    this.logger.log(colors.cyan("User signing in"));
 
     const payload = {
       sub: userId,
@@ -781,10 +792,27 @@ export class AuthService {
             400,
           );
         }
-        const schoolId = payload.school_id.trim();
+        const schoolKey = payload.school_id.trim();
+        let resolvedSchoolId: string | null = null;
+        if (/^\d{6}$/.test(schoolKey)) {
+          const sch = await this.prisma.school.findFirst({
+            where: { school_code: schoolKey },
+            select: { id: true },
+          });
+          resolvedSchoolId = sch?.id ?? null;
+        } else {
+          const sch = await this.prisma.school.findUnique({
+            where: { id: schoolKey },
+            select: { id: true },
+          });
+          resolvedSchoolId = sch?.id ?? null;
+        }
+        if (!resolvedSchoolId) {
+          return ResponseHelper.error('Invalid school ID', null, 400);
+        }
         existing_user = await this.prisma.user.findFirst({
           where: {
-            school_id: schoolId,
+            school_id: resolvedSchoolId,
             OR: [
               { student_id: identifierRaw },
               { teacher_id: identifierRaw },
@@ -875,6 +903,7 @@ export class AuthService {
         is_email_verified: existing_user.is_email_verified,
         role: existing_user.role,
         school_id: existing_user.school_id,
+        school_code: school?.school_code ?? null,
         created_at: formatDate(existing_user.createdAt),
         updated_at: formatDate(existing_user.updatedAt),
       };

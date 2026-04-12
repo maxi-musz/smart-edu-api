@@ -16,6 +16,7 @@ describe('Auth sign-in (e2e)', () => {
   const businessStudentId = `E2E-STU-${suffix}`;
 
   let schoolId: string;
+  let schoolLoginCode: string;
   let userId: string;
 
   beforeAll(async () => {
@@ -36,8 +37,11 @@ describe('Auth sign-in (e2e)', () => {
 
     const passwordHash = await argon.hash('password123');
 
+    schoolLoginCode = String(Date.now() % 1_000_000).padStart(6, '0');
+
     const school = await prisma.school.create({
       data: {
+        school_code: schoolLoginCode,
         school_name: `E2E School ${suffix}`,
         school_email: schoolEmail,
         school_phone: '+10000000000',
@@ -106,13 +110,28 @@ describe('Auth sign-in (e2e)', () => {
     expect(res.body.data?.user?.email).toBe(testEmail);
   });
 
-  it('signs in with student business ID + school_id + password', async () => {
+  it('signs in with student ID + school UUID + password', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/sign-in')
       .send({
         email: businessStudentId,
         password: 'password123',
         school_id: schoolId,
+      })
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data?.access_token).toBeTruthy();
+    expect(res.body.data?.user?.id).toBe(userId);
+  });
+
+  it('signs in with student ID + 6-digit school code + password', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/auth/sign-in')
+      .send({
+        email: businessStudentId,
+        password: 'password123',
+        school_id: schoolLoginCode,
       })
       .expect(200);
 

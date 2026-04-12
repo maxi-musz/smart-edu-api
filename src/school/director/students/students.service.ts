@@ -767,6 +767,12 @@ export class StudentsService {
         return new ApiResponse(false, 'Student ID cannot be empty', 400);
       }
 
+      const admissionNumber = dto.admission_number?.trim() ?? '';
+      if (!admissionNumber) {
+        this.logger.error(colors.red('Admission number is required'));
+        return new ApiResponse(false, 'Admission number is required', 400);
+      }
+
       const duplicateBusinessId = await this.prisma.student.findFirst({
         where: {
           school_id: fullUser.school_id,
@@ -774,6 +780,7 @@ export class StudentsService {
         },
       });
       if (duplicateBusinessId) {
+        this.logger.error(colors.red(`A student with this student ID already exists in your school: ${businessStudentId}`));
         return new ApiResponse(
           false,
           'A student with this student ID already exists in your school',
@@ -830,13 +837,14 @@ export class StudentsService {
       }
 
       // 5. Default password for new students (director may override)
-      const generatedPassword = dto.password ?? 'password123';
+      const generatedPassword ='password123';
       const hashedPassword = await argon.hash(generatedPassword);
 
       // 6. Get current academic session for the school
       const currentSessionResponse =
         await this.academicSessionService.getCurrentSession(fullUser.school_id);
       if (!currentSessionResponse.success) {
+        this.logger.error(colors.red('No current academic session found for the school'));
         return new ApiResponse(
           false,
           'No current academic session found for the school',
@@ -870,7 +878,7 @@ export class StudentsService {
               school_id: fullUser.school_id,
               user_id: newUser.id,
               student_id: businessStudentId,
-              admission_number: dto.admission_number,
+              admission_number: admissionNumber,
               date_of_birth: dto.date_of_birth
                 ? new Date(dto.date_of_birth)
                 : null,
@@ -907,69 +915,69 @@ export class StudentsService {
       }
 
       // Send email notifications
-      try {
-        // Get school name
-        const school = await this.prisma.school.findFirst({
-          where: { id: fullUser.school_id },
-          select: { school_name: true },
-        });
+      // try {
+      //   // Get school name
+      //   const school = await this.prisma.school.findFirst({
+      //     where: { id: fullUser.school_id },
+      //     select: { school_name: true },
+      //   });
 
-        // Get class teacher information (only if class exists)
-        const classTeacher = classExists?.classTeacherId
-          ? await this.prisma.teacher.findFirst({
-              where: { id: classExists.classTeacherId },
-              select: { first_name: true, last_name: true, email: true },
-            })
-          : null;
+      //   // Get class teacher information (only if class exists)
+      //   const classTeacher = classExists?.classTeacherId
+      //     ? await this.prisma.teacher.findFirst({
+      //         where: { id: classExists.classTeacherId },
+      //         select: { first_name: true, last_name: true, email: true },
+      //       })
+      //     : null;
 
-        // Send notification to school directors
-        await sendNewStudentEnrollmentNotification({
-          studentName: `${dto.first_name} ${dto.last_name}`,
-          studentEmail: dto.email,
-          schoolName: school?.school_name || 'Your School',
-          studentId: result.student.student_id,
-          className: classExists?.name || 'No Class Assigned',
-          studentDetails: {
-            guardianName: dto.guardian_name,
-            guardianPhone: dto.guardian_phone,
-            guardianEmail: dto.guardian_email,
-            address: dto.address,
-            academicLevel: dto.academic_level,
-            previousSchool: dto.previous_school,
-          },
-        });
+      //   // Send notification to school directors
+      //   await sendNewStudentEnrollmentNotification({
+      //     studentName: `${dto.first_name} ${dto.last_name}`,
+      //     studentEmail: dto.email,
+      //     schoolName: school?.school_name || 'Your School',
+      //     studentId: result.student.student_id,
+      //     className: classExists?.name || 'No Class Assigned',
+      //     studentDetails: {
+      //       guardianName: dto.guardian_name,
+      //       guardianPhone: dto.guardian_phone,
+      //       guardianEmail: dto.guardian_email,
+      //       address: dto.address,
+      //       academicLevel: dto.academic_level,
+      //       previousSchool: dto.previous_school,
+      //     },
+      //   });
 
-        // Send notification to class teacher (if class exists and has a teacher)
-        if (classExists && classTeacher) {
-          await sendClassTeacherNotification({
-            teacherEmail: classTeacher.email,
-            teacherName: `${classTeacher.first_name} ${classTeacher.last_name}`,
-            className: classExists.name,
-            schoolName: school?.school_name || 'Your School',
-            studentName: `${dto.first_name} ${dto.last_name}`,
-            studentId: result.student.student_id,
-            studentEmail: dto.email,
-            studentDetails: {
-              guardianName: dto.guardian_name,
-              guardianPhone: dto.guardian_phone,
-              guardianEmail: dto.guardian_email,
-              academicLevel: dto.academic_level,
-              previousSchool: dto.previous_school,
-            },
-          });
-        }
+      //   // Send notification to class teacher (if class exists and has a teacher)
+      //   if (classExists && classTeacher) {
+      //     await sendClassTeacherNotification({
+      //       teacherEmail: classTeacher.email,
+      //       teacherName: `${classTeacher.first_name} ${classTeacher.last_name}`,
+      //       className: classExists.name,
+      //       schoolName: school?.school_name || 'Your School',
+      //       studentName: `${dto.first_name} ${dto.last_name}`,
+      //       studentId: result.student.student_id,
+      //       studentEmail: dto.email,
+      //       studentDetails: {
+      //         guardianName: dto.guardian_name,
+      //         guardianPhone: dto.guardian_phone,
+      //         guardianEmail: dto.guardian_email,
+      //         academicLevel: dto.academic_level,
+      //         previousSchool: dto.previous_school,
+      //       },
+      //     });
+      //   }
 
-        this.logger.log(
-          colors.green(`✅ Enrollment notification emails sent successfully`),
-        );
-      } catch (emailError) {
-        this.logger.error(
-          colors.red(
-            `❌ Failed to send enrollment notification emails: ${emailError.message}`,
-          ),
-        );
-        // Don't fail the entire operation if email fails
-      }
+      //   this.logger.log(
+      //     colors.green(`✅ Enrollment notification emails sent successfully`),
+      //   );
+      // } catch (emailError) {
+      //   this.logger.error(
+      //     colors.red(
+      //       `❌ Failed to send enrollment notification emails: ${emailError.message}`,
+      //     ),
+      //   );
+      //   // Don't fail the entire operation if email fails
+      // }
 
       this.logger.log(
         colors.green(
@@ -977,7 +985,7 @@ export class StudentsService {
         ),
       );
 
-      return new ApiResponse(true, 'Student enrolled successfully', {
+      return new ApiResponse(true, `Student ${dto.first_name} ${dto.last_name} enrolled successfully`, {
         student: {
           id: result.student.id,
           user_id: result.newUser.id,

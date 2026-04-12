@@ -51,6 +51,8 @@ model AcademicSession {
 
 model School {
   id                        String                     @id @default(cuid())
+  /// Six-digit public school code (login, support, etc.). Unique when set. Not the same as `id` (UUID).
+  school_code               String?                    @unique
   school_name               String
   school_email              String                     @unique
   school_phone              String
@@ -256,13 +258,13 @@ model Teacher {
   subjectsTeaching    TeacherSubject[]
   schedulesTeaching   TimetableEntry[]    @relation("TeacherSchedule")
 
+  @@unique([school_id, teacher_id], name: "Teacher_school_id_teacher_id_key")
   @@index([school_id])
   @@index([academic_session_id])
   @@index([teacher_id])
   @@index([employee_number])
   @@index([department])
   @@index([is_class_teacher])
-  @@unique([school_id, teacher_id], name: "Teacher_school_id_teacher_id_key")
 }
 
 model Student {
@@ -300,6 +302,7 @@ model Student {
   user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
   results             Result[]
 
+  @@unique([school_id, student_id], name: "Student_school_id_student_id_key")
   @@index([school_id])
   @@index([academic_session_id])
   @@index([current_class_id])
@@ -307,7 +310,6 @@ model Student {
   @@index([admission_number])
   @@index([parent_id])
   @@index([academic_level])
-  @@unique([school_id, student_id], name: "Student_school_id_student_id_key")
 }
 
 model Parent {
