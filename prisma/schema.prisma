@@ -36,6 +36,7 @@ model AcademicSession {
   notifications         Notification[]
   payments              Payment[]
   students              Student[]
+  studentGraduations    StudentGraduation[]
   performances          StudentPerformance[]
   subjects              Subject[]
   teachers              Teacher[]
@@ -117,6 +118,7 @@ model School {
   teacherResourceAccess     TeacherResourceAccess[]
   schoolResourceExclusions  SchoolResourceExclusion[]
   teacherResourceExclusions TeacherResourceExclusion[]
+  auditLogs                 AuditLog[]
 }
 
 model Document {
@@ -268,14 +270,14 @@ model Teacher {
 }
 
 model Student {
-  id                  String          @id @default(cuid())
+  id                  String              @id @default(cuid())
   school_id           String
   academic_session_id String
-  user_id             String          @unique
+  user_id             String              @unique
   student_id          String
-  admission_number    String?         @unique
+  admission_number    String?             @unique
   date_of_birth       DateTime?
-  admission_date      DateTime        @default(now())
+  admission_date      DateTime            @default(now())
   current_class_id    String?
   guardian_name       String?
   guardian_phone      String?
@@ -288,19 +290,20 @@ model Student {
   previous_school     String?
   academic_level      String?
   parent_id           String?
-  status              UserStatus      @default(active)
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  status              UserStatus          @default(active)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
   city                String?
   country             String?
   postal_code         String?
   state               String?
-  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id])
-  current_class       Class?          @relation(fields: [current_class_id], references: [id])
-  parent              Parent?         @relation("ParentChildren", fields: [parent_id], references: [id])
-  school              School          @relation(fields: [school_id], references: [id])
-  user                User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  academicSession     AcademicSession     @relation(fields: [academic_session_id], references: [id])
+  current_class       Class?              @relation(fields: [current_class_id], references: [id])
+  parent              Parent?             @relation("ParentChildren", fields: [parent_id], references: [id])
+  school              School              @relation(fields: [school_id], references: [id])
+  user                User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   results             Result[]
+  graduations         StudentGraduation[]
 
   @@unique([school_id, student_id], name: "Student_school_id_student_id_key")
   @@index([school_id])
@@ -343,6 +346,10 @@ model Class {
   schoolId                  String
   academic_session_id       String
   classTeacherId            String?
+  /// Ladder order within the academic session (lower = earlier grade). Used for promotion and UI.
+  display_order             Int                        @default(0)
+  /// System-managed sink for students promoted past the last teaching class (one per session).
+  is_graduates              Boolean                    @default(false)
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
   attendanceRecords         AttendanceRecord[]
@@ -364,7 +371,23 @@ model Class {
 
   @@unique([schoolId, academic_session_id, classId])
   @@index([schoolId, academic_session_id])
+  @@index([schoolId, academic_session_id, display_order])
   @@index([classId])
+  @@index([schoolId, academic_session_id, is_graduates])
+}
+
+/// Records a student completing graduation into the session’s Graduates class (reporting by session).
+model StudentGraduation {
+  id                  String          @id @default(cuid())
+  student_id          String
+  academic_session_id String
+  from_class_id       String?
+  createdAt           DateTime        @default(now())
+  student             Student         @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  academicSession     AcademicSession @relation(fields: [academic_session_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, academic_session_id])
+  @@index([academic_session_id])
 }
 
 model Subject {
@@ -3377,6 +3400,14 @@ enum AuditForType {
   update_subject
   release_results
   unrelease_results
+  management_academic_session_create
+  management_academic_session_update
+  management_academic_session_delete
+  management_set_current_session
+  management_class_reorder
+  management_student_promote
+  management_student_demote
+  management_student_bulk_assign_class
 }
 
 /// Who performed the action: school-side user or library-side user
@@ -3390,15 +3421,18 @@ model AuditLog {
   id                String                @id @default(cuid())
   audit_for_type    AuditForType
   target_id         String? // e.g. school id for onboard_school
+  school_id         String?
   performed_by_id   String? // User id or LibraryResourceUser id
   performed_by_type AuditPerformedByType?
   metadata          Json? // Optional extra context
   createdAt         DateTime              @default(now())
+  school            School?               @relation(fields: [school_id], references: [id], onDelete: SetNull)
 
   @@index([audit_for_type])
   @@index([target_id])
   @@index([performed_by_id])
   @@index([createdAt])
+  @@index([school_id])
 }
 
 // ===================================================================

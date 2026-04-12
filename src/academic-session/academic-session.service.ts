@@ -120,6 +120,7 @@ export class AcademicSessionService {
         search,
         sort_by = 'createdAt',
         sort_order = 'desc',
+        orderBy: orderByOverride,
       } = options;
 
       const skip = (page - 1) * limit;
@@ -176,9 +177,10 @@ export class AcademicSessionService {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: {
-          [sort_by]: sort_order,
-        },
+        orderBy:
+          orderByOverride ?? {
+            [sort_by]: sort_order,
+          },
         include: {
           school: {
             select: {

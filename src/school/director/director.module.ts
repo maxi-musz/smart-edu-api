@@ -13,6 +13,8 @@ import { SubjectModule } from './subject/subject.module';
 import { UserModule } from './user/user.module';
 import { ResultsModule } from './results/results.module';
 import { DirectorAssessmentModule } from './director-assessment/director-assessment.module';
+import { ManagementModule } from './management/management.module';
+import { DirectorAuditModule } from './audit/director-audit.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { DirectorAssessmentModule } from './director-assessment/director-assessm
     UserModule,
     ResultsModule,
     DirectorAssessmentModule,
+    ManagementModule,
+    DirectorAuditModule,
   ],
 })
 export class DirectorModule {}

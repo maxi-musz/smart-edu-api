@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  ArrayMinSize,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateClassDto {
@@ -37,4 +43,17 @@ export class EditClassDto {
   @IsString()
   @IsOptional()
   classTeacherId?: string;
+}
+
+export class ReorderClassesDto {
+  @ApiProperty({
+    description:
+      'Ordered list of class IDs for the current academic session (index 0 = first in ladder)',
+    example: ['cl_1', 'cl_2'],
+    type: [String],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  class_ids: string[];
 }

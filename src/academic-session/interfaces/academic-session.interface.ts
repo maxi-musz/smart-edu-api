@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { AcademicTerm, AcademicSessionStatus } from '@prisma/client';
 
 export interface IAcademicSession {
@@ -54,4 +55,8 @@ export interface IAcademicSessionQueryOptions {
   search?: string;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
+  /** When set, overrides sort_by / sort_order (e.g. current session first, then newest year). */
+  orderBy?:
+    | Prisma.AcademicSessionOrderByWithRelationInput
+    | Prisma.AcademicSessionOrderByWithRelationInput[];
 }

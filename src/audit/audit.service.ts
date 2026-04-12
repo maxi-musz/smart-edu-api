@@ -6,6 +6,7 @@ import { AuditForType, AuditPerformedByType } from '@prisma/client';
 export interface CreateAuditLogInput {
   auditForType: AuditForType;
   targetId?: string;
+  schoolId?: string;
   performedById?: string;
   performedByType?: AuditPerformedByType;
   metadata?: Prisma.InputJsonValue;
@@ -20,6 +21,7 @@ export class AuditService {
       data: {
         audit_for_type: input.auditForType,
         target_id: input.targetId ?? null,
+        school_id: input.schoolId ?? null,
         performed_by_id: input.performedById ?? null,
         performed_by_type: input.performedByType ?? null,
         metadata: input.metadata ?? undefined,

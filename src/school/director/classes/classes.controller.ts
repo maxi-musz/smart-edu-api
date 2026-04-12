@@ -19,7 +19,7 @@ import {
   CreateClassDocs,
   EditClassDocs,
 } from 'src/docs/director/classes';
-import { CreateClassDto, EditClassDto } from './dto/class.dto';
+import { CreateClassDto, EditClassDto, ReorderClassesDto } from './dto/class.dto';
 
 @ApiTags('Classes')
 @Controller('director/classes')
@@ -70,5 +70,13 @@ export class ClassesController {
     @Body() editClassDto: EditClassDto,
   ) {
     return this.classesService.editClass(user, classId, editClassDto);
+  }
+
+  @Patch('reorder-classes')
+  async reorderClasses(
+    @GetUser() user: User,
+    @Body() dto: ReorderClassesDto,
+  ) {
+    return this.classesService.reorderClasses(user as any, dto);
   }
 }
