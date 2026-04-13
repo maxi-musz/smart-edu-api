@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req, Param, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+  Param,
+  Logger,
+  Headers,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
@@ -41,19 +52,26 @@ export class PaystackWebhookController {
 
   constructor(private readonly paystackService: PaystackService) {}
 
-  @Get('payments/paystack/verify')
+  @Get('payments/verify')
   @UseGuards(JwtGuard)
   @ApiBearerAuth()
-  async verifyPayment(@Query('reference') reference: string) {
-    this.logger.log(colors.blue(`📥 HTTP Request: GET /finance/payments/paystack/verify — reference: ${reference}`));
+  async verifyPaymentUnified(@Query('reference') reference: string) {
+    this.logger.log(colors.blue(`📥 HTTP Request: GET /finance/payments/verify — reference: ${reference}`));
     try {
-      const result = await this.paystackService.verifyPayment(reference);
+      const result = await this.paystackService.verifyUnified(reference);
       this.logger.log(colors.green(`✅ HTTP Response: Payment verification for reference ${reference} returned successfully`));
       return result;
     } catch (error) {
       this.logger.error(colors.red(`❌ HTTP Error: Failed to verify payment reference ${reference}`), error.stack);
       throw error;
     }
+  }
+
+  @Get('payments/paystack/verify')
+  @UseGuards(JwtGuard)
+  @ApiBearerAuth()
+  async verifyPaymentLegacy(@Query('reference') reference: string) {
+    return this.verifyPaymentUnified(reference);
   }
 
   @Post('webhooks/paystack')
@@ -68,6 +86,22 @@ export class PaystackWebhookController {
       return result;
     } catch (error) {
       this.logger.error(colors.red('❌ HTTP Error: Failed to process Paystack webhook'), error.stack);
+      throw error;
+    }
+  }
+
+  @Post('webhooks/flutterwave')
+  async handleFlutterwaveWebhook(
+    @Body() body: any,
+    @Headers('verif-hash') verifHash: string,
+  ) {
+    this.logger.log(colors.blue('📥 HTTP Request: POST /finance/webhooks/flutterwave'));
+    try {
+      const result = await this.paystackService.handleFlutterwaveWebhook(body, verifHash);
+      this.logger.log(colors.green('✅ HTTP Response: Flutterwave webhook processed'));
+      return result;
+    } catch (error) {
+      this.logger.error(colors.red('❌ HTTP Error: Flutterwave webhook failed'), error.stack);
       throw error;
     }
   }

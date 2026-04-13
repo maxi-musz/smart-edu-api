@@ -34,6 +34,7 @@
     "prisma:reset": "bash scripts/reset-db.sh",
     "school:generate-login-codes": "ts-node -r tsconfig-paths/register scripts/generate-school-login-codes.ts",
     "merge-classes-school-scope": "ts-node -r tsconfig-paths/register scripts/merge-school-scoped-classes.ts",
+    "check-class-duplicates": "ts-node -r tsconfig-paths/register scripts/check-class-duplicates.ts",
     "postinstall": "npm run prisma:generate"
   },
   "dependencies": {

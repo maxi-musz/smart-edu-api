@@ -6,9 +6,10 @@
  *
  * Backs up nothing — take a database snapshot first in production.
  */
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { createScriptPrismaClient } from './prisma-script-client';
 
-const prisma = new PrismaClient();
+const prisma = createScriptPrismaClient();
 
 function normKey(name: string, isGraduates: boolean): string {
   if (isGraduates) return '__graduates__';
@@ -98,12 +99,18 @@ async function main() {
 
   console.log(`Merging ${merges.length} duplicate class row(s)...`);
 
-  await prisma.$transaction(async (tx) => {
-    for (const m of merges) {
-      await repointClassId(tx, m.fromId, m.toId);
-      await tx.class.delete({ where: { id: m.fromId } });
-    }
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      for (const m of merges) {
+        await repointClassId(tx, m.fromId, m.toId);
+        await tx.class.delete({ where: { id: m.fromId } });
+      }
+    },
+    {
+      // Default 5s is too tight when many FK rows reference a class (large UPDATE batches).
+      timeout: 300_000,
+    },
+  );
 
   console.log('Done. You can run: npx prisma migrate deploy');
 }

@@ -9,7 +9,9 @@ import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { WalletAnalyticsService } from './wallet-analytics.service';
 import { ReceiptService } from './receipt.service';
 import { FINANCE_CONSTANTS } from '../common/finance.constants';
-import { resolveFinanceStudentRowId } from '../common/resolve-student-id';
+import { resolveFinanceStudentRowId, resolveFinanceStudentUserId } from '../common/resolve-student-id';
+import { generatePaystackReference } from '../common/finance-helpers';
+import { PaymentRouterService } from 'src/payment/payment-router.service';
 import {
   WalletOwnerType,
   WalletType,
@@ -21,6 +23,7 @@ import {
   FeePaymentStatus,
   FeePaymentType,
   StudentFeeStatus,
+  PaymentGateway,
 } from '@prisma/client';
 
 @Injectable()
@@ -30,6 +33,7 @@ export class StudentWalletService {
     private readonly auditService: AuditService,
     private readonly walletAnalyticsService: WalletAnalyticsService,
     private readonly receiptService: ReceiptService,
+    private readonly paymentRouter: PaymentRouterService,
   ) {}
 
   async getOrCreateStudentWallet(studentUserId: string) {
@@ -51,8 +55,11 @@ export class StudentWalletService {
     return wallet;
   }
 
-  async getStudentWallet(schoolId: string, studentId: string) {
-    const wallet = await this.getOrCreateStudentWallet(studentId);
+  async getStudentWallet(schoolId: string, studentIdOrUserId: string) {
+    const ownerUserId = await resolveFinanceStudentUserId(this.prisma, schoolId, studentIdOrUserId);
+    if (!ownerUserId) throw new NotFoundException('Student not found');
+
+    const wallet = await this.getOrCreateStudentWallet(ownerUserId);
 
     const recentTx = await this.prisma.walletTransaction.findMany({
       where: { wallet_id: wallet.id },
@@ -74,14 +81,17 @@ export class StudentWalletService {
     });
   }
 
-  async manualTopUp(schoolId: string, studentId: string, userId: string, dto: { amount: number; notes?: string }) {
+  async manualTopUp(schoolId: string, studentIdOrUserId: string, userId: string, dto: { amount: number; notes?: string }) {
     if (dto.amount < FINANCE_CONSTANTS.MIN_TOPUP_AMOUNT) {
       throw new BadRequestException(
         `Minimum top-up amount is ${FINANCE_CONSTANTS.MIN_TOPUP_AMOUNT}`,
       );
     }
 
-    const wallet = await this.getOrCreateStudentWallet(studentId);
+    const ownerUserId = await resolveFinanceStudentUserId(this.prisma, schoolId, studentIdOrUserId);
+    if (!ownerUserId) throw new NotFoundException('Student not found');
+
+    const wallet = await this.getOrCreateStudentWallet(ownerUserId);
 
     if (wallet.balance + dto.amount > FINANCE_CONSTANTS.MAX_WALLET_BALANCE) {
       throw new BadRequestException(
@@ -93,7 +103,7 @@ export class StudentWalletService {
       const topUp = await tx.walletTopUp.create({
         data: {
           wallet_id: wallet.id,
-          owner_id: studentId,
+          owner_id: ownerUserId,
           owner_type: WalletOwnerType.STUDENT,
           amount: dto.amount,
           source: WalletTopUpSource.MANUAL_CASH,
@@ -139,7 +149,7 @@ export class StudentWalletService {
       schoolId,
       performedById: userId,
       performedByType: 'school_user',
-      metadata: { student_id: studentId, amount: dto.amount, source: 'MANUAL_CASH' },
+      metadata: { student_user_id: ownerUserId, amount: dto.amount, source: 'MANUAL_CASH' },
     });
 
     return ResponseHelper.created('Wallet topped up successfully', result);
@@ -147,15 +157,18 @@ export class StudentWalletService {
 
   async payFeeFromWallet(
     schoolId: string,
-    studentId: string,
+    studentIdOrUserId: string,
     dto: { fee_id: string; student_fee_record_id: string; amount?: number; installment_number?: number },
   ) {
+    const ownerUserId = await resolveFinanceStudentUserId(this.prisma, schoolId, studentIdOrUserId);
+    if (!ownerUserId) throw new NotFoundException('Student not found');
+
     const wallet = await this.prisma.wallet.findFirst({
-      where: { owner_id: studentId, owner_type: WalletOwnerType.STUDENT },
+      where: { owner_id: ownerUserId, owner_type: WalletOwnerType.STUDENT },
     });
     if (!wallet) throw new NotFoundException('Student wallet not found');
 
-    const studentRowId = await resolveFinanceStudentRowId(this.prisma, schoolId, studentId);
+    const studentRowId = await resolveFinanceStudentRowId(this.prisma, schoolId, studentIdOrUserId);
     if (!studentRowId) throw new NotFoundException('Fee record not found');
 
     const record = await this.prisma.studentFeeRecord.findFirst({
@@ -195,7 +208,7 @@ export class StudentWalletService {
 
       const payment = await tx.feePayment.create({
         data: {
-          student_id: studentId,
+          student_id: ownerUserId,
           fee_id: dto.fee_id,
           school_id: schoolId,
           academic_session_id: currentSession?.id || record.academic_session_id,
@@ -289,5 +302,89 @@ export class StudentWalletService {
     });
 
     return ResponseHelper.success('Fee paid from wallet successfully', result);
+  }
+
+  /**
+   * Initialize online wallet funding (Paystack or Flutterwave per PAYMENT_PROVIDER).
+   */
+  async initiateWalletTopUp(
+    schoolId: string,
+    studentIdOrUserId: string,
+    dto: { amount: number; callback_url?: string },
+  ) {
+    if (dto.amount < FINANCE_CONSTANTS.MIN_TOPUP_AMOUNT) {
+      throw new BadRequestException(
+        `Minimum top-up amount is ${FINANCE_CONSTANTS.MIN_TOPUP_AMOUNT}`,
+      );
+    }
+
+    const ownerUserId = await resolveFinanceStudentUserId(this.prisma, schoolId, studentIdOrUserId);
+    if (!ownerUserId) throw new NotFoundException('Student not found');
+
+    const student = await this.prisma.user.findFirst({
+      where: { id: ownerUserId },
+      select: { email: true },
+    });
+    if (!student?.email) throw new NotFoundException('Student not found');
+
+    const wallet = await this.getOrCreateStudentWallet(ownerUserId);
+
+    if (wallet.balance + dto.amount > FINANCE_CONSTANTS.MAX_WALLET_BALANCE) {
+      throw new BadRequestException(
+        `Top-up would exceed maximum wallet balance of ${FINANCE_CONSTANTS.MAX_WALLET_BALANCE}`,
+      );
+    }
+
+    const provider = this.paymentRouter.activeProvider();
+    const reference = generatePaystackReference('TOP');
+    const pg: PaymentGateway =
+      provider === 'flutterwave'
+        ? PaymentGateway.FLUTTERWAVE
+        : PaymentGateway.PAYSTACK;
+
+    await this.prisma.walletTopUp.create({
+      data: {
+        wallet_id: wallet.id,
+        owner_id: ownerUserId,
+        owner_type: WalletOwnerType.STUDENT,
+        amount: dto.amount,
+        source:
+          provider === 'flutterwave'
+            ? WalletTopUpSource.FLUTTERWAVE
+            : WalletTopUpSource.PAYSTACK,
+        gateway_reference: reference,
+        payment_gateway: pg,
+        paystack_reference: provider === 'paystack' ? reference : null,
+        status: WalletTopUpStatus.PENDING,
+      },
+    });
+
+    try {
+      const init = await this.paymentRouter.initializeWalletOrFeePayment({
+        email: student.email,
+        amountNaira: dto.amount,
+        reference,
+        callbackUrl: dto.callback_url,
+        metadata: {
+          school_id: schoolId,
+          student_id: ownerUserId,
+          wallet_id: wallet.id,
+          payment_purpose: 'STUDENT_WALLET_FUNDING',
+        },
+      });
+
+      return ResponseHelper.success('Wallet top-up initialized', {
+        authorization_url: init.authorization_url,
+        reference: init.reference,
+      });
+    } catch (e) {
+      await this.prisma.walletTopUp.updateMany({
+        where: { gateway_reference: reference },
+        data: { status: WalletTopUpStatus.FAILED },
+      });
+      throw new BadRequestException(
+        e instanceof Error ? e.message : 'Failed to initialize top-up',
+      );
+    }
   }
 }

@@ -19,7 +19,7 @@ export class ManualTopUpDto {
   notes?: string;
 }
 
-export class PaystackTopUpDto {
+export class WalletTopUpInitiateDto {
   @ApiProperty()
   @IsNumber()
   @Min(500)
@@ -30,6 +30,9 @@ export class PaystackTopUpDto {
   @IsString()
   callback_url?: string;
 }
+
+/** @deprecated Use WalletTopUpInitiateDto */
+export type PaystackTopUpDto = WalletTopUpInitiateDto;
 
 export class WalletPayFeeDto {
   @ApiProperty()

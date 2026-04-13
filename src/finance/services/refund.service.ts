@@ -295,11 +295,10 @@ export class RefundService {
       data: { status: RefundStatus.PROCESSING },
     });
 
-    if (refund.feePayment?.paystack_reference) {
-      await this.paystackService.initiatePaystackRefund(
-        refund.feePayment.paystack_reference,
-        refund.refund_amount,
-      );
+    const gatewayRef =
+      refund.feePayment?.gateway_reference ?? refund.feePayment?.paystack_reference;
+    if (gatewayRef && refund.feePayment?.payment_method === FeePaymentMethod.PAYSTACK) {
+      await this.paystackService.initiatePaystackRefund(gatewayRef, refund.refund_amount);
     }
   }
 

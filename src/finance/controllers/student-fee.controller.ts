@@ -25,7 +25,12 @@ export class StudentFeeController {
     this.logger.log(colors.blue(`📥 HTTP Request: GET /finance/${schoolId}/students/${studentId}/fees — get student fees`));
     try {
       const result = await this.studentFeeService.getStudentFees(schoolId, studentId, query);
-      this.logger.log(colors.green(`✅ HTTP Response: Total of ${result.data.total} fees  returned successfully`));
+      const total =
+        result.meta?.total ??
+        (Array.isArray(result.data) ? result.data.length : 0);
+      this.logger.log(
+        colors.green(`✅ HTTP Response: Total of ${total} fees returned successfully`),
+      );
       return result;
     } catch (error) {
       this.logger.error(colors.red(`❌ HTTP Error: Failed to get fees for student`), error.stack);

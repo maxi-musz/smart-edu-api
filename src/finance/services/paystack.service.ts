@@ -16,17 +16,23 @@ import {
 } from '../common/finance-helpers';
 import { FINANCE_CONSTANTS } from '../common/finance.constants';
 import {
+  feePaymentByExternalRef,
+  walletTopUpByExternalRef,
+} from '../common/reference-lookup';
+import { PaymentRouterService } from 'src/payment/payment-router.service';
+import {
   FeePaymentStatus,
   FeePaymentType,
   FeePaymentMethod,
+  PaymentGateway,
   StudentFeeStatus,
   WalletTransactionType,
   WalletTransactionStatus,
   WalletOwnerType,
   WalletTopUpStatus,
-  WalletTopUpSource,
 } from '@prisma/client';
 import * as crypto from 'crypto';
+import { resolvePaystackSecretKey } from 'src/payment/paystack/paystack-secret.util';
 
 @Injectable()
 export class PaystackService {
@@ -39,13 +45,32 @@ export class PaystackService {
     private readonly configService: ConfigService,
     private readonly walletAnalyticsService: WalletAnalyticsService,
     private readonly receiptService: ReceiptService,
+    private readonly paymentRouter: PaymentRouterService,
   ) {
-    this.secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY') || '';
+    this.secretKey = resolvePaystackSecretKey(this.configService);
+  }
+
+  private activeGateway(): PaymentGateway {
+    return this.paymentRouter.activeProvider() === 'flutterwave'
+      ? PaymentGateway.FLUTTERWAVE
+      : PaymentGateway.PAYSTACK;
+  }
+
+  private feePaymentMethodForGateway(): FeePaymentMethod {
+    return this.activeGateway() === PaymentGateway.FLUTTERWAVE
+      ? FeePaymentMethod.FLUTTERWAVE
+      : FeePaymentMethod.PAYSTACK;
   }
 
   async initiateFeePayment(
     schoolId: string,
-    dto: { student_id: string; fee_id: string; amount: number; installment_number?: number; callback_url?: string },
+    dto: {
+      student_id: string;
+      fee_id: string;
+      amount: number;
+      installment_number?: number;
+      callback_url?: string;
+    },
   ) {
     const record = await this.prisma.studentFeeRecord.findFirst({
       where: { student_id: dto.student_id, fee_id: dto.fee_id, school_id: schoolId },
@@ -64,7 +89,8 @@ export class PaystackService {
     if (!student) throw new NotFoundException('Student not found');
 
     const reference = generatePaystackReference('FEE');
-    const amountInKobo = nairaToKobo(dto.amount);
+    const pg = this.activeGateway();
+    const isPaystack = pg === PaymentGateway.PAYSTACK;
 
     const currentSession = await this.prisma.academicSession.findFirst({
       where: { school_id: schoolId, is_current: true },
@@ -78,85 +104,96 @@ export class PaystackService {
         academic_session_id: currentSession?.id || record.academic_session_id,
         student_fee_record_id: record.id,
         amount: dto.amount,
-        payment_method: FeePaymentMethod.PAYSTACK,
+        payment_method: this.feePaymentMethodForGateway(),
         payment_type: dto.amount >= record.balance ? FeePaymentType.FULL : FeePaymentType.PARTIAL,
         status: FeePaymentStatus.PENDING,
-        paystack_reference: reference,
+        gateway_reference: reference,
+        payment_gateway: pg,
+        paystack_reference: isPaystack ? reference : null,
         installment_number: dto.installment_number,
       },
     });
 
     try {
-      const response = await fetch(`${this.baseUrl}/transaction/initialize`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.secretKey}`,
-          'Content-Type': 'application/json',
+      const init = await this.paymentRouter.initializeWalletOrFeePayment({
+        email: student.email!,
+        amountNaira: dto.amount,
+        reference,
+        callbackUrl: dto.callback_url,
+        metadata: {
+          school_id: schoolId,
+          student_id: dto.student_id,
+          fee_id: dto.fee_id,
+          fee_payment_id: payment.id,
+          payment_purpose: 'FEE_PAYMENT',
         },
-        body: JSON.stringify({
-          email: student.email,
-          amount: amountInKobo,
-          reference,
-          callback_url: dto.callback_url,
-          metadata: {
-            school_id: schoolId,
-            student_id: dto.student_id,
-            fee_id: dto.fee_id,
-            fee_payment_id: payment.id,
-            payment_purpose: 'FEE_PAYMENT',
-          },
-        }),
       });
 
-      const data = await response.json();
-
-      if (!data.status) {
-        await this.prisma.feePayment.update({
-          where: { id: payment.id },
-          data: { status: FeePaymentStatus.FAILED },
-        });
-        throw new BadRequestException(data.message || 'Failed to initialize payment');
-      }
-
       return ResponseHelper.success('Payment initialized', {
-        authorization_url: data.data.authorization_url,
-        access_code: data.data.access_code,
-        reference,
+        authorization_url: init.authorization_url,
+        reference: init.reference,
         payment_id: payment.id,
       });
     } catch (error) {
+      await this.prisma.feePayment.update({
+        where: { id: payment.id },
+        data: { status: FeePaymentStatus.FAILED },
+      });
       if (error instanceof BadRequestException) throw error;
-      this.logger.error('Paystack initialization failed', error);
-      throw new BadRequestException('Payment gateway error');
+      this.logger.error('Payment gateway initialization failed', error);
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Payment gateway error',
+      );
     }
   }
 
-  async verifyPayment(reference: string) {
-    try {
-      const response = await fetch(`${this.baseUrl}/transaction/verify/${reference}`, {
-        headers: { Authorization: `Bearer ${this.secretKey}` },
-      });
-      const data = await response.json();
+  /**
+   * Provider-agnostic verify: checks Paystack/Flutterwave API, then DB; optionally settles pending rows.
+   */
+  async verifyUnified(reference: string) {
+    const v = await this.paymentRouter.verifyTransaction(reference);
 
-      if (!data.status) {
-        return ResponseHelper.error('Verification failed', data.message);
+    const feePayment = await this.prisma.feePayment.findFirst({
+      where: feePaymentByExternalRef(reference),
+      include: { studentFeeRecord: { include: { fee: true } } },
+    });
+    const topUp = await this.prisma.walletTopUp.findFirst({
+      where: walletTopUpByExternalRef(reference),
+    });
+
+    const successStatuses = ['success', 'successful'];
+    const providerOk =
+      v.ok && successStatuses.includes(String(v.providerStatus).toLowerCase());
+
+    if (providerOk) {
+      if (feePayment?.status === FeePaymentStatus.PENDING) {
+        if (Math.abs(v.amountNaira - feePayment.amount) <= 1) {
+          await this.confirmFeePayment(feePayment);
+        }
       }
-
-      const payment = await this.prisma.feePayment.findFirst({
-        where: { paystack_reference: reference },
-        select: { id: true, status: true, amount: true },
-      });
-
-      return ResponseHelper.success('Payment verification result', {
-        reference,
-        paystack_status: data.data.status,
-        amount: koboToNaira(data.data.amount),
-        payment_status: payment?.status || 'NOT_FOUND',
-      });
-    } catch (error) {
-      this.logger.error('Paystack verification failed', error);
-      return ResponseHelper.error('Verification error');
+      if (topUp?.status === WalletTopUpStatus.PENDING) {
+        if (Math.abs(v.amountNaira - topUp.amount) <= 1) {
+          await this.settleWalletTopUp(topUp.id, v.amountNaira, v.providerStatus, v.raw);
+        }
+      }
     }
+
+    const recordStatus = feePayment?.status ?? topUp?.status;
+    const kind = feePayment ? 'fee_payment' : topUp ? 'wallet_topup' : 'unknown';
+
+    return ResponseHelper.success('Payment verification result', {
+      reference,
+      provider_status: v.providerStatus,
+      amount: v.amountNaira,
+      verification_ok: v.ok,
+      type: kind,
+      record_status: recordStatus ?? 'NOT_FOUND',
+    });
+  }
+
+  /** @deprecated Use verifyUnified — kept for backward compatibility. */
+  async verifyPayment(reference: string) {
+    return this.verifyUnified(reference);
   }
 
   async handleWebhook(body: any, signature: string) {
@@ -188,23 +225,52 @@ export class PaystackService {
     return { status: 'ok' };
   }
 
+  async handleFlutterwaveWebhook(body: any, verifHash: string | undefined) {
+    const gw = this.paymentRouter.getFlutterwaveGateway();
+    if (!gw.verifyWebhookHash(verifHash)) {
+      this.logger.warn('Invalid Flutterwave webhook verif-hash');
+      return { status: 'ignored' };
+    }
+
+    const event = String(body.event ?? body.type ?? '');
+    const d = body.data;
+    const statusOk =
+      d &&
+      ['successful', 'success'].includes(String(d.status ?? '').toLowerCase());
+    const isChargeCompleted =
+      event === 'charge.completed' || event.endsWith('charge.completed');
+    if (isChargeCompleted && statusOk && d.tx_ref) {
+      await this.processChargeSuccess({
+        reference: d.tx_ref,
+        amount: d.amount,
+        status: d.status,
+        flw_ref: d.flw_ref,
+        currency: d.currency,
+      });
+    }
+
+    return { status: 'ok' };
+  }
+
   private async processChargeSuccess(data: any) {
-    const reference = data.reference;
+    const reference = data.reference ?? data.tx_ref;
     if (!reference) return;
 
     const payment = await this.prisma.feePayment.findFirst({
-      where: { paystack_reference: reference },
+      where: feePaymentByExternalRef(reference),
       include: { studentFeeRecord: { include: { fee: true } } },
     });
 
     if (payment && payment.status === FeePaymentStatus.CONFIRMED) {
-      return; // Idempotency: already processed
+      return;
     }
 
     if (payment) {
-      const paystackAmount = koboToNaira(data.amount);
-      if (Math.abs(paystackAmount - payment.amount) > 0.01) {
-        this.logger.warn(`Amount mismatch for ${reference}: expected ${payment.amount}, got ${paystackAmount}`);
+      const amountNaira = this.amountNairaFromGatewayPayload(data, payment.payment_gateway);
+      if (Math.abs(amountNaira - payment.amount) > 0.01) {
+        this.logger.warn(
+          `Amount mismatch for ${reference}: expected ${payment.amount}, got ${amountNaira}`,
+        );
         return;
       }
 
@@ -212,19 +278,34 @@ export class PaystackService {
       return;
     }
 
-    // Could be a wallet top-up
     const topUp = await this.prisma.walletTopUp.findFirst({
-      where: { paystack_reference: reference },
+      where: walletTopUpByExternalRef(reference),
     });
 
     if (topUp && topUp.status !== WalletTopUpStatus.COMPLETED) {
-      await this.processWalletTopUp(topUp, data);
+      const amountNaira = this.amountNairaFromGatewayPayload(data, topUp.payment_gateway);
+      await this.settleWalletTopUp(topUp.id, amountNaira, data.status, data);
     }
+  }
+
+  private amountNairaFromGatewayPayload(
+    data: any,
+    gateway: PaymentGateway | null | undefined,
+  ): number {
+    const g = gateway ?? PaymentGateway.PAYSTACK;
+    if (g === PaymentGateway.FLUTTERWAVE) {
+      return Number(data.amount ?? data.charged_amount ?? 0);
+    }
+    return koboToNaira(data.amount);
   }
 
   private async confirmFeePayment(payment: any) {
     const record = payment.studentFeeRecord;
     const receiptNumber = await this.receiptService.generateReceiptNumber(payment.school_id);
+    const method =
+      payment.payment_method === FeePaymentMethod.FLUTTERWAVE
+        ? FeePaymentMethod.FLUTTERWAVE
+        : FeePaymentMethod.PAYSTACK;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.feePayment.update({
@@ -233,7 +314,7 @@ export class PaystackService {
           status: FeePaymentStatus.CONFIRMED,
           receipt_number: receiptNumber,
           processed_at: new Date(),
-          metadata: { paystack_confirmed: true },
+          metadata: { gateway_confirmed: true },
         },
       });
 
@@ -274,7 +355,7 @@ export class PaystackService {
             wallet_id: schoolWallet.id,
             transaction_type: WalletTransactionType.CREDIT,
             amount: payment.amount,
-            description: `Paystack fee payment: ${record.fee.name}`,
+            description: `Online fee payment: ${record.fee.name}`,
             status: WalletTransactionStatus.COMPLETED,
             balance_before: balanceBefore,
             balance_after: balanceAfter,
@@ -287,7 +368,7 @@ export class PaystackService {
           payment.school_id,
           {
             amount: payment.amount,
-            payment_method: FeePaymentMethod.PAYSTACK,
+            payment_method: method,
             fee_id: payment.fee_id,
             class_id: record.class_id,
             includes_penalty: false,
@@ -298,23 +379,36 @@ export class PaystackService {
       }
     });
 
-    await this.prisma.paystackWebhookLog.updateMany({
-      where: { reference: payment.paystack_reference, processed: false },
-      data: { processed: true, processed_at: new Date() },
-    });
+    const ref = payment.gateway_reference ?? payment.paystack_reference;
+    if (ref) {
+      await this.prisma.paystackWebhookLog.updateMany({
+        where: { reference: ref, processed: false },
+        data: { processed: true, processed_at: new Date() },
+      });
+    }
   }
 
-  private async processWalletTopUp(topUp: any, paystackData: any) {
-    const paystackAmount = koboToNaira(paystackData.amount);
+  private async settleWalletTopUp(
+    topUpId: string,
+    amountNaira: number,
+    gatewayStatus: string,
+    metadata: unknown,
+  ) {
+    const topUp = await this.prisma.walletTopUp.findUnique({ where: { id: topUpId } });
+    if (!topUp || topUp.status === WalletTopUpStatus.COMPLETED) return;
+    if (Math.abs(amountNaira - topUp.amount) > 0.05) {
+      this.logger.warn(`Wallet top-up amount mismatch for ${topUpId}`);
+      return;
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.walletTopUp.update({
         where: { id: topUp.id },
         data: {
           status: WalletTopUpStatus.COMPLETED,
-          paystack_status: paystackData.status,
+          paystack_status: gatewayStatus,
           processed_at: new Date(),
-          metadata: paystackData,
+          metadata: metadata as object,
         },
       });
 
@@ -322,13 +416,13 @@ export class PaystackService {
       if (!wallet) return;
 
       const balanceBefore = wallet.balance;
-      const balanceAfter = balanceBefore + paystackAmount;
+      const balanceAfter = balanceBefore + amountNaira;
 
       await tx.wallet.update({
         where: { id: wallet.id },
         data: {
           balance: balanceAfter,
-          total_funded_all_time: wallet.total_funded_all_time + paystackAmount,
+          total_funded_all_time: wallet.total_funded_all_time + amountNaira,
           last_updated: new Date(),
         },
       });
@@ -337,8 +431,8 @@ export class PaystackService {
         data: {
           wallet_id: wallet.id,
           transaction_type: WalletTransactionType.CREDIT,
-          amount: paystackAmount,
-          description: 'Paystack wallet top-up',
+          amount: amountNaira,
+          description: 'Online wallet top-up',
           status: WalletTransactionStatus.COMPLETED,
           balance_before: balanceBefore,
           balance_after: balanceAfter,
@@ -382,66 +476,6 @@ export class PaystackService {
       this.logger.error('Paystack refund failed', error);
       throw new BadRequestException('Refund request to Paystack failed');
     }
-  }
-
-  async initiateWalletTopUp(
-    schoolId: string,
-    studentId: string,
-    dto: { amount: number; callback_url?: string },
-  ) {
-    const student = await this.prisma.user.findFirst({
-      where: { id: studentId },
-      select: { email: true },
-    });
-    if (!student) throw new NotFoundException('Student not found');
-
-    const wallet = await this.prisma.wallet.findFirst({
-      where: { owner_id: studentId, owner_type: WalletOwnerType.STUDENT },
-    });
-    if (!wallet) throw new NotFoundException('Student wallet not found');
-
-    const reference = generatePaystackReference('TOP');
-    const amountInKobo = nairaToKobo(dto.amount);
-
-    await this.prisma.walletTopUp.create({
-      data: {
-        wallet_id: wallet.id,
-        owner_id: studentId,
-        owner_type: WalletOwnerType.STUDENT,
-        amount: dto.amount,
-        source: WalletTopUpSource.PAYSTACK,
-        paystack_reference: reference,
-        status: WalletTopUpStatus.PENDING,
-      },
-    });
-
-    const response = await fetch(`${this.baseUrl}/transaction/initialize`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.secretKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: student.email,
-        amount: amountInKobo,
-        reference,
-        callback_url: dto.callback_url,
-        metadata: {
-          school_id: schoolId,
-          student_id: studentId,
-          wallet_id: wallet.id,
-          payment_purpose: 'STUDENT_WALLET_FUNDING',
-        },
-      }),
-    });
-
-    const data = await response.json();
-    if (!data.status) throw new BadRequestException(data.message || 'Failed to initialize top-up');
-
-    return ResponseHelper.success('Wallet top-up initialized', {
-      authorization_url: data.data.authorization_url,
-      reference,
-    });
   }
 
   private verifySignature(body: string, signature: string): boolean {

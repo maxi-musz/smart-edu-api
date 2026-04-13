@@ -19,3 +19,19 @@ export async function resolveFinanceStudentRowId(
   });
   return row?.id ?? null;
 }
+
+/** Wallet `owner_id` and related payment rows use **User.id**. */
+export async function resolveFinanceStudentUserId(
+  prisma: PrismaService,
+  schoolId: string,
+  studentIdOrUserId: string,
+): Promise<string | null> {
+  const row = await prisma.student.findFirst({
+    where: {
+      school_id: schoolId,
+      OR: [{ id: studentIdOrUserId }, { user_id: studentIdOrUserId }],
+    },
+    select: { user_id: true },
+  });
+  return row?.user_id ?? null;
+}

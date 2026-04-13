@@ -3,9 +3,10 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { User } from '@prisma/client';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { StudentWalletService } from '../services/student-wallet.service';
-import { PaystackService } from '../services/paystack.service';
-import { ManualTopUpDto, PaystackTopUpDto, WalletPayFeeDto } from '../dto/wallet.dto';
+import { ManualTopUpDto, WalletTopUpInitiateDto, WalletPayFeeDto } from '../dto/wallet.dto';
+import { assertStudentFinanceAccess } from '../common/finance-access.util';
 import * as colors from 'colors';
 
 @ApiTags('Finance - Student Wallet')
@@ -17,14 +18,16 @@ export class StudentWalletController {
 
   constructor(
     private readonly studentWalletService: StudentWalletService,
-    private readonly paystackService: PaystackService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get()
   async getStudentWallet(
     @Param('schoolId') schoolId: string,
     @Param('studentId') studentId: string,
+    @GetUser() user: User,
   ) {
+    await assertStudentFinanceAccess(this.prisma, user, schoolId, studentId);
     this.logger.log(colors.blue(`📥 HTTP Request: GET /finance/${schoolId}/students/${studentId}/wallet — get student wallet`));
     try {
       const result = await this.studentWalletService.getStudentWallet(schoolId, studentId);
@@ -43,6 +46,7 @@ export class StudentWalletController {
     @GetUser() user: User,
     @Body() body: ManualTopUpDto,
   ) {
+    await assertStudentFinanceAccess(this.prisma, user, schoolId, studentId);
     this.logger.log(colors.blue(`📥 HTTP Request: POST /finance/${schoolId}/students/${studentId}/wallet/topup/manual — manual top-up`));
     try {
       const result = await this.studentWalletService.manualTopUp(schoolId, studentId, user.id, body);
@@ -54,29 +58,44 @@ export class StudentWalletController {
     }
   }
 
-  @Post('topup/paystack/initiate')
-  async initiatePaystackTopUp(
+  @Post('topup/initiate')
+  async initiateWalletTopUp(
     @Param('schoolId') schoolId: string,
     @Param('studentId') studentId: string,
-    @Body() body: PaystackTopUpDto,
+    @GetUser() user: User,
+    @Body() body: WalletTopUpInitiateDto,
   ) {
-    this.logger.log(colors.blue(`📥 HTTP Request: POST /finance/${schoolId}/students/${studentId}/wallet/topup/paystack/initiate — Paystack top-up`));
+    await assertStudentFinanceAccess(this.prisma, user, schoolId, studentId);
+    this.logger.log(colors.blue(`📥 HTTP Request: POST /finance/${schoolId}/students/${studentId}/wallet/topup/initiate — wallet top-up`));
     try {
-      const result = await this.paystackService.initiateWalletTopUp(schoolId, studentId, body);
-      this.logger.log(colors.green(`✅ HTTP Response: Paystack top-up for student ${studentId} initiated successfully`));
+      const result = await this.studentWalletService.initiateWalletTopUp(schoolId, studentId, body);
+      this.logger.log(colors.green(`✅ HTTP Response: Wallet top-up for student ${studentId} initiated successfully`));
       return result;
     } catch (error) {
-      this.logger.error(colors.red(`❌ HTTP Error: Failed to initiate Paystack top-up for student ${studentId}`), error.stack);
+      this.logger.error(colors.red(`❌ HTTP Error: Failed to initiate wallet top-up for student ${studentId}`), error.stack);
       throw error;
     }
+  }
+
+  /** @deprecated Use POST .../topup/initiate (provider from PAYMENT_PROVIDER). */
+  @Post('topup/paystack/initiate')
+  async initiatePaystackTopUpLegacy(
+    @Param('schoolId') schoolId: string,
+    @Param('studentId') studentId: string,
+    @GetUser() user: User,
+    @Body() body: WalletTopUpInitiateDto,
+  ) {
+    return this.initiateWalletTopUp(schoolId, studentId, user, body);
   }
 
   @Post('pay-fee')
   async payFeeFromWallet(
     @Param('schoolId') schoolId: string,
     @Param('studentId') studentId: string,
+    @GetUser() user: User,
     @Body() body: WalletPayFeeDto,
   ) {
+    await assertStudentFinanceAccess(this.prisma, user, schoolId, studentId);
     this.logger.log(colors.blue(`📥 HTTP Request: POST /finance/${schoolId}/students/${studentId}/wallet/pay-fee — pay fee from wallet`));
     try {
       const result = await this.studentWalletService.payFeeFromWallet(schoolId, studentId, body);

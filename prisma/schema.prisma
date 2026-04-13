@@ -750,6 +750,8 @@ model FeePayment {
   status                FeePaymentStatus            @default(PENDING)
   receipt_number        String?                     @unique
   paystack_reference    String?                     @unique
+  gateway_reference     String?                     @unique
+  payment_gateway       PaymentGateway?
   recorded_by           String?
   includes_penalty      Boolean                     @default(false)
   penalty_amount        Float                       @default(0)
@@ -778,6 +780,7 @@ model FeePayment {
   @@index([payment_method])
   @@index([receipt_number])
   @@index([paystack_reference])
+  @@index([gateway_reference])
   @@index([school_id, academic_session_id])
   @@index([createdAt])
 }
@@ -791,6 +794,8 @@ model WalletTopUp {
   currency           String            @default("NGN")
   source             WalletTopUpSource
   paystack_reference String?           @unique
+  gateway_reference  String?           @unique
+  payment_gateway    PaymentGateway?
   paystack_status    String?
   recorded_by        String?
   status             WalletTopUpStatus @default(PENDING)
@@ -804,6 +809,7 @@ model WalletTopUp {
   @@index([owner_id])
   @@index([status])
   @@index([paystack_reference])
+  @@index([gateway_reference])
   @@index([createdAt])
 }
 
@@ -2281,10 +2287,16 @@ enum PaymentPlanType {
   OPEN
 }
 
+enum PaymentGateway {
+  PAYSTACK
+  FLUTTERWAVE
+}
+
 enum FeePaymentMethod {
   CASH
   BANK_TRANSFER
   PAYSTACK
+  FLUTTERWAVE
   WALLET
   POS
   CHEQUE
@@ -2320,6 +2332,7 @@ enum WalletOwnerType {
 
 enum WalletTopUpSource {
   PAYSTACK
+  FLUTTERWAVE
   MANUAL_CASH
   BANK_TRANSFER
   TRANSFER_FROM_PARENT_WALLET
