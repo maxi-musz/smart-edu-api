@@ -30,6 +30,7 @@ import { ResultModule } from './result/result.module';
 import { PricingModule } from './pricing/pricing.module';
 import { CloudFrontModule } from './shared/services/cloudfront.module';
 import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
+import { FinanceModule } from './finance/finance.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -70,6 +71,7 @@ import { HlsTranscodeModule } from './shared/services/hls-transcode.module';
     SchoolAccessControlModule,
     ResultModule,
     PricingModule,
+    FinanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

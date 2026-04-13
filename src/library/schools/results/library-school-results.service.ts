@@ -1653,7 +1653,6 @@ export class LibrarySchoolResultsService {
     const classes = await client.class.findMany({
       where: {
         schoolId: schoolId,
-        academic_session_id: sessionId,
       },
       select: {
         id: true,
@@ -1772,7 +1771,6 @@ export class LibrarySchoolResultsService {
       const classes = await this.prisma.class.findMany({
         where: {
           schoolId: schoolId,
-          ...(currentSession ? { academic_session_id: currentSession.id } : {}),
         },
         include: {
           classTeacher: {

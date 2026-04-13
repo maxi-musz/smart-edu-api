@@ -264,7 +264,6 @@ export class DirectorAssessmentService {
         where: {
           schoolId: user.school_id,
           ...(classId ? { id: classId } : {}),
-          ...(currentSession ? { academic_session_id: currentSession.id } : {}),
         },
         include: {
           classTeacher: {
@@ -274,14 +273,6 @@ export class DirectorAssessmentService {
               last_name: true,
               email: true,
               display_picture: true,
-            },
-          },
-          academicSession: {
-            select: {
-              id: true,
-              academic_year: true,
-              term: true,
-              is_current: true,
             },
           },
           _count: {
@@ -309,7 +300,14 @@ export class DirectorAssessmentService {
               display_picture: cls.classTeacher.display_picture,
             }
           : null,
-        academic_session: cls.academicSession,
+        academic_session: currentSession
+          ? {
+              id: currentSession.id,
+              academic_year: currentSession.academic_year,
+              term: currentSession.term,
+              is_current: currentSession.is_current,
+            }
+          : null,
         student_count: cls._count.students,
         subject_count: cls._count.subjects,
         schedule_count: cls._count.schedules,
@@ -709,7 +707,6 @@ export class DirectorAssessmentService {
       this.prisma.class.findMany({
         where: {
           schoolId,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: assessment.subject_id,
@@ -2358,7 +2355,6 @@ export class DirectorAssessmentService {
       const classesWithSubject = await this.prisma.class.findMany({
         where: {
           schoolId: user.school_id,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: assessment.subject_id,

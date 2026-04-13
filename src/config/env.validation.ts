@@ -78,6 +78,10 @@ export const envValidationSchema = joi
     PINECONE_ENVIRONMENT: joi.string().optional(),
 
     REDIS_URL: joi.string().optional(),
+
+    // Paystack (Finance module)
+    PAYSTACK_SECRET_KEY: joi.string().optional(),
+    PAYSTACK_PUBLIC_KEY: joi.string().optional(),
   })
   // Allow extra variables so you can add new ones without breaking validation
   .unknown(true);

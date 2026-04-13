@@ -3,7 +3,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as colors from 'colors';
 import { ApiResponse } from 'src/shared/helper-functions/response';
 import { CreateClassDto, EditClassDto, ReorderClassesDto } from './dto/class.dto';
-import { AcademicSessionService } from '../../../academic-session/academic-session.service';
 import { AuditService } from '../../../audit/audit.service';
 import { AuditPerformedByType } from '@prisma/client';
 
@@ -13,7 +12,6 @@ export class ClassesService {
 
   constructor(
     private prisma: PrismaService,
-    private readonly academicSessionService: AcademicSessionService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -28,29 +26,15 @@ export class ClassesService {
       return new ApiResponse(false, 'User not found', null);
     }
 
-    const currentSessionResponse =
-      await this.academicSessionService.getCurrentSession(userData.school_id);
-    if (!currentSessionResponse.success || !currentSessionResponse.data) {
-      return new ApiResponse(
-        false,
-        'No current academic session found for the school',
-        null,
-      );
-    }
-
-    const sessionId = currentSessionResponse.data.id;
-
     const classes = await this.prisma.class.findMany({
       where: {
         schoolId: userData.school_id,
-        academic_session_id: sessionId,
       },
       select: {
         id: true,
         name: true,
         classId: true,
         display_order: true,
-        academic_session_id: true,
         is_graduates: true,
         classTeacher: {
           select: {
@@ -166,23 +150,9 @@ export class ClassesService {
       createClassDto.classTeacherId = teacher.id;
     }
 
-    // Get current academic session for the school
-    const currentSessionResponse =
-      await this.academicSessionService.getCurrentSession(userData.school_id);
-    if (!currentSessionResponse.success) {
-      return new ApiResponse(
-        false,
-        'No current academic session found for the school',
-        null,
-      );
-    }
-
-    const sessionId = currentSessionResponse.data.id;
-
     const maxOrderAgg = await this.prisma.class.aggregate({
       where: {
         schoolId: userData.school_id,
-        academic_session_id: sessionId,
         is_graduates: false,
       },
       _max: { display_order: true },
@@ -194,7 +164,6 @@ export class ClassesService {
         name: createClassDto.name,
         schoolId: userData.school_id,
         classTeacherId: createClassDto.classTeacherId || null,
-        academic_session_id: sessionId,
         display_order: nextDisplayOrder,
         is_graduates: false,
       },
@@ -203,7 +172,6 @@ export class ClassesService {
         name: true,
         classId: true,
         display_order: true,
-        academic_session_id: true,
         is_graduates: true,
         classTeacher: {
           select: {
@@ -347,7 +315,6 @@ export class ClassesService {
         updatedAt: true,
         display_order: true,
         classId: true,
-        academic_session_id: true,
       },
     });
 
@@ -372,21 +339,9 @@ export class ClassesService {
       return new ApiResponse(false, 'User not found', null);
     }
 
-    const currentSessionResponse =
-      await this.academicSessionService.getCurrentSession(userData.school_id);
-    if (!currentSessionResponse.success || !currentSessionResponse.data) {
-      return new ApiResponse(
-        false,
-        'No current academic session found for the school',
-        null,
-      );
-    }
-
-    const sessionId = currentSessionResponse.data.id;
     const existing = await this.prisma.class.findMany({
       where: {
         schoolId: userData.school_id,
-        academic_session_id: sessionId,
         is_graduates: false,
       },
       select: { id: true },
@@ -394,13 +349,13 @@ export class ClassesService {
 
     const existingIds = new Set(existing.map((c) => c.id));
     if (existing.length === 0) {
-      return new ApiResponse(false, 'No classes in the current session', null);
+      return new ApiResponse(false, 'No teaching classes configured for this school', null);
     }
 
     if (dto.class_ids.length !== existing.length) {
       return new ApiResponse(
         false,
-        'class_ids must list every teaching class in the current session exactly once (Graduates is ordered automatically)',
+        'class_ids must list every teaching class for this school exactly once (Graduates is ordered automatically)',
         null,
       );
     }
@@ -429,7 +384,6 @@ export class ClassesService {
     const gradClass = await this.prisma.class.findFirst({
       where: {
         schoolId: userData.school_id,
-        academic_session_id: sessionId,
         is_graduates: true,
       },
       select: { id: true },
@@ -443,7 +397,7 @@ export class ClassesService {
 
     await this.auditService.log({
       auditForType: 'management_class_reorder',
-      targetId: sessionId,
+      targetId: userData.school_id,
       schoolId: userData.school_id,
       performedById: user.sub,
       performedByType: AuditPerformedByType.school_user,
@@ -453,14 +407,12 @@ export class ClassesService {
     const classes = await this.prisma.class.findMany({
       where: {
         schoolId: userData.school_id,
-        academic_session_id: sessionId,
       },
       select: {
         id: true,
         name: true,
         classId: true,
         display_order: true,
-        academic_session_id: true,
         is_graduates: true,
         classTeacher: {
           select: {

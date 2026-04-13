@@ -151,11 +151,10 @@ export class AttendanceTeacherService {
             }),
           );
 
-          // For directors, return all classes in the school for the current session
+          // For directors, return all classes in the school
           const classes = await this.prisma.class.findMany({
             where: {
               schoolId: effectiveSchoolId!,
-              academic_session_id: currentSession.id,
             },
             include: {
               students: {
@@ -236,7 +235,6 @@ export class AttendanceTeacherService {
       const managedClasses = await this.prisma.class.findMany({
         where: {
           schoolId: teacher.school_id,
-          academic_session_id: currentSession.id,
           classTeacherId: teacher.id,
         },
         include: {
@@ -390,7 +388,6 @@ export class AttendanceTeacherService {
         where: {
           id: classId,
           schoolId: teacher?.school_id || user.school_id,
-          academic_session_id: currentSession.id,
           ...(teacher && !isDirector ? { classTeacherId: teacher.id } : {}),
         },
         include: {
@@ -642,7 +639,6 @@ export class AttendanceTeacherService {
         where: {
           id: classId,
           schoolId: teacher?.school_id || effectiveSchoolId!,
-          academic_session_id: currentSession.id,
           ...(teacher && !(isDirector || isAdmin)
             ? { classTeacherId: teacher.id }
             : {}),
@@ -870,7 +866,6 @@ export class AttendanceTeacherService {
         where: {
           id: submitData.class_id,
           schoolId: teacher.school_id,
-          academic_session_id: currentSession.id,
           classTeacherId: teacher.id,
         },
         include: {
@@ -1101,7 +1096,6 @@ export class AttendanceTeacherService {
         where: {
           id: updateData.class_id,
           schoolId: teacher.school_id,
-          academic_session_id: currentSession.id,
           classTeacherId: teacher.id,
         },
       });

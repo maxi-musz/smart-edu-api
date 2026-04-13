@@ -402,7 +402,6 @@ export class UserService {
       select: {
         id: true,
         name: true,
-        academic_session_id: true,
       },
       orderBy: { name: 'asc' },
     });

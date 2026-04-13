@@ -1133,7 +1133,6 @@ export class TeachersService {
         const totalClasses = await this.prisma.class.count({
           where: {
             schoolId: fullUser.school_id,
-            academic_session_id: currentSession.id,
           },
         });
 

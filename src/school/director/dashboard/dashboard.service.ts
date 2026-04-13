@@ -112,7 +112,6 @@ export class DashboardService {
         this.prisma.class.count({
           where: {
             schoolId: director.school_id,
-            academic_session_id: currentSessionId,
           },
         }),
         this.prisma.subject.count({

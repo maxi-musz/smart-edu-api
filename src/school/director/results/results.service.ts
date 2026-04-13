@@ -1508,7 +1508,6 @@ export class ResultsService {
     const classes = await this.prisma.class.findMany({
       where: {
         schoolId: schoolId,
-        academic_session_id: sessionId,
       },
       select: {
         id: true,
@@ -1639,7 +1638,6 @@ export class ResultsService {
       const classes = await this.prisma.class.findMany({
         where: {
           schoolId: user.school_id,
-          ...(currentSession ? { academic_session_id: currentSession.id } : {}),
         },
         include: {
           classTeacher: {

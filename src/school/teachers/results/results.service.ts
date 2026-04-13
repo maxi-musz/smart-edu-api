@@ -126,7 +126,6 @@ export class ResultsService {
         where: {
           classTeacherId: teacher.id,
           schoolId: teacher.school_id,
-          academic_session_id: targetSession.id,
         },
         select: {
           id: true,

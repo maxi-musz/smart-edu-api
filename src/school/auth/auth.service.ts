@@ -1269,7 +1269,6 @@ export class AuthService {
         data: dto.class_names.map((className) => ({
           name: className.toLowerCase().replace(/\s+/g, ''),
           schoolId: existingSchool.id,
-          academic_session_id: currentSessionResponse.data.id,
         })),
       });
 
@@ -2006,7 +2005,6 @@ export class AuthService {
               data: dto.class_names.map((className) => ({
                 name: className.toLowerCase().replace(/\s+/g, ''),
                 schoolId: existingSchool.id,
-                academic_session_id: currentSessionResponse.data.id,
               })),
             });
 

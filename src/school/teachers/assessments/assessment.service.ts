@@ -2785,7 +2785,6 @@ export class AssessmentService {
       const classesWithSubject = await this.prisma.class.findMany({
         where: {
           schoolId: effectiveSchoolId,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: assessment.subject_id,

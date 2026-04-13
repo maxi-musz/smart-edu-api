@@ -381,7 +381,6 @@ export class AcademicSessionService {
             select: {
               students: true,
               teachers: true,
-              classes: true,
               subjects: true,
               payments: true,
               performances: true,
@@ -396,7 +395,6 @@ export class AcademicSessionService {
         relatedData &&
         (relatedData._count.students > 0 ||
           relatedData._count.teachers > 0 ||
-          relatedData._count.classes > 0 ||
           relatedData._count.subjects > 0 ||
           relatedData._count.payments > 0 ||
           relatedData._count.performances > 0 ||
@@ -623,7 +621,7 @@ export class AcademicSessionService {
   }
 
   /**
-   * Get classes in order for a school and academic session
+   * Get classes in order for a school (classes are school-scoped; session id validates school ownership).
    */
   async getClassesInOrder(
     schoolId: string,
@@ -634,14 +632,19 @@ export class AcademicSessionService {
     );
 
     try {
+      const sessionOk = await this.prisma.academicSession.findFirst({
+        where: { id: academicSessionId, school_id: schoolId },
+        select: { id: true },
+      });
+      if (!sessionOk) {
+        return new ApiResponse(false, 'Academic session not found for this school', null);
+      }
+
       const classes = await this.prisma.class.findMany({
         where: {
           schoolId: schoolId,
-          academic_session_id: academicSessionId,
         },
-        orderBy: {
-          classId: 'asc',
-        },
+        orderBy: [{ display_order: 'asc' }, { classId: 'asc' }],
         include: {
           classTeacher: {
             select: {
@@ -690,7 +693,8 @@ export class AcademicSessionService {
         select: {
           classId: true,
           schoolId: true,
-          academic_session_id: true,
+          display_order: true,
+          is_graduates: true,
         },
       });
 
@@ -698,16 +702,24 @@ export class AcademicSessionService {
         return new ApiResponse(false, 'Current class not found', null);
       }
 
+      if (currentClass.is_graduates) {
+        return new ApiResponse(
+          false,
+          'No next class available (student is in the Graduates class)',
+          null,
+        );
+      }
+
       const nextClass = await this.prisma.class.findFirst({
         where: {
           schoolId: currentClass.schoolId,
-          academic_session_id: currentClass.academic_session_id,
-          classId: {
-            gt: currentClass.classId,
+          is_graduates: false,
+          display_order: {
+            gt: currentClass.display_order,
           },
         },
         orderBy: {
-          classId: 'asc',
+          display_order: 'asc',
         },
         include: {
           classTeacher: {
@@ -760,7 +772,8 @@ export class AcademicSessionService {
         select: {
           classId: true,
           schoolId: true,
-          academic_session_id: true,
+          display_order: true,
+          is_graduates: true,
         },
       });
 
@@ -768,16 +781,24 @@ export class AcademicSessionService {
         return new ApiResponse(false, 'Current class not found', null);
       }
 
+      if (currentClass.is_graduates) {
+        return new ApiResponse(
+          false,
+          'No previous class available from the Graduates class',
+          null,
+        );
+      }
+
       const previousClass = await this.prisma.class.findFirst({
         where: {
           schoolId: currentClass.schoolId,
-          academic_session_id: currentClass.academic_session_id,
-          classId: {
-            lt: currentClass.classId,
+          is_graduates: false,
+          display_order: {
+            lt: currentClass.display_order,
           },
         },
         orderBy: {
-          classId: 'desc',
+          display_order: 'desc',
         },
         include: {
           classTeacher: {

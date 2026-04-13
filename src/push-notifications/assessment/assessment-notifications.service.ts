@@ -62,7 +62,6 @@ export class AssessmentNotificationsService {
       const classesWithSubject = await this.prisma.class.findMany({
         where: {
           schoolId: schoolId,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: subjectId,
@@ -244,7 +243,6 @@ export class AssessmentNotificationsService {
       const classesWithSubject = await this.prisma.class.findMany({
         where: {
           schoolId: schoolId,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: subjectId,
@@ -425,7 +423,6 @@ export class AssessmentNotificationsService {
       const classesWithSubject = await this.prisma.class.findMany({
         where: {
           schoolId: schoolId,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: subjectId,

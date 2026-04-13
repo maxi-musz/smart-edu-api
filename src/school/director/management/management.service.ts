@@ -136,7 +136,6 @@ export class ManagementService {
         this.prisma.class.count({
           where: {
             schoolId,
-            academic_session_id: currentSessionId,
           },
         }),
       ]);
@@ -344,9 +343,8 @@ export class ManagementService {
       );
     }
 
-    const sessionId = currentRes.data.id;
     const classes = await this.prisma.class.findMany({
-      where: { schoolId, academic_session_id: sessionId },
+      where: { schoolId },
       select: {
         id: true,
         name: true,
@@ -360,13 +358,10 @@ export class ManagementService {
     return new ApiResponse(true, 'Class ladder', { classes });
   }
 
-  /** Teaching classes only — excludes the session’s Graduates sink class. */
-  private async orderedTeachingClassIdsForSession(
-    schoolId: string,
-    sessionId: string,
-  ): Promise<string[]> {
+  /** Teaching classes only — excludes the school’s Graduates sink class. */
+  private async orderedTeachingClassIds(schoolId: string): Promise<string[]> {
     const rows = await this.prisma.class.findMany({
-      where: { schoolId, academic_session_id: sessionId, is_graduates: false },
+      where: { schoolId, is_graduates: false },
       select: { id: true },
       orderBy: [{ display_order: 'asc' }, { classId: 'asc' }],
     });
@@ -374,31 +369,22 @@ export class ManagementService {
   }
 
   /**
-   * Ensures a single Graduates class exists for the session (promotion target after last teaching class).
+   * Ensures a single Graduates class exists for the school (promotion target after last teaching class).
    */
   private async ensureGraduatesClass(
     db: PrismaService | Prisma.TransactionClient,
     schoolId: string,
-    sessionId: string,
   ): Promise<{ id: string; name: string }> {
     const existing = await db.class.findFirst({
-      where: { schoolId, academic_session_id: sessionId, is_graduates: true },
+      where: { schoolId, is_graduates: true },
       select: { id: true, name: true },
     });
     if (existing) {
       return existing;
     }
 
-    const session = await db.academicSession.findFirst({
-      where: { id: sessionId },
-      select: { academic_year: true },
-    });
-    const name = session
-      ? `Graduates (${session.academic_year})`
-      : 'Graduates';
-
     const maxAgg = await db.class.aggregate({
-      where: { schoolId, academic_session_id: sessionId },
+      where: { schoolId, is_graduates: false },
       _max: { display_order: true },
     });
     const display_order = (maxAgg._max.display_order ?? -1) + 1;
@@ -406,8 +392,7 @@ export class ManagementService {
     return db.class.create({
       data: {
         schoolId,
-        academic_session_id: sessionId,
-        name,
+        name: 'Graduates',
         display_order,
         is_graduates: true,
       },
@@ -439,7 +424,7 @@ export class ManagementService {
         id: dto.target_class_id,
         schoolId,
       },
-      select: { id: true, academic_session_id: true, name: true },
+      select: { id: true, name: true },
     });
 
     if (!targetClass) {
@@ -454,7 +439,6 @@ export class ManagementService {
       select: {
         id: true,
         current_class_id: true,
-        academic_session_id: true,
       },
     });
 
@@ -464,16 +448,6 @@ export class ManagementService {
         'One or more students were not found in this school',
         null,
       );
-    }
-
-    for (const s of students) {
-      if (s.academic_session_id !== targetClass.academic_session_id) {
-        return new ApiResponse(
-          false,
-          `Student ${s.id} is not in the same academic session as the target class`,
-          null,
-        );
-      }
     }
 
     const changes = students.map((s) => ({
@@ -550,16 +524,7 @@ export class ManagementService {
       is_graduation: boolean;
     }[] = [];
 
-    const promoteSessionIds = [
-      ...new Set(students.map((s) => s.academic_session_id)),
-    ];
-    const ladderBySessionPromote = new Map<string, string[]>();
-    for (const sid of promoteSessionIds) {
-      ladderBySessionPromote.set(
-        sid,
-        await this.orderedTeachingClassIdsForSession(schoolId, sid),
-      );
-    }
+    const teachingLadder = await this.orderedTeachingClassIds(schoolId);
 
     const currentClassIds = [
       ...new Set(
@@ -580,11 +545,11 @@ export class ManagementService {
       if (s.current_class_id && graduatesClassIds.has(s.current_class_id)) {
         return new ApiResponse(
           false,
-          `Student ${s.id} is already in the Graduates class for this session`,
+          `Student ${s.id} is already in the Graduates class`,
           null,
         );
       }
-      const ladder = ladderBySessionPromote.get(s.academic_session_id) ?? [];
+      const ladder = teachingLadder;
       const idx = this.indexInLadder(ladder, s.current_class_id);
       if (idx === -1 || !s.current_class_id) {
         return new ApiResponse(
@@ -596,7 +561,7 @@ export class ManagementService {
       if (ladder.length === 0) {
         return new ApiResponse(
           false,
-          `No teaching classes configured for this academic session`,
+          `No teaching classes configured for this school`,
           null,
         );
       }
@@ -622,20 +587,15 @@ export class ManagementService {
 
     await this.prisma.$transaction(
       async (tx) => {
-        const gradIdBySession = new Map<string, string>();
-        const sessionsNeedingGrad = [
-          ...new Set(
-            changes.filter((c) => c.is_graduation).map((c) => c.academic_session_id),
-          ),
-        ];
-        for (const sid of sessionsNeedingGrad) {
-          const g = await this.ensureGraduatesClass(tx, schoolId, sid);
-          gradIdBySession.set(sid, g.id);
+        let graduatesClassId: string | null = null;
+        if (changes.some((c) => c.is_graduation)) {
+          const g = await this.ensureGraduatesClass(tx, schoolId);
+          graduatesClassId = g.id;
         }
 
         for (const c of changes) {
           const toId = c.is_graduation
-            ? gradIdBySession.get(c.academic_session_id)!
+            ? graduatesClassId!
             : c.to_class_id;
           await tx.student.update({
             where: { id: c.student_id },
@@ -660,22 +620,16 @@ export class ManagementService {
       this.prismaBulkTransactionOptions(changes.length),
     );
 
-    const gradIdResolved = new Map<string, string>();
-    for (const sid of new Set(
-      changes.filter((c) => c.is_graduation).map((c) => c.academic_session_id),
-    )) {
-      const row = await this.prisma.class.findFirst({
-        where: { schoolId, academic_session_id: sid, is_graduates: true },
-        select: { id: true },
-      });
-      if (row) gradIdResolved.set(sid, row.id);
-    }
+    const gradRow = await this.prisma.class.findFirst({
+      where: { schoolId, is_graduates: true },
+      select: { id: true },
+    });
 
     const changesOut = changes.map((c) => ({
       student_id: c.student_id,
       from_class_id: c.from_class_id,
       to_class_id: c.is_graduation
-        ? (gradIdResolved.get(c.academic_session_id) ?? '')
+        ? (gradRow?.id ?? '')
         : c.to_class_id,
       is_graduation: c.is_graduation,
     }));
@@ -729,20 +683,7 @@ export class ManagementService {
       );
     }
 
-    const sessionIds = [...new Set(students.map((s) => s.academic_session_id))];
-    const ladderBySession = new Map<string, string[]>();
-    for (const sid of sessionIds) {
-      ladderBySession.set(
-        sid,
-        await this.orderedTeachingClassIdsForSession(schoolId, sid),
-      );
-    }
-
-    const sessionLabels = await this.prisma.academicSession.findMany({
-      where: { id: { in: sessionIds }, school_id: schoolId },
-      select: { id: true, academic_year: true },
-    });
-    const yearBySession = new Map(sessionLabels.map((x) => [x.id, x.academic_year]));
+    const teachingLadderPreview = await this.orderedTeachingClassIds(schoolId);
 
     const currentClassIds = [
       ...new Set(
@@ -771,7 +712,7 @@ export class ManagementService {
       const studentName =
         `${s.user.first_name ?? ''} ${s.user.last_name ?? ''}`.trim() ||
         'Student';
-      const ladder = ladderBySession.get(s.academic_session_id) ?? [];
+      const ladder = teachingLadderPreview;
       const inGrads =
         s.current_class_id &&
         graduatesByClassId.get(s.current_class_id) === true;
@@ -795,7 +736,7 @@ export class ManagementService {
         if (ladder.length === 0) {
           return new ApiResponse(
             false,
-            `No teaching classes configured for this academic session`,
+            `No teaching classes configured for this school`,
             null,
           );
         }
@@ -860,17 +801,13 @@ export class ManagementService {
       }
     }
 
-    const gradClassRows = await this.prisma.class.findMany({
+    const gradClassRow = await this.prisma.class.findFirst({
       where: {
         schoolId,
-        academic_session_id: { in: sessionIds },
         is_graduates: true,
       },
-      select: { id: true, name: true, academic_session_id: true },
+      select: { id: true, name: true },
     });
-    const gradNameBySession = new Map(
-      gradClassRows.map((c) => [c.academic_session_id, c.name]),
-    );
 
     const classIds = new Set<string>();
     for (const c of rawChanges) {
@@ -884,18 +821,11 @@ export class ManagementService {
     });
     const nameById = new Map(classRows.map((r) => [r.id, r.name]));
 
-    const studentById = new Map(students.map((st) => [st.id, st]));
-
     const previews = rawChanges.map((c) => {
-      const stu = studentById.get(c.student_id)!;
-      const y = yearBySession.get(stu.academic_session_id);
-      const fallbackGradName = y ? `Graduates (${y})` : 'Graduates';
       const toName = c.to_graduation
-        ? (gradNameBySession.get(stu.academic_session_id) ?? fallbackGradName)
+        ? (gradClassRow?.name ?? 'Graduates')
         : (nameById.get(c.to_class_id) ?? 'Unknown class');
-      const existingGradId = gradClassRows.find(
-        (g) => g.academic_session_id === stu.academic_session_id,
-      )?.id;
+      const existingGradId = gradClassRow?.id;
       return {
         student_id: c.student_id,
         student_name: c.student_name,
@@ -950,16 +880,7 @@ export class ManagementService {
       to_class_id: string;
     }[] = [];
 
-    const sessionIdsDemote = [
-      ...new Set(students.map((s) => s.academic_session_id)),
-    ];
-    const ladderBySessionDemote = new Map<string, string[]>();
-    for (const sid of sessionIdsDemote) {
-      ladderBySessionDemote.set(
-        sid,
-        await this.orderedTeachingClassIdsForSession(schoolId, sid),
-      );
-    }
+    const teachingLadderDemote = await this.orderedTeachingClassIds(schoolId);
 
     const curIds = [
       ...new Set(
@@ -977,7 +898,7 @@ export class ManagementService {
     );
 
     for (const s of students) {
-      const ladder = ladderBySessionDemote.get(s.academic_session_id) ?? [];
+      const ladder = teachingLadderDemote;
       const fromGrads =
         s.current_class_id && isGradClass.has(s.current_class_id);
 
@@ -985,7 +906,7 @@ export class ManagementService {
         if (ladder.length === 0) {
           return new ApiResponse(
             false,
-            `No teaching classes configured for this academic session`,
+            `No teaching classes configured for this school`,
             null,
           );
         }

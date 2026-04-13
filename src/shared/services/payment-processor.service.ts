@@ -104,6 +104,8 @@ export class PaymentProcessorService {
             console.log(colors.yellow('⚠️ Creating wallet for school...'));
             wallet = await prisma.wallet.create({
               data: {
+                owner_id: school.id,
+                owner_type: 'SCHOOL',
                 school_id: school.id,
                 balance: 0,
                 currency: 'NGN',

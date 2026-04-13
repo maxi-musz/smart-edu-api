@@ -31,7 +31,6 @@ model AcademicSession {
   attendanceSessions    AttendanceSession[]
   attendanceSettings    AttendanceSettings[]
   attendanceSummaries   AttendanceSummary[]
-  classes               Class[]
   gradingRubrics        GradingRubric[]
   notifications         Notification[]
   payments              Payment[]
@@ -43,6 +42,12 @@ model AcademicSession {
   schedules             TimetableEntry[]
   topics                Topic[]
   results               Result[]
+  fees                  Fee[]
+  studentFeeRecords     StudentFeeRecord[]
+  feePayments           FeePayment[]
+  scholarships          Scholarship[]
+  feeWaivers            FeeWaiver[]
+  expenses              Expense[]
 
   @@unique([school_id, academic_year, term])
   @@index([school_id, is_current])
@@ -119,6 +124,16 @@ model School {
   schoolResourceExclusions  SchoolResourceExclusion[]
   teacherResourceExclusions TeacherResourceExclusion[]
   auditLogs                 AuditLog[]
+  // Finance relations
+  fees                      Fee[]
+  studentFeeRecords         StudentFeeRecord[]
+  feePayments               FeePayment[]
+  scholarships              Scholarship[]
+  feeWaivers                FeeWaiver[]
+  penaltyRules              FeePenaltyRule[]
+  feeLatePenalties          FeeLatePenalty[]
+  refundRequests            RefundRequest[]
+  expenses                  Expense[]
 }
 
 model Document {
@@ -188,6 +203,7 @@ model User {
   pdfMaterial                      PDFMaterial[]
   parent                           Parent?
   payments                         Payment[]                                @relation("StudentPayment")
+  feePayments                      FeePayment[]                             @relation("StudentFeePayment")
   student                          Student?
   studentAchievements              StudentAchievement[]                     @relation("StudentAchievements")
   performances                     StudentPerformance[]                     @relation("StudentPerformance")
@@ -270,14 +286,14 @@ model Teacher {
 }
 
 model Student {
-  id                  String              @id @default(cuid())
+  id                  String                      @id @default(cuid())
   school_id           String
   academic_session_id String
-  user_id             String              @unique
+  user_id             String                      @unique
   student_id          String
-  admission_number    String?             @unique
+  admission_number    String?                     @unique
   date_of_birth       DateTime?
-  admission_date      DateTime            @default(now())
+  admission_date      DateTime                    @default(now())
   current_class_id    String?
   guardian_name       String?
   guardian_phone      String?
@@ -290,20 +306,25 @@ model Student {
   previous_school     String?
   academic_level      String?
   parent_id           String?
-  status              UserStatus          @default(active)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  status              UserStatus                  @default(active)
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
   city                String?
   country             String?
   postal_code         String?
   state               String?
-  academicSession     AcademicSession     @relation(fields: [academic_session_id], references: [id])
-  current_class       Class?              @relation(fields: [current_class_id], references: [id])
-  parent              Parent?             @relation("ParentChildren", fields: [parent_id], references: [id])
-  school              School              @relation(fields: [school_id], references: [id])
-  user                User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  academicSession     AcademicSession             @relation(fields: [academic_session_id], references: [id])
+  current_class       Class?                      @relation(fields: [current_class_id], references: [id])
+  parent              Parent?                     @relation("ParentChildren", fields: [parent_id], references: [id])
+  school              School                      @relation(fields: [school_id], references: [id])
+  user                User                        @relation(fields: [user_id], references: [id], onDelete: Cascade)
   results             Result[]
   graduations         StudentGraduation[]
+  feeRecords          StudentFeeRecord[]
+  installmentPayments StudentInstallmentPayment[]
+  penalties           FeeLatePenalty[]
+  waivers             FeeWaiver[]
+  refunds             RefundRequest[]
 
   @@unique([school_id, student_id], name: "Student_school_id_student_id_key")
   @@index([school_id])
@@ -344,18 +365,16 @@ model Class {
   classId                   Int                        @default(autoincrement())
   name                      String
   schoolId                  String
-  academic_session_id       String
   classTeacherId            String?
-  /// Ladder order within the academic session (lower = earlier grade). Used for promotion and UI.
+  /// Ladder order within the school (lower = earlier grade). Used for promotion and UI.
   display_order             Int                        @default(0)
-  /// System-managed sink for students promoted past the last teaching class (one per session).
+  /// System-managed sink for students promoted past the last teaching class (one per school).
   is_graduates              Boolean                    @default(false)
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
   attendanceRecords         AttendanceRecord[]
   attendanceSessions        AttendanceSession[]
   attendanceSummaries       AttendanceSummary[]
-  academicSession           AcademicSession            @relation(fields: [academic_session_id], references: [id])
   classTeacher              Teacher?                   @relation("ClassTeacher", fields: [classTeacherId], references: [id])
   school                    School                     @relation(fields: [schoolId], references: [id])
   payments                  Payment[]
@@ -368,12 +387,13 @@ model Class {
   schoolResourceAccess      SchoolResourceAccess[]
   teacherResourceAccess     TeacherResourceAccess[]
   teacherResourceExclusions TeacherResourceExclusion[]
+  feeAssignments            FeeClassAssignment[]
+  studentFeeRecords         StudentFeeRecord[]
 
-  @@unique([schoolId, academic_session_id, classId])
-  @@index([schoolId, academic_session_id])
-  @@index([schoolId, academic_session_id, display_order])
+  @@unique([schoolId, name])
+  @@index([schoolId, display_order])
   @@index([classId])
-  @@index([schoolId, academic_session_id, is_graduates])
+  @@index([schoolId, is_graduates])
 }
 
 /// Records a student completing graduation into the session’s Graduates class (reporting by session).
@@ -454,7 +474,7 @@ model Finance {
   updatedAt        DateTime  @updatedAt
   school           School    @relation(fields: [school_id], references: [id])
   payments         Payment[]
-  Wallet           Wallet[]
+  wallets          Wallet[]
 }
 
 model Payment {
@@ -521,22 +541,36 @@ model TimeSlot {
 }
 
 model Wallet {
-  id           String              @id @default(cuid())
-  school_id    String              @unique
-  balance      Float               @default(0)
-  currency     String              @default("NGN")
-  wallet_type  WalletType          @default(SCHOOL_WALLET)
-  is_active    Boolean             @default(true)
-  last_updated DateTime            @default(now())
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  financeId    String?
-  finance      Finance?            @relation(fields: [financeId], references: [id])
-  school       School              @relation(fields: [school_id], references: [id])
-  transactions WalletTransaction[]
+  id                    String              @id @default(cuid())
+  owner_id              String
+  owner_type            WalletOwnerType     @default(SCHOOL)
+  school_id             String?             @unique
+  balance               Float               @default(0)
+  currency              String              @default("NGN")
+  wallet_type           WalletType          @default(SCHOOL_WALLET)
+  is_active             Boolean             @default(true)
+  is_frozen             Boolean             @default(false)
+  freeze_reason         String?
+  total_funded_all_time Float               @default(0)
+  total_spent_all_time  Float               @default(0)
+  last_updated          DateTime            @default(now())
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  financeId             String?
+  finance               Finance?            @relation(fields: [financeId], references: [id])
+  school                School?             @relation(fields: [school_id], references: [id])
+  transactions          WalletTransaction[]
+  walletAnalytics       WalletAnalytics?
+  topUps                WalletTopUp[]
+  transfersFrom         WalletTransfer[]    @relation("WalletTransferFrom")
+  transfersTo           WalletTransfer[]    @relation("WalletTransferTo")
+  expenses              Expense[]
 
-  @@index([school_id])
+  @@unique([owner_id, owner_type])
+  @@index([owner_id])
+  @@index([owner_type])
   @@index([wallet_type])
+  @@index([school_id])
 }
 
 model WalletTransaction {
@@ -547,18 +581,519 @@ model WalletTransaction {
   description      String
   reference        String?                 @unique
   status           WalletTransactionStatus @default(PENDING)
+  balance_before   Float?
+  balance_after    Float?
+  payment_id       String?
+  recorded_by      String?
   metadata         Json?
   processed_at     DateTime?
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
   wallet           Wallet                  @relation(fields: [wallet_id], references: [id])
+  feePayment       FeePayment?             @relation(fields: [payment_id], references: [id])
 
   @@index([wallet_id])
   @@index([transaction_type])
   @@index([status])
   @@index([createdAt])
   @@index([reference])
+  @@index([payment_id])
 }
+
+// ─── Finance Module Models ──────────────────────────────────────────
+
+model Fee {
+  id                   String                   @id @default(cuid())
+  school_id            String
+  academic_session_id  String
+  name                 String
+  description          String?
+  fee_type             FeeType
+  base_amount          Float
+  assignment_scope     FeeAssignmentScope       @default(SELECTED_CLASSES)
+  is_active            Boolean                  @default(true)
+  auto_deduct_enabled  Boolean                  @default(false)
+  auto_deduct_date     DateTime?
+  created_by           String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  school               School                   @relation(fields: [school_id], references: [id])
+  academicSession      AcademicSession          @relation(fields: [academic_session_id], references: [id])
+  classAssignments     FeeClassAssignment[]
+  paymentPlan          FeePaymentPlan?
+  studentFeeRecords    StudentFeeRecord[]
+  feePayments          FeePayment[]
+  penaltyRule          FeePenaltyRule?
+  waivers              FeeWaiver[]
+  penalties            FeeLatePenalty[]
+  autoDeductionSetting FeeAutoDeductionSetting?
+
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([fee_type])
+  @@index([is_active])
+  @@index([school_id, academic_session_id])
+}
+
+model FeeClassAssignment {
+  id              String   @id @default(cuid())
+  fee_id          String
+  class_id        String
+  amount_override Float?
+  createdAt       DateTime @default(now())
+  fee             Fee      @relation(fields: [fee_id], references: [id], onDelete: Cascade)
+  class           Class    @relation(fields: [class_id], references: [id])
+
+  @@unique([fee_id, class_id])
+  @@index([fee_id])
+  @@index([class_id])
+}
+
+model FeePaymentPlan {
+  id                   String                   @id @default(cuid())
+  fee_id               String                   @unique
+  plan_type            PaymentPlanType
+  max_installments     Int?
+  allow_partial        Boolean                  @default(false)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  fee                  Fee                      @relation(fields: [fee_id], references: [id], onDelete: Cascade)
+  installmentSchedules FeeInstallmentSchedule[]
+}
+
+model FeeInstallmentSchedule {
+  id                  String                      @id @default(cuid())
+  payment_plan_id     String
+  installment_number  Int
+  amount              Float
+  due_date            DateTime?
+  label               String?
+  createdAt           DateTime                    @default(now())
+  paymentPlan         FeePaymentPlan              @relation(fields: [payment_plan_id], references: [id], onDelete: Cascade)
+  installmentPayments StudentInstallmentPayment[]
+
+  @@unique([payment_plan_id, installment_number])
+  @@index([payment_plan_id])
+}
+
+model StudentFeeRecord {
+  id                  String                      @id @default(cuid())
+  student_id          String
+  fee_id              String
+  school_id           String
+  academic_session_id String
+  class_id            String
+  amount_owed         Float
+  amount_paid         Float                       @default(0)
+  balance             Float
+  is_completed        Boolean                     @default(false)
+  status              StudentFeeStatus            @default(PENDING)
+  waiver_id           String?
+  due_date            DateTime?
+  last_payment_at     DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  student             Student                     @relation(fields: [student_id], references: [id])
+  fee                 Fee                         @relation(fields: [fee_id], references: [id])
+  school              School                      @relation(fields: [school_id], references: [id])
+  academicSession     AcademicSession             @relation(fields: [academic_session_id], references: [id])
+  class               Class                       @relation(fields: [class_id], references: [id])
+  feePayments         FeePayment[]
+  installmentPayments StudentInstallmentPayment[]
+  waivers             FeeWaiver[]
+  penalties           FeeLatePenalty[]
+  refundRequests      RefundRequest[]
+
+  @@unique([student_id, fee_id, academic_session_id])
+  @@index([student_id])
+  @@index([fee_id])
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([class_id])
+  @@index([status])
+  @@index([is_completed])
+  @@index([school_id, academic_session_id, status])
+}
+
+model StudentInstallmentPayment {
+  id                      String                   @id @default(cuid())
+  student_fee_record_id   String
+  installment_schedule_id String
+  fee_payment_id          String
+  amount_paid             Float
+  paid_at                 DateTime                 @default(now())
+  status                  InstallmentPaymentStatus @default(PENDING)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  studentFeeRecord        StudentFeeRecord         @relation(fields: [student_fee_record_id], references: [id])
+  installmentSchedule     FeeInstallmentSchedule   @relation(fields: [installment_schedule_id], references: [id])
+  feePayment              FeePayment               @relation(fields: [fee_payment_id], references: [id])
+  student                 Student                  @relation(fields: [student_id], references: [id])
+  student_id              String
+
+  @@index([student_fee_record_id])
+  @@index([installment_schedule_id])
+  @@index([fee_payment_id])
+  @@index([student_id])
+}
+
+model FeePayment {
+  id                    String                      @id @default(cuid())
+  student_id            String
+  fee_id                String
+  school_id             String
+  academic_session_id   String
+  student_fee_record_id String
+  amount                Float
+  payment_method        FeePaymentMethod
+  payment_type          FeePaymentType
+  status                FeePaymentStatus            @default(PENDING)
+  receipt_number        String?                     @unique
+  paystack_reference    String?                     @unique
+  recorded_by           String?
+  includes_penalty      Boolean                     @default(false)
+  penalty_amount        Float                       @default(0)
+  partially_refunded    Boolean                     @default(false)
+  total_refunded_amount Float                       @default(0)
+  installment_number    Int?
+  metadata              Json?
+  processed_at          DateTime?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  student               User                        @relation("StudentFeePayment", fields: [student_id], references: [id])
+  fee                   Fee                         @relation(fields: [fee_id], references: [id])
+  school                School                      @relation(fields: [school_id], references: [id])
+  academicSession       AcademicSession             @relation(fields: [academic_session_id], references: [id])
+  studentFeeRecord      StudentFeeRecord            @relation(fields: [student_fee_record_id], references: [id])
+  installmentPayments   StudentInstallmentPayment[]
+  walletTransactions    WalletTransaction[]
+  refundRequests        RefundRequest[]
+
+  @@index([student_id])
+  @@index([fee_id])
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([student_fee_record_id])
+  @@index([status])
+  @@index([payment_method])
+  @@index([receipt_number])
+  @@index([paystack_reference])
+  @@index([school_id, academic_session_id])
+  @@index([createdAt])
+}
+
+model WalletTopUp {
+  id                 String            @id @default(cuid())
+  wallet_id          String
+  owner_id           String
+  owner_type         WalletOwnerType
+  amount             Float
+  currency           String            @default("NGN")
+  source             WalletTopUpSource
+  paystack_reference String?           @unique
+  paystack_status    String?
+  recorded_by        String?
+  status             WalletTopUpStatus @default(PENDING)
+  metadata           Json?
+  processed_at       DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  wallet             Wallet            @relation(fields: [wallet_id], references: [id])
+
+  @@index([wallet_id])
+  @@index([owner_id])
+  @@index([status])
+  @@index([paystack_reference])
+  @@index([createdAt])
+}
+
+model WalletTransfer {
+  id             String               @id @default(cuid())
+  from_wallet_id String
+  to_wallet_id   String
+  amount         Float
+  currency       String               @default("NGN")
+  status         WalletTransferStatus @default(PENDING)
+  initiated_by   String
+  metadata       Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  fromWallet     Wallet               @relation("WalletTransferFrom", fields: [from_wallet_id], references: [id])
+  toWallet       Wallet               @relation("WalletTransferTo", fields: [to_wallet_id], references: [id])
+
+  @@index([from_wallet_id])
+  @@index([to_wallet_id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Scholarship {
+  id                        String                  @id @default(cuid())
+  school_id                 String
+  academic_session_id       String
+  name                      String
+  description               String?
+  sponsor                   String?
+  coverage_type             ScholarshipCoverageType
+  coverage_value            Float?
+  applicable_fee_ids        String[]
+  max_beneficiaries         Int?
+  current_beneficiary_count Int                     @default(0)
+  is_active                 Boolean                 @default(true)
+  created_by                String
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  school                    School                  @relation(fields: [school_id], references: [id])
+  academicSession           AcademicSession         @relation(fields: [academic_session_id], references: [id])
+  waivers                   FeeWaiver[]
+
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([is_active])
+  @@index([school_id, academic_session_id])
+}
+
+model FeeWaiver {
+  id                            String           @id @default(cuid())
+  student_fee_record_id         String
+  student_id                    String
+  fee_id                        String
+  school_id                     String
+  academic_session_id           String
+  scholarship_id                String?
+  waiver_type                   WaiverType
+  discount_type                 DiscountType?
+  discount_value                Float?
+  original_amount_owed          Float
+  discount_amount               Float
+  effective_amount_after_waiver Float
+  reason                        String?
+  status                        WaiverStatus     @default(PENDING_APPROVAL)
+  requested_by                  String
+  approved_by                   String?
+  approved_at                   DateTime?
+  rejected_by                   String?
+  rejected_at                   DateTime?
+  rejection_reason              String?
+  revoked_by                    String?
+  revoked_at                    DateTime?
+  revocation_reason             String?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
+  studentFeeRecord              StudentFeeRecord @relation(fields: [student_fee_record_id], references: [id])
+  student                       Student          @relation(fields: [student_id], references: [id])
+  fee                           Fee              @relation(fields: [fee_id], references: [id])
+  school                        School           @relation(fields: [school_id], references: [id])
+  academicSession               AcademicSession  @relation(fields: [academic_session_id], references: [id])
+  scholarship                   Scholarship?     @relation(fields: [scholarship_id], references: [id])
+
+  @@index([student_fee_record_id])
+  @@index([student_id])
+  @@index([fee_id])
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([status])
+  @@index([scholarship_id])
+  @@index([school_id, academic_session_id, status])
+}
+
+model FeePenaltyRule {
+  id                      String            @id @default(cuid())
+  fee_id                  String            @unique
+  school_id               String
+  is_active               Boolean           @default(true)
+  penalty_type            PenaltyType
+  penalty_value           Float
+  grace_period_days       Int               @default(0)
+  recurrence              PenaltyRecurrence
+  max_penalty_amount      Float?
+  max_penalty_occurrences Int?
+  apply_to_partial_payers Boolean           @default(true)
+  created_by              String
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  fee                     Fee               @relation(fields: [fee_id], references: [id])
+  school                  School            @relation(fields: [school_id], references: [id])
+  penalties               FeeLatePenalty[]
+
+  @@index([fee_id])
+  @@index([school_id])
+  @@index([is_active])
+}
+
+model FeeLatePenalty {
+  id                        String           @id @default(cuid())
+  student_fee_record_id     String
+  student_id                String
+  fee_id                    String
+  school_id                 String
+  penalty_rule_id           String
+  occurrence_number         Int
+  penalty_type              PenaltyType
+  penalty_value             Float
+  calculated_penalty_amount Float
+  applied_at                DateTime         @default(now())
+  status                    PenaltyStatus    @default(ACTIVE)
+  waived_by                 String?
+  waived_at                 DateTime?
+  waiver_reason             String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  studentFeeRecord          StudentFeeRecord @relation(fields: [student_fee_record_id], references: [id])
+  student                   Student          @relation(fields: [student_id], references: [id])
+  fee                       Fee              @relation(fields: [fee_id], references: [id])
+  school                    School           @relation(fields: [school_id], references: [id])
+  penaltyRule               FeePenaltyRule   @relation(fields: [penalty_rule_id], references: [id])
+
+  @@index([student_fee_record_id])
+  @@index([student_id])
+  @@index([fee_id])
+  @@index([school_id])
+  @@index([penalty_rule_id])
+  @@index([status])
+  @@index([applied_at])
+}
+
+model RefundRequest {
+  id                        String            @id @default(cuid())
+  school_id                 String
+  student_id                String
+  fee_payment_id            String
+  student_fee_record_id     String
+  requested_by              String
+  reason                    String
+  refund_type               RefundType
+  original_payment_amount   Float
+  refund_amount             Float
+  refund_destination        RefundDestination
+  bank_account_details      Json?
+  status                    RefundStatus      @default(PENDING_APPROVAL)
+  approved_by               String?
+  approved_at               DateTime?
+  rejected_by               String?
+  rejected_at               DateTime?
+  rejection_reason          String?
+  processed_at              DateTime?
+  paystack_refund_reference String?
+  failure_reason            String?
+  refund_includes_penalty   Boolean           @default(false)
+  metadata                  Json?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  school                    School            @relation(fields: [school_id], references: [id])
+  student                   Student           @relation(fields: [student_id], references: [id])
+  feePayment                FeePayment        @relation(fields: [fee_payment_id], references: [id])
+  studentFeeRecord          StudentFeeRecord  @relation(fields: [student_fee_record_id], references: [id])
+
+  @@index([school_id])
+  @@index([student_id])
+  @@index([fee_payment_id])
+  @@index([student_fee_record_id])
+  @@index([status])
+  @@index([school_id, status])
+  @@index([createdAt])
+}
+
+model WalletAnalytics {
+  id                                              String    @id @default(cuid())
+  wallet_id                                       String    @unique
+  current_balance                                 Float     @default(0)
+  total_collected_all_time                        Float     @default(0)
+  total_withdrawn_all_time                        Float     @default(0)
+  total_refunded_all_time                         Float     @default(0)
+  total_waived_all_time                           Float     @default(0)
+  total_expected_current_session                  Float     @default(0)
+  total_collected_current_session                 Float     @default(0)
+  total_outstanding_current_session               Float     @default(0)
+  collection_rate_current_session                 Float     @default(0)
+  total_students_enrolled                         Int       @default(0)
+  total_students_paid_full                        Int       @default(0)
+  total_students_paid_partial                     Int       @default(0)
+  total_students_unpaid                           Int       @default(0)
+  total_students_overdue                          Int       @default(0)
+  total_students_waived                           Int       @default(0)
+  this_month_collection                           Float     @default(0)
+  last_month_collection                           Float     @default(0)
+  month_on_month_change                           Float     @default(0)
+  month_on_month_growth_percent                   Float     @default(0)
+  this_week_collection                            Float     @default(0)
+  last_week_collection                            Float     @default(0)
+  today_collection                                Float     @default(0)
+  fee_breakdown                                   Json?
+  class_breakdown                                 Json?
+  payment_method_breakdown                        Json?
+  total_penalty_collected_current_session         Float     @default(0)
+  total_penalty_collected_all_time                Float     @default(0)
+  total_penalty_waived_current_session            Float     @default(0)
+  total_scholarship_value_current_session         Float     @default(0)
+  total_scholarship_beneficiaries_current_session Int       @default(0)
+  last_payment_at                                 DateTime?
+  last_updated_at                                 DateTime  @default(now())
+  createdAt                                       DateTime  @default(now())
+  updatedAt                                       DateTime  @updatedAt
+  wallet                                          Wallet    @relation(fields: [wallet_id], references: [id])
+}
+
+model PaystackWebhookLog {
+  id               String    @id @default(cuid())
+  event_type       String
+  reference        String?
+  payload          Json
+  signature        String
+  signature_valid  Boolean
+  processed        Boolean   @default(false)
+  processing_error String?
+  processed_at     DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([event_type])
+  @@index([reference])
+  @@index([processed])
+  @@index([createdAt])
+}
+
+model Expense {
+  id                  String               @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  wallet_id           String
+  title               String
+  description         String?
+  category            ExpenseCategory
+  amount              Float
+  expense_date        DateTime
+  receipt_url         String?
+  payment_method      ExpensePaymentMethod
+  recorded_by         String
+  approved_by         String?
+  status              ExpenseStatus        @default(PENDING)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  school              School               @relation(fields: [school_id], references: [id])
+  academicSession     AcademicSession      @relation(fields: [academic_session_id], references: [id])
+  wallet              Wallet               @relation(fields: [wallet_id], references: [id])
+
+  @@index([school_id])
+  @@index([academic_session_id])
+  @@index([category])
+  @@index([status])
+  @@index([expense_date])
+  @@index([school_id, academic_session_id])
+}
+
+model FeeAutoDeductionSetting {
+  id             String    @id @default(cuid())
+  fee_id         String    @unique
+  enabled        Boolean   @default(false)
+  deduction_date DateTime?
+  last_run_at    DateTime?
+  created_by     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  fee            Fee       @relation(fields: [fee_id], references: [id], onDelete: Cascade)
+}
+
+// ─── End Finance Module Models ──────────────────────────────────────
 
 model TeacherSubject {
   id        String  @id @default(cuid())
@@ -1717,6 +2252,190 @@ enum WalletType {
   STUDENT_WALLET
   TEACHER_WALLET
 }
+
+// ─── Finance Module Enums ───────────────────────────────────────────
+
+enum FeeType {
+  SCHOOL_FEE
+  LESSON_FEE
+  TRANSPORT_FEE
+  UNIFORM_FEE
+  PTA_LEVY
+  LAB_FEE
+  DEVELOPMENT_LEVY
+  EXAMINATION_FEE
+  BOARDING_FEE
+  SPORTS_FEE
+  ICT_FEE
+  OTHER
+}
+
+enum FeeAssignmentScope {
+  ALL_CLASSES
+  SELECTED_CLASSES
+}
+
+enum PaymentPlanType {
+  ONE_TIME
+  FIXED_INSTALLMENTS
+  OPEN
+}
+
+enum FeePaymentMethod {
+  CASH
+  BANK_TRANSFER
+  PAYSTACK
+  WALLET
+  POS
+  CHEQUE
+  OTHER
+}
+
+enum FeePaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REVERSED
+}
+
+enum FeePaymentType {
+  FULL
+  PARTIAL
+  INSTALLMENT
+}
+
+enum StudentFeeStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  WAIVED
+  OVERDUE
+}
+
+enum WalletOwnerType {
+  SCHOOL
+  STUDENT
+  PARENT
+}
+
+enum WalletTopUpSource {
+  PAYSTACK
+  MANUAL_CASH
+  BANK_TRANSFER
+  TRANSFER_FROM_PARENT_WALLET
+}
+
+enum WalletTopUpStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum WalletTransferStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum WaiverType {
+  FULL_WAIVER
+  PARTIAL_DISCOUNT
+  SCHOLARSHIP
+  STAFF_CHILD
+  SIBLING_DISCOUNT
+  OTHER
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum WaiverStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum ScholarshipCoverageType {
+  FULL_FEES
+  SELECTED_FEES
+  PERCENTAGE_OF_TOTAL
+  FIXED_AMOUNT
+}
+
+enum ExpenseCategory {
+  SALARY
+  MAINTENANCE
+  SUPPLIES
+  UTILITIES
+  TRANSPORTATION
+  EVENTS
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InstallmentPaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+}
+
+enum PenaltyType {
+  FLAT_AMOUNT
+  PERCENTAGE_OF_OUTSTANDING
+  PERCENTAGE_OF_TOTAL
+}
+
+enum PenaltyRecurrence {
+  ONE_TIME
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum PenaltyStatus {
+  ACTIVE
+  WAIVED
+  PAID
+}
+
+enum RefundType {
+  FULL
+  PARTIAL
+}
+
+enum RefundDestination {
+  STUDENT_WALLET
+  PAYSTACK_REVERSAL
+  BANK_TRANSFER
+  CASH
+}
+
+enum RefundStatus {
+  PENDING_APPROVAL
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+enum ExpensePaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+// ─── End Finance Module Enums ───────────────────────────────────────
 
 enum MessageRole {
   USER
@@ -3408,6 +4127,22 @@ enum AuditForType {
   management_student_promote
   management_student_demote
   management_student_bulk_assign_class
+  finance_fee_create
+  finance_fee_update
+  finance_fee_delete
+  finance_payment_record
+  finance_payment_reverse
+  finance_waiver_apply
+  finance_waiver_revoke
+  finance_scholarship_create
+  finance_penalty_applied
+  finance_penalty_waived
+  finance_refund_request
+  finance_refund_approved
+  finance_refund_completed
+  finance_wallet_topup
+  finance_wallet_transfer
+  finance_expense_record
 }
 
 /// Who performed the action: school-side user or library-side user

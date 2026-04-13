@@ -869,7 +869,6 @@ export class SchoolAssessmentService {
       this.prisma.class.findMany({
         where: {
           schoolId: userContext.schoolId,
-          academic_session_id: currentSession.id,
           subjects: {
             some: {
               id: assessment.subject_id,
