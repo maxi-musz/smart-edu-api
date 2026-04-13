@@ -95,6 +95,7 @@ import { AnalyticsController } from './controllers/analytics.controller';
     StudentWalletService,
     SchoolWalletService,
     WalletAnalyticsService,
+    PaystackService,
   ],
 })
 export class FinanceModule {}
