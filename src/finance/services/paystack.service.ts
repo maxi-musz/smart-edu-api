@@ -18,7 +18,9 @@ import { FINANCE_CONSTANTS } from '../common/finance.constants';
 import {
   feePaymentByExternalRef,
   walletTopUpByExternalRef,
+  platformSubscriptionPaymentByExternalRef,
 } from '../common/reference-lookup';
+import { PlatformSubscriptionService } from 'src/platform-subscription/platform-subscription.service';
 import { PaymentRouterService } from 'src/payment/payment-router.service';
 import {
   FeePaymentStatus,
@@ -30,6 +32,7 @@ import {
   WalletTransactionStatus,
   WalletOwnerType,
   WalletTopUpStatus,
+  PlatformSubscriptionPaymentStatus,
 } from '@prisma/client';
 import * as crypto from 'crypto';
 import { resolvePaystackSecretKey } from 'src/payment/paystack/paystack-secret.util';
@@ -46,6 +49,7 @@ export class PaystackService {
     private readonly walletAnalyticsService: WalletAnalyticsService,
     private readonly receiptService: ReceiptService,
     private readonly paymentRouter: PaymentRouterService,
+    private readonly platformSubscriptionService: PlatformSubscriptionService,
   ) {
     this.secretKey = resolvePaystackSecretKey(this.configService);
   }
@@ -160,6 +164,9 @@ export class PaystackService {
     const topUp = await this.prisma.walletTopUp.findFirst({
       where: walletTopUpByExternalRef(reference),
     });
+    const pltPayment = await this.prisma.platformSubscriptionPayment.findFirst({
+      where: platformSubscriptionPaymentByExternalRef(reference),
+    });
 
     const successStatuses = ['success', 'successful'];
     const providerOk =
@@ -176,10 +183,26 @@ export class PaystackService {
           await this.settleWalletTopUp(topUp.id, v.amountNaira, v.providerStatus, v.raw);
         }
       }
+      if (pltPayment?.status === PlatformSubscriptionPaymentStatus.PENDING) {
+        if (Math.abs(v.amountNaira - pltPayment.total_amount) <= 1) {
+          await this.platformSubscriptionService.settlePendingByGatewayReference(
+            reference,
+            v.amountNaira,
+            v.raw,
+          );
+        }
+      }
     }
 
-    const recordStatus = feePayment?.status ?? topUp?.status;
-    const kind = feePayment ? 'fee_payment' : topUp ? 'wallet_topup' : 'unknown';
+    const recordStatus =
+      feePayment?.status ?? pltPayment?.status ?? topUp?.status;
+    const kind = feePayment
+      ? 'fee_payment'
+      : pltPayment
+        ? 'platform_subscription'
+        : topUp
+          ? 'wallet_topup'
+          : 'unknown';
 
     return ResponseHelper.success('Payment verification result', {
       reference,
@@ -275,6 +298,22 @@ export class PaystackService {
       }
 
       await this.confirmFeePayment(payment);
+      return;
+    }
+
+    const plt = await this.prisma.platformSubscriptionPayment.findFirst({
+      where: platformSubscriptionPaymentByExternalRef(reference),
+    });
+    if (plt && plt.status === PlatformSubscriptionPaymentStatus.CONFIRMED) {
+      return;
+    }
+    if (plt && plt.status === PlatformSubscriptionPaymentStatus.PENDING) {
+      const amountNaira = this.amountNairaFromGatewayPayload(data, plt.payment_gateway);
+      await this.platformSubscriptionService.settlePendingByGatewayReference(
+        reference,
+        amountNaira,
+        data,
+      );
       return;
     }
 

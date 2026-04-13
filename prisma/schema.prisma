@@ -56,84 +56,85 @@ model AcademicSession {
 }
 
 model School {
-  id                        String                     @id @default(cuid())
+  id                           String                        @id @default(cuid())
   /// Six-digit public school code (login, support, etc.). Unique when set. Not the same as `id` (UUID).
-  school_code               String?                    @unique
-  school_name               String
-  school_email              String                     @unique
-  school_phone              String
-  school_address            String
-  school_type               SchoolType
-  school_ownership          SchoolOwnership
-  status                    SchoolStatus               @default(pending)
-  school_icon               Json?
-  cacId                     String?                    @unique
-  utilityBillId             String?                    @unique
-  taxClearanceId            String?                    @unique
-  platformId                String?
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @updatedAt
-  academicSessions          AcademicSession[]
-  achievements              Achievement[]
-  assessments               Assessment[]
-  assessmentAttempts        AssessmentAttempt[]
-  assessmentSubmissions     AssessmentSubmission[]
-  assignments               Assignment[]
-  assignmentGrades          AssignmentGrade[]
-  assignmentSubmissions     AssignmentSubmission[]
-  attendanceRecords         AttendanceRecord[]
-  attendanceSessions        AttendanceSession[]
-  attendanceSettings        AttendanceSettings?
-  attendanceSummaries       AttendanceSummary[]
-  chatAnalytics             ChatAnalytics[]
-  chatContexts              ChatContext[]
-  chatConversations         ChatConversation[]
-  chatMessages              ChatMessage[]
-  classes                   Class[]
-  deviceTokens              DeviceToken[]
-  documentChunks            DocumentChunk[]
-  finance                   Finance?
-  gradingRubrics            GradingRubric[]
-  libraryResource           LibraryResource[]
-  liveClass                 LiveClass[]
-  materialProcessings       MaterialProcessing[]
-  notifications             Notification[]
-  pdfMaterial               PDFMaterial[]
-  parents                   Parent[]
-  subscriptionPlan          PlatformSubscriptionPlan?
-  cac                       Document?                  @relation("CACDoc", fields: [cacId], references: [id])
-  platform                  Organisation?              @relation(fields: [platformId], references: [id])
-  tax_clearance             Document?                  @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
-  utility_bill              Document?                  @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
-  students                  Student[]
-  subjects                  Subject[]
-  supportInfo               SupportInfo?
-  teachers                  Teacher[]
-  timeSlots                 TimeSlot[]
-  results                   Result[]
-  schedules                 TimetableEntry[]
-  topics                    Topic[]
-  users                     User[]
-  userSettings              UserSettings[]
-  videoContent              VideoContent[]
-  wallet                    Wallet?
+  school_code                  String?                       @unique
+  school_name                  String
+  school_email                 String                        @unique
+  school_phone                 String
+  school_address               String
+  school_type                  SchoolType
+  school_ownership             SchoolOwnership
+  status                       SchoolStatus                  @default(pending)
+  school_icon                  Json?
+  cacId                        String?                       @unique
+  utilityBillId                String?                       @unique
+  taxClearanceId               String?                       @unique
+  platformId                   String?
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
+  academicSessions             AcademicSession[]
+  achievements                 Achievement[]
+  assessments                  Assessment[]
+  assessmentAttempts           AssessmentAttempt[]
+  assessmentSubmissions        AssessmentSubmission[]
+  assignments                  Assignment[]
+  assignmentGrades             AssignmentGrade[]
+  assignmentSubmissions        AssignmentSubmission[]
+  attendanceRecords            AttendanceRecord[]
+  attendanceSessions           AttendanceSession[]
+  attendanceSettings           AttendanceSettings?
+  attendanceSummaries          AttendanceSummary[]
+  chatAnalytics                ChatAnalytics[]
+  chatContexts                 ChatContext[]
+  chatConversations            ChatConversation[]
+  chatMessages                 ChatMessage[]
+  classes                      Class[]
+  deviceTokens                 DeviceToken[]
+  documentChunks               DocumentChunk[]
+  finance                      Finance?
+  gradingRubrics               GradingRubric[]
+  libraryResource              LibraryResource[]
+  liveClass                    LiveClass[]
+  materialProcessings          MaterialProcessing[]
+  notifications                Notification[]
+  pdfMaterial                  PDFMaterial[]
+  parents                      Parent[]
+  subscriptionPlan             PlatformSubscriptionPlan?
+  platformSubscriptionPayments PlatformSubscriptionPayment[]
+  cac                          Document?                     @relation("CACDoc", fields: [cacId], references: [id])
+  platform                     Organisation?                 @relation(fields: [platformId], references: [id])
+  tax_clearance                Document?                     @relation("TaxClearanceDoc", fields: [taxClearanceId], references: [id])
+  utility_bill                 Document?                     @relation("UtilityBillDoc", fields: [utilityBillId], references: [id])
+  students                     Student[]
+  subjects                     Subject[]
+  supportInfo                  SupportInfo?
+  teachers                     Teacher[]
+  timeSlots                    TimeSlot[]
+  results                      Result[]
+  schedules                    TimetableEntry[]
+  topics                       Topic[]
+  users                        User[]
+  userSettings                 UserSettings[]
+  videoContent                 VideoContent[]
+  wallet                       Wallet?
   // Multi-level access control relations
-  libraryResourceAccess     LibraryResourceAccess[]
-  schoolResourceAccess      SchoolResourceAccess[]
-  teacherResourceAccess     TeacherResourceAccess[]
-  schoolResourceExclusions  SchoolResourceExclusion[]
-  teacherResourceExclusions TeacherResourceExclusion[]
-  auditLogs                 AuditLog[]
+  libraryResourceAccess        LibraryResourceAccess[]
+  schoolResourceAccess         SchoolResourceAccess[]
+  teacherResourceAccess        TeacherResourceAccess[]
+  schoolResourceExclusions     SchoolResourceExclusion[]
+  teacherResourceExclusions    TeacherResourceExclusion[]
+  auditLogs                    AuditLog[]
   // Finance relations
-  fees                      Fee[]
-  studentFeeRecords         StudentFeeRecord[]
-  feePayments               FeePayment[]
-  scholarships              Scholarship[]
-  feeWaivers                FeeWaiver[]
-  penaltyRules              FeePenaltyRule[]
-  feeLatePenalties          FeeLatePenalty[]
-  refundRequests            RefundRequest[]
-  expenses                  Expense[]
+  fees                         Fee[]
+  studentFeeRecords            StudentFeeRecord[]
+  feePayments                  FeePayment[]
+  scholarships                 Scholarship[]
+  feeWaivers                   FeeWaiver[]
+  penaltyRules                 FeePenaltyRule[]
+  feeLatePenalties             FeeLatePenalty[]
+  refundRequests               RefundRequest[]
+  expenses                     Expense[]
 }
 
 model Document {
@@ -146,98 +147,99 @@ model Document {
 }
 
 model User {
-  id                               String                                   @id @default(cuid())
-  school_id                        String
-  email                            String                                   @unique
-  password                         String
-  first_name                       String
-  last_name                        String
-  phone_number                     String
-  is_developer                     Boolean?                                 @default(false)
-  display_picture                  Json?
-  gender                           Gender                                   @default(other)
-  otp                              String?                                  @default("")
-  otp_expires_at                   DateTime?
-  is_email_verified                Boolean?                                 @default(true)
-  is_otp_verified                  Boolean?                                 @default(true)
-  role                             Roles                                    @default(student)
-  status                           UserStatus                               @default(active)
-  createdAt                        DateTime                                 @default(now())
-  updatedAt                        DateTime                                 @updatedAt
-  filesUploadedThisMonth           Int                                      @default(0)
-  lastFileResetDate                DateTime                                 @default(now())
-  lastTokenResetDateAllTime        DateTime                                 @default(now())
-  maxFileSizeMB                    Int                                      @default(100)
-  maxFilesPerMonth                 Int                                      @default(10)
-  maxMessagesPerWeek               Int                                      @default(100)
-  maxStorageMB                     Int                                      @default(500)
-  maxTokensPerDay                  Int                                      @default(50000)
-  maxTokensPerWeek                 Int                                      @default(50000)
-  messagesSentThisWeek             Int                                      @default(0)
-  tokensUsedAllTime                Int                                      @default(0)
-  tokensUsedThisDay                Int                                      @default(0)
-  tokensUsedThisWeek               Int                                      @default(0)
-  totalFilesUploadedAllTime        Int                                      @default(0)
-  totalStorageUsedMB               Int                                      @default(0)
-  assessmentsCreated               Assessment[]
-  assessmentAttemptsGraded         AssessmentAttempt[]                      @relation("AssessmentGrader")
-  assessmentAttempts               AssessmentAttempt[]
-  assessmentResponses              AssessmentResponse[]
-  assessmentGradesGiven            AssessmentSubmission[]                   @relation("AssessmentGrader")
-  assessmentSubmissions            AssessmentSubmission[]
-  assignmentsCreated               Assignment[]
-  assignmentGradesReceived         AssignmentGrade[]
-  assignmentGradesGiven            AssignmentGrade[]                        @relation("AssignmentGradeGiver")
-  assignmentSubmissions            AssignmentSubmission[]
-  attendanceRecordsMarked          AttendanceRecord[]                       @relation("AttendanceMarker")
-  attendanceRecords                AttendanceRecord[]
-  attendanceSessionsApproved       AttendanceSession[]                      @relation("AttendanceApprover")
-  attendanceSummaries              AttendanceSummary[]
-  chatAnalytics                    ChatAnalytics[]
-  chatConversations                ChatConversation[]
-  chatMessages                     ChatMessage[]
-  deviceTokens                     DeviceToken[]
-  gradingRubricsCreated            GradingRubric[]
-  libraryResource                  LibraryResource[]
-  liveClass                        LiveClass[]
-  pdfMaterial                      PDFMaterial[]
-  parent                           Parent?
-  payments                         Payment[]                                @relation("StudentPayment")
-  feePayments                      FeePayment[]                             @relation("StudentFeePayment")
-  student                          Student?
-  studentAchievements              StudentAchievement[]                     @relation("StudentAchievements")
-  performances                     StudentPerformance[]                     @relation("StudentPerformance")
-  teacher                          Teacher?
-  topicsCreated                    Topic[]                                  @relation("TopicCreator")
-  school                           School                                   @relation(fields: [school_id], references: [id])
-  userSettings                     UserSettings?
-  videoContent                     VideoContent[]
-  resultsReleased                  Result[]                                 @relation("ResultReleasedBy")
-  libraryComments                  LibraryComment[]
-  generalMaterialPurchases         LibraryGeneralMaterialPurchase[]
-  generalMaterialChatConversations LibraryGeneralMaterialChatConversation[]
-  generalMaterialChatMessages      LibraryGeneralMaterialChatMessage[]
-  libraryAssessmentAttemptsGraded  LibraryAssessmentAttempt[]               @relation("LibraryAssessmentGrader")
-  libraryAssessmentAttempts        LibraryAssessmentAttempt[]
-  libraryAssessmentResponses       LibraryAssessmentResponse[]
-  examBodyAssessmentAttempts       ExamBodyAssessmentAttempt[]
-  examBodyAssessmentResponses      ExamBodyAssessmentResponse[]
-  libraryVideoViews                LibraryVideoView[]
-  libraryVideoWatchHistory         LibraryVideoWatchHistory[]
-  schoolVideoViews                 SchoolVideoView[]
-  schoolVideoWatchHistory          SchoolVideoWatchHistory[]
+  id                                    String                                   @id @default(cuid())
+  school_id                             String
+  email                                 String                                   @unique
+  password                              String
+  first_name                            String
+  last_name                             String
+  phone_number                          String
+  is_developer                          Boolean?                                 @default(false)
+  display_picture                       Json?
+  gender                                Gender                                   @default(other)
+  otp                                   String?                                  @default("")
+  otp_expires_at                        DateTime?
+  is_email_verified                     Boolean?                                 @default(true)
+  is_otp_verified                       Boolean?                                 @default(true)
+  role                                  Roles                                    @default(student)
+  status                                UserStatus                               @default(active)
+  createdAt                             DateTime                                 @default(now())
+  updatedAt                             DateTime                                 @updatedAt
+  filesUploadedThisMonth                Int                                      @default(0)
+  lastFileResetDate                     DateTime                                 @default(now())
+  lastTokenResetDateAllTime             DateTime                                 @default(now())
+  maxFileSizeMB                         Int                                      @default(100)
+  maxFilesPerMonth                      Int                                      @default(10)
+  maxMessagesPerWeek                    Int                                      @default(100)
+  maxStorageMB                          Int                                      @default(500)
+  maxTokensPerDay                       Int                                      @default(50000)
+  maxTokensPerWeek                      Int                                      @default(50000)
+  messagesSentThisWeek                  Int                                      @default(0)
+  tokensUsedAllTime                     Int                                      @default(0)
+  tokensUsedThisDay                     Int                                      @default(0)
+  tokensUsedThisWeek                    Int                                      @default(0)
+  totalFilesUploadedAllTime             Int                                      @default(0)
+  totalStorageUsedMB                    Int                                      @default(0)
+  assessmentsCreated                    Assessment[]
+  assessmentAttemptsGraded              AssessmentAttempt[]                      @relation("AssessmentGrader")
+  assessmentAttempts                    AssessmentAttempt[]
+  assessmentResponses                   AssessmentResponse[]
+  assessmentGradesGiven                 AssessmentSubmission[]                   @relation("AssessmentGrader")
+  assessmentSubmissions                 AssessmentSubmission[]
+  assignmentsCreated                    Assignment[]
+  assignmentGradesReceived              AssignmentGrade[]
+  assignmentGradesGiven                 AssignmentGrade[]                        @relation("AssignmentGradeGiver")
+  assignmentSubmissions                 AssignmentSubmission[]
+  attendanceRecordsMarked               AttendanceRecord[]                       @relation("AttendanceMarker")
+  attendanceRecords                     AttendanceRecord[]
+  attendanceSessionsApproved            AttendanceSession[]                      @relation("AttendanceApprover")
+  attendanceSummaries                   AttendanceSummary[]
+  chatAnalytics                         ChatAnalytics[]
+  chatConversations                     ChatConversation[]
+  chatMessages                          ChatMessage[]
+  deviceTokens                          DeviceToken[]
+  gradingRubricsCreated                 GradingRubric[]
+  libraryResource                       LibraryResource[]
+  liveClass                             LiveClass[]
+  pdfMaterial                           PDFMaterial[]
+  parent                                Parent?
+  payments                              Payment[]                                @relation("StudentPayment")
+  feePayments                           FeePayment[]                             @relation("StudentFeePayment")
+  student                               Student?
+  studentAchievements                   StudentAchievement[]                     @relation("StudentAchievements")
+  performances                          StudentPerformance[]                     @relation("StudentPerformance")
+  teacher                               Teacher?
+  topicsCreated                         Topic[]                                  @relation("TopicCreator")
+  school                                School                                   @relation(fields: [school_id], references: [id])
+  userSettings                          UserSettings?
+  videoContent                          VideoContent[]
+  resultsReleased                       Result[]                                 @relation("ResultReleasedBy")
+  libraryComments                       LibraryComment[]
+  generalMaterialPurchases              LibraryGeneralMaterialPurchase[]
+  generalMaterialChatConversations      LibraryGeneralMaterialChatConversation[]
+  generalMaterialChatMessages           LibraryGeneralMaterialChatMessage[]
+  libraryAssessmentAttemptsGraded       LibraryAssessmentAttempt[]               @relation("LibraryAssessmentGrader")
+  libraryAssessmentAttempts             LibraryAssessmentAttempt[]
+  libraryAssessmentResponses            LibraryAssessmentResponse[]
+  examBodyAssessmentAttempts            ExamBodyAssessmentAttempt[]
+  examBodyAssessmentResponses           ExamBodyAssessmentResponse[]
+  libraryVideoViews                     LibraryVideoView[]
+  libraryVideoWatchHistory              LibraryVideoWatchHistory[]
+  schoolVideoViews                      SchoolVideoView[]
+  schoolVideoWatchHistory               SchoolVideoWatchHistory[]
   // Multi-level access control relations
-  schoolAccessGranted              SchoolResourceAccess[]                   @relation("SchoolAccessGranter")
-  schoolAccessReceived             SchoolResourceAccess[]                   @relation("SchoolAccessUser")
-  teacherAccessGranted             TeacherResourceAccess[]                  @relation("TeacherAccessGranter")
-  studentAccessReceived            TeacherResourceAccess[]                  @relation("TeacherAccessStudent")
-  schoolExclusionsBy               SchoolResourceExclusion[]                @relation("SchoolExclusionBy")
-  teacherExclusionsBy              TeacherResourceExclusion[]               @relation("TeacherExclusionBy")
-  teacherExclusionsForStudent      TeacherResourceExclusion[]               @relation("TeacherExclusionForStudent")
+  schoolAccessGranted                   SchoolResourceAccess[]                   @relation("SchoolAccessGranter")
+  schoolAccessReceived                  SchoolResourceAccess[]                   @relation("SchoolAccessUser")
+  teacherAccessGranted                  TeacherResourceAccess[]                  @relation("TeacherAccessGranter")
+  studentAccessReceived                 TeacherResourceAccess[]                  @relation("TeacherAccessStudent")
+  schoolExclusionsBy                    SchoolResourceExclusion[]                @relation("SchoolExclusionBy")
+  teacherExclusionsBy                   TeacherResourceExclusion[]               @relation("TeacherExclusionBy")
+  teacherExclusionsForStudent           TeacherResourceExclusion[]               @relation("TeacherExclusionForStudent")
+  initiatedPlatformSubscriptionPayments PlatformSubscriptionPayment[]
   /// School-facing student business ID (mirrors Student.student_id for login); null for non-students
-  student_id                       String?
+  student_id                            String?
   /// School-facing teacher business ID (mirrors Teacher.teacher_id for login); null for non-teachers
-  teacher_id                       String?
+  teacher_id                            String?
 
   @@unique([school_id, student_id], name: "User_school_id_student_id_key")
   @@unique([school_id, teacher_id], name: "User_school_id_teacher_id_key")
@@ -574,23 +576,25 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id               String                  @id @default(cuid())
-  wallet_id        String
-  transaction_type WalletTransactionType
-  amount           Float
-  description      String
-  reference        String?                 @unique
-  status           WalletTransactionStatus @default(PENDING)
-  balance_before   Float?
-  balance_after    Float?
-  payment_id       String?
-  recorded_by      String?
-  metadata         Json?
-  processed_at     DateTime?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-  wallet           Wallet                  @relation(fields: [wallet_id], references: [id])
-  feePayment       FeePayment?             @relation(fields: [payment_id], references: [id])
+  id                               String                       @id @default(cuid())
+  wallet_id                        String
+  transaction_type                 WalletTransactionType
+  amount                           Float
+  description                      String
+  reference                        String?                      @unique
+  status                           WalletTransactionStatus      @default(PENDING)
+  balance_before                   Float?
+  balance_after                    Float?
+  payment_id                       String?
+  recorded_by                      String?
+  metadata                         Json?
+  processed_at                     DateTime?
+  createdAt                        DateTime                     @default(now())
+  updatedAt                        DateTime                     @updatedAt
+  wallet                           Wallet                       @relation(fields: [wallet_id], references: [id])
+  feePayment                       FeePayment?                  @relation(fields: [payment_id], references: [id])
+  platform_subscription_payment_id String?                      @unique
+  platformSubscriptionPayment      PlatformSubscriptionPayment? @relation("PlatformSubscriptionCredit", fields: [platform_subscription_payment_id], references: [id])
 
   @@index([wallet_id])
   @@index([transaction_type])
@@ -2095,33 +2099,33 @@ model SupportInfo {
 }
 
 model PlatformSubscriptionPlan {
-  id                                            String               @id @default(cuid())
-  school_id                                     String?              @unique
-  name                                          String               @default("Free")
-  plan_type                                     SubscriptionPlanType @default(FREE)
+  id                                            String                        @id @default(cuid())
+  school_id                                     String?                       @unique
+  name                                          String                        @default("Free")
+  plan_type                                     SubscriptionPlanType          @default(FREE)
   description                                   String?
   /// Per-month price when offering monthly billing (same row can also set `yearly_cost`).
-  cost                                          Float                @default(0)
+  cost                                          Float                         @default(0)
   /// Optional total charged once per year (e.g. discounted vs 12×monthly). Null = no annual SKU on this catalog row.
   yearly_cost                                   Float?
-  currency                                      String               @default("USD")
-  billing_cycle                                 BillingCycle         @default(MONTHLY)
-  is_active                                     Boolean              @default(true)
-  max_allowed_teachers                          Int                  @default(30)
-  max_allowed_students                          Int                  @default(100)
+  currency                                      String                        @default("USD")
+  billing_cycle                                 BillingCycle                  @default(MONTHLY)
+  is_active                                     Boolean                       @default(true)
+  max_allowed_teachers                          Int                           @default(30)
+  max_allowed_students                          Int                           @default(100)
   max_allowed_classes                           Int?
   max_allowed_subjects                          Int?
-  allowed_document_types                        String[]             @default(["pdf"])
-  max_file_size_mb                              Int                  @default(10)
-  max_document_uploads_per_student_per_day      Int                  @default(3)
-  max_document_uploads_per_teacher_per_day      Int                  @default(10)
-  max_storage_mb                                Int                  @default(500)
-  max_files_per_month                           Int                  @default(10)
-  max_daily_tokens_per_user                     Int                  @default(50000)
+  allowed_document_types                        String[]                      @default(["pdf"])
+  max_file_size_mb                              Int                           @default(10)
+  max_document_uploads_per_student_per_day      Int                           @default(3)
+  max_document_uploads_per_teacher_per_day      Int                           @default(10)
+  max_storage_mb                                Int                           @default(500)
+  max_files_per_month                           Int                           @default(10)
+  max_daily_tokens_per_user                     Int                           @default(50000)
   max_weekly_tokens_per_user                    Int?
   max_monthly_tokens_per_user                   Int?
   max_total_tokens_per_school                   Int?
-  max_messages_per_week                         Int                  @default(100)
+  max_messages_per_week                         Int                           @default(100)
   max_conversations_per_user                    Int?
   max_chat_sessions_per_user                    Int?
   /// Max assessments with `is_published=true` at once for the school. Null = unlimited (catalog / entitlement display).
@@ -2135,18 +2139,75 @@ model PlatformSubscriptionPlan {
   features                                      Json?
   start_date                                    DateTime?
   end_date                                      DateTime?
-  status                                        SubscriptionStatus   @default(ACTIVE)
-  auto_renew                                    Boolean              @default(false)
-  created_at                                    DateTime             @default(now())
-  updated_at                                    DateTime             @updatedAt
-  is_template                                   Boolean              @default(false)
-  school                                        School?              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  status                                        SubscriptionStatus            @default(ACTIVE)
+  auto_renew                                    Boolean                       @default(false)
+  created_at                                    DateTime                      @default(now())
+  updated_at                                    DateTime                      @updatedAt
+  is_template                                   Boolean                       @default(false)
+  school                                        School?                       @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscriptionPaymentsAsTemplate                PlatformSubscriptionPayment[] @relation("SubscriptionPlanTemplate")
 
   @@index([school_id])
   @@index([plan_type])
   @@index([status])
   @@index([is_active])
   @@index([is_template])
+}
+
+/// Checkout snapshot for SMEH platform (school) subscription — separate from student FeePayment.
+model PlatformSubscriptionPayment {
+  id                   String                            @id @default(cuid())
+  school_id            String
+  initiated_by_user_id String
+  plan_template_id     String
+  billing_mode         PlatformSubscriptionBillingMode
+  /// For MONTHLY_BLOCK: user-selected months (≥ 3). For YEARLY: stored as 12 for a fixed convention.
+  months               Int
+  unit_amount          Float
+  total_amount         Float
+  currency             String                            @default("NGN")
+  period_start         DateTime
+  period_end           DateTime
+  status               PlatformSubscriptionPaymentStatus @default(PENDING)
+  paystack_reference   String?                           @unique
+  gateway_reference    String?                           @unique
+  payment_gateway      PaymentGateway?
+  paystack_status      String?
+  metadata             Json?
+  processed_at         DateTime?
+  createdAt            DateTime                          @default(now())
+  updatedAt            DateTime                          @updatedAt
+  school               School                            @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  initiatedBy          User                              @relation(fields: [initiated_by_user_id], references: [id])
+  planTemplate         PlatformSubscriptionPlan          @relation("SubscriptionPlanTemplate", fields: [plan_template_id], references: [id])
+  walletCreditLeg      WalletTransaction?                @relation("PlatformSubscriptionCredit")
+
+  @@index([school_id])
+  @@index([status])
+  @@index([gateway_reference])
+  @@index([createdAt])
+  @@index([plan_template_id])
+}
+
+/// Single-row rollup for fast SMEH subscription revenue totals (updated when a payment is confirmed).
+model PlatformSubscriptionGlobalStats {
+  id                        String    @id @default("default")
+  total_confirmed_revenue   Float     @default(0)
+  confirmed_payment_count   Int       @default(0)
+  last_confirmed_payment_at DateTime?
+  updated_at                DateTime  @updatedAt
+}
+
+enum PlatformSubscriptionPaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+enum PlatformSubscriptionBillingMode {
+  MONTHLY_BLOCK
+  YEARLY
 }
 
 enum SchoolType {
@@ -2257,6 +2318,7 @@ enum WalletType {
   SCHOOL_WALLET
   STUDENT_WALLET
   TEACHER_WALLET
+  PLATFORM_WALLET
 }
 
 // ─── Finance Module Enums ───────────────────────────────────────────
@@ -2328,6 +2390,7 @@ enum WalletOwnerType {
   SCHOOL
   STUDENT
   PARENT
+  PLATFORM
 }
 
 enum WalletTopUpSource {

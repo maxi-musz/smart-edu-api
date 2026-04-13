@@ -111,6 +111,12 @@ export const envValidationSchema = joi
     FLUTTERWAVE_SANDBOX_BASE_URL: joi.string().optional(),
     /** Full override, e.g. https://api.flutterwave.com/v3 */
     FLUTTERWAVE_V3_API_BASE_URL: joi.string().uri().optional(),
+
+    /**
+     * Optional override: `User.id` or `LibraryResourceUser.id` for `WalletOwnerType.PLATFORM`.
+     * If omitted or empty, the first library platform’s admin (else earliest library staff) is used.
+     */
+    PLATFORM_WALLET_OWNER_ID: joi.string().empty('').min(8).optional(),
   })
   // Allow extra variables so you can add new ones without breaking validation
   .unknown(true);

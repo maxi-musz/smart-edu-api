@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuditModule } from 'src/audit/audit.module';
 import { PaymentModule } from 'src/payment/payment.module';
+import { PlatformSubscriptionModule } from 'src/platform-subscription/platform-subscription.module';
 
 // Services
 import { FeeService } from './services/fee.service';
@@ -47,6 +48,7 @@ import { AnalyticsController } from './controllers/analytics.controller';
     PrismaModule,
     AuditModule,
     PaymentModule,
+    PlatformSubscriptionModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [

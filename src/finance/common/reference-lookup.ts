@@ -22,3 +22,15 @@ export function walletTopUpByExternalRef(
     ],
   };
 }
+
+/** SMEH platform subscription checkout — same reference fields as fee / wallet top-up. */
+export function platformSubscriptionPaymentByExternalRef(
+  reference: string,
+): Prisma.PlatformSubscriptionPaymentWhereInput {
+  return {
+    OR: [
+      { gateway_reference: reference },
+      { paystack_reference: reference },
+    ],
+  };
+}

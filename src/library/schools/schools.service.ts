@@ -41,6 +41,7 @@ export class SchoolsService {
         select: {
           id: true,
           school_name: true,
+          school_code: true,
           school_email: true,
           school_phone: true,
           school_address: true,
