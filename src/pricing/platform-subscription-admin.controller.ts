@@ -36,6 +36,102 @@ export class PlatformSubscriptionAdminController {
     return this.analytics.getOverview();
   }
 
+  @Get('analytics/plan-switcher-summary')
+  @ApiOperation({
+    summary: 'Per-plan cohort size and confirmed SMEH subscription totals',
+    description:
+      'For each catalog tier: schools with an active subscription on that tier, sum of CONFIRMED platform subscription payments for those schools, and count of confirmed payment rows.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Not school super_admin or library admin' })
+  getPlanSwitcherSummary() {
+    return this.analytics.getPlanSwitcherSummary();
+  }
+
+  @Get('analytics/by-plan/:planType')
+  @ApiOperation({
+    summary: 'Schools on an active SMEH plan tier + cohort aggregates',
+    description:
+      'Lists schools whose active subscription row matches the plan type, with per-school wallet snapshots and payment totals.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Not school super_admin or library admin' })
+  getPlanCohortAnalysis(@Param('planType') planType: string) {
+    return this.analytics.getPlanCohortAnalysis(planType);
+  }
+
+  @Get('analytics/by-plan/:planType/schools/:schoolId/teachers')
+  @ApiOperation({ summary: 'Paginated teachers for a school in a plan cohort' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Not school super_admin or library admin' })
+  listCohortTeachers(
+    @Param('planType') planType: string,
+    @Param('schoolId') schoolId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : undefined;
+    const l = limit ? parseInt(limit, 10) : undefined;
+    return this.analytics.listCohortSchoolTeachers(planType, schoolId, p, l, search);
+  }
+
+  @Get('analytics/by-plan/:planType/schools/:schoolId/students')
+  @ApiOperation({ summary: 'Paginated students for a school in a plan cohort' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Not school super_admin or library admin' })
+  listCohortStudents(
+    @Param('planType') planType: string,
+    @Param('schoolId') schoolId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : undefined;
+    const l = limit ? parseInt(limit, 10) : undefined;
+    return this.analytics.listCohortSchoolStudents(planType, schoolId, p, l, search);
+  }
+
+  @Get('analytics/by-plan/:planType/schools/:schoolId/platform-payments')
+  @ApiOperation({ summary: 'Paginated SMEH platform subscription payments for a cohort school' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Not school super_admin or library admin' })
+  listCohortPlatformPayments(
+    @Param('planType') planType: string,
+    @Param('schoolId') schoolId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : undefined;
+    const l = limit ? parseInt(limit, 10) : undefined;
+    return this.analytics.listCohortSchoolPlatformPayments(planType, schoolId, p, l);
+  }
+
+  @Get('analytics/by-plan/:planType/schools/:schoolId/fee-payments')
+  @ApiOperation({ summary: 'Paginated student fee payments (to school wallet) for a cohort school' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid JWT' })
+  @ApiForbiddenResponse({ description: 'Not school super_admin or library admin' })
+  listCohortFeePayments(
+    @Param('planType') planType: string,
+    @Param('schoolId') schoolId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const p = page ? parseInt(page, 10) : undefined;
+    const l = limit ? parseInt(limit, 10) : undefined;
+    return this.analytics.listCohortSchoolFeePayments(planType, schoolId, p, l);
+  }
+
   @Get('payments')
   @ApiOperation({
     summary: 'Paginated SMEH subscription payments (all statuses)',
