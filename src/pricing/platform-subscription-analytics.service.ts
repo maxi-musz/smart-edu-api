@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -8,12 +12,18 @@ import {
 } from '@prisma/client';
 import { normalizePagination } from 'src/finance/common/finance-helpers';
 import { resolvePlatformWalletOwnerId } from 'src/platform-subscription/resolve-platform-wallet-owner';
+import { PaystackService } from 'src/finance/services/paystack.service';
+
+export type PlatformSubscriptionPaymentStatusFilter =
+  | 'all'
+  | PlatformSubscriptionPaymentStatus;
 
 @Injectable()
 export class PlatformSubscriptionAnalyticsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly paystackService: PaystackService,
   ) {}
 
   private async platformWalletSnapshot() {
@@ -78,6 +88,22 @@ export class PlatformSubscriptionAnalyticsService {
 
     const wallet = await this.platformWalletSnapshot();
 
+    const paymentStatusGroup = await this.prisma.platformSubscriptionPayment.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+    });
+    const payment_status_counts: Record<string, number> = {
+      ALL: 0,
+      CONFIRMED: 0,
+      PENDING: 0,
+      FAILED: 0,
+      CANCELLED: 0,
+    };
+    for (const row of paymentStatusGroup) {
+      payment_status_counts[row.status] = row._count._all;
+      payment_status_counts.ALL += row._count._all;
+    }
+
     return {
       total_schools: totalSchools,
       schools_with_plan_row: sumPlanRows,
@@ -96,17 +122,29 @@ export class PlatformSubscriptionAnalyticsService {
         count: confirmedAgg._count.id,
       },
       platform_wallet: wallet,
+      payment_status_counts,
     };
   }
 
-  async listRecentPayments(page?: number, limit?: number) {
+  /**
+   * Paginated SMEH subscription payments for library-owner dashboard.
+   * @param statusFilter `all` or a specific `PlatformSubscriptionPaymentStatus`.
+   */
+  async listRecentPayments(
+    page?: number,
+    limit?: number,
+    statusFilter: PlatformSubscriptionPaymentStatusFilter = 'all',
+  ) {
     const { skip, page: p, limit: l } = normalizePagination(page, limit);
-    const where = { status: PlatformSubscriptionPaymentStatus.CONFIRMED };
+    const where =
+      statusFilter === 'all' || !statusFilter
+        ? {}
+        : { status: statusFilter as PlatformSubscriptionPaymentStatus };
 
     const [rows, total] = await Promise.all([
       this.prisma.platformSubscriptionPayment.findMany({
         where,
-        orderBy: { processed_at: 'desc' },
+        orderBy: { createdAt: 'desc' },
         skip,
         take: l,
         include: {
@@ -123,8 +161,39 @@ export class PlatformSubscriptionAnalyticsService {
         total,
         page: p,
         limit: l,
-        total_pages: Math.ceil(total / l),
+        total_pages: Math.ceil(total / l) || 0,
       },
     };
+  }
+
+  /**
+   * Re-run provider verification for a pending (or stuck) checkout.
+   * Idempotent: if already CONFIRMED, `verifyUnified` does not double-credit (settle only runs for PENDING).
+   */
+  async reverifyPlatformSubscriptionPayment(paymentId: string) {
+    const payment = await this.prisma.platformSubscriptionPayment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+    if (payment.status === PlatformSubscriptionPaymentStatus.CONFIRMED) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'already_confirmed',
+        payment_id: payment.id,
+      };
+    }
+    if (payment.status !== PlatformSubscriptionPaymentStatus.PENDING) {
+      throw new BadRequestException(
+        `Cannot re-verify payment in status ${payment.status}. Only PENDING can be settled via provider.`,
+      );
+    }
+    const reference = payment.gateway_reference ?? payment.paystack_reference;
+    if (!reference?.trim()) {
+      throw new BadRequestException('Payment has no gateway reference to verify');
+    }
+    return this.paystackService.verifyUnified(reference.trim());
   }
 }

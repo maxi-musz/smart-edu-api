@@ -4,6 +4,7 @@ import { JwtGuard } from 'src/school/auth/guard';
 import { GetUser } from 'src/school/auth/decorator';
 import { PlatformSubscriptionService } from './platform-subscription.service';
 import { InitiatePlatformSubscriptionDto } from './dto/initiate-platform-subscription.dto';
+import { CancelPendingPlatformSubscriptionDto } from './dto/cancel-pending-platform-subscription.dto';
 
 @ApiTags('Director — SMEH subscription')
 @ApiBearerAuth()
@@ -39,5 +40,20 @@ export class PlatformSubscriptionController {
     @Body() body: InitiatePlatformSubscriptionDto,
   ) {
     return this.platformSubscriptionService.initiate(user.school_id, user.sub, body);
+  }
+
+  @Post('cancel-pending')
+  @ApiOperation({
+    summary: 'Mark a pending SMEH checkout as cancelled (user abandoned payment)',
+  })
+  async cancelPending(
+    @GetUser() user: { sub: string; school_id: string },
+    @Body() body: CancelPendingPlatformSubscriptionDto,
+  ) {
+    return this.platformSubscriptionService.cancelPendingPayment(
+      user.school_id,
+      user.sub,
+      body.payment_id,
+    );
   }
 }

@@ -569,4 +569,36 @@ export class PlatformSubscriptionService {
       },
     });
   }
+
+  /**
+   * School abandoned checkout (closed gateway / chose not to pay). Only PENDING → CANCELLED.
+   */
+  async cancelPendingPayment(schoolId: string, userId: string, paymentId: string) {
+    await this.assertDirectorOrAdmin(userId);
+    if (
+      (await this.prisma.user.findUnique({ where: { id: userId }, select: { school_id: true } }))
+        ?.school_id !== schoolId
+    ) {
+      throw new ForbiddenException('School mismatch');
+    }
+
+    const payment = await this.prisma.platformSubscriptionPayment.findFirst({
+      where: { id: paymentId, school_id: schoolId },
+    });
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+    if (payment.status !== PlatformSubscriptionPaymentStatus.PENDING) {
+      throw new BadRequestException(
+        `Only pending checkouts can be cancelled (current status: ${payment.status}).`,
+      );
+    }
+
+    await this.prisma.platformSubscriptionPayment.update({
+      where: { id: paymentId },
+      data: { status: PlatformSubscriptionPaymentStatus.CANCELLED },
+    });
+
+    return ResponseHelper.success('Checkout cancelled', { payment_id: paymentId });
+  }
 }
