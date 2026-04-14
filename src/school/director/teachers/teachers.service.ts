@@ -252,6 +252,8 @@ export class TeachersService {
       const [
         totalTeachers,
         activeTeachers,
+        inactiveTeachers,
+        suspendedTeachers,
         maleTeachers,
         femaleTeachers,
         filteredTeachersCount,
@@ -266,6 +268,18 @@ export class TeachersService {
           where: {
             school_id: school_id,
             status: 'active',
+          },
+        }),
+        this.prisma.teacher.count({
+          where: {
+            school_id: school_id,
+            status: 'inactive',
+          },
+        }),
+        this.prisma.teacher.count({
+          where: {
+            school_id: school_id,
+            status: 'suspended',
           },
         }),
         this.prisma.teacher.count({
@@ -378,6 +392,8 @@ export class TeachersService {
         basic_details: {
           totalTeachers,
           activeTeachers,
+          inactiveTeachers,
+          suspendedTeachers,
           maleTeachers,
           femaleTeachers,
         },
@@ -1228,29 +1244,46 @@ export class TeachersService {
         return ResponseHelper.error('Teacher not found', 404);
       }
 
-      // hard delete the teacher, remove any assinged subjects to the teacher and remove the teacher from any class they are managing, this should be a prisma tx, all should pass or all should fail
+      // Soft-remove: unassign, deactivate schedules, mark teacher + user inactive.
+      // We do NOT delete User/Teacher rows so PDFs, assessments, uploads (uploadedById), etc. stay intact.
       await this.prisma.$transaction(async (tx) => {
         const teacherId = teacher.id;
         const userId = teacher.user_id;
 
-        // Remove subject assignments
         await tx.teacherSubject.deleteMany({ where: { teacherId } });
 
-        // Detach from any classes they manage
         await tx.class.updateMany({
           where: { classTeacherId: teacherId },
           data: { classTeacherId: null },
         });
 
-        // Delete teacher record
-        await tx.teacher.delete({ where: { id: teacherId } });
+        await tx.timetableEntry.updateMany({
+          where: { teacher_id: teacherId },
+          data: { isActive: false },
+        });
 
-        // Delete linked user account
-        await tx.user.delete({ where: { id: userId } });
+        await tx.teacher.update({
+          where: { id: teacherId },
+          data: {
+            status: UserStatus.inactive,
+            is_class_teacher: false,
+          },
+        });
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { status: UserStatus.inactive },
+        });
       });
 
-      this.logger.log(colors.green(`Teacher deleted successfully: ${id}`));
-      return ResponseHelper.success('Teacher deleted successfully');
+      this.logger.log(
+        colors.green(
+          `Teacher removed from active roster (soft): ${id} — user ${teacher.user_id} set inactive`,
+        ),
+      );
+      return ResponseHelper.success(
+        'Teacher removed from the active roster. Their materials and records are preserved; the account can no longer sign in until reactivated.',
+      );
     } catch (error) {
       console.log(colors.red('Error deleting teacher: '), error);
       throw error;

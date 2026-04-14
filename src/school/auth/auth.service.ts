@@ -19,6 +19,7 @@ import {
   SubscriptionPlanType,
   BillingCycle,
   SubscriptionStatus,
+  UserStatus,
 } from '@prisma/client';
 import { formatDate } from 'src/shared/helper-functions/formatter';
 import { allocateUniqueSchoolCode } from 'src/school/auth/school-code.util';
@@ -879,6 +880,19 @@ export class AuthService {
       if (!passwordMatches) {
         console.log(colors.red('User not found'));
         return ResponseHelper.error('User not found', null, 404);
+      }
+
+      if (existing_user.status !== UserStatus.active) {
+        this.logger.log(
+          colors.yellow(
+            `Sign-in rejected: account status is ${existing_user.status} (${existing_user.first_name})`,
+          ),
+        );
+        return ResponseHelper.error(
+          'This account is not active. Contact your school administrator.',
+          null,
+          403,
+        );
       }
 
       // set email to verified if it is not already
