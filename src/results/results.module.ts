@@ -1,13 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ResultsController } from './results.controller';
-import { ResultsService } from './results.service';
-import { PrismaModule } from '../prisma/prisma.module';
-import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
+import { DirectorResultModule } from './director-result/director-result.module';
+import { TeacherResultModule } from './teacher-result/teacher-result.module';
 
+/**
+ * School results domain: director release workflows and teacher-facing result APIs.
+ */
 @Module({
-  imports: [PrismaModule, PushNotificationsModule],
-  controllers: [ResultsController],
-  providers: [ResultsService],
-  exports: [ResultsService],
+  imports: [DirectorResultModule, TeacherResultModule],
+  exports: [DirectorResultModule, TeacherResultModule],
 })
 export class ResultsModule {}

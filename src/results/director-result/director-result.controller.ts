@@ -18,17 +18,17 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
-import { ResultsService } from './results.service';
-import { JwtGuard } from '../school/auth/guard/jwt.guard';
-import { GetUser } from '../school/auth/decorator/get-user-decorator';
+import { DirectorResultService } from './director-result.service';
+import { JwtGuard } from '../../school/auth/guard/jwt.guard';
+import { GetUser } from '../../school/auth/decorator/get-user-decorator';
 import { ReleaseResultsForStudentsDto } from './dto/release-results.dto';
 
 @ApiTags('Director - Results')
 @ApiBearerAuth()
 @UseGuards(JwtGuard)
 @Controller('director/results')
-export class ResultsController {  
-  constructor(private readonly resultsService: ResultsService) {}
+export class DirectorResultController {
+  constructor(private readonly directorResultService: DirectorResultService) {}
 
   @Post('release')
   @HttpCode(HttpStatus.OK)
@@ -49,7 +49,7 @@ export class ResultsController {
     description: 'No current session or students found',
   })
   async releaseResults(@GetUser() user: any) {
-    return this.resultsService.releaseResults(user.school_id, user.sub);
+    return this.directorResultService.releaseResults(user.school_id, user.sub);
   }
 
   @Post('release/student/:studentId')
@@ -80,7 +80,7 @@ export class ResultsController {
     @Param('studentId') studentId: string,
     @Query('session_id') sessionId?: string,
   ) {
-    return this.resultsService.releaseResultsForStudent(
+    return this.directorResultService.releaseResultsForStudent(
       user.school_id,
       user.sub,
       studentId,
@@ -115,7 +115,7 @@ export class ResultsController {
     @Param('classId') classId: string,
     @Query('session_id') sessionId?: string,
   ) {
-    return this.resultsService.releaseResultsForClass(
+    return this.directorResultService.releaseResultsForClass(
       user.school_id,
       user.sub,
       classId,
@@ -152,7 +152,7 @@ export class ResultsController {
     @GetUser() user: any,
     @Body() dto: ReleaseResultsForStudentsDto,
   ) {
-    return this.resultsService.releaseResultsForStudents(
+    return this.directorResultService.releaseResultsForStudents(
       user.school_id,
       user.sub,
       dto.studentIds,
@@ -184,7 +184,7 @@ export class ResultsController {
     @GetUser() user: any,
     @Query('session_id') sessionId?: string,
   ) {
-    return this.resultsService.unreleaseResults(
+    return this.directorResultService.unreleaseResults(
       user.school_id,
       user.sub,
       sessionId,
@@ -219,7 +219,7 @@ export class ResultsController {
     @Param('studentId') studentId: string,
     @Query('session_id') sessionId?: string,
   ) {
-    return this.resultsService.unreleaseResultsForStudent(
+    return this.directorResultService.unreleaseResultsForStudent(
       user.school_id,
       user.sub,
       studentId,
@@ -249,7 +249,7 @@ export class ResultsController {
     @GetUser() user: any,
     @Body() dto: ReleaseResultsForStudentsDto,
   ) {
-    return this.resultsService.unreleaseResultsForStudents(
+    return this.directorResultService.unreleaseResultsForStudents(
       user.school_id,
       user.sub,
       dto.studentIds,
@@ -285,7 +285,7 @@ export class ResultsController {
     @Param('classId') classId: string,
     @Query('session_id') sessionId?: string,
   ) {
-    return this.resultsService.unreleaseResultsForClass(
+    return this.directorResultService.unreleaseResultsForClass(
       user.school_id,
       user.sub,
       classId,
@@ -334,7 +334,7 @@ export class ResultsController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.resultsService.getResultsDashboard(user.sub, {
+    return this.directorResultService.getResultsDashboard(user.sub, {
       sessionId,
       classId,
       subjectId,

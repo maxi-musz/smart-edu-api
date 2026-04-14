@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { ApiResponse } from '../shared/helper-functions/response';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { PushNotificationsService } from '../push-notifications/push-notifications.service';
+import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 
 @Injectable()
-export class ResultsService {
-  private readonly logger = new Logger(ResultsService.name);
+export class DirectorResultService {
+  private readonly logger = new Logger(DirectorResultService.name);
   private readonly BATCH_SIZE = 50; // Process 50 students at a time
 
   constructor(
