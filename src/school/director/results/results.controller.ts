@@ -27,13 +27,13 @@ import { ReleaseResultsForStudentsDto } from './dto/release-results.dto';
 @ApiBearerAuth()
 @UseGuards(JwtGuard)
 @Controller('director/results')
-export class ResultsController {
+export class ResultsController {  
   constructor(private readonly resultsService: ResultsService) {}
 
   @Post('release')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary:
+    summary:      
       'Release results for all students in current session (WHOLE SCHOOL)',
     description:
       'Collates all CA and Exam scores for all students in the school and creates Result records. This is a batch operation that processes students in batches to avoid system overload.',

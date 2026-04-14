@@ -76,6 +76,33 @@ export class DirectorAssessmentService {
     return user;
   }
 
+  /**
+   * Aligns dashboard counts with the session/term the director selected in the toolbar.
+   * Falls back to the school's current session when params are missing or invalid.
+   */
+  private async resolveAssessmentDashboardSession(
+    schoolId: string,
+    academic_session_id?: string,
+    term?: string,
+  ) {
+    if (academic_session_id) {
+      const byId = await this.prisma.academicSession.findFirst({
+        where: { id: academic_session_id, school_id: schoolId },
+      });
+      if (byId) return byId;
+    }
+    if (term === 'first' || term === 'second' || term === 'third') {
+      const byTerm = await this.prisma.academicSession.findFirst({
+        where: { school_id: schoolId, term },
+        orderBy: [{ start_year: 'desc' }],
+      });
+      if (byTerm) return byTerm;
+    }
+    return this.prisma.academicSession.findFirst({
+      where: { school_id: schoolId, is_current: true },
+    });
+  }
+
   // ================================================================
   // DASHBOARD (from existing director assessments service)
   // ================================================================
@@ -89,6 +116,8 @@ export class DirectorAssessmentService {
       assessmentType?: string;
       subjectId?: string;
       classId?: string;
+      academic_session_id?: string;
+      term?: string;
     } = {},
   ) {
     try {
@@ -105,7 +134,15 @@ export class DirectorAssessmentService {
         assessmentType,
         subjectId,
         classId,
+        academic_session_id: academicSessionIdParam,
+        term: termParam,
       } = filters;
+
+      const sessionForScope = await this.resolveAssessmentDashboardSession(
+        user.school_id,
+        academicSessionIdParam,
+        termParam,
+      );
 
       const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
       const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
@@ -177,21 +214,14 @@ export class DirectorAssessmentService {
         },
       });
 
-      const currentSession = await this.prisma.academicSession.findFirst({
-        where: {
-          school_id: user.school_id,
-          is_current: true,
-        },
-      });
-
       const enrichedSubjects = await Promise.all(
         subjects.map(async (subject) => {
           const assessmentCounts = await this.prisma.assessment.groupBy({
             by: ['assessment_type'],
             where: {
               subject_id: subject.id,
-              ...(currentSession
-                ? { academic_session_id: currentSession.id }
+              ...(sessionForScope
+                ? { academic_session_id: sessionForScope.id }
                 : {}),
             },
             _count: {
@@ -212,11 +242,20 @@ export class DirectorAssessmentService {
               school_id: user.school_id,
               current_class_id: subject.classId || undefined,
               status: 'active',
-              ...(currentSession
-                ? { academic_session_id: currentSession.id }
+              ...(sessionForScope
+                ? { academic_session_id: sessionForScope.id }
                 : {}),
             },
           });
+
+          const totalAssessmentsScoped = sessionForScope
+            ? await this.prisma.assessment.count({
+                where: {
+                  subject_id: subject.id,
+                  academic_session_id: sessionForScope.id,
+                },
+              })
+            : 0;
 
           return {
             id: subject.id,
@@ -239,7 +278,7 @@ export class DirectorAssessmentService {
               display_picture: ts.teacher.display_picture,
             })),
             student_count: studentCount,
-            total_assessments: subject._count.assessments,
+            total_assessments: totalAssessmentsScoped,
             total_topics: subject._count.topics,
             assessment_counts: {
               CBT: countsByType['CBT'] || 0,
@@ -252,8 +291,8 @@ export class DirectorAssessmentService {
               OTHER: countsByType['OTHER'] || 0,
             },
             status:
-              currentSession &&
-              subject.academicSession?.id === currentSession.id
+              sessionForScope &&
+              subject.academicSession?.id === sessionForScope.id
                 ? 'active'
                 : 'inactive',
           };
@@ -300,12 +339,12 @@ export class DirectorAssessmentService {
               display_picture: cls.classTeacher.display_picture,
             }
           : null,
-        academic_session: currentSession
+        academic_session: sessionForScope
           ? {
-              id: currentSession.id,
-              academic_year: currentSession.academic_year,
-              term: currentSession.term,
-              is_current: currentSession.is_current,
+              id: sessionForScope.id,
+              academic_year: sessionForScope.academic_year,
+              term: sessionForScope.term,
+              is_current: sessionForScope.is_current,
             }
           : null,
         student_count: cls._count.students,
@@ -315,7 +354,7 @@ export class DirectorAssessmentService {
 
       const assessmentWhere: any = {
         school_id: user.school_id,
-        ...(currentSession ? { academic_session_id: currentSession.id } : {}),
+        ...(sessionForScope ? { academic_session_id: sessionForScope.id } : {}),
         ...(status ? { status } : {}),
         ...(assessmentType ? { assessment_type: assessmentType } : {}),
         ...(subjectId ? { subject_id: subjectId } : {}),

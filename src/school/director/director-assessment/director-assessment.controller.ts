@@ -65,6 +65,12 @@ export class DirectorAssessmentController {
   })
   @ApiQuery({ name: 'subject_id', required: false })
   @ApiQuery({ name: 'class_id', required: false })
+  @ApiQuery({ name: 'academic_session_id', required: false })
+  @ApiQuery({
+    name: 'term',
+    required: false,
+    enum: ['first', 'second', 'third'],
+  })
   @ApiResponse({ status: 200, description: 'Dashboard data retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Director role required' })
   async getAssessmentDashboard(
@@ -75,6 +81,8 @@ export class DirectorAssessmentController {
     @Query('assessment_type') assessmentType?: string,
     @Query('subject_id') subjectId?: string,
     @Query('class_id') classId?: string,
+    @Query('academic_session_id') academic_session_id?: string,
+    @Query('term') term?: string,
   ) {
     return this.directorAssessmentService.getAssessmentDashboard(user.sub, {
       page,
@@ -83,6 +91,8 @@ export class DirectorAssessmentController {
       assessmentType,
       subjectId,
       classId,
+      academic_session_id,
+      term,
     });
   }
 

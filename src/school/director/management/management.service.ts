@@ -300,11 +300,11 @@ export class ManagementService {
       return new ApiResponse(false, 'User not found', null);
     }
 
-    const owned = await this.prisma.academicSession.findFirst({
+    const target = await this.prisma.academicSession.findFirst({
       where: { id: sessionId, school_id: schoolId },
-      select: { id: true },
+      select: { id: true, start_year: true },
     });
-    if (!owned) {
+    if (!target) {
       return new ApiResponse(false, 'Academic session not found', null);
     }
 
