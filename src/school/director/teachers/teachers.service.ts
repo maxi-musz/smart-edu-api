@@ -305,6 +305,7 @@ export class TeachersService {
               include: {
                 subject: {
                   select: {
+                    id: true,
                     name: true,
                   },
                 },
@@ -312,7 +313,13 @@ export class TeachersService {
             },
             classesManaging: {
               select: {
+                id: true,
                 name: true,
+                _count: {
+                  select: {
+                    students: true,
+                  },
+                },
               },
             },
           },
@@ -339,6 +346,7 @@ export class TeachersService {
             include: {
               class: {
                 select: {
+                  id: true,
                   name: true,
                 },
               },
@@ -353,13 +361,11 @@ export class TeachersService {
 
           return {
             ...teacher,
-            subjectsTeaching: teacher.subjectsTeaching.map(
-              (ts) => ts.subject.name,
-            ),
             nextClass: nextClass
               ? {
+                  classId: nextClass.class.id,
                   className: nextClass.class.name,
-                  subject: nextClass.subject.name,
+                  subjectName: nextClass.subject.name,
                   startTime: nextClass.timeSlot.startTime,
                   endTime: nextClass.timeSlot.endTime,
                 }
@@ -381,20 +387,35 @@ export class TeachersService {
           total_results: filteredTeachersCount,
           results_per_page: limit,
         },
-        teachers: teachersWithNextClass.map((teacher) => ({
-          id: teacher.id,
-          teacher_id: teacher.teacher_id,
-          name: `${teacher.first_name} ${teacher.last_name}`,
-          display_picture: teacher.display_picture,
-          contact: {
-            phone: teacher.phone_number,
-            email: teacher.email,
-          },
-          totalSubjects: teacher.subjectsTeaching.length,
-          classTeacher: teacher.classesManaging[0]?.name || 'None',
-          nextClass: teacher.nextClass,
-          status: teacher.status,
-        })),
+        teachers: teachersWithNextClass.map((teacher) => {
+          const firstManaged = teacher.classesManaging[0];
+          return {
+            id: teacher.id,
+            teacher_id: teacher.teacher_id,
+            name: `${teacher.first_name} ${teacher.last_name}`,
+            display_picture: teacher.display_picture,
+            contact: {
+              phone: teacher.phone_number,
+              email: teacher.email,
+            },
+            subjects: teacher.subjectsTeaching.map((ts) => ({
+              id: ts.subject.id,
+              name: ts.subject.name,
+            })),
+            totalSubjects: teacher.subjectsTeaching.length,
+            classTeacher: firstManaged?.name || 'None',
+            isClassTeacher: !!firstManaged,
+            classManagingDetails: firstManaged
+              ? {
+                  id: firstManaged.id,
+                  name: firstManaged.name,
+                  studentCount: firstManaged._count.students,
+                }
+              : null,
+            nextClass: teacher.nextClass,
+            status: teacher.status,
+          };
+        }),
       };
 
       this.logger.log(
