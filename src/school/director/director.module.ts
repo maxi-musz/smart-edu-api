@@ -11,7 +11,7 @@ import { ProfilesModule } from './profiles/profiles.module';
 import { ClassesModule } from './classes/classes.module';
 import { SubjectModule } from './subject/subject.module';
 import { UserModule } from './user/user.module';
-import { ResultsModule } from './results/results.module';
+import { ResultsModule } from '../../results/results.module';
 import { DirectorAssessmentModule } from './director-assessment/director-assessment.module';
 import { ManagementModule } from './management/management.module';
 import { DirectorAuditModule } from './audit/director-audit.module';

@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { ApiResponse } from '../../../shared/helper-functions/response';
+import { PrismaService } from '../prisma/prisma.service';
+import { ApiResponse } from '../shared/helper-functions/response';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
-import { PushNotificationsService } from '../../../push-notifications/push-notifications.service';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 
 @Injectable()
 export class ResultsService {

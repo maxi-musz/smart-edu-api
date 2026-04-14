@@ -19,8 +19,8 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { ResultsService } from './results.service';
-import { JwtGuard } from '../../auth/guard/jwt.guard';
-import { GetUser } from '../../auth/decorator/get-user-decorator';
+import { JwtGuard } from '../school/auth/guard/jwt.guard';
+import { GetUser } from '../school/auth/decorator/get-user-decorator';
 import { ReleaseResultsForStudentsDto } from './dto/release-results.dto';
 
 @ApiTags('Director - Results')
