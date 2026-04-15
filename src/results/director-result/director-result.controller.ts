@@ -9,19 +9,23 @@ import {
   Param,
   Body,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-  ApiParam,
-  ApiBody,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DirectorResultService } from './director-result.service';
 import { JwtGuard } from '../../school/auth/guard/jwt.guard';
 import { GetUser } from '../../school/auth/decorator/get-user-decorator';
 import { ReleaseResultsForStudentsDto } from './dto/release-results.dto';
+import {
+  DocReleaseWholeSchool,
+  DocReleaseStudent,
+  DocReleaseClass,
+  DocReleaseStudents,
+  DocUnreleaseWholeSchool,
+  DocUnreleaseStudent,
+  DocUnreleaseStudents,
+  DocUnreleaseClass,
+  DocGetResultsDashboard,
+  DocFetchResultDashboardAlias,
+} from './docs';
 
 @ApiTags('Director - Results')
 @ApiBearerAuth()
@@ -32,49 +36,14 @@ export class DirectorResultController {
 
   @Post('release')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:      
-      'Release results for all students in current session (WHOLE SCHOOL)',
-    description:
-      'Collates all CA and Exam scores for all students in the school and creates Result records. This is a batch operation that processes students in batches to avoid system overload.',
-  })
-  @ApiResponse({ status: 200, description: 'Results released successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'No current session or students found',
-  })
+  @DocReleaseWholeSchool()
   async releaseResults(@GetUser() user: any) {
     return this.directorResultService.releaseResults(user.school_id, user.sub);
   }
 
   @Post('release/student/:studentId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Release results for a single student',
-    description:
-      'Collates all CA and Exam scores for a specific student and creates/updates their Result record. Only results released by school admin can be viewed by students.',
-  })
-  @ApiParam({ name: 'studentId', description: 'Student ID' })
-  @ApiQuery({
-    name: 'session_id',
-    required: false,
-    description: 'Academic session ID (defaults to current active session)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Results released successfully for student',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({ status: 404, description: 'Student not found' })
+  @DocReleaseStudent()
   async releaseResultsForStudent(
     @GetUser() user: any,
     @Param('studentId') studentId: string,
@@ -90,26 +59,7 @@ export class DirectorResultController {
 
   @Post('release/class/:classId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Release results for all students in a specific class',
-    description:
-      'Collates all CA and Exam scores for all students in a class and creates/updates their Result records. Only results released by school admin can be viewed by students.',
-  })
-  @ApiQuery({
-    name: 'session_id',
-    required: false,
-    description: 'Academic session ID (defaults to current active session)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Results released successfully for class',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({ status: 404, description: 'Class or students not found' })
+  @DocReleaseClass()
   async releaseResultsForClass(
     @GetUser() user: any,
     @Param('classId') classId: string,
@@ -125,29 +75,7 @@ export class DirectorResultController {
 
   @Post('release/students')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Release results for multiple students by their IDs',
-    description:
-      'Collates all CA and Exam scores for specified students and creates/updates their Result records. Accepts an array of student IDs in the request body. Only results released by school admin can be viewed by students.',
-  })
-  @ApiBody({ type: ReleaseResultsForStudentsDto })
-  @ApiResponse({
-    status: 200,
-    description: 'Results released successfully for students',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request - Invalid input or no assessments found',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'No students found with provided IDs',
-  })
+  @DocReleaseStudents()
   async releaseResultsForStudents(
     @GetUser() user: any,
     @Body() dto: ReleaseResultsForStudentsDto,
@@ -162,24 +90,7 @@ export class DirectorResultController {
 
   @Post('unrelease')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:
-      'Unrelease results for all students in current session (WHOLE SCHOOL)',
-    description:
-      'Sets released_by_school_admin to false for all students in the school. Results remain in database but students cannot view them.',
-  })
-  @ApiQuery({
-    name: 'session_id',
-    required: false,
-    description: 'Academic session ID (defaults to current active session)',
-  })
-  @ApiResponse({ status: 200, description: 'Results unreleased successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({ status: 404, description: 'No current session found' })
+  @DocUnreleaseWholeSchool()
   async unreleaseResults(
     @GetUser() user: any,
     @Query('session_id') sessionId?: string,
@@ -193,27 +104,7 @@ export class DirectorResultController {
 
   @Post('unrelease/student/:studentId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Unrelease results for a single student',
-    description:
-      'Sets released_by_school_admin to false for a specific student. Result remains in database but student cannot view it.',
-  })
-  @ApiParam({ name: 'studentId', description: 'Student ID' })
-  @ApiQuery({
-    name: 'session_id',
-    required: false,
-    description: 'Academic session ID (defaults to current active session)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Results unreleased successfully for student',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({ status: 404, description: 'Result not found' })
+  @DocUnreleaseStudent()
   async unreleaseResultsForStudent(
     @GetUser() user: any,
     @Param('studentId') studentId: string,
@@ -229,22 +120,7 @@ export class DirectorResultController {
 
   @Post('unrelease/students')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Unrelease results for multiple students by their IDs',
-    description:
-      'Sets released_by_school_admin to false for specified students. Results remain in database but students cannot view them.',
-  })
-  @ApiBody({ type: ReleaseResultsForStudentsDto })
-  @ApiResponse({
-    status: 200,
-    description: 'Results unreleased successfully for students',
-  })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid input' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
+  @DocUnreleaseStudents()
   async unreleaseResultsForStudents(
     @GetUser() user: any,
     @Body() dto: ReleaseResultsForStudentsDto,
@@ -259,27 +135,7 @@ export class DirectorResultController {
 
   @Post('unrelease/class/:classId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Unrelease results for all students in a specific class',
-    description:
-      'Sets released_by_school_admin to false for all students in a class. Results remain in database but students cannot view them.',
-  })
-  @ApiParam({ name: 'classId', description: 'Class ID' })
-  @ApiQuery({
-    name: 'session_id',
-    required: false,
-    description: 'Academic session ID (defaults to current active session)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Results unreleased successfully for class',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
-  @ApiResponse({ status: 404, description: 'Class or students not found' })
+  @DocUnreleaseClass()
   async unreleaseResultsForClass(
     @GetUser() user: any,
     @Param('classId') classId: string,
@@ -295,51 +151,48 @@ export class DirectorResultController {
 
   @Get('dashboard')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get results dashboard data for director',
-    description:
-      'Returns all sessions, classes, subjects, and paginated results. Defaults to current active session, first class, and first subject if results are released.',
-  })
-  @ApiQuery({
-    name: 'session_id',
-    required: false,
-    description: 'Academic session ID (defaults to current active session)',
-  })
-  @ApiQuery({
-    name: 'class_id',
-    required: false,
-    description: 'Class ID (defaults to first class)',
-  })
-  @ApiQuery({
-    name: 'subject_id',
-    required: false,
-    description:
-      'Subject ID (defaults to first subject, filters results by subject)',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiResponse({
-    status: 200,
-    description: 'Results dashboard retrieved successfully',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Director role required',
-  })
+  @DocGetResultsDashboard()
   async getResultsDashboard(
     @GetUser() user: any,
     @Query('session_id') sessionId?: string,
     @Query('class_id') classId?: string,
-    @Query('subject_id') subjectId?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('q') q?: string,
+    @Query('student_status') studentStatus?: string,
   ) {
     return this.directorResultService.getResultsDashboard(user.sub, {
       sessionId,
       classId,
-      subjectId,
       page,
       limit,
+      search: search ?? q,
+      studentStatus,
+    });
+  }
+
+  /** Same payload as GET dashboard — alias for clients that use this route name. */
+  @Get('fetch-result-dashboard')
+  @HttpCode(HttpStatus.OK)
+  @DocFetchResultDashboardAlias()
+  async fetchResultDashboard(
+    @GetUser() user: any,
+    @Query('session_id') sessionId?: string,
+    @Query('class_id') classId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('q') q?: string,
+    @Query('student_status') studentStatus?: string,
+  ) {
+    return this.directorResultService.getResultsDashboard(user.sub, {
+      sessionId,
+      classId,
+      page,
+      limit,
+      search: search ?? q,
+      studentStatus,
     });
   }
 }

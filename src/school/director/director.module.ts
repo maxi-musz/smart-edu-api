@@ -15,6 +15,7 @@ import { ResultsModule } from '../../results/results.module';
 import { DirectorAssessmentModule } from './director-assessment/director-assessment.module';
 import { ManagementModule } from './management/management.module';
 import { DirectorAuditModule } from './audit/director-audit.module';
+import { GradingScaleModule } from './grading-scale/grading-scale.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { DirectorAuditModule } from './audit/director-audit.module';
     DirectorAssessmentModule,
     ManagementModule,
     DirectorAuditModule,
+    GradingScaleModule,
   ],
 })
 export class DirectorModule {}

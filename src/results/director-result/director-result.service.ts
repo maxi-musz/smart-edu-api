@@ -1,9 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
 import { ResponseHelper } from 'src/shared/helper-functions/response.helpers';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
+import { GradingScaleService } from '../../school/director/grading-scale/grading-scale.service';
+import {
+  gradeFromMinThresholds,
+  type GradeThreshold,
+} from '../../shared/grading/school-percentage-grade';
 
 @Injectable()
 export class DirectorResultService {
@@ -13,6 +19,7 @@ export class DirectorResultService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushNotificationsService: PushNotificationsService,
+    private readonly gradingScaleService: GradingScaleService,
   ) {}
 
   /**
@@ -141,6 +148,10 @@ export class DirectorResultService {
         ),
       );
 
+      const gradeBands = await this.gradingScaleService.getResolvedBands(
+        schoolId,
+      );
+
       // Process students in batches to avoid overwhelming the system
       const totalBatches = Math.ceil(allStudents.length / this.BATCH_SIZE);
       let processedCount = 0;
@@ -164,6 +175,7 @@ export class DirectorResultService {
             currentSession.id,
             schoolId,
             userId,
+            gradeBands,
           ).catch((error) => {
             this.logger.error(
               colors.red(
@@ -326,6 +338,10 @@ export class DirectorResultService {
         );
       }
 
+      const gradeBands = await this.gradingScaleService.getResolvedBands(
+        schoolId,
+      );
+
       // Process student results
       await this.processStudentResults(
         student,
@@ -333,6 +349,7 @@ export class DirectorResultService {
         currentSession.id,
         schoolId,
         userId,
+        gradeBands,
       );
 
       // Recalculate class positions
@@ -471,6 +488,10 @@ export class DirectorResultService {
         );
       }
 
+      const gradeBands = await this.gradingScaleService.getResolvedBands(
+        schoolId,
+      );
+
       this.logger.log(
         colors.blue(
           `[Director Results Service] 📊 Processing ${classStudents.length} students in class`,
@@ -499,6 +520,7 @@ export class DirectorResultService {
             currentSession.id,
             schoolId,
             userId,
+            gradeBands,
           ).catch((error) => {
             this.logger.error(
               colors.red(
@@ -681,6 +703,10 @@ export class DirectorResultService {
         );
       }
 
+      const gradeBands = await this.gradingScaleService.getResolvedBands(
+        schoolId,
+      );
+
       this.logger.log(
         colors.blue(
           `[Director Results Service] 📊 Processing ${students.length} students`,
@@ -709,6 +735,7 @@ export class DirectorResultService {
             currentSession.id,
             schoolId,
             userId,
+            gradeBands,
           ).catch((error) => {
             this.logger.error(
               colors.red(
@@ -1257,6 +1284,7 @@ export class DirectorResultService {
     sessionId: string,
     schoolId: string,
     releasedBy: string,
+    gradeBands: GradeThreshold[],
   ): Promise<any> {
     // Get final result (best attempt) for each released assessment
     const assessmentResults = await Promise.all(
@@ -1368,7 +1396,7 @@ export class DirectorResultService {
           subjectData.total_max_score > 0
             ? (subjectData.total_score / subjectData.total_max_score) * 100
             : 0;
-        const grade = this.calculateGrade(percentage);
+        const grade = gradeFromMinThresholds(percentage, gradeBands);
 
         return {
           subject_id: subjectData.subject_id,
@@ -1403,7 +1431,7 @@ export class DirectorResultService {
     );
     const overallPercentage =
       totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100 : 0;
-    const overallGrade = this.calculateGrade(overallPercentage);
+    const overallGrade = gradeFromMinThresholds(overallPercentage, gradeBands);
 
     // Upsert result record
     return await this.prisma.result.upsert({
@@ -1552,30 +1580,18 @@ export class DirectorResultService {
   }
 
   /**
-   * Calculate grade based on percentage
-   * Scale: A 80-100, B 70-79.9, C 60-69.9, D 50-59.9, E 40-49.9, F <40
-   */
-  private calculateGrade(percentage: number): string {
-    if (percentage >= 80) return 'A';
-    if (percentage >= 70) return 'B';
-    if (percentage >= 60) return 'C';
-    if (percentage >= 50) return 'D';
-    if (percentage >= 40) return 'E';
-    return 'F';
-  }
-
-  /**
-   * Get results dashboard data for director
-   * Returns: sessions, classes, subjects, and paginated results
+   * Director results dashboard: last 10 sessions, classes by display order,
+   * per-subject CBT + EXAM slots with score/max (preview before release), DB pagination + search.
    */
   async getResultsDashboard(
     userId: string,
     filters: {
       sessionId?: string;
       classId?: string;
-      subjectId?: string;
       page?: number;
       limit?: number;
+      search?: string;
+      studentStatus?: string;
     } = {},
   ) {
     try {
@@ -1583,7 +1599,6 @@ export class DirectorResultService {
         colors.cyan(`📊 Getting results dashboard for director: ${userId}`),
       );
 
-      // Get director/school info
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, school_id: true, role: true },
@@ -1597,17 +1612,32 @@ export class DirectorResultService {
         );
       }
 
-      const { sessionId, classId, subjectId, page = 1, limit = 10 } = filters;
+      const gradeBands = await this.gradingScaleService.getResolvedBands(
+        user.school_id,
+      );
 
-      const pageNum = typeof page === 'string' ? parseInt(page, 10) : page;
-      const limitNum = typeof limit === 'string' ? parseInt(limit, 10) : limit;
+      const SESSION_LIMIT = 10;
+      const { sessionId, classId, page = 1, limit = 10, search, studentStatus } =
+        filters;
+
+      const pageNum =
+        typeof page === 'string' ? parseInt(page as string, 10) : Number(page);
+      const limitNum =
+        typeof limit === 'string' ? parseInt(limit as string, 10) : Number(limit);
       const skip = (pageNum - 1) * limitNum;
+      const searchTrim =
+        typeof search === 'string' ? search.trim() : '';
 
-      // 1. Get all academic sessions and terms (active session/term at top)
-      const allSessions = await this.prisma.academicSession.findMany({
-        where: {
-          school_id: user.school_id,
-        },
+      const rawSt = studentStatus?.toLowerCase();
+      const studentStatusFilter: UserStatus =
+        rawSt === 'active' ||
+        rawSt === 'suspended' ||
+        rawSt === 'inactive'
+          ? (rawSt as UserStatus)
+          : UserStatus.active;
+
+      const academicSessions = await this.prisma.academicSession.findMany({
+        where: { school_id: user.school_id },
         select: {
           id: true,
           academic_year: true,
@@ -1616,28 +1646,65 @@ export class DirectorResultService {
           end_date: true,
           status: true,
           is_current: true,
-          _count: {
-            select: {
-              results: true,
-            },
-          },
+          _count: { select: { results: true } },
         },
         orderBy: [
           { is_current: 'desc' },
           { start_year: 'desc' },
           { term: 'desc' },
         ],
+        take: SESSION_LIMIT,
       });
 
-      // Get current active session
-      const currentSession =
-        allSessions.find((s) => s.is_current && s.status === 'active') ||
-        allSessions[0];
+      const defaultSession =
+        (await this.prisma.academicSession.findFirst({
+          where: {
+            school_id: user.school_id,
+            is_current: true,
+            status: 'active',
+          },
+          select: {
+            id: true,
+            academic_year: true,
+            term: true,
+            start_date: true,
+            end_date: true,
+            status: true,
+            is_current: true,
+          },
+        })) ??
+        (await this.prisma.academicSession.findFirst({
+          where: { school_id: user.school_id },
+          select: {
+            id: true,
+            academic_year: true,
+            term: true,
+            start_date: true,
+            end_date: true,
+            status: true,
+            is_current: true,
+          },
+          orderBy: [{ start_year: 'desc' }, { term: 'desc' }],
+        }));
 
-      // 2. Get all classes
+      let selectedSessionId: string | null = null;
+      if (sessionId) {
+        const requested = await this.prisma.academicSession.findFirst({
+          where: { id: sessionId, school_id: user.school_id },
+          select: { id: true },
+        });
+        if (!requested) {
+          return ResponseHelper.error('Academic session not found.', null, 404);
+        }
+        selectedSessionId = requested.id;
+      } else {
+        selectedSessionId = defaultSession?.id ?? null;
+      }
+
       const classes = await this.prisma.class.findMany({
         where: {
           schoolId: user.school_id,
+          is_graduates: false,
         },
         include: {
           classTeacher: {
@@ -1655,116 +1722,158 @@ export class DirectorResultService {
             },
           },
         },
-        orderBy: {
-          name: 'asc',
-        },
+        orderBy: { display_order: 'asc' },
       });
 
-      // 3. Get all subjects
-      const subjects = await this.prisma.subject.findMany({
-        where: {
-          schoolId: user.school_id,
-          ...(currentSession ? { academic_session_id: currentSession.id } : {}),
-        },
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          color: true,
-          description: true,
-        },
-        orderBy: {
-          name: 'asc',
-        },
-      });
+      let selectedClassId: string | null = null;
+      if (classId) {
+        const requestedClass = await this.prisma.class.findFirst({
+          where: {
+            id: classId,
+            schoolId: user.school_id,
+            is_graduates: false,
+          },
+          select: { id: true },
+        });
+        if (!requestedClass) {
+          return ResponseHelper.error('Class not found.', null, 404);
+        }
+        selectedClassId = requestedClass.id;
+      } else if (classes.length > 0) {
+        selectedClassId = classes[0].id;
+      }
 
-      // Determine which session and class to use (NO default subject selection)
-      const selectedSessionId = sessionId || currentSession?.id;
-      const selectedClassId =
-        classId || (classes.length > 0 ? classes[0].id : null);
+      let classSubjects: Array<{
+        id: string;
+        name: string;
+        code: string | null;
+        color: string;
+        description: string | null;
+      }> = [];
+      let subjectsWithAssessments: Array<{
+        id: string;
+        name: string;
+        code: string | null;
+        color: string;
+        description: string | null;
+        assessments: Array<{
+          id: string;
+          title: string;
+          assessment_type: string;
+          order: number;
+          total_points: number;
+        }>;
+      }> = [];
 
-      // 4. Get results table data for selected filters
       let results: any[] = [];
       let totalResults = 0;
-      let hasResults = false;
       let resultMessage: string | null = null;
       let totalStudentsInClass = 0;
-      let classSubjects: any[] = [];
 
-      if (selectedSessionId && selectedClassId) {
-        // Get all students in the selected class
-        const allStudentsInClass = await this.prisma.student.findMany({
+      if (!selectedSessionId || !selectedClassId) {
+        resultMessage = !selectedSessionId
+          ? 'No academic session available'
+          : 'Please select a class to view results';
+      } else {
+        // Class roster only. Academic session applies to assessments, not to which subjects
+        // appear for a class (the DB may still store academic_session_id on Subject — we ignore it here).
+        classSubjects = await this.prisma.subject.findMany({
           where: {
-            school_id: user.school_id,
-            academic_session_id: selectedSessionId,
-            current_class_id: selectedClassId,
-            status: 'active',
+            schoolId: user.school_id,
+            classId: selectedClassId,
           },
-          include: {
-            user: {
-              select: {
-                id: true,
-                first_name: true,
-                last_name: true,
-                email: true,
-                display_picture: true,
-              },
-            },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            color: true,
+            description: true,
           },
-          orderBy: {
-            user: {
-              last_name: 'asc',
-            },
-          },
+          orderBy: { name: 'asc' },
         });
 
-        totalStudentsInClass = allStudentsInClass.length;
+        const studentWhere: Prisma.StudentWhereInput = {
+          school_id: user.school_id,
+          academic_session_id: selectedSessionId,
+          current_class_id: selectedClassId,
+          status: studentStatusFilter,
+        };
 
-        if (totalStudentsInClass === 0) {
-          resultMessage = 'No students found in this class';
-        } else {
-          // Get all subjects for this class
-          classSubjects = await this.prisma.subject.findMany({
-            where: {
-              schoolId: user.school_id,
-              academic_session_id: selectedSessionId,
-              classId: selectedClassId,
+        if (searchTrim) {
+          studentWhere.OR = [
+            {
+              user: {
+                first_name: {
+                  contains: searchTrim,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
             },
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              color: true,
-              description: true,
+            {
+              user: {
+                last_name: {
+                  contains: searchTrim,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
             },
-            orderBy: {
-              name: 'asc',
+            {
+              student_id: {
+                contains: searchTrim,
+                mode: Prisma.QueryMode.insensitive,
+              },
             },
-          });
+            {
+              admission_number: {
+                contains: searchTrim,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+          ];
+        }
 
-          this.logger.log(
-            colors.cyan(`📊 Class subjects: ${classSubjects.length}`),
-          );
+        const [studentCount, studentsPage] = await Promise.all([
+          this.prisma.student.count({ where: studentWhere }),
+          this.prisma.student.findMany({
+            where: studentWhere,
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  first_name: true,
+                  last_name: true,
+                  email: true,
+                  display_picture: true,
+                },
+              },
+            },
+            orderBy: [{ user: { last_name: 'asc' } }, { user: { first_name: 'asc' } }],
+            skip,
+            take: limitNum,
+          }),
+        ]);
 
-          if (classSubjects.length === 0) {
-            resultMessage = 'No subjects found for this class';
-          } else {
-            const studentUserIds = allStudentsInClass.map((s) => s.user_id);
+        totalStudentsInClass = studentCount;
 
-            // Get all released assessments (status CLOSED) for all subjects in this class
-            const allReleasedAssessments =
-              await this.prisma.assessment.findMany({
+        if (classSubjects.length === 0) {
+          resultMessage = 'No subjects found for this class';
+        } else if (studentCount === 0) {
+          resultMessage = searchTrim
+            ? 'No students match your search'
+            : 'No students found in this class';
+        }
+
+        const subjectIds = classSubjects.map((s) => s.id);
+        const allAssessments =
+          subjectIds.length === 0
+            ? []
+            : await this.prisma.assessment.findMany({
                 where: {
                   school_id: user.school_id,
                   academic_session_id: selectedSessionId,
-                  subject_id: {
-                    in: classSubjects.map((s) => s.id),
-                  },
-                  assessment_type: {
-                    in: ['CBT', 'EXAM'],
-                  },
-                  status: 'CLOSED',
-                  is_result_released: true,
+                  subject_id: { in: subjectIds },
+                  assessment_type: { in: ['CBT', 'EXAM'] },
+                  status: { in: ['PUBLISHED', 'ACTIVE', 'CLOSED'] },
                 },
                 select: {
                   id: true,
@@ -1772,256 +1881,225 @@ export class DirectorResultService {
                   assessment_type: true,
                   total_points: true,
                   subject_id: true,
+                  order: true,
                   createdAt: true,
                 },
-                orderBy: [
-                  { subject_id: 'asc' },
-                  { assessment_type: 'asc' },
-                  { createdAt: 'asc' },
-                ],
               });
 
-            this.logger.log(
-              colors.cyan(
-                `📊 Released assessments: ${allReleasedAssessments.length}`,
-              ),
+        subjectsWithAssessments = classSubjects.map((sub) => {
+          const forSub = allAssessments.filter((a) => a.subject_id === sub.id);
+          const cbts = forSub
+            .filter((a) => a.assessment_type === 'CBT')
+            .sort(
+              (a, b) =>
+                a.order - b.order ||
+                a.createdAt.getTime() - b.createdAt.getTime(),
+            );
+          const exams = forSub
+            .filter((a) => a.assessment_type === 'EXAM')
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+          const ordered = [...cbts, ...exams];
+          return {
+            ...sub,
+            assessments: ordered.map((a) => ({
+              id: a.id,
+              title: a.title,
+              assessment_type: a.assessment_type,
+              order: a.order,
+              total_points: a.total_points,
+            })),
+          };
+        });
+
+        const assessmentIds = allAssessments.map((a) => a.id);
+        const pageUserIds = studentsPage.map((s) => s.user_id);
+
+        let allAttempts: Array<{
+          assessment_id: string;
+          student_id: string;
+          total_score: number;
+          submitted_at: Date | null;
+        }> = [];
+
+        if (assessmentIds.length > 0 && pageUserIds.length > 0) {
+          const rawAttempts = await this.prisma.assessmentAttempt.findMany({
+            where: {
+              school_id: user.school_id,
+              academic_session_id: selectedSessionId,
+              assessment_id: { in: assessmentIds },
+              student_id: { in: pageUserIds },
+              status: { in: ['SUBMITTED', 'GRADED'] },
+            },
+            select: {
+              assessment_id: true,
+              student_id: true,
+              total_score: true,
+              submitted_at: true,
+            },
+            orderBy: [{ total_score: 'desc' }, { submitted_at: 'desc' }],
+          });
+
+          const best = new Map<string, (typeof rawAttempts)[0]>();
+          for (const att of rawAttempts) {
+            const key = `${att.student_id}:${att.assessment_id}`;
+            const prev = best.get(key);
+            if (
+              !prev ||
+              att.total_score > prev.total_score ||
+              (att.total_score === prev.total_score &&
+                (att.submitted_at?.getTime() ?? 0) >
+                  (prev.submitted_at?.getTime() ?? 0))
+            ) {
+              best.set(key, att);
+            }
+          }
+          allAttempts = Array.from(best.values());
+        }
+
+        const attemptByUserAndAssessment = new Map<string, Map<string, number>>();
+        for (const att of allAttempts) {
+          if (!attemptByUserAndAssessment.has(att.student_id)) {
+            attemptByUserAndAssessment.set(att.student_id, new Map());
+          }
+          attemptByUserAndAssessment
+            .get(att.student_id)!
+            .set(att.assessment_id, att.total_score);
+        }
+
+        results = studentsPage.map((student) => {
+          const userAttempts =
+            attemptByUserAndAssessment.get(student.user_id) ?? new Map();
+          const subjectScores: Record<string, any> = {};
+          let totalObtained = 0;
+          let totalObtainable = 0;
+
+          for (const sub of subjectsWithAssessments) {
+            const cbts = allAssessments.filter(
+              (a) => a.subject_id === sub.id && a.assessment_type === 'CBT',
+            );
+            const exams = allAssessments.filter(
+              (a) => a.subject_id === sub.id && a.assessment_type === 'EXAM',
+            );
+            const cbtsSorted = [...cbts].sort(
+              (a, b) =>
+                a.order - b.order ||
+                a.createdAt.getTime() - b.createdAt.getTime(),
+            );
+            const examsSorted = [...exams].sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
             );
 
-            // Check which students have results released by admin for this session
-            const releasedResults = await this.prisma.result.findMany({
-              where: {
-                school_id: user.school_id,
-                academic_session_id: selectedSessionId,
-                student_id: {
-                  in: allStudentsInClass.map((s) => s.id),
-                },
-                released_by_school_admin: true,
-              },
-              select: {
-                student_id: true,
-              },
-            });
-
-            // Create a map of student IDs that have released results
-            const releasedStudentIds = new Set(
-              releasedResults.map((r) => r.student_id),
-            );
-
-            // Get all assessment attempts for these assessments
-            const allAttempts = await this.prisma.assessmentAttempt.findMany({
-              where: {
-                school_id: user.school_id,
-                academic_session_id: selectedSessionId,
-                assessment_id: {
-                  in: allReleasedAssessments.map((a) => a.id),
-                },
-                student_id: {
-                  in: studentUserIds,
-                },
-                status: {
-                  in: ['SUBMITTED', 'GRADED'],
-                },
-              },
-              select: {
-                id: true,
-                assessment_id: true,
-                student_id: true,
-                total_score: true,
-                max_score: true,
-                percentage: true,
-                submitted_at: true,
-                assessment: {
-                  select: {
-                    subject_id: true,
-                  },
-                },
-              },
-              orderBy: [{ total_score: 'desc' }, { submitted_at: 'desc' }],
-            });
-
-            // Create a map: student_id -> subject_id -> assessment_id -> best attempt
-            const attemptsMap = new Map<
-              string,
-              Map<string, Map<string, any>>
-            >();
-            allAttempts.forEach((attempt) => {
-              if (!attemptsMap.has(attempt.student_id)) {
-                attemptsMap.set(attempt.student_id, new Map());
-              }
-              const studentAttempts = attemptsMap.get(attempt.student_id)!;
-              const subjectId = attempt.assessment.subject_id;
-
-              if (!studentAttempts.has(subjectId)) {
-                studentAttempts.set(subjectId, new Map());
-              }
-              const subjectAttempts = studentAttempts.get(subjectId)!;
-
-              // Keep only the best attempt for each assessment
-              if (
-                !subjectAttempts.has(attempt.assessment_id) ||
-                subjectAttempts.get(attempt.assessment_id)!.total_score <
-                  attempt.total_score
-              ) {
-                subjectAttempts.set(attempt.assessment_id, attempt);
-              }
-            });
-
-            // Helper: A 80-100, B 70-79.9, C 60-69.9, D 50-59.9, E 40-49.9, F <40
-            const calculateGrade = (percentage: number): string => {
-              if (percentage >= 80) return 'A';
-              if (percentage >= 70) return 'B';
-              if (percentage >= 60) return 'C';
-              if (percentage >= 50) return 'D';
-              if (percentage >= 40) return 'E';
-              return 'F';
-            };
-
-            // Build results table - calculate score for each subject
-            const studentResults = allStudentsInClass.map((student) => {
-              const studentAttempts =
-                attemptsMap.get(student.user_id) || new Map();
-              const subjectScores: any = {};
-              let totalObtained = 0;
-              let totalObtainable = 0;
-
-              // Calculate score for each subject
-              classSubjects.forEach((subject) => {
-                const subjectAttempts =
-                  studentAttempts.get(subject.id) || new Map();
-
-                // Get all assessments for this subject
-                const subjectAssessments = allReleasedAssessments.filter(
-                  (a) => a.subject_id === subject.id,
-                );
-                const cbtAssessments = subjectAssessments.filter(
-                  (a) => a.assessment_type === 'CBT',
-                );
-                const examAssessments = subjectAssessments.filter(
-                  (a) => a.assessment_type === 'EXAM',
-                );
-
-                // Check if any assessments exist for this subject
-                const hasAssessments = subjectAssessments.length > 0;
-
-                // Calculate CBT total
-                let cbtObtained = 0;
-                let cbtObtainable = 0;
-                cbtAssessments.forEach((cbt) => {
-                  const attempt = subjectAttempts.get(cbt.id);
-                  cbtObtained += attempt ? attempt.total_score : 0;
-                  cbtObtainable += cbt.total_points;
-                });
-
-                // Calculate Exam total
-                let examObtained = 0;
-                let examObtainable = 0;
-                if (examAssessments.length > 0) {
-                  const exam = examAssessments[0]; // Only one exam per term
-                  const attempt = subjectAttempts.get(exam.id);
-                  examObtained = attempt ? attempt.total_score : 0;
-                  examObtainable = exam.total_points;
-                }
-
-                const subjectObtained = cbtObtained + examObtained;
-                const subjectObtainable = cbtObtainable + examObtainable;
-
-                // If no assessments exist for this subject, mark as not available
-                const isAvailable = hasAssessments;
-                const subjectPercentage =
-                  subjectObtainable > 0
-                    ? (subjectObtained / subjectObtainable) * 100
-                    : 0;
-
-                subjectScores[subject.id] = {
-                  subjectId: subject.id,
-                  subjectName: subject.name,
-                  subjectCode: subject.code,
-                  obtained: isAvailable ? subjectObtained : null,
-                  obtainable: isAvailable ? subjectObtainable : null,
-                  percentage: isAvailable ? subjectPercentage : null,
-                  grade: isAvailable ? calculateGrade(subjectPercentage) : null,
-                  isAvailable: isAvailable, // Flag to indicate if assessments exist
-                };
-
-                // Only add to totals if assessments exist for this subject
-                if (isAvailable) {
-                  totalObtained += subjectObtained;
-                  totalObtainable += subjectObtainable;
-                }
-              });
-
-              const overallPercentage =
-                totalObtainable > 0
-                  ? (totalObtained / totalObtainable) * 100
-                  : 0;
-
-              // Check if results are released for this student
-              const isReleased = releasedStudentIds.has(student.id);
-
+            const caAssessments = cbtsSorted.map((cbt) => {
+              const obtained = userAttempts.has(cbt.id)
+                ? userAttempts.get(cbt.id)!
+                : null;
               return {
-                student: {
-                  id: student.id,
-                  userId: student.user_id,
-                  studentNumber: student.student_id,
-                  firstName: student.user.first_name,
-                  lastName: student.user.last_name,
-                  email: student.user.email,
-                  displayPicture: student.user.display_picture,
-                },
-                subjectScores: subjectScores,
-                totalObtained: totalObtained,
-                totalObtainable: totalObtainable,
-                percentage: overallPercentage,
-                grade: calculateGrade(overallPercentage),
-                position: 0, // Will be calculated after sorting
-                isReleased: isReleased, // Indicates if results are released by admin for this term
+                assessmentId: cbt.id,
+                title: cbt.title,
+                order: cbt.order,
+                obtained,
+                max: cbt.total_points,
               };
             });
 
-            // Sort by total obtained (descending) to calculate positions
-            studentResults.sort((a, b) => b.totalObtained - a.totalObtained);
-
-            // Assign positions
-            studentResults.forEach((result, index) => {
-              result.position = index + 1;
+            const examAssessments = examsSorted.map((ex) => {
+              const obtained = userAttempts.has(ex.id)
+                ? userAttempts.get(ex.id)!
+                : null;
+              return {
+                assessmentId: ex.id,
+                title: ex.title,
+                obtained,
+                max: ex.total_points,
+              };
             });
 
-            // Apply pagination
-            totalResults = studentResults.length;
-            const paginatedResults = studentResults.slice(
-              skip,
-              skip + limitNum,
-            );
+            let caTotalObtained = 0;
+            let caTotalMax = 0;
+            for (const row of caAssessments) {
+              caTotalMax += row.max;
+              caTotalObtained += row.obtained ?? 0;
+            }
+            let examTotalObtained = 0;
+            let examTotalMax = 0;
+            for (const row of examAssessments) {
+              examTotalMax += row.max;
+              examTotalObtained += row.obtained ?? 0;
+            }
 
-            results = paginatedResults;
-            hasResults = true;
+            const subjectObtained = caTotalObtained + examTotalObtained;
+            const subjectMax = caTotalMax + examTotalMax;
+            const hasAnyAssessment = cbtsSorted.length + examsSorted.length > 0;
+            const subjectPercentage =
+              subjectMax > 0 ? (subjectObtained / subjectMax) * 100 : 0;
+
+            subjectScores[sub.id] = {
+              subjectId: sub.id,
+              subjectName: sub.name,
+              subjectCode: sub.code,
+              caAssessments,
+              exams: examAssessments,
+              caTotalObtained,
+              caTotalMax,
+              examTotalObtained,
+              examTotalMax,
+              subjectTotalObtained: subjectObtained,
+              subjectTotalMax: subjectMax,
+              percentage: hasAnyAssessment ? subjectPercentage : null,
+              grade: hasAnyAssessment
+                ? gradeFromMinThresholds(subjectPercentage, gradeBands)
+                : null,
+              hasAssessments: hasAnyAssessment,
+            };
+
+            if (hasAnyAssessment && subjectMax > 0) {
+              totalObtained += subjectObtained;
+              totalObtainable += subjectMax;
+            }
           }
-        }
-      } else {
-        if (!selectedClassId) {
-          resultMessage = 'Please select a class to view results';
-        } else {
-          resultMessage = 'No result released for this term';
-        }
+
+          const overallPercentage =
+            totalObtainable > 0 ? (totalObtained / totalObtainable) * 100 : 0;
+
+          return {
+            student: {
+              id: student.id,
+              userId: student.user_id,
+              studentNumber: student.student_id,
+              firstName: student.user.first_name,
+              lastName: student.user.last_name,
+              email: student.user.email,
+              displayPicture: student.user.display_picture,
+            },
+            subjectScores,
+            totalObtained,
+            totalObtainable,
+            percentage: overallPercentage,
+            grade: gradeFromMinThresholds(overallPercentage, gradeBands),
+          };
+        });
+
+        totalResults = studentCount;
       }
 
-      const totalPages = Math.ceil(totalResults / limitNum);
+      const totalPages =
+        limitNum > 0 ? Math.ceil(totalResults / limitNum) : 0;
 
-      // Prepare response data
       const responseData = {
-        academic_sessions: allSessions,
-        current_session: currentSession
+        academic_sessions: academicSessions,
+        current_session: defaultSession
           ? {
-              id: currentSession.id,
-              academic_year: currentSession.academic_year,
-              term: currentSession.term,
-              status: currentSession.status,
-              is_current: currentSession.is_current,
+              id: defaultSession.id,
+              academic_year: defaultSession.academic_year,
+              term: defaultSession.term,
+              status: defaultSession.status,
+              is_current: defaultSession.is_current,
             }
           : null,
         classes: classes.map((cls) => ({
           id: cls.id,
           name: cls.name,
+          display_order: cls.display_order,
           classTeacher: cls.classTeacher
             ? {
                 id: cls.classTeacher.id,
@@ -2033,83 +2111,45 @@ export class DirectorResultService {
           student_count: cls._count.students,
           subject_count: cls._count.subjects,
         })),
-        subjects: classSubjects.length > 0 ? classSubjects : subjects,
+        subjects:
+          subjectsWithAssessments.length > 0 ? subjectsWithAssessments : [],
         selected_filters: {
           sessionId: selectedSessionId,
           classId: selectedClassId,
-          subjectId: null, // No default subject selection
+          search: searchTrim || null,
+          studentStatus: studentStatusFilter,
         },
         total_students_in_class: totalStudentsInClass,
-        results: hasResults ? results : null,
+        results,
         result_message: resultMessage,
-        pagination: hasResults
-          ? {
-              page: pageNum,
-              limit: limitNum,
-              total: totalResults,
-              totalPages,
-              hasNext: pageNum < totalPages,
-              hasPrev: pageNum > 1,
-            }
-          : null,
+        pagination:
+          selectedSessionId && selectedClassId
+            ? {
+                page: pageNum,
+                limit: limitNum,
+                total: totalResults,
+                totalPages,
+                hasNext: pageNum < totalPages,
+                hasPrev: pageNum > 1,
+              }
+            : null,
       };
 
-      // Log what's being sent to frontend
-      this.logger.log(colors.cyan(`📤 Sending to frontend:`));
-      this.logger.log(
-        colors.cyan(`   - Class subjects: ${classSubjects.length}`),
-      );
-      this.logger.log(
-        colors.cyan(`   - Total students in class: ${totalStudentsInClass}`),
-      );
-      this.logger.log(
-        colors.cyan(`   - Results count: ${results ? results.length : 0}`),
-      );
-      if (results && results.length > 0) {
-        this.logger.log(
-          colors.cyan(
-            `   - First result student: ${results[0].student.firstName} ${results[0].student.lastName}`,
-          ),
-        );
-        this.logger.log(
-          colors.cyan(
-            `   - First result subjects with scores: ${Object.keys(results[0].subjectScores || {}).length}`,
-          ),
-        );
-        this.logger.log(
-          colors.cyan(
-            `   - First result total obtained: ${results[0].totalObtained}`,
-          ),
-        );
-        this.logger.log(
-          colors.cyan(
-            `   - First result total obtainable: ${results[0].totalObtainable}`,
-          ),
-        );
-        this.logger.log(
-          colors.cyan(`   - First result grade: ${results[0].grade}`),
-        );
-        this.logger.log(
-          colors.cyan(`   - First result position: ${results[0].position}`),
-        );
-      }
-      this.logger.log(
-        colors.cyan(`   - Result message: ${resultMessage || 'None'}`),
-      );
-      this.logger.log(
-        colors.green(`✅ Results dashboard retrieved successfully`),
-      );
+      this.logger.log(colors.cyan(`📤 Results dashboard: ${results.length} rows`));
+      this.logger.log(colors.green(`✅ Results dashboard retrieved successfully`));
 
       return ResponseHelper.success(
         'Results dashboard retrieved successfully',
         responseData,
       );
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
-        colors.red(`❌ Error getting results dashboard: ${error.message}`),
+        colors.red(
+          `❌ Error getting results dashboard: ${error?.message ?? error}`,
+        ),
       );
       return ResponseHelper.error(
-        `Failed to retrieve results dashboard: ${error.message}`,
+        `Failed to retrieve results dashboard: ${error?.message ?? 'Unknown error'}`,
         null,
         500,
       );

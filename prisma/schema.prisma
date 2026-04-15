@@ -125,6 +125,7 @@ model School {
   schoolResourceExclusions     SchoolResourceExclusion[]
   teacherResourceExclusions    TeacherResourceExclusion[]
   auditLogs                    AuditLog[]
+  schoolGradeScale             SchoolGradeScale?
   // Finance relations
   fees                         Fee[]
   studentFeeRecords            StudentFeeRecord[]
@@ -135,6 +136,19 @@ model School {
   feeLatePenalties             FeeLatePenalty[]
   refundRequests               RefundRequest[]
   expenses                     Expense[]
+}
+
+/// Per-school letter-grade thresholds (min % inclusive). Highest threshold matches first (same rules as legacy defaults).
+model SchoolGradeScale {
+  id        String   @id @default(cuid())
+  school_id String   @unique
+  school    School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  /// JSON: { label: string, minInclusive: number }[]
+  bands     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("school_grade_scales")
 }
 
 model Document {
