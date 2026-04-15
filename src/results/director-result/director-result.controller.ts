@@ -15,6 +15,10 @@ import { JwtGuard } from '../../school/auth/guard/jwt.guard';
 import { GetUser } from '../../school/auth/decorator/get-user-decorator';
 import { ReleaseResultsForStudentsDto } from './dto/release-results.dto';
 import {
+  ComputeResultsForStudentsDto,
+  ReverseComputationBatchDto,
+} from './dto/compute-results.dto';
+import {
   DocReleaseWholeSchool,
   DocReleaseStudent,
   DocReleaseClass,
@@ -23,6 +27,9 @@ import {
   DocUnreleaseStudent,
   DocUnreleaseStudents,
   DocUnreleaseClass,
+  DocComputeStudents,
+  DocComputeClass,
+  DocReverseComputationBatch,
   DocGetResultsDashboard,
   DocFetchResultDashboardAlias,
 } from './docs';
@@ -146,6 +153,51 @@ export class DirectorResultController {
       user.sub,
       classId,
       sessionId,
+    );
+  }
+
+  @Post('compute/students')
+  @HttpCode(HttpStatus.OK)
+  @DocComputeStudents()
+  async computeResultsForStudents(
+    @GetUser() user: any,
+    @Body() dto: ComputeResultsForStudentsDto,
+  ) {
+    return this.directorResultService.computeResultsForStudents(
+      user.school_id,
+      user.sub,
+      dto.studentIds,
+      dto.sessionId,
+    );
+  }
+
+  @Post('compute/class/:classId')
+  @HttpCode(HttpStatus.OK)
+  @DocComputeClass()
+  async computeResultsForClass(
+    @GetUser() user: any,
+    @Param('classId') classId: string,
+    @Query('session_id') sessionId?: string,
+  ) {
+    return this.directorResultService.computeResultsForClass(
+      user.school_id,
+      user.sub,
+      classId,
+      sessionId,
+    );
+  }
+
+  @Post('compute/reverse')
+  @HttpCode(HttpStatus.OK)
+  @DocReverseComputationBatch()
+  async reverseComputationBatch(
+    @GetUser() user: any,
+    @Body() dto: ReverseComputationBatchDto,
+  ) {
+    return this.directorResultService.reverseComputationBatch(
+      user.school_id,
+      user.sub,
+      dto.batchId,
     );
   }
 

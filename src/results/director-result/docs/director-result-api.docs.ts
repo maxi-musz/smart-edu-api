@@ -7,6 +7,10 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { ReleaseResultsForStudentsDto } from '../dto/release-results.dto';
+import {
+  ComputeResultsForStudentsDto,
+  ReverseComputationBatchDto,
+} from '../dto/compute-results.dto';
 
 const sessionIdQuery = ApiQuery({
   name: 'session_id',
@@ -25,11 +29,11 @@ export function DocReleaseWholeSchool() {
   return applyDecorators(
     ApiOperation({
       summary:
-        'Release results for all students in current session (WHOLE SCHOOL)',
+        'Publish results for all students in current session (WHOLE SCHOOL)',
       description:
-        'Collates all CA and Exam scores for all students in the school and creates Result records. This is a batch operation that processes students in batches to avoid system overload.',
+        'Sets visibility so students can see their stored results. Requires computed `Result` rows (use compute endpoints first). Does not recalculate scores.',
     }),
-    ApiResponse({ status: 200, description: 'Results released successfully' }),
+    ApiResponse({ status: 200, description: 'Results published successfully' }),
     unauthorized,
     forbiddenDirector,
     ApiResponse({
@@ -43,9 +47,9 @@ export function DocReleaseWholeSchool() {
 export function DocReleaseStudent() {
   return applyDecorators(
     ApiOperation({
-      summary: 'Release results for a single student',
+      summary: 'Publish results for a single student',
       description:
-        'Collates all CA and Exam scores for a specific student and creates/updates their Result record. Only results released by school admin can be viewed by students.',
+        'Makes an existing computed result visible to the student. Does not recalculate scores.',
     }),
     ApiParam({ name: 'studentId', description: 'Student ID' }),
     sessionIdQuery,
@@ -63,9 +67,9 @@ export function DocReleaseStudent() {
 export function DocReleaseClass() {
   return applyDecorators(
     ApiOperation({
-      summary: 'Release results for all students in a specific class',
+      summary: 'Publish results for all students in a class',
       description:
-        'Collates all CA and Exam scores for all students in a class and creates/updates their Result records. Only results released by school admin can be viewed by students.',
+        'Publishes visibility for students in the class who already have computed results. Does not recalculate scores.',
     }),
     ApiParam({ name: 'classId', description: 'Class ID' }),
     sessionIdQuery,
@@ -83,9 +87,9 @@ export function DocReleaseClass() {
 export function DocReleaseStudents() {
   return applyDecorators(
     ApiOperation({
-      summary: 'Release results for multiple students by their IDs',
+      summary: 'Publish results for multiple students',
       description:
-        'Collates all CA and Exam scores for specified students and creates/updates their Result records. Accepts an array of student IDs in the request body. Only results released by school admin can be viewed by students.',
+        'Sets visibility for students who already have computed `Result` rows. Body: student IDs + optional session.',
     }),
     ApiBody({ type: ReleaseResultsForStudentsDto }),
     ApiResponse({
@@ -269,5 +273,70 @@ export function DocFetchResultDashboardAlias() {
       status: 200,
       description: 'Results dashboard retrieved successfully',
     }),
+  );
+}
+
+/** POST /director/results/compute/students */
+export function DocComputeStudents() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'Compute results for one or more students',
+      description:
+        'Collates released assessment attempts into `Result` rows (not visible to students until publish). Returns a `batch_id` for reversal.',
+    }),
+    ApiBody({ type: ComputeResultsForStudentsDto }),
+    ApiResponse({
+      status: 200,
+      description: 'Computation finished (see errors count in payload)',
+    }),
+    ApiResponse({
+      status: 400,
+      description: 'No released assessments or invalid session',
+    }),
+    unauthorized,
+    forbiddenDirector,
+    ApiResponse({ status: 404, description: 'No matching students' }),
+  );
+}
+
+/** POST /director/results/compute/class/:classId */
+export function DocComputeClass() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'Compute results for all students in a class',
+      description:
+        'Same as compute/students but for every active student in the class. Returns `batch_id`.',
+    }),
+    ApiParam({ name: 'classId', description: 'Class ID' }),
+    sessionIdQuery,
+    ApiResponse({ status: 200, description: 'Computation finished' }),
+    ApiResponse({
+      status: 400,
+      description: 'No released assessments',
+    }),
+    unauthorized,
+    forbiddenDirector,
+    ApiResponse({ status: 404, description: 'No students in class' }),
+  );
+}
+
+/** POST /director/results/compute/reverse */
+export function DocReverseComputationBatch() {
+  return applyDecorators(
+    ApiOperation({
+      summary: 'Reverse a computation batch',
+      description:
+        'Deletes `Result` rows tied to the batch if none are published. Unpublish first if needed.',
+    }),
+    ApiBody({ type: ReverseComputationBatchDto }),
+    ApiResponse({ status: 200, description: 'Batch reversed' }),
+    ApiResponse({ status: 400, description: 'Already reversed' }),
+    ApiResponse({ status: 404, description: 'Batch not found' }),
+    ApiResponse({
+      status: 409,
+      description: 'Conflict — some results are still published',
+    }),
+    unauthorized,
+    forbiddenDirector,
   );
 }

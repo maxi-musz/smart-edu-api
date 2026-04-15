@@ -7,6 +7,9 @@ export {
   DocUnreleaseStudent,
   DocUnreleaseStudents,
   DocUnreleaseClass,
+  DocComputeStudents,
+  DocComputeClass,
+  DocReverseComputationBatch,
   DocGetResultsDashboard,
   DocFetchResultDashboardAlias,
 } from './director-result-api.docs';

@@ -7,47 +7,48 @@ datasource db {
 }
 
 model AcademicSession {
-  id                    String                 @id @default(cuid())
-  school_id             String
-  academic_year         String
-  start_year            Int
-  end_year              Int
-  term                  AcademicTerm
-  start_date            DateTime
-  end_date              DateTime
-  status                AcademicSessionStatus  @default(active)
-  is_current            Boolean                @default(false)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  school                School                 @relation(fields: [school_id], references: [id])
-  achievements          Achievement[]
-  assessments           Assessment[]
-  assessmentAttempts    AssessmentAttempt[]
-  assessmentSubmissions AssessmentSubmission[]
-  assignments           Assignment[]
-  assignmentGrades      AssignmentGrade[]
-  assignmentSubmissions AssignmentSubmission[]
-  attendanceRecords     AttendanceRecord[]
-  attendanceSessions    AttendanceSession[]
-  attendanceSettings    AttendanceSettings[]
-  attendanceSummaries   AttendanceSummary[]
-  gradingRubrics        GradingRubric[]
-  notifications         Notification[]
-  payments              Payment[]
-  students              Student[]
-  studentGraduations    StudentGraduation[]
-  performances          StudentPerformance[]
-  subjects              Subject[]
-  teachers              Teacher[]
-  schedules             TimetableEntry[]
-  topics                Topic[]
-  results               Result[]
-  fees                  Fee[]
-  studentFeeRecords     StudentFeeRecord[]
-  feePayments           FeePayment[]
-  scholarships          Scholarship[]
-  feeWaivers            FeeWaiver[]
-  expenses              Expense[]
+  id                       String                   @id @default(cuid())
+  school_id                String
+  academic_year            String
+  start_year               Int
+  end_year                 Int
+  term                     AcademicTerm
+  start_date               DateTime
+  end_date                 DateTime
+  status                   AcademicSessionStatus    @default(active)
+  is_current               Boolean                  @default(false)
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  school                   School                   @relation(fields: [school_id], references: [id])
+  achievements             Achievement[]
+  assessments              Assessment[]
+  assessmentAttempts       AssessmentAttempt[]
+  assessmentSubmissions    AssessmentSubmission[]
+  assignments              Assignment[]
+  assignmentGrades         AssignmentGrade[]
+  assignmentSubmissions    AssignmentSubmission[]
+  attendanceRecords        AttendanceRecord[]
+  attendanceSessions       AttendanceSession[]
+  attendanceSettings       AttendanceSettings[]
+  attendanceSummaries      AttendanceSummary[]
+  gradingRubrics           GradingRubric[]
+  notifications            Notification[]
+  payments                 Payment[]
+  students                 Student[]
+  studentGraduations       StudentGraduation[]
+  performances             StudentPerformance[]
+  subjects                 Subject[]
+  teachers                 Teacher[]
+  schedules                TimetableEntry[]
+  topics                   Topic[]
+  results                  Result[]
+  fees                     Fee[]
+  studentFeeRecords        StudentFeeRecord[]
+  feePayments              FeePayment[]
+  scholarships             Scholarship[]
+  feeWaivers               FeeWaiver[]
+  expenses                 Expense[]
+  resultComputationBatches ResultComputationBatch[]
 
   @@unique([school_id, academic_year, term])
   @@index([school_id, is_current])
@@ -136,6 +137,7 @@ model School {
   feeLatePenalties             FeeLatePenalty[]
   refundRequests               RefundRequest[]
   expenses                     Expense[]
+  resultComputationBatches     ResultComputationBatch[]
 }
 
 /// Per-school letter-grade thresholds (min % inclusive). Highest threshold matches first (same rules as legacy defaults).
@@ -228,6 +230,8 @@ model User {
   userSettings                          UserSettings?
   videoContent                          VideoContent[]
   resultsReleased                       Result[]                                 @relation("ResultReleasedBy")
+  resultBatchesCreated                  ResultComputationBatch[]                 @relation("ResultBatchCreatedBy")
+  resultBatchesReversed                 ResultComputationBatch[]                 @relation("ResultBatchReversedBy")
   libraryComments                       LibraryComment[]
   generalMaterialPurchases              LibraryGeneralMaterialPurchase[]
   generalMaterialChatConversations      LibraryGeneralMaterialChatConversation[]
@@ -405,6 +409,7 @@ model Class {
   teacherResourceExclusions TeacherResourceExclusion[]
   feeAssignments            FeeClassAssignment[]
   studentFeeRecords         StudentFeeRecord[]
+  resultComputationBatches  ResultComputationBatch[]
 
   @@unique([schoolId, name])
   @@index([schoolId, display_order])
@@ -1178,8 +1183,43 @@ model StudentPerformance {
   student             User            @relation("StudentPerformance", fields: [student_id], references: [id])
 }
 
+enum ResultComputationScope {
+  STUDENTS
+  CLASS
+}
+
+enum ResultComputationBatchStatus {
+  ACTIVE
+  REVERSED
+}
+
+/// Audit trail for compute (not release) operations; reverse deletes linked Result rows when unpublished.
+model ResultComputationBatch {
+  id                  String                       @id @default(cuid())
+  school_id           String
+  academic_session_id String
+  scope               ResultComputationScope
+  class_id            String?
+  status              ResultComputationBatchStatus @default(ACTIVE)
+  created_by_user_id  String
+  reversed_at         DateTime?
+  reversed_by_user_id String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  school              School                       @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  academicSession     AcademicSession              @relation(fields: [academic_session_id], references: [id], onDelete: Cascade)
+  class               Class?                       @relation(fields: [class_id], references: [id], onDelete: SetNull)
+  createdBy           User                         @relation("ResultBatchCreatedBy", fields: [created_by_user_id], references: [id])
+  reversedBy          User?                        @relation("ResultBatchReversedBy", fields: [reversed_by_user_id], references: [id])
+  results             Result[]
+
+  @@index([school_id, academic_session_id])
+  @@index([status])
+  @@map("result_computation_batches")
+}
+
 model Result {
-  id                       String          @id @default(cuid())
+  id                       String                  @id @default(cuid())
   school_id                String
   academic_session_id      String
   student_id               String
@@ -1188,32 +1228,61 @@ model Result {
   // Structure: [{ subject_id, subject_code, subject_name, ca_score, exam_score, total_score, total_max_score, percentage, grade }]
   subject_results          Json
   // Overall statistics
-  total_ca_score           Float           @default(0)
-  total_exam_score         Float           @default(0)
-  total_score              Float           @default(0)
-  total_max_score          Float           @default(0)
-  overall_percentage       Float           @default(0)
+  total_ca_score           Float                   @default(0)
+  total_exam_score         Float                   @default(0)
+  total_score              Float                   @default(0)
+  total_max_score          Float                   @default(0)
+  overall_percentage       Float                   @default(0)
   overall_grade            String?
   class_position           Int?
   total_students           Int?
   // Metadata
   released_by              String? // User ID who released the results
-  released_at              DateTime        @default(now())
-  is_final                 Boolean         @default(true)
-  released_by_school_admin Boolean         @default(false) // True if released by school director/admin
-  createdAt                DateTime        @default(now())
-  updatedAt                DateTime        @updatedAt
-  academicSession          AcademicSession @relation(fields: [academic_session_id], references: [id])
-  school                   School          @relation(fields: [school_id], references: [id])
-  student                  Student         @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  class                    Class?          @relation(fields: [class_id], references: [id])
-  releasedBy               User?           @relation("ResultReleasedBy", fields: [released_by], references: [id])
+  released_at              DateTime                @default(now())
+  is_final                 Boolean                 @default(true)
+  released_by_school_admin Boolean                 @default(false) // True if released by school director/admin
+  computation_batch_id     String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  academicSession          AcademicSession         @relation(fields: [academic_session_id], references: [id])
+  school                   School                  @relation(fields: [school_id], references: [id])
+  student                  Student                 @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  class                    Class?                  @relation(fields: [class_id], references: [id])
+  releasedBy               User?                   @relation("ResultReleasedBy", fields: [released_by], references: [id])
+  computationBatch         ResultComputationBatch? @relation(fields: [computation_batch_id], references: [id], onDelete: SetNull)
+  subjectLines             ResultSubjectLine[]
 
   @@unique([academic_session_id, student_id])
   @@index([school_id, academic_session_id])
   @@index([student_id])
   @@index([class_id])
   @@index([released_at])
+  @@index([computation_batch_id])
+}
+
+/// Denormalized per-subject lines for analytics (populated when results are computed).
+model ResultSubjectLine {
+  id                  String   @id @default(cuid())
+  result_id           String
+  school_id           String
+  academic_session_id String
+  student_id          String
+  subject_id          String
+  ca_score            Float    @default(0)
+  exam_score          Float    @default(0)
+  total_score         Float    @default(0)
+  total_max_score     Float    @default(0)
+  percentage          Float    @default(0)
+  grade               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  result              Result   @relation(fields: [result_id], references: [id], onDelete: Cascade)
+
+  @@unique([result_id, subject_id])
+  @@index([school_id, academic_session_id])
+  @@index([student_id, academic_session_id])
+  @@index([subject_id, academic_session_id])
+  @@map("result_subject_lines")
 }
 
 model Organisation {

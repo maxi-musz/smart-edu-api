@@ -1,17 +1,83 @@
 # Director Results API Documentation
 
 ## Overview
-This API provides endpoints for school directors to release and view student results. Directors can release results for individual students, specific classes, or the entire school. Results are displayed in a comprehensive table format showing all subjects as columns, with each student's scores, totals, grade, and position.
+This API lets school directors **compute** session results from released assessments, **publish** them so students can see them, and **reverse** a computation batch when appropriate. Directors can also view results in a dashboard table (subjects as columns, scores, totals, grade, and position).
+
+Typical flow: **compute** → review (director dashboard) → **publish** (`release` endpoints). Publishing only flips visibility flags on existing `Result` rows; it does not recompute scores.
+
+---
+
+## Compute, publish, and reverse
+
+| Step | Meaning |
+|------|---------|
+| **Compute** | Collates released assessment attempts into `Result` rows for the session. Rows are stored with `released_by_school_admin: false` (not visible to students). Each successful run creates a **`ResultComputationBatch`** and sets `Result.computation_batch_id`. Per-subject rows are written to **`ResultSubjectLine`** for SQL-friendly analytics. |
+| **Publish** | The `release` endpoints set `released_by_school_admin` (and metadata) on rows that **already exist**. If there is nothing to update, the API indicates that results must be computed first. |
+| **Unpublish** | The `unrelease` endpoints clear the publish flag; snapshot data remains unless you reverse the batch. |
+| **Reverse** | Deletes all `Result` rows tied to a given `batch_id` **only if none are published**. If any row in the batch is still published, the API returns **409 Conflict** — unpublish first. After deletion, the batch is marked `REVERSED`. |
+
+**Class positions** are recalculated after compute and after reverse (session-wide), not as part of publish-only updates.
 
 ---
 
 ## Endpoints
 
+### Compute results for one or more students
+
+**POST** `/api/v1/director/results/compute/students`
+
+Builds or updates `Result` snapshots for the given student IDs (active in the school and session). Results are **not** visible to students until you call a `release` endpoint.
+
+**Authentication:** Required (Bearer Token)
+
+**Request body:**
+```json
+{
+  "studentIds": ["student-id-1", "student-id-2"],
+  "sessionId": "optional-session-id"
+}
+```
+
+If `sessionId` is omitted, the current active session for the school is used.
+
+**Response (success):** Includes `batch_id` (for `compute/reverse`), `processed`, `errors`, and session info.
+
+**Error responses:** `400` (e.g. no released assessments), `404` (no matching students).
+
+---
+
+### Compute results for a class
+
+**POST** `/api/v1/director/results/compute/class/:classId`
+
+Same as compute/students for every **active** student whose `current_class_id` is `classId`.
+
+**Query parameters:** `session_id` (optional; defaults to current active session).
+
+**Response:** Includes `batch_id`, `class_id`, counts, and session info.
+
+---
+
+### Reverse a computation batch
+
+**POST** `/api/v1/director/results/compute/reverse`
+
+**Request body:**
+```json
+{
+  "batchId": "batch-uuid-from-compute-response"
+}
+```
+
+Removes computed `Result` rows for that batch and marks the batch reversed. **Blocked with 409** if any affected result is still published.
+
+---
+
 ### 1. Release Results for Whole School
 
 **POST** `/api/v1/director/results/release`
 
-Release results for all students in the current academic session.
+**Publish** (make visible) all computed `Result` rows for the current academic session. Does not recompute scores.
 
 **Authentication:** Required (Bearer Token)
 
@@ -705,31 +771,22 @@ Authorization: Bearer <token>
 
 ## Result Release Notes
 
-1. **Result Release Flag**: When results are released by the director, the `released_by_school_admin` flag is set to `true`. Only results with this flag can be viewed by students on their dashboard.
+1. **Compute vs publish**: **Compute** endpoints write or refresh scores and set `released_by_school_admin: false`. **Release** endpoints only set `released_by_school_admin: true` (and `released_by` / `released_at`) on rows that already exist. You must compute before you can publish.
 
-2. **Batch Processing**: The whole school release operation processes students in batches (50 students at a time) to avoid system overload.
+2. **Result visibility flag**: When results are published, `released_by_school_admin` is `true`. Students only see results with this flag on their dashboard.
 
-3. **Session Default**: If no `session_id` is provided, the system uses the current active session (where `is_current: true` and `status: 'active'`).
+3. **Batch processing (compute)**: Class-wide compute processes students in chunks of 50 concurrent tasks to limit load. Whole-school **publish** uses a single `updateMany` on existing rows (no per-student compute).
 
-4. **Class Positions**: After releasing results, class positions are automatically calculated for all students based on their total obtained scores.
+4. **Class positions**: Positions are recalculated after **compute** and after **reverse**, not when you only publish or unpublish.
 
-5. **Release Scope**: Directors can release results at four levels:
-   - **Single Student**: Release results for one specific student
-   - **Multiple Students**: Release results for an array of specific student IDs
-   - **Class**: Release results for all students in a specific class
-   - **Whole School**: Release results for all students in the current session
+5. **Session default**: If `session_id` is omitted where applicable, the current active session (`is_current` + `active`) is used.
 
-6. **Unrelease Functionality**: Directors can also unrelease results (set `released_by_school_admin` to `false`) at the same four levels. When results are unreleased:
-   - The result data remains in the database (not deleted)
-   - Students cannot view the results (`released_by_school_admin: false`)
-   - Directors can re-release them later by calling the release endpoints again
-   - This is useful for schools that want to temporarily hide results (e.g., after 24 hours)
+6. **Publish scope**: Directors can publish at four levels — single student, listed students, whole class, or whole school — each targeting existing `Result` rows for that scope.
 
-7. **Student Visibility**: Students can only view results where `released_by_school_admin: true`. Results that are unreleased or never released will not appear in the student's results view.
+7. **Unrelease**: Unrelease sets `released_by_school_admin` to `false` at the same four levels. Snapshot data stays in the database; students lose visibility until published again.
 
-8. **Push Notifications**: 
-   - When results are **released**, push notifications are automatically sent to all affected students
-   - When results are **unreleased**, push notifications are automatically sent to all affected students
-   - Notification title: "📊 Results Released" or "🔒 Results Unreleased"
-   - Notification includes academic year, term, and deep link to results screen
-   - Notifications are sent asynchronously and won't block the release/unrelease operation
+8. **Reversing a computation**: Use `batchId` from a compute response with `POST .../compute/reverse`. Impossible while any row in that batch is still published (409). Unpublish first.
+
+9. **Analytics**: Per-subject lines for the session are stored in `ResultSubjectLine` when results are computed, supporting queries without parsing JSON on `Result.subject_results`.
+
+10. **Push notifications**: Publishing and unpublishing send notifications to affected students (async); titles include whether results were released or unreleased, with session context and deep links.

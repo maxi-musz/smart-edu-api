@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, UserStatus } from '@prisma/client';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import {
+  Prisma,
+  ResultComputationBatchStatus,
+  ResultComputationScope,
+  UserStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiResponse } from '../../shared/helper-functions/response';
 import * as colors from 'colors';
@@ -23,19 +28,17 @@ export class DirectorResultService {
   ) {}
 
   /**
-   * Release results for all students in the current academic session (WHOLE SCHOOL)
-   * This collates all CA and Exam scores and creates Result records
+   * Publish results for the whole school (visibility only). Requires computed `Result` rows.
    */
   async releaseResults(
     schoolId: string,
     userId: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(
-      colors.cyan(`🎓 Starting result release process for school: ${schoolId}`),
+      colors.cyan(`🎓 Publishing results (whole school) for school: ${schoolId}`),
     );
 
     try {
-      // Get current academic session
       const currentSession = await this.prisma.academicSession.findFirst({
         where: {
           school_id: schoolId,
@@ -47,160 +50,45 @@ export class DirectorResultService {
       if (!currentSession) {
         this.logger.error(colors.red(`❌ No current academic session found`));
         return ResponseHelper.error(
-          colors.red(`❌ No current academic session found`),
+          `No current academic session found`,
           null,
           400,
         );
       }
 
-      this.logger.log(
-        colors.green(
-          `✅ Using session: ${currentSession.academic_year} - ${currentSession.term}`,
-        ),
-      );
-
-      // Check if results already exist for this session
-      const existingResults = await this.prisma.result.findFirst({
+      const updated = await this.prisma.result.updateMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
         },
-      });
-
-      if (existingResults) {
-        this.logger.warn(
-          colors.yellow(
-            `⚠️ Results already exist for this session. Recalculating and updating existing results...`,
-          ),
-        );
-      }
-
-      // Get all active students in the school for this session
-      const allStudents = await this.prisma.student.findMany({
-        where: {
-          school_id: schoolId,
-          academic_session_id: currentSession.id,
-          status: 'active',
-        },
-        select: {
-          id: true,
-          user_id: true,
-          current_class_id: true,
+        data: {
+          released_by_school_admin: true,
+          released_by: userId,
+          released_at: new Date(),
         },
       });
 
-      if (allStudents.length === 0) {
-        this.logger.error(
-          colors.red(`❌ No active students found for this session`),
-        );
+      if (updated.count === 0) {
         return new ApiResponse(
           false,
-          'No active students found for this session',
+          'No computed results for this session. Compute results first, then publish.',
           null,
         );
       }
 
-      this.logger.log(
-        colors.blue(`📊 Found ${allStudents.length} students to process`),
-      );
-
-      // Get all released assessments for this session (EXAM and CBT types only)
-      const releasedAssessments = await this.prisma.assessment.findMany({
+      const results = await this.prisma.result.findMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
-          status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
-          },
-          // Only include EXAM and CBT assessment types
-          assessment_type: {
-            in: ['EXAM', 'CBT'],
-          },
         },
         include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
-          },
+          student: { select: { user_id: true } },
         },
       });
+      const studentUserIds = [
+        ...new Set(results.map((r) => r.student.user_id)),
+      ];
 
-      if (releasedAssessments.length === 0) {
-        this.logger.error(
-          colors.red(
-            `[Director Results Service] ❌ No released assessments found for this session`,
-          ),
-        );
-        return new ApiResponse(
-          false,
-          'No released assessments found for this session',
-          null,
-        );
-      }
-
-      this.logger.log(
-        colors.blue(
-          `[Director Results Service] 📚 Found ${releasedAssessments.length} released assessments`,
-        ),
-      );
-
-      const gradeBands = await this.gradingScaleService.getResolvedBands(
-        schoolId,
-      );
-
-      // Process students in batches to avoid overwhelming the system
-      const totalBatches = Math.ceil(allStudents.length / this.BATCH_SIZE);
-      let processedCount = 0;
-      let errorCount = 0;
-
-      for (let i = 0; i < allStudents.length; i += this.BATCH_SIZE) {
-        const batch = allStudents.slice(i, i + this.BATCH_SIZE);
-        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
-
-        this.logger.log(
-          colors.cyan(
-            `[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`,
-          ),
-        );
-
-        // Process batch in parallel
-        const batchPromises = batch.map((student) =>
-          this.processStudentResults(
-            student,
-            releasedAssessments,
-            currentSession.id,
-            schoolId,
-            userId,
-            gradeBands,
-          ).catch((error) => {
-            this.logger.error(
-              colors.red(
-                `[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`,
-              ),
-            );
-            errorCount++;
-            return null;
-          }),
-        );
-
-        const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter((r) => r !== null).length;
-
-        // Small delay between batches to prevent overwhelming the database
-        if (i + this.BATCH_SIZE < allStudents.length) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-
-      // Calculate class positions for all students
-      await this.calculateClassPositions(schoolId, currentSession.id);
-
-      // Send push notifications to all students
-      const studentUserIds = allStudents.map((s) => s.user_id);
       await this.sendResultReleaseNotifications(
         schoolId,
         studentUserIds,
@@ -209,42 +97,28 @@ export class DirectorResultService {
         'released',
       );
 
-      this.logger.log(colors.green(`✅ Result release completed!`));
-      this.logger.log(
-        colors.green(
-          `   - Processed: ${processedCount}/${allStudents.length} students`,
-        ),
-      );
-      this.logger.log(colors.green(`   - Errors: ${errorCount}`));
-
-      return new ApiResponse(
-        true,
-        `Results released successfully for ${processedCount} students`,
-        {
-          total_students: allStudents.length,
-          processed: processedCount,
-          errors: errorCount,
-          session: {
-            id: currentSession.id,
-            academic_year: currentSession.academic_year,
-            term: currentSession.term,
-          },
+      return new ApiResponse(true, `Results published for ${updated.count} students`, {
+        published_count: updated.count,
+        session: {
+          id: currentSession.id,
+          academic_year: currentSession.academic_year,
+          term: currentSession.term,
         },
-      );
+      });
     } catch (error) {
       this.logger.error(
-        colors.red(`❌ Error releasing results: ${error.message}`),
+        colors.red(`❌ Error publishing results: ${error.message}`),
       );
       return new ApiResponse(
         false,
-        `Failed to release results: ${error.message}`,
+        `Failed to publish results: ${error.message}`,
         null,
       );
     }
   }
 
   /**
-   * Release results for a single student
+   * Publish results for one student (visibility only). Requires a computed `Result` row.
    */
   async releaseResultsForStudent(
     schoolId: string,
@@ -253,11 +127,10 @@ export class DirectorResultService {
     sessionId?: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(
-      colors.cyan(`🎓 Releasing results for student: ${studentId}`),
+      colors.cyan(`🎓 Publishing results for student: ${studentId}`),
     );
 
     try {
-      // Get academic session (use provided or current)
       let currentSession;
       if (sessionId) {
         currentSession = await this.prisma.academicSession.findFirst({
@@ -281,18 +154,15 @@ export class DirectorResultService {
         return ResponseHelper.error('No academic session found', null, 400);
       }
 
-      // Get student
       const student = await this.prisma.student.findFirst({
         where: {
           id: studentId,
           school_id: schoolId,
-          academic_session_id: currentSession.id,
           status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true,
         },
       });
 
@@ -301,61 +171,37 @@ export class DirectorResultService {
         return ResponseHelper.error('Student not found', null, 404);
       }
 
-      // Get all released assessments for this session
-      const releasedAssessments = await this.prisma.assessment.findMany({
+      const existing = await this.prisma.result.findUnique({
         where: {
-          school_id: schoolId,
-          academic_session_id: currentSession.id,
-          is_result_released: true,
-          status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
-          },
-          assessment_type: {
-            in: ['EXAM', 'CBT'],
-          },
-        },
-        include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
+          academic_session_id_student_id: {
+            academic_session_id: currentSession.id,
+            student_id: student.id,
           },
         },
       });
 
-      if (releasedAssessments.length === 0) {
-        this.logger.error(
-          colors.red(
-            `[Director Results Service] ❌ No released assessments found`,
-          ),
-        );
+      if (!existing) {
         return ResponseHelper.error(
-          'No released assessments found for this session',
+          'No computed result for this student. Compute results first, then publish.',
           null,
           400,
         );
       }
 
-      const gradeBands = await this.gradingScaleService.getResolvedBands(
-        schoolId,
-      );
+      await this.prisma.result.update({
+        where: {
+          academic_session_id_student_id: {
+            academic_session_id: currentSession.id,
+            student_id: student.id,
+          },
+        },
+        data: {
+          released_by_school_admin: true,
+          released_by: userId,
+          released_at: new Date(),
+        },
+      });
 
-      // Process student results
-      await this.processStudentResults(
-        student,
-        releasedAssessments,
-        currentSession.id,
-        schoolId,
-        userId,
-        gradeBands,
-      );
-
-      // Recalculate class positions
-      await this.calculateClassPositions(schoolId, currentSession.id);
-
-      // Send push notification to student
       await this.sendResultReleaseNotifications(
         schoolId,
         [student.user_id],
@@ -364,12 +210,8 @@ export class DirectorResultService {
         'released',
       );
 
-      this.logger.log(
-        colors.green(`✅ Results released successfully for student`),
-      );
-
       return ResponseHelper.success(
-        'Results released successfully for student',
+        'Results published for student',
         {
           student_id: student.id,
           session: {
@@ -381,10 +223,10 @@ export class DirectorResultService {
       );
     } catch (error) {
       this.logger.error(
-        colors.red(`❌ Error releasing results for student: ${error.message}`),
+        colors.red(`❌ Error publishing results for student: ${error.message}`),
       );
       return ResponseHelper.error(
-        `Failed to release results: ${error.message}`,
+        `Failed to publish results: ${error.message}`,
         null,
         500,
       );
@@ -392,7 +234,7 @@ export class DirectorResultService {
   }
 
   /**
-   * Release results for all students in a specific class
+   * Publish results for all students in a class who have computed rows (visibility only).
    */
   async releaseResultsForClass(
     schoolId: string,
@@ -400,10 +242,9 @@ export class DirectorResultService {
     classId: string,
     sessionId?: string,
   ): Promise<ApiResponse<any>> {
-    this.logger.log(colors.cyan(`🎓 Releasing results for class: ${classId}`));
+    this.logger.log(colors.cyan(`🎓 Publishing results for class: ${classId}`));
 
     try {
-      // Get academic session (use provided or current)
       let currentSession;
       if (sessionId) {
         currentSession = await this.prisma.academicSession.findFirst({
@@ -427,18 +268,15 @@ export class DirectorResultService {
         return ResponseHelper.error('No academic session found', null, 400);
       }
 
-      // Get all students in the class
       const classStudents = await this.prisma.student.findMany({
         where: {
           school_id: schoolId,
-          academic_session_id: currentSession.id,
           current_class_id: classId,
           status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true,
         },
       });
 
@@ -451,99 +289,29 @@ export class DirectorResultService {
         );
       }
 
-      // Get all released assessments for this session
-      const releasedAssessments = await this.prisma.assessment.findMany({
+      const studentIds = classStudents.map((s) => s.id);
+
+      const updated = await this.prisma.result.updateMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
-          status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
-          },
-          assessment_type: {
-            in: ['EXAM', 'CBT'],
-          },
+          student_id: { in: studentIds },
         },
-        include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
-          },
+        data: {
+          released_by_school_admin: true,
+          released_by: userId,
+          released_at: new Date(),
         },
       });
 
-      if (releasedAssessments.length === 0) {
-        this.logger.error(
-          colors.red(
-            `[Director Results Service] ❌ No released assessments found`,
-          ),
-        );
+      if (updated.count === 0) {
         return ResponseHelper.error(
-          'No released assessments found for this session',
+          'No computed results for students in this class. Compute results first, then publish.',
           null,
           400,
         );
       }
 
-      const gradeBands = await this.gradingScaleService.getResolvedBands(
-        schoolId,
-      );
-
-      this.logger.log(
-        colors.blue(
-          `[Director Results Service] 📊 Processing ${classStudents.length} students in class`,
-        ),
-      );
-
-      // Process students in batches
-      const totalBatches = Math.ceil(classStudents.length / this.BATCH_SIZE);
-      let processedCount = 0;
-      let errorCount = 0;
-
-      for (let i = 0; i < classStudents.length; i += this.BATCH_SIZE) {
-        const batch = classStudents.slice(i, i + this.BATCH_SIZE);
-        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
-
-        this.logger.log(
-          colors.cyan(
-            `[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`,
-          ),
-        );
-
-        const batchPromises = batch.map((student) =>
-          this.processStudentResults(
-            student,
-            releasedAssessments,
-            currentSession.id,
-            schoolId,
-            userId,
-            gradeBands,
-          ).catch((error) => {
-            this.logger.error(
-              colors.red(
-                `[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`,
-              ),
-            );
-            errorCount++;
-            return null;
-          }),
-        );
-
-        const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter((r) => r !== null).length;
-
-        if (i + this.BATCH_SIZE < classStudents.length) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-
-      // Recalculate class positions
-      await this.calculateClassPositions(schoolId, currentSession.id);
-
-      // Send push notifications to all students in class
       const studentUserIds = classStudents.map((s) => s.user_id);
       await this.sendResultReleaseNotifications(
         schoolId,
@@ -553,23 +321,11 @@ export class DirectorResultService {
         'released',
       );
 
-      this.logger.log(
-        colors.green(`✅ Results released successfully for class`),
-      );
-      this.logger.log(
-        colors.green(
-          `   - Processed: ${processedCount}/${classStudents.length} students`,
-        ),
-      );
-      this.logger.log(colors.green(`   - Errors: ${errorCount}`));
-
       return ResponseHelper.success(
-        `Results released successfully for ${processedCount} students in class`,
+        `Results published for ${updated.count} students in class`,
         {
           class_id: classId,
-          total_students: classStudents.length,
-          processed: processedCount,
-          errors: errorCount,
+          published_count: updated.count,
           session: {
             id: currentSession.id,
             academic_year: currentSession.academic_year,
@@ -579,10 +335,10 @@ export class DirectorResultService {
       );
     } catch (error) {
       this.logger.error(
-        colors.red(`❌ Error releasing results for class: ${error.message}`),
+        colors.red(`❌ Error publishing results for class: ${error.message}`),
       );
       return ResponseHelper.error(
-        `Failed to release results: ${error.message}`,
+        `Failed to publish results: ${error.message}`,
         null,
         500,
       );
@@ -590,7 +346,7 @@ export class DirectorResultService {
   }
 
   /**
-   * Release results for multiple students by their IDs
+   * Publish results for multiple students (visibility only). Only updates existing `Result` rows.
    */
   async releaseResultsForStudents(
     schoolId: string,
@@ -599,11 +355,10 @@ export class DirectorResultService {
     sessionId?: string,
   ): Promise<ApiResponse<any>> {
     this.logger.log(
-      colors.cyan(`🎓 Releasing results for ${studentIds.length} students`),
+      colors.cyan(`🎓 Publishing results for ${studentIds.length} students`),
     );
 
     try {
-      // Get academic session (use provided or current)
       let currentSession;
       if (sessionId) {
         currentSession = await this.prisma.academicSession.findFirst({
@@ -627,20 +382,15 @@ export class DirectorResultService {
         return ResponseHelper.error('No academic session found', null, 400);
       }
 
-      // Get all specified students
       const students = await this.prisma.student.findMany({
         where: {
-          id: {
-            in: studentIds,
-          },
+          id: { in: studentIds },
           school_id: schoolId,
-          academic_session_id: currentSession.id,
           status: 'active',
         },
         select: {
           id: true,
           user_id: true,
-          current_class_id: true,
         },
       });
 
@@ -653,7 +403,6 @@ export class DirectorResultService {
         );
       }
 
-      // Check if some student IDs were not found
       const foundStudentIds = students.map((s) => s.id);
       const notFoundIds = studentIds.filter(
         (id) => !foundStudentIds.includes(id),
@@ -666,107 +415,27 @@ export class DirectorResultService {
         );
       }
 
-      // Get all released assessments for this session
-      const releasedAssessments = await this.prisma.assessment.findMany({
+      const updated = await this.prisma.result.updateMany({
         where: {
           school_id: schoolId,
           academic_session_id: currentSession.id,
-          is_result_released: true,
-          status: {
-            in: ['PUBLISHED', 'ACTIVE', 'CLOSED'],
-          },
-          assessment_type: {
-            in: ['EXAM', 'CBT'],
-          },
+          student_id: { in: foundStudentIds },
         },
-        include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
-          },
+        data: {
+          released_by_school_admin: true,
+          released_by: userId,
+          released_at: new Date(),
         },
       });
 
-      if (releasedAssessments.length === 0) {
-        this.logger.error(
-          colors.red(
-            `[Director Results Service] ❌ No released assessments found`,
-          ),
-        );
+      if (updated.count === 0) {
         return ResponseHelper.error(
-          'No released assessments found for this session',
+          'No computed results for these students. Compute results first, then publish.',
           null,
           400,
         );
       }
 
-      const gradeBands = await this.gradingScaleService.getResolvedBands(
-        schoolId,
-      );
-
-      this.logger.log(
-        colors.blue(
-          `[Director Results Service] 📊 Processing ${students.length} students`,
-        ),
-      );
-
-      // Process students in batches
-      const totalBatches = Math.ceil(students.length / this.BATCH_SIZE);
-      let processedCount = 0;
-      let errorCount = 0;
-
-      for (let i = 0; i < students.length; i += this.BATCH_SIZE) {
-        const batch = students.slice(i, i + this.BATCH_SIZE);
-        const batchNumber = Math.floor(i / this.BATCH_SIZE) + 1;
-
-        this.logger.log(
-          colors.cyan(
-            `[Director Results Service] 🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} students)`,
-          ),
-        );
-
-        const batchPromises = batch.map((student) =>
-          this.processStudentResults(
-            student,
-            releasedAssessments,
-            currentSession.id,
-            schoolId,
-            userId,
-            gradeBands,
-          ).catch((error) => {
-            this.logger.error(
-              colors.red(
-                `[Director Results Service] ❌ Error processing student ${student.id}: ${error.message}`,
-              ),
-            );
-            errorCount++;
-            return null;
-          }),
-        );
-
-        const batchResults = await Promise.all(batchPromises);
-        processedCount += batchResults.filter((r) => r !== null).length;
-
-        if (i + this.BATCH_SIZE < students.length) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      }
-
-      // Recalculate class positions for affected classes
-      const affectedClasses = [
-        ...new Set(students.map((s) => s.current_class_id).filter(Boolean)),
-      ];
-      for (const classId of affectedClasses) {
-        if (classId) {
-          await this.calculateClassPositions(schoolId, currentSession.id);
-          break; // Only need to calculate once as it processes all classes
-        }
-      }
-
-      // Send push notifications to all students
       const studentUserIds = students.map((s) => s.user_id);
       await this.sendResultReleaseNotifications(
         schoolId,
@@ -776,28 +445,12 @@ export class DirectorResultService {
         'released',
       );
 
-      this.logger.log(
-        colors.green(`✅ Results released successfully for students`),
-      );
-      this.logger.log(
-        colors.green(
-          `   - Processed: ${processedCount}/${students.length} students`,
-        ),
-      );
-      this.logger.log(colors.green(`   - Errors: ${errorCount}`));
-      if (notFoundIds.length > 0) {
-        this.logger.log(
-          colors.yellow(`   - Not found: ${notFoundIds.length} student IDs`),
-        );
-      }
-
       return ResponseHelper.success(
-        `Results released successfully for ${processedCount} students`,
+        `Results published for ${updated.count} students`,
         {
           total_requested: studentIds.length,
           total_found: students.length,
-          processed: processedCount,
-          errors: errorCount,
+          published_count: updated.count,
           not_found: notFoundIds.length > 0 ? notFoundIds : undefined,
           session: {
             id: currentSession.id,
@@ -808,10 +461,10 @@ export class DirectorResultService {
       );
     } catch (error) {
       this.logger.error(
-        colors.red(`❌ Error releasing results for students: ${error.message}`),
+        colors.red(`❌ Error publishing results for students: ${error.message}`),
       );
       return ResponseHelper.error(
-        `Failed to release results: ${error.message}`,
+        `Failed to publish results: ${error.message}`,
         null,
         500,
       );
@@ -1083,11 +736,10 @@ export class DirectorResultService {
         return ResponseHelper.error('No academic session found', null, 400);
       }
 
-      // Get all students in the class
+      // Class roster: same rule as Students dashboard — by class, not by Student.academic_session_id
       const classStudents = await this.prisma.student.findMany({
         where: {
           school_id: schoolId,
-          academic_session_id: currentSession.id,
           current_class_id: classId,
           status: 'active',
         },
@@ -1276,17 +928,349 @@ export class DirectorResultService {
   }
 
   /**
-   * Process results for a single student
+   * Compute and store results for one or more students (not visible until published).
+   */
+  async computeResultsForStudents(
+    schoolId: string,
+    userId: string,
+    studentIds: string[],
+    sessionId?: string,
+  ): Promise<ApiResponse<any>> {
+    try {
+      const currentSession = await this.resolveAcademicSessionForSchool(
+        schoolId,
+        sessionId,
+      );
+      if (!currentSession) {
+        return ResponseHelper.error('No academic session found', null, 400);
+      }
+
+      const batch = await this.prisma.resultComputationBatch.create({
+        data: {
+          school_id: schoolId,
+          academic_session_id: currentSession.id,
+          scope: ResultComputationScope.STUDENTS,
+          created_by_user_id: userId,
+        },
+      });
+
+      const students = await this.prisma.student.findMany({
+        where: {
+          id: { in: studentIds },
+          school_id: schoolId,
+          status: 'active',
+        },
+        select: {
+          id: true,
+          user_id: true,
+          current_class_id: true,
+        },
+      });
+
+      if (students.length === 0) {
+        await this.prisma.resultComputationBatch.delete({
+          where: { id: batch.id },
+        });
+        return ResponseHelper.error(
+          'No active students found for the given IDs',
+          null,
+          404,
+        );
+      }
+
+      const releasedAssessments = await this.fetchReleasedAssessmentsForSession(
+        schoolId,
+        currentSession.id,
+      );
+      if (releasedAssessments.length === 0) {
+        await this.prisma.resultComputationBatch.delete({
+          where: { id: batch.id },
+        });
+        return ResponseHelper.error(
+          'No released assessments found for this session',
+          null,
+          400,
+        );
+      }
+
+      const gradeBands =
+        await this.gradingScaleService.getResolvedBands(schoolId);
+
+      let processed = 0;
+      let errorCount = 0;
+      for (const student of students) {
+        try {
+          await this.processStudentResults(
+            student,
+            releasedAssessments,
+            currentSession.id,
+            schoolId,
+            userId,
+            gradeBands,
+            { publish: false, computationBatchId: batch.id },
+          );
+          processed++;
+        } catch (e) {
+          this.logger.error(
+            colors.red(
+              `[compute] student ${student.id}: ${(e as Error).message}`,
+            ),
+          );
+          errorCount++;
+        }
+      }
+
+      await this.calculateClassPositions(schoolId, currentSession.id);
+
+      return ResponseHelper.success('Results computed', {
+        batch_id: batch.id,
+        processed,
+        errors: errorCount,
+        session: {
+          id: currentSession.id,
+          academic_year: currentSession.academic_year,
+          term: currentSession.term,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        colors.red(`computeResultsForStudents: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to compute results: ${error.message}`,
+        null,
+        500,
+      );
+    }
+  }
+
+  /**
+   * Compute results for all active students in a class.
+   */
+  async computeResultsForClass(
+    schoolId: string,
+    userId: string,
+    classId: string,
+    sessionId?: string,
+  ): Promise<ApiResponse<any>> {
+    try {
+      const currentSession = await this.resolveAcademicSessionForSchool(
+        schoolId,
+        sessionId,
+      );
+      if (!currentSession) {
+        return ResponseHelper.error('No academic session found', null, 400);
+      }
+
+      const batch = await this.prisma.resultComputationBatch.create({
+        data: {
+          school_id: schoolId,
+          academic_session_id: currentSession.id,
+          scope: ResultComputationScope.CLASS,
+          class_id: classId,
+          created_by_user_id: userId,
+        },
+      });
+
+      const students = await this.prisma.student.findMany({
+        where: {
+          school_id: schoolId,
+          current_class_id: classId,
+          status: 'active',
+        },
+        select: {
+          id: true,
+          user_id: true,
+          current_class_id: true,
+        },
+      });
+
+      if (students.length === 0) {
+        await this.prisma.resultComputationBatch.delete({
+          where: { id: batch.id },
+        });
+        return ResponseHelper.error(
+          'No students found in this class',
+          null,
+          404,
+        );
+      }
+
+      const releasedAssessments = await this.fetchReleasedAssessmentsForSession(
+        schoolId,
+        currentSession.id,
+      );
+      if (releasedAssessments.length === 0) {
+        await this.prisma.resultComputationBatch.delete({
+          where: { id: batch.id },
+        });
+        return ResponseHelper.error(
+          'No released assessments found for this session',
+          null,
+          400,
+        );
+      }
+
+      const gradeBands =
+        await this.gradingScaleService.getResolvedBands(schoolId);
+
+      let processed = 0;
+      let errorCount = 0;
+      for (let i = 0; i < students.length; i += this.BATCH_SIZE) {
+        const chunk = students.slice(i, i + this.BATCH_SIZE);
+        const results = await Promise.all(
+          chunk.map((student) =>
+            this.processStudentResults(
+              student,
+              releasedAssessments,
+              currentSession.id,
+              schoolId,
+              userId,
+              gradeBands,
+              { publish: false, computationBatchId: batch.id },
+            ).catch((e) => {
+              this.logger.error(
+                colors.red(`[compute class] ${student.id}: ${e.message}`),
+              );
+              errorCount++;
+              return null;
+            }),
+          ),
+        );
+        processed += results.filter((r) => r !== null).length;
+      }
+
+      await this.calculateClassPositions(schoolId, currentSession.id);
+
+      return ResponseHelper.success('Results computed for class', {
+        batch_id: batch.id,
+        class_id: classId,
+        total_students: students.length,
+        processed,
+        errors: errorCount,
+        session: {
+          id: currentSession.id,
+          academic_year: currentSession.academic_year,
+          term: currentSession.term,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        colors.red(`computeResultsForClass: ${error.message}`),
+      );
+      return ResponseHelper.error(
+        `Failed to compute results: ${error.message}`,
+        null,
+        500,
+      );
+    }
+  }
+
+  /**
+   * Delete computed results from a batch (blocked if any row is published).
+   */
+  async reverseComputationBatch(
+    schoolId: string,
+    userId: string,
+    batchId: string,
+  ): Promise<ApiResponse<any>> {
+    const batch = await this.prisma.resultComputationBatch.findFirst({
+      where: { id: batchId, school_id: schoolId },
+    });
+
+    if (!batch) {
+      return ResponseHelper.error('Computation batch not found', null, 404);
+    }
+
+    if (batch.status === ResultComputationBatchStatus.REVERSED) {
+      return ResponseHelper.error('This batch was already reversed', null, 400);
+    }
+
+    const affected = await this.prisma.result.findMany({
+      where: { computation_batch_id: batchId },
+      select: { id: true, released_by_school_admin: true },
+    });
+
+    if (affected.some((r) => r.released_by_school_admin)) {
+      throw new ConflictException(
+        'Unpublish results for these students before reversing this computation.',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.result.deleteMany({
+        where: { computation_batch_id: batchId },
+      }),
+      this.prisma.resultComputationBatch.update({
+        where: { id: batchId },
+        data: {
+          status: ResultComputationBatchStatus.REVERSED,
+          reversed_at: new Date(),
+          reversed_by_user_id: userId,
+        },
+      }),
+    ]);
+
+    await this.calculateClassPositions(schoolId, batch.academic_session_id);
+
+    return ResponseHelper.success('Computation reversed; result rows removed.', {
+      batch_id: batchId,
+    });
+  }
+
+  private async resolveAcademicSessionForSchool(
+    schoolId: string,
+    sessionId?: string,
+  ) {
+    if (sessionId) {
+      return this.prisma.academicSession.findFirst({
+        where: { id: sessionId, school_id: schoolId },
+      });
+    }
+    return this.prisma.academicSession.findFirst({
+      where: {
+        school_id: schoolId,
+        is_current: true,
+        status: 'active',
+      },
+    });
+  }
+
+  private async fetchReleasedAssessmentsForSession(
+    schoolId: string,
+    academicSessionId: string,
+  ) {
+    return this.prisma.assessment.findMany({
+      where: {
+        school_id: schoolId,
+        academic_session_id: academicSessionId,
+        is_result_released: true,
+        status: { in: ['PUBLISHED', 'ACTIVE', 'CLOSED'] },
+        assessment_type: { in: ['EXAM', 'CBT'] },
+      },
+      include: {
+        subject: {
+          select: { id: true, name: true, code: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Collate attempts into a `Result` row. Use `publish: true` only for legacy flows;
+   * compute endpoints use `publish: false` and set `computationBatchId`.
    */
   private async processStudentResults(
     student: { id: string; user_id: string; current_class_id: string | null },
     releasedAssessments: any[],
     sessionId: string,
     schoolId: string,
-    releasedBy: string,
+    actorUserId: string,
     gradeBands: GradeThreshold[],
+    options: { publish: boolean; computationBatchId?: string | null },
   ): Promise<any> {
-    // Get final result (best attempt) for each released assessment
+    const { publish, computationBatchId } = options;
+
     const assessmentResults = await Promise.all(
       releasedAssessments.map(async (assessment) => {
         const studentResult = await this.prisma.assessmentAttempt.findFirst({
@@ -1294,7 +1278,7 @@ export class DirectorResultService {
             assessment_id: assessment.id,
             student_id: student.user_id,
             status: {
-              in: ['SUBMITTED', 'GRADED'], // Include both submitted and graded attempts
+              in: ['SUBMITTED', 'GRADED'],
             },
           },
           orderBy: [{ total_score: 'desc' }, { submitted_at: 'desc' }],
@@ -1307,14 +1291,24 @@ export class DirectorResultService {
       }),
     );
 
-    // Filter out assessments where student has no result
     const validResults = assessmentResults.filter(
       (item) => item.result !== null,
     );
 
+    const visibilityData = publish
+      ? {
+          released_by: actorUserId,
+          released_by_school_admin: true,
+          released_at: new Date(),
+        }
+      : {
+          released_by: null,
+          released_by_school_admin: false,
+          computation_batch_id: computationBatchId ?? null,
+        };
+
     if (validResults.length === 0) {
-      // Upsert empty result record
-      return await this.prisma.result.upsert({
+      const saved = await this.prisma.result.upsert({
         where: {
           academic_session_id_student_id: {
             academic_session_id: sessionId,
@@ -1324,8 +1318,13 @@ export class DirectorResultService {
         update: {
           class_id: student.current_class_id,
           subject_results: [],
-          released_by: releasedBy,
-          released_by_school_admin: true, // Set to true when released by director
+          total_ca_score: 0,
+          total_exam_score: 0,
+          total_score: 0,
+          total_max_score: 0,
+          overall_percentage: 0,
+          overall_grade: null,
+          ...visibilityData,
         },
         create: {
           school_id: schoolId,
@@ -1333,10 +1332,23 @@ export class DirectorResultService {
           student_id: student.id,
           class_id: student.current_class_id,
           subject_results: [],
-          released_by: releasedBy,
-          released_by_school_admin: true, // Set to true when released by director
+          total_ca_score: 0,
+          total_exam_score: 0,
+          total_score: 0,
+          total_max_score: 0,
+          overall_percentage: 0,
+          overall_grade: null,
+          ...visibilityData,
         },
       });
+      await this.replaceResultSubjectLines(
+        saved.id,
+        schoolId,
+        sessionId,
+        student.id,
+        [],
+      );
+      return saved;
     }
 
     // Group results by subject
@@ -1433,8 +1445,7 @@ export class DirectorResultService {
       totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100 : 0;
     const overallGrade = gradeFromMinThresholds(overallPercentage, gradeBands);
 
-    // Upsert result record
-    return await this.prisma.result.upsert({
+    const saved = await this.prisma.result.upsert({
       where: {
         academic_session_id_student_id: {
           academic_session_id: sessionId,
@@ -1450,8 +1461,7 @@ export class DirectorResultService {
         total_max_score: totalMaxScore,
         overall_percentage: Math.round(overallPercentage * 100) / 100,
         overall_grade: overallGrade,
-        released_by: releasedBy,
-        released_by_school_admin: true, // Set to true when released by director
+        ...visibilityData,
       },
       create: {
         school_id: schoolId,
@@ -1465,9 +1475,56 @@ export class DirectorResultService {
         total_max_score: totalMaxScore,
         overall_percentage: Math.round(overallPercentage * 100) / 100,
         overall_grade: overallGrade,
-        released_by: releasedBy,
-        released_by_school_admin: true, // Set to true when released by director
+        ...visibilityData,
       },
+    });
+
+    await this.replaceResultSubjectLines(
+      saved.id,
+      schoolId,
+      sessionId,
+      student.id,
+      subjectResults,
+    );
+
+    return saved;
+  }
+
+  private async replaceResultSubjectLines(
+    resultId: string,
+    schoolId: string,
+    academicSessionId: string,
+    studentId: string,
+    subjectResults: Array<{
+      subject_id: string;
+      ca_score: number | null;
+      exam_score: number | null;
+      total_score: number;
+      total_max_score: number;
+      percentage: number;
+      grade: string;
+    }>,
+  ): Promise<void> {
+    await this.prisma.resultSubjectLine.deleteMany({
+      where: { result_id: resultId },
+    });
+    if (subjectResults.length === 0) {
+      return;
+    }
+    await this.prisma.resultSubjectLine.createMany({
+      data: subjectResults.map((s) => ({
+        result_id: resultId,
+        school_id: schoolId,
+        academic_session_id: academicSessionId,
+        student_id: studentId,
+        subject_id: s.subject_id,
+        ca_score: s.ca_score ?? 0,
+        exam_score: s.exam_score ?? 0,
+        total_score: s.total_score,
+        total_max_score: s.total_max_score,
+        percentage: s.percentage,
+        grade: s.grade,
+      })),
     });
   }
 
@@ -1792,9 +1849,10 @@ export class DirectorResultService {
           orderBy: { name: 'asc' },
         });
 
+        // Roster: match Students dashboard — everyone in this class at this school, regardless of
+        // Student.academic_session_id. The selected session is used for assessments and Result rows.
         const studentWhere: Prisma.StudentWhereInput = {
           school_id: user.school_id,
-          academic_session_id: selectedSessionId,
           current_class_id: selectedClassId,
           status: studentStatusFilter,
         };
@@ -1862,6 +1920,24 @@ export class DirectorResultService {
             ? 'No students match your search'
             : 'No students found in this class';
         }
+
+        const pageStudentIds = studentsPage.map((s) => s.id);
+        const storedResultRows =
+          pageStudentIds.length === 0
+            ? []
+            : await this.prisma.result.findMany({
+                where: {
+                  academic_session_id: selectedSessionId,
+                  student_id: { in: pageStudentIds },
+                },
+                select: {
+                  student_id: true,
+                  released_by_school_admin: true,
+                },
+              });
+        const resultByStudentId = new Map(
+          storedResultRows.map((r) => [r.student_id, r]),
+        );
 
         const subjectIds = classSubjects.map((s) => s.id);
         const allAssessments =
@@ -2061,6 +2137,8 @@ export class DirectorResultService {
           const overallPercentage =
             totalObtainable > 0 ? (totalObtained / totalObtainable) * 100 : 0;
 
+          const stored = resultByStudentId.get(student.id);
+
           return {
             student: {
               id: student.id,
@@ -2076,6 +2154,8 @@ export class DirectorResultService {
             totalObtainable,
             percentage: overallPercentage,
             grade: gradeFromMinThresholds(overallPercentage, gradeBands),
+            hasComputedResult: !!stored,
+            isPublishedToStudents: stored?.released_by_school_admin ?? false,
           };
         });
 
