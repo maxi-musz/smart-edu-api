@@ -441,6 +441,7 @@ export class S3Service {
   async generateReadPresignedUrl(
     key: string,
     expiresIn: number = 3600,
+    options?: { quiet?: boolean },
   ): Promise<string> {
     try {
       const command = new GetObjectCommand({
@@ -452,11 +453,13 @@ export class S3Service {
         expiresIn,
       });
 
-      this.logger.log(
-        colors.blue(`🔗 Generated read presigned URL for: ${key}`),
-      );
+      if (!options?.quiet) {
+        this.logger.log(
+          colors.blue(`🔗 Generated read presigned URL for: ${key}`),
+        );
+      }
       return presignedUrl;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         colors.red(
           `❌ Failed to generate read presigned URL: ${error.message}`,
@@ -465,6 +468,38 @@ export class S3Service {
       throw new Error(
         `Failed to generate read presigned URL: ${error.message}`,
       );
+    }
+  }
+
+  /**
+   * Stored `url` from {@link getFileUrl} is a public-style S3 URL. Private buckets
+   * deny anonymous GET, so clients must use a presigned read URL. Call this when
+   * returning chapter file rows to the API.
+   */
+  async presignChapterFileReadIfNeeded(
+    file: { s3Key: string | null; url: string | null },
+    expiresInSec: number = 3600,
+  ): Promise<{ url: string | null; urlExpiresAt: string | null }> {
+    if (!file.s3Key?.trim()) {
+      return { url: file.url ?? null, urlExpiresAt: null };
+    }
+    try {
+      const url = await this.generateReadPresignedUrl(
+        file.s3Key.trim(),
+        expiresInSec,
+        { quiet: true },
+      );
+      const urlExpiresAt = new Date(
+        Date.now() + expiresInSec * 1000,
+      ).toISOString();
+      return { url, urlExpiresAt };
+    } catch (error: any) {
+      this.logger.warn(
+        colors.yellow(
+          `Presign chapter file read failed (${file.s3Key}), using stored url: ${error.message}`,
+        ),
+      );
+      return { url: file.url ?? null, urlExpiresAt: null };
     }
   }
 

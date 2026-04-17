@@ -31,6 +31,9 @@ import * as colors from 'colors';
 export class GeneralMaterialsService {
   private readonly logger = new Logger(GeneralMaterialsService.name);
 
+  /** Presigned GET TTL for chapter files returned to clients (matches Explore AI Books). */
+  private readonly chapterFileReadTtlSec = 3600;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
@@ -41,6 +44,29 @@ export class GeneralMaterialsService {
     private readonly pineconeService: PineconeService,
     private readonly documentProcessingService: DocumentProcessingService,
   ) {}
+
+  /**
+   * Private buckets require presigned reads; replace `url` when `s3Key` is present.
+   */
+  private async attachPresignedUrlsToChapters<T extends { files: any[] }>(
+    chapters: T[],
+  ): Promise<T[]> {
+    return Promise.all(
+      chapters.map(async (chapter) => ({
+        ...chapter,
+        files: await Promise.all(
+          (chapter.files || []).map(async (f: any) => {
+            const { s3Key, ...rest } = f;
+            const signed = await this.s3Service.presignChapterFileReadIfNeeded(
+              { s3Key, url: rest.url },
+              this.chapterFileReadTtlSec,
+            );
+            return { ...rest, ...signed };
+          }),
+        ),
+      })),
+    ) as Promise<T[]>;
+  }
 
   /**
    * Get all available library classes (for dropdown selection)
@@ -591,6 +617,7 @@ export class GeneralMaterialsService {
                   fileName: true,
                   fileType: true,
                   url: true,
+                  s3Key: true,
                   sizeBytes: true,
                   title: true,
                   description: true,
@@ -621,9 +648,13 @@ export class GeneralMaterialsService {
       }
 
       // Format classes as array
+      const chaptersWithSigned = await this.attachPresignedUrlsToChapters(
+        material.chapters || [],
+      );
       const formattedMaterial = {
         ...material,
         classes: material.classes?.map((mc: any) => mc.class) || [],
+        chapters: chaptersWithSigned,
       };
 
       this.logger.log(
@@ -726,6 +757,7 @@ export class GeneralMaterialsService {
                 fileName: true,
                 fileType: true,
                 url: true,
+                s3Key: true,
                 sizeBytes: true,
                 title: true,
                 description: true,
@@ -826,10 +858,13 @@ export class GeneralMaterialsService {
           `[GENERAL MATERIALS] Material chapters retrieved successfully: ${materialId}`,
         ),
       );
+      const chaptersWithSignedFiles = await this.attachPresignedUrlsToChapters(
+        chaptersWithStatus,
+      );
       return new ApiResponse(
         true,
         'Material chapters retrieved successfully',
-        chaptersWithStatus,
+        chaptersWithSignedFiles,
       );
     } catch (error: any) {
       if (
@@ -2297,6 +2332,7 @@ export class GeneralMaterialsService {
                 fileName: true,
                 fileType: true,
                 url: true,
+                s3Key: true,
                 sizeBytes: true,
                 title: true,
                 description: true,
@@ -2322,7 +2358,13 @@ export class GeneralMaterialsService {
         ),
       );
 
-      return completeChapter;
+      if (!completeChapter) {
+        return completeChapter;
+      }
+      const [chapterWithSigned] = await this.attachPresignedUrlsToChapters([
+        completeChapter,
+      ]);
+      return chapterWithSigned;
     } catch (error: any) {
       if (smoother) clearInterval(smoother);
 
@@ -2989,6 +3031,7 @@ export class GeneralMaterialsService {
                 fileName: true,
                 fileType: true,
                 url: true,
+                s3Key: true,
                 sizeBytes: true,
                 title: true,
                 description: true,
@@ -3007,10 +3050,13 @@ export class GeneralMaterialsService {
           `[GENERAL MATERIALS] Chapter with file created successfully: ${result.chapter.id}`,
         ),
       );
+      const chapterPayload = completeChapter
+        ? (await this.attachPresignedUrlsToChapters([completeChapter]))[0]
+        : completeChapter;
       return new ApiResponse(
         true,
         'Chapter with file created successfully',
-        completeChapter,
+        chapterPayload,
       );
     } catch (error: any) {
       if (
@@ -3410,13 +3456,21 @@ export class GeneralMaterialsService {
         }
       }
 
+      const signed = await this.s3Service.presignChapterFileReadIfNeeded(
+        { s3Key: chapterFile.s3Key, url: chapterFile.url },
+        this.chapterFileReadTtlSec,
+      );
+      const { s3Key: _sk, ...chapterFileRest } = chapterFile;
+
       return new ApiResponse(
         true,
         shouldEnableAiChat
           ? 'Chapter file uploaded successfully and AI chat processing completed'
           : 'Chapter file uploaded successfully',
         {
-          ...chapterFile,
+          ...chapterFileRest,
+          url: signed.url,
+          urlExpiresAt: signed.urlExpiresAt,
           aiChatProcessed: shouldEnableAiChat,
         },
       );

@@ -9,10 +9,35 @@ import * as colors from 'colors';
 export class ExploreAiBooksService {
   private readonly logger = new Logger(ExploreAiBooksService.name);
 
+  /** Presigned GET TTL for chapter PDFs (private S3 buckets require signed URLs). */
+  private static readonly CHAPTER_FILE_READ_TTL_SEC = 3600;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
   ) {}
+
+  /**
+   * Replace stored public-style URLs with time-limited presigned reads when `s3Key` is set.
+   */
+  private async withPresignedChapterFiles(chapters: any[]): Promise<any[]> {
+    const ttl = ExploreAiBooksService.CHAPTER_FILE_READ_TTL_SEC;
+    return Promise.all(
+      chapters.map(async (ch) => ({
+        ...ch,
+        files: await Promise.all(
+          (ch.files || []).map(async (f: any) => {
+            const { s3Key, ...rest } = f;
+            const signed = await this.s3Service.presignChapterFileReadIfNeeded(
+              { s3Key, url: rest.url },
+              ttl,
+            );
+            return { ...rest, ...signed };
+          }),
+        ),
+      })),
+    );
+  }
 
   /**
    * Fetch AI book landing page data
@@ -373,6 +398,7 @@ export class ExploreAiBooksService {
                 fileName: true,
                 fileType: true,
                 url: true,
+                s3Key: true,
                 sizeBytes: true,
                 title: true,
                 description: true,
@@ -390,16 +416,18 @@ export class ExploreAiBooksService {
         },
       );
 
+      const chaptersWithUrls = await this.withPresignedChapterFiles(chapters);
+
       this.logger.log(
         colors.green(
-          `✅ Successfully fetched ${chapters.length} chapters for book: ${bookId}`,
+          `✅ Successfully fetched ${chaptersWithUrls.length} chapters for book: ${bookId}`,
         ),
       );
 
       return new ApiResponse(
         true,
         'Book chapters retrieved successfully',
-        chapters,
+        chaptersWithUrls,
       );
     } catch (error: any) {
       if (error instanceof NotFoundException) {
@@ -496,6 +524,7 @@ export class ExploreAiBooksService {
                 fileName: true,
                 fileType: true,
                 url: true,
+                s3Key: true,
                 sizeBytes: true,
                 title: true,
                 description: true,
@@ -517,13 +546,19 @@ export class ExploreAiBooksService {
         throw new NotFoundException('Chapter not found');
       }
 
+      const [chapterWithUrls] = await this.withPresignedChapterFiles([chapter]);
+
       this.logger.log(
         colors.green(
           `✅ Successfully fetched chapter ${chapterId} for book: ${bookId}`,
         ),
       );
 
-      return new ApiResponse(true, 'Chapter retrieved successfully', chapter);
+      return new ApiResponse(
+        true,
+        'Chapter retrieved successfully',
+        chapterWithUrls,
+      );
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         throw error;

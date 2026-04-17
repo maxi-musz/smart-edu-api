@@ -96,7 +96,10 @@ interface AiBookChapterFile {
   id: string;
   fileName: string;
   fileType: string | null;
+  /** Read URL: for S3-backed files this is a **presigned GET** minted on each API response (default TTL 1 hour). */
   url: string | null;
+  /** When `url` is presigned, ISO time when it expires; omit or null for non-S3 or legacy rows. */
+  urlExpiresAt?: string | null;
   sizeBytes: number | null;
   title: string | null;
   description: string | null;
@@ -119,6 +122,12 @@ interface AiBookChapter {
   files: AiBookChapterFile[];
 }
 ```
+
+### Chapter file URLs (private buckets)
+
+Uploads store a stable S3 key plus a public-style `getFileUrl` in the database. Anonymous HTTP GET to that URL **fails** when the bucket is private. The Explore and Library APIs therefore return a **fresh presigned read URL** in `files[].url` whenever `s3Key` is present. Clients should refetch chapter detail after ~1 hour or on focus if the PDF stops loading (React Query `useAIBookChapter` refetches on window focus for this reason).
+
+The Next.js route `GET /api/ai-book-pdf` (same-origin proxy for PDF.js) validates that upstream bytes look like a PDF and returns **502 + JSON** if not, so users see a clear error instead of a generic PDF parse failure.
 
 ---
 
